@@ -23,8 +23,16 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.command_runner { run_shell_command }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.os_install { srv4_ubuntu_autoinstall_on_iso }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import gunbc.os_install { srv4_console_password_hash }
+import extdeps.os.ubuntu_autoinstall { AutoinstallIdentity, NoCloudLocal, StoragePolicyDirectLayout }
+import std.os.types { NobleNumbat2404Lts }
+import gunbc.fleet_ssh_access { fleet_authorized_keys }
+import gunbc.fleet_host_identity { operator_host_srv4 }
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
+import product.host_identity { HostIdentity }
+import gunbc.boot_artifact_delivery { BmcHostedServeLocation }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
 import gunbc.os_install_emit {
   autoinstall_user_data
   AutoinstallUserData
@@ -34,27 +42,100 @@ import gunbc.os_install_emit {
 
 type BmcNetbootServePlan {
   bmc_host: NonEmptyStr
-  serve_port: Port
-  netboot_dir: NonEmptyStr
-  boot_interface: NonEmptyStr
+  serve: BmcHostedServeLocation
   bulk_iso_url: Uri
   autoinstall: UbuntuAutoinstallPayload
 }
 
-data srv4_bmc_netboot_serve_plan: BmcNetbootServePlan = BmcNetbootServePlan {
-  bmc_host: "192.168.1.195",
-  serve_port: 8080,
-  netboot_dir: "/tmp/netboot",
-  boot_interface: "eth2",
-  bulk_iso_url: Uri {
-    scheme: Https,
-    locator: "cdimage.ubuntu.com/ubuntu/releases/24.04/release/ubuntu-24.04.3-live-server-arm64.iso",
-  },
-  autoinstall: srv4_ubuntu_autoinstall_on_iso,
+// THE PER-HOST ROSTER. One row per host whose controller serves its own bootstrap: the controller
+// address, where on it the bootstrap is served and which host interface fetches it (the shared
+// gunbc.boot_artifact_delivery location, not a second copy of its fields), and the console
+// password hash the installed system's bootstrap account carries. Everything else in a plan is
+// derived: the hostname from gunbc.hostname_allocation, the keys from the fleet, the install
+// payload from one shape. A host with no row, or no allocated hostname, has no plan.
+type BmcNetbootHostRow {
+  host: HostIdentity
+  bmc_host: NonEmptyStr
+  serve: BmcHostedServeLocation
+  console_password_hash: NonEmptyStr
 }
 
+data srv4_bmc_netboot_host_row: BmcNetbootHostRow = BmcNetbootHostRow {
+  host: operator_host_srv4,
+  bmc_host: "192.168.1.195",
+  serve: BmcHostedServeLocation { serve_port: 8080, serve_dir: "/tmp/netboot", host_boot_interface: "eth2" },
+  console_password_hash: srv4_console_password_hash,
+}
+
+// srv13-srv16 get rows at first contact, when their controller address and boot interface are
+// observed and their console hash is minted; nothing here is authored before that.
+data bmc_netboot_host_rows: List<BmcNetbootHostRow> = [srv4_bmc_netboot_host_row]
+
+data bmc_netboot_bulk_iso_url: Uri = Uri {
+  scheme: Https,
+  locator: "cdimage.ubuntu.com/ubuntu/releases/24.04/release/ubuntu-24.04.3-live-server-arm64.iso",
+}
+
+fn bmc_netboot_autoinstall_of(row: BmcNetbootHostRow, hostname: NonEmptyStr) -> UbuntuAutoinstallPayload {
+  UbuntuAutoinstallPayload {
+    autoinstall_version: 1,
+    delivery: NoCloudLocal,
+    fully_automated: true,
+    target_distribution: NobleNumbat2404Lts,
+    identity: AutoinstallIdentity {
+      hostname: hostname,
+      username: "ubuntu",
+      realname: join(["gunbc fleet node ", hostname as String], "") as NonEmptyStr,
+      hashed_password: row.console_password_hash,
+    },
+    locale: "en_US.UTF-8",
+    keyboard_layout: "us",
+    install_openssh_server: true,
+    ssh_authorized_keys: fleet_authorized_keys,
+    ssh_password_auth: false,
+    storage_policy: StoragePolicyDirectLayout,
+  }
+}
+
+fn bmc_netboot_serve_plan_of(row: BmcNetbootHostRow, hostname: NonEmptyStr) -> BmcNetbootServePlan {
+  BmcNetbootServePlan {
+    bmc_host: row.bmc_host,
+    serve: row.serve,
+    bulk_iso_url: bmc_netboot_bulk_iso_url,
+    autoinstall: bmc_netboot_autoinstall_of(row: row, hostname: hostname),
+  }
+}
+
+type BmcNetbootPlanLookup
+  = BmcNetbootPlanned { plan: BmcNetbootServePlan }
+  | BmcNetbootHostNotRostered { host: HostIdentity }
+  | BmcNetbootHostnameUnallocated { host: HostIdentity }
+
+fn bmc_netboot_row_for(host: HostIdentity) -> BmcNetbootHostRow? {
+  fold(bmc_netboot_host_rows, init: none, f: (acc, r) => match acc {
+    Present { value: _ } => acc
+    Absent => if (r.host as String) == (host as String) { Present { value: r } } else { none }
+  })
+}
+
+fn bmc_netboot_plan_for_host(host: HostIdentity) -> BmcNetbootPlanLookup {
+  match bmc_netboot_row_for(host: host) {
+    Absent => BmcNetbootHostNotRostered { host: host }
+    Present { value: row } =>
+      match canonical_hostname_for_fleet_slot(fleet_slot: host) {
+        Absent => BmcNetbootHostnameUnallocated { host: host }
+        Present { value: name } => BmcNetbootPlanned { plan: bmc_netboot_serve_plan_of(row: row, hostname: name as NonEmptyStr) }
+      }
+  }
+}
+
+// srv4's plan, kept as a value because the shell-boot rendering and its witnesses read it. It is
+// built by the same constructor the lookup uses; a witness pins it equal to the lookup's answer,
+// so it cannot drift from the allocated hostname.
+data srv4_bmc_netboot_serve_plan: BmcNetbootServePlan = bmc_netboot_serve_plan_of(row: srv4_bmc_netboot_host_row, hostname: operator_host_srv4 as NonEmptyStr)
+
 fn bmc_netboot_host_port(plan: BmcNetbootServePlan) -> NonEmptyStr {
-  join([plan.bmc_host as String, ":", to_string(plan.serve_port)], "") as NonEmptyStr
+  join([plan.bmc_host as String, ":", to_string(plan.serve.serve_port)], "") as NonEmptyStr
 }
 
 fn bmc_netboot_uri(plan: BmcNetbootServePlan, path: NonEmptyStr) -> Uri {
@@ -101,7 +182,7 @@ fn bmc_netboot_http_boot_entry(plan: BmcNetbootServePlan) -> UefiHttpBootEntry {
   UefiHttpBootEntry {
     description: "gunbc-bmc-netboot",
     boot_file_uri: bmc_netboot_uri(plan: plan, path: "/grubaa64.efi"),
-    interface_name: plan.boot_interface,
+    interface_name: plan.serve.host_boot_interface,
   }
 }
 
@@ -139,7 +220,7 @@ fn bmc_netboot_artifact(name: NonEmptyStr) -> NonEmptyStr {
 }
 
 fn bmc_netboot_staged_path(plan: BmcNetbootServePlan, name: NonEmptyStr) -> NonEmptyStr {
-  join([plan.netboot_dir as String, "/", name as String], "") as NonEmptyStr
+  join([plan.serve.serve_dir as String, "/", name as String], "") as NonEmptyStr
 }
 
 // ---- THE SEMANTIC OPERATIONS (the shell-typed-invocation shape, applied to this lane) ----
@@ -295,8 +376,8 @@ fn bmc_netboot_op_prepared(plan: BmcNetbootServePlan, op: BmcNetbootOp) -> BmcNe
       BmcNetbootStagingReady {
         operations: [BmcNetbootPreparedOp {
           disposition: BmcNetbootPreparedLaunchServe {
-            serve_root: plan.netboot_dir,
-            serve_port: plan.serve_port,
+            serve_root: plan.serve.serve_dir,
+            serve_port: plan.serve.serve_port,
             busybox_path: bmc_netboot_staged_path(plan: plan, name: "busybox"),
           },
         }],
@@ -469,8 +550,12 @@ fn bmc_netboot_provision(plan: BmcNetbootServePlan) -> ProcessExit {
   bmc_netboot_apply_staging(plan: plan, staging: bmc_netboot_provision_staging(plan: plan))
 }
 
-fn srv4_bmc_netboot_provision() -> ProcessExit {
-  bmc_netboot_provision(plan: srv4_bmc_netboot_serve_plan)
+fn bmc_netboot_provision_for_host(host: HostIdentity) -> ProcessExit {
+  match bmc_netboot_plan_for_host(host: host) {
+    BmcNetbootPlanned { plan: p } => bmc_netboot_provision(plan: p)
+    BmcNetbootHostNotRostered { host: h } => exit_failure(reason: concat("bmc-netboot: no netboot roster row for ", h as String))
+    BmcNetbootHostnameUnallocated { host: h } => exit_failure(reason: concat("bmc-netboot: no hostname allocated for ", h as String))
+  }
 }
 
 data bmc_netboot_provision_scaffold: Disposition = Scaffold {
@@ -483,3 +568,21 @@ data bmc_netboot_provision_scaffold: Disposition = Scaffold {
 }
 
 data bmc_netboot_provision_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: bmc_netboot_provision — the staging manifest IS the driver, and since 2026-09-30 it is ONE TYPED STAGING: provision folds its ops (BmcNetbootMakeDir / BmcNetbootPutArtifact / BmcNetbootPutText / BmcNetbootPutFromUri / BmcNetbootLaunchServe) through bmc_netboot_staging_of into one BmcNetbootStaging — the prepared operations, or the whole staging refused — and a refused staging runs nothing, so a bad argument cannot act while the ops around it are skipped past. Preparation also NARROWS the sources: the unrealizable uri source refuses as a staging verdict (the old provision ran its mkdir first and discovered the unrealizable put MID-FOLD, after the mkdir and every earlier scp had already executed against the BMC) and has no prepared constructor at all, so the realization match carries no dead arm. The three scattered run_shell_command call sites are gone (bmc_netboot_run_bmc, bmc_netboot_put_path, and the serve launch each reached the transport independently; that was three bridge sites duplicating one pattern): one executor, bmc_netboot_apply_staging, consumes the SEALED staged value (BmcNetbootPreparedOp is a sole_constructor minted only behind the relative-path verdict, so a hand-authored prepared op with a remote path its author chose is a compile-time refusal, proven by the domain witness's cross-module probe) and alone turns an arm into a run. The serve command's rendered-text surface (bmc_netboot_serve_command_text, BmcNetbootServeCommandTextBuilt/Refused) is deleted — the witness reads argv fields now, not scraped shell text. HISTORY, for the stale-citation discipline: this clause previously recorded the heredoc-bridge hop through command_runner's shell_exec_via_bash/retained_runtime, then its deletion when command_runner asked command_over_transport once and handed the result straight to shell.Exec.RunArgv, then the SshExec arm's RFC-4254 fold in extdeps.exec.command (cited IEEE 1003.1-2017 section 2.2.2) — each correction rewritten when it landed, not left standing. Remaining debt, scoped: command_runner_dissolution_trigger's own first clause — host_effect_apply has not yet bound ArgvCommand execution, so the executor's three arms (mkdir on the BMC, the scp transfers, the busybox-httpd launch) still lower through gunbc.command_runner.run_shell_command, which this module inherits rather than duplicates. DISSOLVES WHEN host_effect_apply binds ArgvCommand execution (mkdir / scp / busybox-httpd-launch) as typed staging effects, and dag/gunbc/bmc/bmc_netboot_serve.dag retires command_runner.run_shell_command in its favor — the sealed staged value is already the shape that binding would consume")
+
+// What this provision does not yet establish, as counted rows rather than prose.
+data bmc_netboot_serve_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.bmc_netboot_serve", decl_name: "bmc_netboot_autoinstall_of"),
+    reason: "the installed system's only account is the autoinstall identity's bootstrap user (ubuntu); the fleet runner user every runner host is assumed to have (briansrls, created by hand on srv4 per gunbc.plans.fleet_subsumption_manual_gaps) has no carrier, because extdeps.os.ubuntu_autoinstall UbuntuAutoinstallPayload models one identity and no further users",
+    dissolution: unbound_dissolution(
+      description: "dissolves when the autoinstall payload carries the fleet runner user (name, sudo group, fleet authorized keys) from one fleet authority and this constructor reads it, so a host installed through this plan answers ssh as the runner user with no hand step; adding the user only to srv4's row does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.bmc_netboot_serve", decl_name: "bmc_netboot_provision_for_host"),
+    reason: "provision ends when the bootstrap is staged and served; nothing observes that the install completed and the host came back up from its own NVMe rather than re-entering the installer. gunbc.install_transport_qualification HostInstalledOsStanding and gunbc.host_reset_return HostReturnObservation are the homes such a readback would inhabit, and neither is produced for this route",
+    dissolution: unbound_dissolution(
+      description: "dissolves when this route's terminal reads back, from an observer that is not the subject, that the target host is running the installed system booted from its local disk (not the installer) after the one-shot UEFI Shell override was consumed, and records it as HostInstalledOsStanding InstalledOsRunning for that host; a controller's reset acknowledgement does not fire this"
+    )
+  ),
+]

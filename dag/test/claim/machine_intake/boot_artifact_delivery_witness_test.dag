@@ -201,6 +201,7 @@ import gunbc.boot_artifact_delivery {
   PxeChainBoot,
   BmcHostedShellBoot,
   BmcHostedShellBootParams,
+  BmcHostedServeLocation,
   BmcHostedShellBootStanding,
   BmcHostedShellBootEstablished,
   BmcHostedShellBootUnestablished,
@@ -1280,9 +1281,7 @@ fn established_bmc_hosted_shell_for(t: BootDeliveryTarget, digest: ContentHash) 
   BmcHostedShellBootEstablished {
     target: t,
     params: BmcHostedShellBootParams {
-      serve_port: 8080,
-      serve_dir: "/tmp/netboot",
-      host_boot_interface: "eth2",
+      serve: BmcHostedServeLocation { serve_port: 8080, serve_dir: "/tmp/netboot", host_boot_interface: "eth2" },
       artifact_digest: digest,
     },
     evidence: [DeclarationRef { module_path: "test.claim.boot_artifact_delivery_witness_test", decl_name: "established_bmc_hosted_shell_for", field: WholeDeclaration }],

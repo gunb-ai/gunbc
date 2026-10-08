@@ -235,10 +235,14 @@ data bmc_hosted_shell_boot_requirements_all: List<BmcHostedShellBootRequirement>
 // from, which host interface the shell fetches over, and the digest of the
 // bootstrap the serve was observed holding. The controller endpoint is not
 // repeated here: it is the bound target's.
-type BmcHostedShellBootParams {
+type BmcHostedServeLocation {
   serve_port: Port
   serve_dir: NonEmptyStr
   host_boot_interface: NonEmptyStr
+}
+
+type BmcHostedShellBootParams {
+  serve: BmcHostedServeLocation
   artifact_digest: ContentHash
 }
 
@@ -1146,7 +1150,7 @@ fn boot_delivery_candidate_standing_of(
 data boot_artifact_delivery_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.boot_artifact_delivery", decl_name: "BmcHostedShellBootStanding"),
-    reason: "no producer in this tree mints BmcHostedShellBootEstablished; gunbc.bmc_netboot_serve stages and launches the controller-side serve for srv4 from its own constants, and the SOL send, the host's UEFI Shell reachability and the served bootstrap's digest are not yet observed into this standing, so BoundBootDeliveryEvidence.bmc_hosted_shell is constructed only by witnesses",
+    reason: "no producer in this tree mints BmcHostedShellBootEstablished; gunbc.bmc_netboot_serve stages and launches the controller-side serve for any host in its roster (srv4 is the only row), but observes nothing back, and the SOL send, the host's UEFI Shell reachability and the served bootstrap's digest are not yet observed into this standing, so BoundBootDeliveryEvidence.bmc_hosted_shell is constructed only by witnesses",
     dissolution: unbound_dissolution(
       description: "dissolves when one producer, given a bound target, observes the controller shell, reads back the served bootstrap's digest from the controller's serve, observes a SOL send and the host's UEFI Shell prompt for that target, and binds the result into BoundBootDeliveryEvidence.bmc_hosted_shell on a real boot attempt, with each unobserved requirement left in missing; a witness over supplied standings does not fire this"
     )

@@ -11,8 +11,17 @@ import extdeps.exec.command {
   scp_command,
 }
 import extdeps.tools.mkdir { mkdir_parents_command_at }
+import extdeps.uri { Uri, Https }
+import gunbc.boot_artifact_delivery { BmcHostedServeLocation }
+import gunbc.os_install { srv4_ubuntu_autoinstall_on_iso }
+import gunbc.fleet_host_identity { operator_host_srv4, operator_host_srv13 }
 import gunbc.bmc_netboot_serve {
   srv4_bmc_netboot_serve_plan,
+  BmcNetbootServePlan,
+  bmc_netboot_plan_for_host,
+  BmcNetbootPlanned,
+  BmcNetbootHostNotRostered,
+  BmcNetbootHostnameUnallocated,
   bmc_transport,
   bmc_path_resolved_mkdir_applet,
   bmc_netboot_grub_cfg_text,
@@ -337,4 +346,49 @@ test fn staged_puts_carry_the_rendered_grub_and_seed() -> Bool {
       BmcNetbootPreparedLaunchServe { serve_root: _, serve_port: _, busybox_path: _ } => false
     })
   grub_ok && seed_ok && list_length(items: puts) == 7
+}
+
+// THE LITERAL srv4 PLAN AS IT STOOD BEFORE THE ROSTER: every value spelled out, the install payload
+// the seeded-ISO path still uses. The roster-derived plan must equal it as a value and render the
+// same grub config and seed, so moving srv4 onto the roster changed no byte it serves.
+data srv4_bmc_netboot_serve_plan_before_roster: BmcNetbootServePlan = BmcNetbootServePlan {
+  bmc_host: "192.168.1.195",
+  serve: BmcHostedServeLocation { serve_port: 8080, serve_dir: "/tmp/netboot", host_boot_interface: "eth2" },
+  bulk_iso_url: Uri {
+    scheme: Https,
+    locator: "cdimage.ubuntu.com/ubuntu/releases/24.04/release/ubuntu-24.04.3-live-server-arm64.iso",
+  },
+  autoinstall: srv4_ubuntu_autoinstall_on_iso,
+}
+
+fn seed_text(plan: BmcNetbootServePlan) -> String {
+  match bmc_netboot_user_seed_verdict(plan: plan) {
+    AutoinstallUserDataRendered { content: ud } => ud
+    AutoinstallUserDataRefused { reason: _ } => ""
+  }
+}
+
+test fn srv4_roster_plan_equals_the_literal_plan_it_replaced() -> Bool {
+  let derived = srv4_bmc_netboot_serve_plan
+  let before = srv4_bmc_netboot_serve_plan_before_roster
+  derived == before
+    && bmc_netboot_grub_cfg_text(plan: derived) == bmc_netboot_grub_cfg_text(plan: before)
+    && seed_text(plan: derived) != ""
+    && seed_text(plan: derived) == seed_text(plan: before)
+}
+
+// The lookup the provision runs answers srv4 with exactly the pinned plan (so the allocated
+// hostname and the plan's hostname agree), and refuses a named-but-unrostered host by name.
+test fn lookup_plans_srv4_and_refuses_an_unrostered_host() -> Bool {
+  let srv4 = match bmc_netboot_plan_for_host(host: operator_host_srv4) {
+    BmcNetbootPlanned { plan: p } => p == srv4_bmc_netboot_serve_plan
+    BmcNetbootHostNotRostered { host: _ } => false
+    BmcNetbootHostnameUnallocated { host: _ } => false
+  }
+  let srv13 = match bmc_netboot_plan_for_host(host: operator_host_srv13) {
+    BmcNetbootHostNotRostered { host: h } => (h as String) == "srv13"
+    BmcNetbootPlanned { plan: _ } => false
+    BmcNetbootHostnameUnallocated { host: _ } => false
+  }
+  srv4 && srv13
 }

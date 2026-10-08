@@ -138,8 +138,8 @@ test fn whole_provision_stages_ready_with_the_serve_launch_derived_from_the_plan
     && count(filter(ops, op => is_make_dir(d: op.disposition))) == 1
     && count(filter(ops, op => is_put(d: op.disposition))) == 7
     && count(filter(ops, op => is_launch_serve(d: op.disposition))) == 1
-    && launch.serve_root == (plan.netboot_dir as String)
-    && launch.serve_port == to_string(plan.serve_port)
+    && launch.serve_root == (plan.serve.serve_dir as String)
+    && launch.serve_port == to_string(plan.serve.serve_port)
     && launch.busybox_path == (bmc_netboot_staged_path(plan: plan, name: "busybox") as String)
 }
 
@@ -156,7 +156,7 @@ test fn staged_names_derive_the_remote_path_from_the_plan() -> Bool {
   staging_ready(staging: dir)
     && staging_ready(staging: sub)
     && prepared_make_dir_path(ops: staging_ops(staging: dir))
-      == join([plan.netboot_dir as String, "/nocloud"], "")
+      == join([plan.serve.serve_dir as String, "/nocloud"], "")
     && prepared_put_path(ops: staging_ops(staging: sub))
       == (bmc_netboot_staged_path(plan: plan, name: "nocloud/user-data") as String)
 }

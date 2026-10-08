@@ -33,8 +33,8 @@ data shell_boot_local_initrd: NonEmptyStr = "fs0:\\initrd"
 
 fn bmc_tftpd_serve_command(plan: BmcNetbootServePlan) -> ArgvCommand {
   busybox_tftpd_over_udpsvd_command(
-    busybox_bin: join([plan.netboot_dir as String, "/busybox"], "") as NonEmptyStr,
-    document_root: plan.netboot_dir,
+    busybox_bin: join([plan.serve.serve_dir as String, "/busybox"], "") as NonEmptyStr,
+    document_root: plan.serve.serve_dir,
   )
 }
 
@@ -50,10 +50,10 @@ fn shell_boot_kernel_cmdline(plan: BmcNetbootServePlan) -> List<KernelCmdlineArg
 
 fn bmc_netboot_shell_boot_commands(plan: BmcNetbootServePlan) -> List<UefiShellCommand> {
   [
-    Ifconfig { action: IfconfigSetDhcp { interface: plan.boot_interface } },
+    Ifconfig { action: IfconfigSetDhcp { interface: plan.serve.host_boot_interface } },
     Ping { host: plan.bmc_host },
-    Tftp { interface: plan.boot_interface, server: plan.bmc_host, remote_file: "vmlinuz", local_file: shell_boot_local_kernel },
-    Tftp { interface: plan.boot_interface, server: plan.bmc_host, remote_file: "initrd", local_file: shell_boot_local_initrd },
+    Tftp { interface: plan.serve.host_boot_interface, server: plan.bmc_host, remote_file: "vmlinuz", local_file: shell_boot_local_kernel },
+    Tftp { interface: plan.serve.host_boot_interface, server: plan.bmc_host, remote_file: "initrd", local_file: shell_boot_local_initrd },
     ExecuteEfi { path: shell_boot_local_kernel, cmdline: shell_boot_kernel_cmdline(plan: plan) },
   ]
 }
