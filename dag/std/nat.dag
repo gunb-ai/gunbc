@@ -252,10 +252,11 @@ fn decimal_digit_successor(d: DecimalDigit) -> DecimalDigitSuccessor {
   }
 }
 
-// A NATURAL SPLIT INTO ITS QUOTIENT BY TEN AND ITS UNITS DIGIT, by structural descent: Zero is
-// (Zero, D0), and Succ advances the units digit, carrying into the quotient out of D9. The units
-// digit is a DecimalDigit by CONSTRUCTION, so no Nat-to-digit lookup exists to be out of range and
-// no default arm exists to answer it (DESIGN section 5: a failure arm must refuse, never widen).
+// THE UNITS DIGIT OF A NATURAL, by structural descent: Zero is D0, and Succ advances the digit,
+// carrying out of D9. The digit is a DecimalDigit by CONSTRUCTION, so no Nat-to-digit lookup exists
+// to be out of range and no default arm exists to answer it (DESIGN section 5: a failure arm must
+// refuse, never widen). The walk is linear in its argument, so it is applied only to a remainder
+// by ten (at most nine steps); nat_to_decimal_string divides by the declared operation first.
 type NatDecimalSplit {
   quotient: Nat
   units: DecimalDigit
@@ -276,17 +277,21 @@ fn nat_decimal_split_advance(s: NatDecimalSplit) -> NatDecimalSplit {
   }
 }
 
-// A NATURAL TO ITS DECIMAL TEXT over structural descent only: nat_decimal_split yields the units
-// digit as a DecimalDigit and the quotient as a Nat, and the recursion descends on the quotient. No
-// host operator is applied to a Nat here: an earlier body spelled `value == 0`, `value < 10`,
-// `value / 10` and `value - (rest * 10)` on Rc<Nat>, which rustc refused (E0308 x10, E0369) and
-// which the operator realization authority now refuses at emission by typed diagnostic.
+// A NATURAL TO ITS DECIMAL TEXT in O(digits): division by ten is the declared
+// nat_div_rem_by_succ with divisor predecessor nine (the divisor Succ { prev: 9 } is nonzero by
+// construction, so no zero-divisor arm exists to be handled), the recursion descends on the
+// quotient, and each remainder's digit comes from nat_decimal_split, which walks at most nine steps
+// because the remainder is below ten. No host operator is applied to a Nat here: an earlier body
+// spelled `value == 0`, `value < 10`, `value / 10` and `value - (rest * 10)` on Rc<Nat>, which
+// rustc refused (E0308 x10, E0369) and which the operator realization authority now refuses at
+// emission by typed diagnostic.
 // EXACT AND LOSSLESS: the canonical decimal spelling (no leading zeros, no sign) is injective over
 // the naturals, so this is the declared conversion an interpolation hole over a Nat names.
 fn nat_to_decimal_string(value: Nat) -> String {
-  let s = nat_decimal_split(value: value)
-  match s.quotient {
-    Zero => decimal_digit_glyph(d: s.units)
-    Succ { prev: _ } => concat(nat_to_decimal_string(value: s.quotient), decimal_digit_glyph(d: s.units))
+  let q = nat_div_rem_by_succ(a: value, divisor_prev: 9)
+  let digit = decimal_digit_glyph(d: nat_decimal_split(value: q.remainder).units)
+  match q.quotient {
+    Zero => digit
+    Succ { prev: _ } => concat(nat_to_decimal_string(value: q.quotient), digit)
   }
 }
