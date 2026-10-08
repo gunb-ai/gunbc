@@ -3,7 +3,7 @@ module test.claim.spark.pair_serving_d0_witness
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List, Int, Port }
 import std.nat { Nat }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.measure { second }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, content_hash_equal }
 import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpected }
@@ -31,7 +31,7 @@ import std.scoped_authorization {
   parse_intent_scopes, authorization_scope_eq,
 }
 import std.effect_grant { Read, Write, NamespacePosition, CodeNameTree }
-import gunbc.rung_drop { Standing, Retired }
+import gunbc.rung_drop { Standing, Retired, Superseded }
 import gunbc.rung_drop.fabric_storage_append_principal_unrefused { fabric_storage_append_principal_unrefused }
 import gunbc.rung_drop.d0_store_walls_single_lifecycle { d0_store_walls_single_lifecycle }
 import gunbc.spark.pair_serving_d0 {
@@ -621,6 +621,7 @@ test fn the_wet_door_refuses_while_the_fabric_storage_write_wall_drop_stands() -
   let other = d0_store_write_wall_standing(group: FabricGroupB, escalation_id: d0_single_lifecycle_escalation_id)
   match fabric_storage_append_principal_unrefused.standing {
     Standing => (match other { Present { value: why } => why.contains("fabric_storage_append_principal_unrefused") && why.contains("does not run")  Absent => false })
+    Superseded { ruling: _, decision_record: _, loss_holder: _ } => (match other { Present { value: why } => why.contains("superseded") && why.contains("does not run")  Absent => false })
     Retired { trigger_fired: _ } =>
       match d0_store_operation_wall {
         StoreOperationWallMissing { trigger: _ } => (match other { Present { value: why } => why.contains("d0_store_operation_wall") && why.contains("does not run")  Absent => false })
@@ -636,6 +637,7 @@ test fn the_wet_door_refuses_while_the_fabric_storage_write_wall_drop_stands() -
 test fn the_declared_single_lifecycle_is_admitted_while_the_drop_stands() -> Bool {
   match d0_store_walls_single_lifecycle.standing {
     Retired { trigger_fired: _ } => true
+    Superseded { ruling: _, decision_record: _, loss_holder: _ } => true
     Standing => (match d0_store_write_wall_standing(group: FabricGroupA, escalation_id: d0_single_lifecycle_escalation_id) { Absent => true  Present { value: _ } => false })
   }
 }

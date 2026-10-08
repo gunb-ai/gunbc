@@ -2,13 +2,13 @@ module v2.std.integer
 
 import std.coercion { unicode_scalar_unfold }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { Cons, Empty, FreeMonoid, AbelianGroup, GroupCompletion, OrderedRing, Ordering, Less, Equal, Greater, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid, AbelianGroup, GroupCompletion, OrderedRing, TotalOrder, Ordering, Less, Equal, Greater, list_snoc_item }
 import std.error_primitives { DivError, Result, DivideByZero, Ok, Err }
 import v2.std.algebra { TailAbsent, TailFound, fold_list, fold_list_node, length, list_map }
 import v2.std.collection {
   list_at_optional
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,
@@ -1027,13 +1027,9 @@ data int_ordered_ring: OrderedRing<Int> = OrderedRing {
   mul: int_mul,
   div: int_div_result,
   one: 1,
-  compare: int_compare,
+  order: TotalOrder { compare: int_compare },
   eq: int_eq,
-  ne: int_ne,
-  lt: int_lt,
-  le: int_le,
-  gt: int_gt,
-  ge: int_ge
+  ne: int_ne
 }
 fn integer_divide_by_zero_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {

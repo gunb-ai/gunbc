@@ -1,4 +1,5 @@
 module std.nat
+import std.optional { Present }
 
 import std.types { List, Bool, Int, String }
 import std.algebra { CommutativeMonoid, CommutativeSemiring, Ordering, Less, Equal, Greater }

@@ -8,7 +8,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { ComputationNode, Node, Symbol, Transform, node_subtree_nodes }
 import v2.std.node_query { field_projection_optional }
 import v2.std.qualified_name { declaration_reference_path_optional, parameter_reference_path_optional, qualified_name_to_dotted_string }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -44,28 +44,21 @@ fn vbp_has_value_projection_of(o: Outcome<ResolvedTree>, field: Symbol) -> Bool 
   }
 }
 
-// EACH FIXTURE PROGRAM IS ASSEMBLED ONCE, by a NULLARY producer the derived cross-claim share
-// (v2.workflow.floor_pure_producer_share derive_cross_claim_share) admits where two or more declared
-// claims read it: source assembly is the real
-// route this file must exercise (the producer IS that route), and it dominates every claim, so it is filled
-// once by the first claim that reads it (netted from that claim) and every later claim reads the DECIDED,
-// portable value. Claims over one program share
-// its producer.
-type VbpCallProjectionReading {
-  keeps_field: Bool
-  base_resolved_exactly: Bool
-  accepted_through_the_frontier: Bool
+// THE FIXTURE PROGRAM IS ASSEMBLED ONCE, by a NULLARY producer every claim over it reads WHOLE:
+// source assembly is the real route this file must exercise (the producer IS that route) and it
+// dominates every claim, so the derived cross-claim share (v2.workflow.floor_pure_producer_share
+// derive_cross_claim_share) fills it once and every later claim reads the decided value. Each
+// claim then computes its OWN verdict over it. The three verdicts were once one record whose
+// claims each read a different field; that is a bundle the share declines
+// (BundleOfDisjointProjections), because sharing it netted each claim's own verdict out of its budget.
+fn vbp_call_projection_assembled() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: vbp_call_projection)
 }
 
-fn vbp_call_projection_reading() -> VbpCallProjectionReading {
-  let assembled = tpb_assemble(src: vbp_call_projection)
-  VbpCallProjectionReading {
-    keeps_field: vbp_has_value_projection_of(o: assembled, field: ^reason),
-    base_resolved_exactly: vbp_base_resolved_exactly(o: assembled),
-    accepted_through_the_frontier: match vbp_infer_assembled(o: assembled) {
-      Accepted { value: _, diagnostics: d } => diagnostics_has_reason(d: d, reason: ^infer_grounding_not_derived)
-      Rejected { diagnostics: _ } => false
-    }
+fn vbp_call_projection_accepted_through_the_frontier(o: Outcome<ResolvedTree>) -> Bool {
+  match vbp_infer_assembled(o: o) {
+    Accepted { value: _, diagnostics: d } => diagnostics_has_reason(d: d, reason: ^infer_grounding_not_derived)
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -120,7 +113,7 @@ fn vbp_undeclared_field_is_carried() -> Bool {
 
 // (1) A VALUE-BASE PROJECTION RESOLVES ITS BASE AND KEEPS ITS FIELD.
 test fn vbp_value_base_projection_keeps_its_field() -> Bool {
-  vbp_call_projection_reading().keeps_field
+  vbp_has_value_projection_of(o: vbp_call_projection_assembled(), field: ^reason)
 }
 
 // (2) A BOUND NAME SPELLED LIKE THE FIELD IS NOT CAPTURED AS THE FIELD: `reason` is also a parameter of r,
@@ -143,7 +136,7 @@ fn vbp_infer_assembled(o: Outcome<ResolvedTree>) -> Outcome<Bool> {
 // (1b) THE BASE IS RESOLVED EXACTLY: the call's operator is the declaration reference p.mk and its argument the
 // parameter reference p.r.x. RED under the mutation that keeps the field but leaves the base verbatim.
 test fn vbp_value_base_is_resolved_exactly() -> Bool {
-  vbp_call_projection_reading().base_resolved_exactly
+  vbp_base_resolved_exactly(o: vbp_call_projection_assembled())
 }
 
 // (3) THE PROJECTION IS ACCEPTED THROUGH THE FRONTIER, NOT JUDGED: `mk(x: x)` has no derived result type in v2
@@ -151,7 +144,7 @@ test fn vbp_value_base_is_resolved_exactly() -> Bool {
 // checked against D here -- the program is accepted with the infer_grounding_not_derived frontier entry carried
 // on the direct infer outcome. This claims only that; it does not claim infer judges the field.
 test fn vbp_call_result_projection_is_accepted_through_the_frontier() -> Bool {
-  vbp_call_projection_reading().accepted_through_the_frontier
+  vbp_call_projection_accepted_through_the_frontier(o: vbp_call_projection_assembled())
 }
 
 // (4) THE RESIDUE IS CARRIED, NOT ADMITTED: an undeclared field off a call result is accepted only because

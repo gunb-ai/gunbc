@@ -11,7 +11,7 @@ import v2.extdeps.languages.dag {
   dag_language_model,
   parse_production_emitted_identity_optional
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present

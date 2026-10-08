@@ -42,7 +42,7 @@ import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, GrammarRoot, node_atom_identity_optional, StampBinding, StampClass, StampLexeme, fold_grammar_expr }
 import v2.std.node { Node, Symbol }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 
 // WHICH AUTHORED NAMES DECLARE, AND WHICH NAME SOMETHING THE MODULE SCOPE DOES NOT HOLD (XL-2
 // prerequisite gunbc.compiler_frontend_program_status LoweringOccurrenceProjection, tracked by

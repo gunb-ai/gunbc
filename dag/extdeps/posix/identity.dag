@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Int, Bool }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
-import v2.std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent }
 import v2.std.integer { integer_lexeme_to_int_optional }
 import std.nat { nat_to_decimal_string }
 import std.algebra { trim }

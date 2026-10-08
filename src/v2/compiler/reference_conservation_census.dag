@@ -45,7 +45,7 @@ import v2.compiler.reference_conservation_admission {
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.algebra { fold_list, length }
 import v2.std.collection { empty_map, map_insert, map_lookup }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import gunbc.namespace_step0_subject_collector { Step0SubjectCollected, Step0SubjectCollectionRefused, collect_step0_subject_vector_at }
 import std.integer { int_to_decimal_string }

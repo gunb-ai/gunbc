@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.call_result_of_a_declared_return_type_unjudged_in_v2_infer
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data call_result_of_a_declared_return_type_unjudged_in_v2_infer: RecurringFailureMode = RecurringFailureMode {
+  identity: "call_result_of_a_declared_return_type_unjudged_in_v2_infer" as NonEmptyStr,
+
+  receipts: [
+    "**In v2 infer, the result of a call whose callee returns a DECLARED (non-kernel) type is not judged where it is used.** Measured on session/stern-swift-290-literal (XL-2), fixtures assembled through the production route with a std.nat peer and inferred: `fn mk() -> Nat { Zero }` used where Bool is declared (`fn f() -> Bool { mk() }`) is ACCEPTED; so is a generic `fn mk<T>(xs: List<T>) -> Nat`; the same generic returning the KERNEL Int is REFUSED. A value of one declared type inhabiting a position of another is the compiler floor's own obligation (DESIGN section 4b), so this is below the floor and silently admitted.",
+
+    "DISTINGUISHING FACTS. (1) The kernel/declared split is the discriminator: a callee returning a kernel value type (Int, Bool) has its result type derived and judged; a callee returning a declaration-typed result (std.nat Nat, a record, Outcome<..>) does not. (2) It is independent of generics: the plain non-generic callee is admitted. (3) It is a different mechanism from gunbc.recurring_failure_mode comparison_operands_never_judged_in_v2_infer (operators whose operands are never judged): here a CALL's result type is never derived, so the position consuming it has nothing to judge. Consequence observed: XL-2's collection size row could not honestly move its result from the stated Int to std.nat Nat -- the move would have lowered every count result from judged to unjudged, so the row keeps its stated Int result until this class climbs.",
+
+    "N7 RELEVANCE (calm-boar-904 asked). NOT N7's current wall: all 8 N7 tests (//v2/test/parse/expression_bodied_fn_decl_parse:all) stop at infer_reason_projection_receiver_declaration_unavailable on `root.children` in g_tree_has_arrow_body, whose receiver is a PARAMETER declared Node -- its declaration is unavailable because v2.std.node itself fails to resolve (the chain's preceding resolve link is a bare `count` in v2.std.node, the collection-size wall gunbc#13307 addresses). LIKELY THE NEXT ONE: the same test reads `artifact.tree` off a match binder of parse_module_prepared's result, a callee returning the declared Outcome<ParseArtifact>; once v2.std.node resolves, that projection's receiver is a declaration-typed call result -- this class -- and is expected to be where the chain stops next. To be confirmed by the N7 re-measure after #13307 lands.",
+
+    "RUNG FOUND AT: below the floor (silently admitted). CEILING: structurally guaranteed (decidable over modeled declarations). NEXT-RUNG TRIGGER, NAMED AS A CAPABILITY: v2 infer derives a call's result type from the callee's declared return when that return is a declared (non-kernel) type -- including an instantiated generic such as Outcome<ParseArtifact> -- SUFFICIENT FOR the consuming position (a declared return, an argument, a projection receiver, a match scrutinee) to judge it.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.infer", decl_name: "infer_declaration_reference_facts", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.infer", decl_name: "infer_reference_facts_or_frontier", field: WholeDeclaration },
+  ],
+}

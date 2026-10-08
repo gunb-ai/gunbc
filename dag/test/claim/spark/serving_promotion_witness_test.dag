@@ -4,14 +4,14 @@ import std.types { Bool, List, String, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { token_count, byte_size, allocator_block_count, second }
 import std.content_hash { ContentHash, content_hash_of_value }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.algebra { length }
 import extdeps.nvidia.nccl { NcclTransportIbVerbs }
 import extdeps.vllm.engine_args { KvFp8, SpeculativeDecodingOff, IndexerKvDtypeOmitted, vllm_scheduler_admission_omitted }
 import gunbc.spark.serving_arm { Glm53NativeFp8, GunbcGlm53DerivedKvplanV2Gb10, FourSparkTp4 }
 import gunbc.spark.serving_performance_subject { ServingPerformanceSubject, serving_performance_subject, serving_subject_key, ServingSubjectKey }
 import gunbc.spark.serving_compatibility { AdmitsNormalServing, AdmitsBoundedExperimentOnly }
-import gunbc.spark.arm_memory_fit { ArmMemoryFitVerdict, ArmMemoryFitProved, ArmMemoryFitRefused, ArmMemoryFitUnestablished, ArmPhaseModelLoad, CacheFitProved }
+import gunbc.spark.arm_memory_fit { ArmMemoryFitVerdict, ArmMemoryFitProved, ArmMemoryFitRefused, ArmMemoryFitUnestablished, ArmPhaseModelLoad, CacheFitProved, gb10_memory_tier }
 import gunbc.spark.serving_promotion {
   ServingPromotionEvidence, ServingPromotionStanding, PromotionAdmitsNormalServing, PromotionMeasurementServeOnly, PromotionRefused,
   serving_promotion_standing, serving_promotion_policy, QualityReceipt, WorkloadCalibrationReceipt, SubjectBoundCacheFit, AcceptanceManifest,
@@ -36,8 +36,7 @@ fn fx_subject_at(ceiling: Nat, profile: String) -> ServingPerformanceSubject {
     collective_transport: none,
     indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted },
     scheduler_admission: Present { value: vllm_scheduler_admission_omitted },
-    launch_profile_key: Present { value: profile },
-  )
+    launch_profile_key: Present { value: profile }, deployment_env_key: Present { value: "env=none" } )
 }
 
 fn fx_subject() -> ServingPerformanceSubject { fx_subject_at(ceiling: 12, profile: "candidate-profile") }
@@ -67,7 +66,7 @@ fn fx_calibration(key: ServingSubjectKey, turns: Nat, preemptions: Nat?) -> Work
   fx_calibration_at(key: key, turns: turns, preemptions: preemptions, sustained: 12)
 }
 
-data fx_proved: ArmMemoryFitVerdict = ArmMemoryFitProved { rank: 3, phase: ArmPhaseModelLoad, headroom_bytes: byte_size(count: 1) }
+data fx_proved: ArmMemoryFitVerdict = ArmMemoryFitProved { rank: 3, tier: gb10_memory_tier(), phase: ArmPhaseModelLoad, headroom_bytes: byte_size(count: 1) }
 
 fn fx_cache(key: ServingSubjectKey) -> SubjectBoundCacheFit {
   SubjectBoundCacheFit {
@@ -190,7 +189,7 @@ test fn w_receipts_for_another_subject_do_not_promote_this_one() -> Bool {
 test fn w_an_unestablished_fit_is_a_measurement_serve_and_a_refused_fit_is_refused() -> Bool {
   w_missing_count(e: fx_evidence(memory: ArmMemoryFitUnestablished { obligations: ["kv-cache has no defensible bound" as NonEmptyStr] },
     quality: fx_good_quality(), calibration: fx_good_calibration())) == 1
-  && (match w_standing(e: fx_evidence(memory: ArmMemoryFitRefused { rank: 3, phase: ArmPhaseModelLoad, demand_lower: byte_size(count: 2), supply_upper: byte_size(count: 1), cause: "fixture: demand exceeds supply" as NonEmptyStr },
+  && (match w_standing(e: fx_evidence(memory: ArmMemoryFitRefused { rank: 3, tiers: [gb10_memory_tier()], phase: ArmPhaseModelLoad, demand_lower: byte_size(count: 2), supply_upper: byte_size(count: 1), cause: "fixture: demand exceeds supply" as NonEmptyStr },
     quality: none, calibration: none)) {
       PromotionRefused { cause: _ } => true
       PromotionAdmitsNormalServing => false

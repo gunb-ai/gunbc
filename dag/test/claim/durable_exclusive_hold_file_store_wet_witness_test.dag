@@ -3,7 +3,7 @@ module test.claim.durable_exclusive_hold_file_store_wet_witness
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, Int, NonEmptyStr, String }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.durable_compare_and_set { CasSlotObservation, cas_generation_count }
 import std.durable_exclusive_hold {
   DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldReleaseRefusal,

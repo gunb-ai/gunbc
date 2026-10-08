@@ -9808,7 +9808,7 @@ fn emit_func_def(
     Absent => []
   }
   let params_str = emit_func_params(params: params, uses: uses, service_names: service_names, shared_types: shared_types, source_indices: scope.type_env.source_indices, read_only_params: emit_info.read_only_params, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
-  let ret_str = emit_func_inferred(inferred: inferred, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+  let ret_str = emit_func_inferred(inferred: inferred, shared_types: shared_types, source_indices: scope.type_env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
   let body_scope = build_params_scope(scope: with(scope, { caller_decl_name: name }), params: params)
   let si = scope.type_env.source_indices
   let body_scope = fold(uses, init: body_scope, f: (s, u) =>
@@ -9897,8 +9897,16 @@ fn emit_func_params(params: List<Node>, uses: List<Node>, service_names: List<St
   all_params |> join(separator: ", ")
 }
 
-fn emit_func_inferred(inferred: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
-  concat(" -> Result<", render_rust_type(n: inferred, shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info()), ", Box<dyn std::error::Error>>")
+// AN EFFECTFUL FUNCTION'S RETURN IS RENDERED BY THE SAME AUTHORITY AS A PURE ONE'S, against the
+// module's own type environment. This rendered through render_rust_type with an empty emit info, so
+// every type argument was judged against an empty, UNOBSERVED unit-variant index and refused:
+// gunbc.durable_cas_file_store's `-> CasOutcome<NonEmptyStr>` became `CasOutcome<compile_error!(
+// "unit-variant marker identity evidence unavailable for NonEmptyStr ..")>`, and the body that
+// rendered the same argument through the observed env disagreed with it (E0308 `CasOutcome<()>` vs
+// `CasOutcome<String>`). Generic parameters are not threaded here, exactly as emit_func_def's own
+// parameter rendering does not thread them.
+fn emit_func_inferred(inferred: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  concat(" -> Result<", render_rust_fn_sig_type(n: inferred, generic_param_names: [], shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env), ", Box<dyn std::error::Error>>")
 }
 
 fn emit_params(params: List<Node>, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv, fn_param_needs_static: Bool) -> String {
@@ -10107,6 +10115,28 @@ fn collect_pattern_string_guards(pattern: MatchPattern, path_prefix: List<String
         collect_field_binding_string_guards(field_bindings: fbs, path_prefix: list_push(path_prefix, n), source_indices: source_indices)
       }
     _ => ""
+  }
+}
+
+// The string guards a pattern's OWN rendering can test: every string literal except those under a
+// field in `rc_fields`. Such a field renders as a bare `ref` binding, so the string bindings inside
+// it are not in scope at this pattern's guard (E0425); they belong to that field's selection test,
+// rc_field_selection_test, which renders the field's pattern and binds them there.
+fn collect_pattern_string_guards_outside(pattern: MatchPattern, path_prefix: List<String>, rc_fields: List<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  if rc_fields |> count == 0 {
+    collect_pattern_string_guards(pattern: pattern, path_prefix: path_prefix, source_indices: source_indices)
+  } else {
+    match pattern {
+      VariantPattern { name: n, parent_enum: parent, field_bindings: fbs, parent_identity: _ } =>
+        if parent == Present { value: "Optional" } { collect_pattern_string_guards(pattern: pattern, path_prefix: path_prefix, source_indices: source_indices) }
+        else {
+        let kept = fbs |> filter(fb =>
+          let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
+          fb_name == "0" || !(rc_fields |> any(f => f == fb_name)))
+        collect_field_binding_string_guards(field_bindings: kept, path_prefix: list_push(path_prefix, n), source_indices: source_indices)
+        }
+      _ => collect_pattern_string_guards(pattern: pattern, path_prefix: path_prefix, source_indices: source_indices)
+    }
   }
 }
 
@@ -10434,7 +10464,7 @@ fn emit_resolved_variant_pattern(name: String, parent_enum: String?, parent_iden
           let fb_pat = field_binding_pattern(n: fb)
           if is_string_lit_pattern(p: fb_pat) {
             let bind_name = pattern_string_binding_name(path: list_push(list_push(path_prefix, bare_name), fb_name))
-            concat(qualified, " { ref ", bind_name, ", .. }")
+            concat(qualified, " { ", emit_ident(name: fb_name, target: Rust), ": ref ", bind_name, ", .. }")
           } else {
             let pat_str = emit_pattern(pattern: fb_pat, path_prefix: list_push(list_push(path_prefix, bare_name), fb_name), shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
             concat(qualified, " { ", concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str), ", .. }")
@@ -10461,7 +10491,7 @@ fn emit_resolved_variant_pattern(name: String, parent_enum: String?, parent_iden
             list_push(list_push(path_prefix, bare_name), fb_name)
           }
           let bind_name = pattern_string_binding_name(path: field_path)
-          concat("ref ", bind_name)
+          if fb_name == "0" { concat("ref ", bind_name) } else { concat(emit_ident(name: fb_name, target: Rust), ": ref ", bind_name) }
         } else {
             let is_shorthand = match fb_pat { Bind { declaration: declaration } => declaration.name == fb_name  _ => false }
             if is_shorthand { emit_ident(name: fb_name, target: Rust) }
@@ -10704,7 +10734,7 @@ fn emit_resolved_variant_pattern_rc_aware(name: String, parent_enum: String?, pa
           let fb_pat = field_binding_pattern(n: fb)
           if is_string_lit_pattern(p: fb_pat) {
             let bind_name = pattern_string_binding_name(path: list_push(list_push(path_prefix, bare_name), fb_name))
-            concat(qualified, " { ref ", bind_name, ", .. }")
+            concat(qualified, " { ", emit_ident(name: fb_name, target: Rust), ": ref ", bind_name, ", .. }")
           } else if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
             concat(qualified, " { ref ", emit_ident(name: fb_name, target: Rust), ", .. }")
           } else {
@@ -10734,7 +10764,7 @@ fn emit_resolved_variant_pattern_rc_aware(name: String, parent_enum: String?, pa
             list_push(list_push(path_prefix, bare_name), fb_name)
           }
           let bind_name = pattern_string_binding_name(path: field_path)
-          concat("ref ", bind_name)
+          if fb_name == "0" { concat("ref ", bind_name) } else { concat(emit_ident(name: fb_name, target: Rust), ": ref ", bind_name) }
         } else {
           if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
             concat("ref ", emit_ident(name: fb_name, target: Rust))
@@ -10810,16 +10840,8 @@ fn collect_pattern_rc_variant_guards(pattern: MatchPattern, rc_analysis: RcPatte
             if match_pattern_is_irrefutable(pattern: fb_pat) { [] }
             else {
               match fb_pat {
-                VariantPattern { name: inner_n, parent_enum: inner_parent, field_bindings: _, parent_identity: _ } =>
-                  let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
-                  let inner_guard = collect_pattern_rc_variant_guards(pattern: fb_pat, rc_analysis: inner_analysis, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
-                  if inner_guard == "" {
-                    let shape = variant_pattern_shape_for(name: inner_n, parent_enum: inner_parent, scrut_type: "", emit_info: emit_info)
-                    [concat("matches!(", emit_ident(name: fb_name, target: Rust), ".as_ref(), ", shape, ")")]
-                  } else {
-                    let aware = emit_pattern_rc_aware(pattern: fb_pat, path_prefix: [], rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
-                    [concat("matches!(", emit_ident(name: fb_name, target: Rust), ".as_ref(), ", aware, " if ", inner_guard, ")")]
-                  }
+                VariantPattern { name: _, parent_enum: _, field_bindings: _, parent_identity: _ } =>
+                  [rc_field_selection_test(field_name: fb_name, authored_pattern: fb_pat, owner_variant: bare_n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)]
                 _ => []
               }
             }
@@ -10829,6 +10851,69 @@ fn collect_pattern_rc_variant_guards(pattern: MatchPattern, rc_analysis: RcPatte
       }
     _ => ""
   }
+}
+
+// THE PATTERN AN Rc-BOUND FIELD IS DESTRUCTURED WITH, and the one its guard tests. The guard and the
+// prelude used to be two renderings of one source pattern: the prelude destructured the field with
+// its full pattern under `let ... else { unreachable!() }`, while the guard tested only the field's
+// outermost variant shape whenever no deeper Rc level needed a guard of its own. A constant nested
+// below that variant -- `O { mid: M { inner: A } }` -- was therefore tested by the prelude and not by
+// the guard, so a value `O { mid: M { inner: B } }` selected the arm and hit unreachable!() where the
+// interpreter moved on to the next arm (gunbc.recurring_failure_mode
+// nested_pattern_accepted_by_the_interpreter_and_broken_in_emitted_rust). Both now read this one
+// rendering, so the guard tests every refutable level the let-else destructures and the let-else is
+// unreachable by construction rather than by assumption.
+fn rc_field_pattern_str(field_name: String, field_pattern: MatchPattern, owner_variant: String, inner_analysis: RcPatternAnalysis, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+  let prefix = list_push(list_push([], owner_variant), field_name)
+  if inner_analysis.needs_rc_pattern {
+    emit_pattern_rc_aware(pattern: field_pattern, path_prefix: prefix, rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
+  } else {
+    emit_pattern(pattern: field_pattern, path_prefix: prefix, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
+  }
+}
+
+// A pattern's SELECTION without its bindings: every `Bind` becomes `Wildcard`, at every level, so a
+// guard can test the full pattern without naming identifiers it never reads (`unused_variables`
+// under -D warnings). Both are irrefutable, so what the pattern selects is unchanged; the field
+// binding keeps its authored name and position, which is what the renderers read.
+fn match_pattern_binds_erased(pattern: MatchPattern) -> MatchPattern {
+  match pattern {
+    Bind { declaration: _ } => Wildcard
+    VariantPattern { name: n, parent_enum: parent, field_bindings: fbs, parent_identity: identity } =>
+      VariantPattern { name: n, parent_enum: parent, parent_identity: identity, field_bindings: fbs |> map(fb => field_binding_with_pattern(field_binding: fb, pattern: match_pattern_binds_erased(pattern: field_binding_pattern(n: fb)))) }
+    LitPattern { value: v } => LitPattern { value: v }
+    Wildcard => Wildcard
+  }
+}
+
+fn field_binding_with_pattern(field_binding: Node, pattern: MatchPattern) -> Node {
+  Node {
+    occurrence_identity: field_binding.occurrence_identity, name: field_binding.name, ident: field_binding.ident,
+    span: field_binding.span, ident_span: field_binding.ident_span, children: field_binding.children,
+    connective: field_binding.connective, params: field_binding.params, inferred: field_binding.inferred,
+    return_cardinality: field_binding.return_cardinality, uses: field_binding.uses, body: field_binding.body,
+    transport: field_binding.transport, properties: field_binding.properties, type_annotation: field_binding.type_annotation,
+    is_self_recursive: field_binding.is_self_recursive, has_non_tail_self_call: field_binding.has_non_tail_self_call,
+    match_pattern: Present { value: pattern }, module_item_kind: field_binding.module_item_kind,
+    declaration_marker: field_binding.declaration_marker, declaration: field_binding.declaration, expr_data: field_binding.expr_data
+  }
+}
+
+// The whole selection test for one refutable Rc-bound field: its pattern (every constructor and
+// constant it names), the string literals inside it, and -- recursively -- the same test for each
+// deeper Rc-bound field, which the pattern can only bind by `ref`.
+fn rc_field_selection_test(field_name: String, authored_pattern: MatchPattern, owner_variant: String, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+  let field_pattern = match_pattern_binds_erased(pattern: authored_pattern)
+  let inner_analysis = analyze_rc_pattern(pattern: field_pattern, scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+  let pat = rc_field_pattern_str(field_name: field_name, field_pattern: field_pattern, owner_variant: owner_variant, inner_analysis: inner_analysis, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+  let deeper_rc_fields = if inner_analysis.needs_rc_pattern { inner_analysis.ref_bound_fields } else { [] }
+  let string_guards = collect_pattern_string_guards_outside(pattern: field_pattern, path_prefix: list_push(list_push([], owner_variant), field_name), rc_fields: deeper_rc_fields, source_indices: source_indices)
+  let deeper = if inner_analysis.needs_rc_pattern {
+    collect_pattern_rc_variant_guards(pattern: field_pattern, rc_analysis: inner_analysis, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+  } else { "" }
+  let conds = [string_guards, deeper] |> filter(g => g != "")
+  let guard = if conds |> count == 0 { "" } else { concat(" if ", conds |> join(separator: " && ")) }
+  concat("matches!(", emit_ident(name: field_name, target: Rust), ".as_ref(), ", pat, guard, ")")
 }
 
 // A let-else over `.as_ref()` is irrefutable when the pattern is structurally irrefutable
@@ -10883,25 +10968,17 @@ fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, sh
           } else if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
             let fb_pat_here = field_binding_pattern(n: fb)
             let inner_analysis = analyze_rc_pattern(pattern: fb_pat_here, scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
-            if inner_analysis.needs_rc_pattern {
-              let aware = emit_pattern_rc_aware(pattern: fb_pat_here, path_prefix: list_push(list_push([], bare_n), fb_name), rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
-              let tail = if rust_as_ref_let_is_irrefutable(pattern: fb_pat_here, emit_info: emit_info) {
-                ";"
-              } else {
-                " else { unreachable!() };"
-              }
-              let head = concat("let ", aware, " = ", emit_ident(name: fb_name, target: Rust), ".as_ref()", tail)
-              let inner_preludes = rc_pattern_preludes(pattern: fb_pat_here, rc_analysis: inner_analysis, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
-              if inner_preludes == "" { [head] } else { [concat(head, " ", inner_preludes)] }
+            let bound_str = rc_field_pattern_str(field_name: fb_name, field_pattern: fb_pat_here, owner_variant: bare_n, inner_analysis: inner_analysis, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+            let tail = if rust_as_ref_let_is_irrefutable(pattern: fb_pat_here, emit_info: emit_info) {
+              ";"
             } else {
-              let bound_str = emit_pattern(pattern: fb_pat_here, path_prefix: list_push(list_push([], bare_n), fb_name), shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
-              let tail = if rust_as_ref_let_is_irrefutable(pattern: fb_pat_here, emit_info: emit_info) {
-                ";"
-              } else {
-                " else { unreachable!() };"
-              }
-              [concat("let ", bound_str, " = ", emit_ident(name: fb_name, target: Rust), ".as_ref()", tail)]
+              " else { unreachable!() };"
             }
+            let head = concat("let ", bound_str, " = ", emit_ident(name: fb_name, target: Rust), ".as_ref()", tail)
+            let inner_preludes = if inner_analysis.needs_rc_pattern {
+              rc_pattern_preludes(pattern: fb_pat_here, rc_analysis: inner_analysis, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+            } else { "" }
+            if inner_preludes == "" { [head] } else { [concat(head, " ", inner_preludes)] }
           } else { [] }
         )
         preludes |> join(separator: " ")
@@ -11549,11 +11626,29 @@ fn rust_empty_map_kv_type_str(map_type: Node, shared_types: Set<String>, source_
 // a module-scope `data ...: Map<String, String> = empty_map()` in a module with no generic scope at
 // all. Two sites asking one question is the second representation DESIGN section 2 forbids, so the
 // question is asked once, here, and both sites read the answer.
+// AN ERASED TYPE ARGUMENT DECLINES TO THE TARGET'S INFERENCE, EXACTLY AS AN UNBOUND FORMAL DOES. The
+// arm above already defers `::<_, _>()` when the emitter cannot name the formals in this fn's scope.
+// A key or value whose inferred node is a compiler error is the same state seen one stage earlier:
+// v1.compiler.infer does not bind a generic record's parameter at an unannotated record literal
+// (std.list duplicated_by_key's `DuplicatedScan { firsts: empty_map(), .. }` inside a fold), so the
+// field type arrives erased and rendered as `compile_error!("UNRESOLVED_CompilerError")`. Rendering
+// that refusal is what rust_witness_carrier_from_type_node's note forbids -- an erased first source
+// must decline so the next authority is consulted -- and here the next authority is rustc, which
+// infers T from the field's later `map_insert` or refuses loudly; nothing is widened. The upstream
+// boundary stays open and is named, not absorbed: generic record instantiation at infer
+// (declared_type_conformance_note's "generic record instantiation" lane).
+fn type_node_carries_erased_type_argument(n: Node) -> Bool {
+  n.children |> any(c =>
+    let t = child_type_node(ch: c)
+    (t.inferred != none && is_compiler_error(inferred: t.inferred.value)) || type_node_carries_erased_type_argument(n: t))
+}
+
 fn rust_empty_map_init_expr(map_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let kv_type_str = rust_empty_map_kv_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices)
   if kv_type_str == "" {
     rust_shared_wrap_ctor(inner_expr: "HashMap::new() /* BRIDGE: empty_map value type unresolved */")
-  } else if rust_fold_rendered_type_has_any_spurious_generic(type_str: concat("<", kv_type_str, ">"), generic_param_names: emit_info.fn_generic_param_names) {
+  } else if rust_fold_rendered_type_has_any_spurious_generic(type_str: concat("<", kv_type_str, ">"), generic_param_names: emit_info.fn_generic_param_names)
+    || type_node_carries_erased_type_argument(n: map_type) {
     "v1_rt::rc_empty_map::<_, _>()"
   } else {
     concat("v1_rt::rc_empty_map::<", kv_type_str, ">()")
@@ -12585,7 +12680,8 @@ fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call
     let to_string_args = order_typed_call_args_from_semantics(args: args, func: func, call_semantics: call_semantics, scope: scope)
     let ts_result = match to_string_args |> first {
       Present { value: value_arg } =>
-        emit_rust_host_to_dag_string_via_seam(host_expr: concat("(", emit_typed_expr(texpr: arg_value(n: value_arg), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ").to_string()"))
+        if is_map_typed_expr(texpr: arg_value(n: value_arg), source_indices: scope.type_env.source_indices) { emitted_map_rendering_refusal(site: "to_string") } else {
+        emit_rust_host_to_dag_string_via_seam(host_expr: concat("(", emit_typed_expr(texpr: arg_value(n: value_arg), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024), ").to_string()")) }
       Absent => "compile_error!(\"to_string call missing value argument\")"
     }
     return ts_result
@@ -13332,7 +13428,7 @@ fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map
   } else {
     concat("|a: &", elem_type_str, ", b: &", elem_type_str, "|")
   }
-  rust_shared_wrap_ctor(inner_expr: concat("{ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(", closure_params, " { let __ka = (", sort_key_fn, ")(", a_clone, "); let __kb = (", sort_key_fn, ")(", b_clone, "); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted }"))
+  rust_shared_wrap_ctor(inner_expr: concat("{ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(", closure_params, " { let __ka = (", sort_key_fn, ")(", a_clone, "); let __kb = (", sort_key_fn, ")(", b_clone, "); v1_rt::canonical_key_cmp(&__ka, &__kb) }); __sorted }"))
 }
 
 // The element-type-unknown arm used to emit `sort_by(|a, b| a.partial_cmp(b))` -- it DROPPED the
@@ -14103,7 +14199,8 @@ fn emit_native_freemonoid_match(scrut_str: String, arms: List<Node>, registry: M
 //
 // RESIDUE, DECLARED: an arm carrying a string guard, an authored guard, more than one Rc-bound
 // field, or a deeper Rc level inside the nested pattern is NOT grouped and keeps the #8570 guard —
-// so it keeps the E0004 too. A match containing an irrefutable arm is left alone entirely: the
+// so it keeps the E0004 too. That guard SELECTS correctly at every level (rc_field_selection_test):
+// grouping is how exhaustiveness becomes visible to rustc, not what makes an arm's selection right. A match containing an irrefutable arm is left alone entirely: the
 // wildcard already covers the outer variant, there is no E0004 to remove, and rewriting it would
 // only risk making the inner match non-exhaustive. The tail-call lowering
 // shares this grouping through rc_grouped_match_arm_strs. Next-rung trigger: a general decision-tree
@@ -14448,7 +14545,8 @@ fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: Infer
   } else {
     emit_pattern(pattern: arm_pat, path_prefix: [], shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
   }
-  let field_guards = collect_pattern_string_guards(pattern: arm_pat, path_prefix: [], source_indices: si)
+  let arm_rc_fields = if rc_analysis.needs_rc_pattern { rc_analysis.ref_bound_fields } else { [] }
+  let field_guards = collect_pattern_string_guards_outside(pattern: arm_pat, path_prefix: [], rc_fields: arm_rc_fields, source_indices: si)
   let rc_variant_guards = if rc_analysis.needs_rc_pattern {
     collect_pattern_rc_variant_guards(pattern: arm_pat, rc_analysis: rc_analysis, shared_types: shared_types, source_indices: si, emit_info: emit_info)
   } else { "" }
@@ -14999,6 +15097,11 @@ fn find_unique_struct_name_by_fields(field_names: List<String>, type_summaries: 
   } else { none }
 }
 
+// A ONE-FIELD ANONYMOUS RECORD LITERAL MATCHING TWO OR MORE STRUCTS REFUSES. The literal names no
+// type, so any struct chosen -- or the bare field value, which the single-field arm used to emit --
+// is a guess. It refuses exactly as the multi-field arm does; the remedy is a nominal type on the
+// literal. Found when std.algebra TotalOrder gained the same single `compare` field as
+// extdeps.version VersionScheme and `{ compare: f }` silently emitted `f`.
 fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: String?, resolved_type: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let struct_name = explicit_record_struct_name(type_name: type_name, inferred_node: resolved_type, shared_types: shared_types, source_indices: scope.type_env.source_indices)
   let qualified_name = match struct_name {
@@ -15040,7 +15143,10 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
                       rust_shared_wrap_ctor(inner_expr: struct_lit)
                     } else { struct_lit }
                   } else { fval0 }
-                Absent => fval0
+                Absent =>
+                  if struct_candidates_by_field_names(field_names: single_field_names, type_summaries: emit_info.type_summaries) |> count > 1 {
+                    "compile_error!(\"ambiguous anonymous record literal shape; add a nominal type\")"
+                  } else { fval0 }
               }
             Absent => "compile_error!(\"empty anonymous record literal\")"
           }
@@ -15689,8 +15795,25 @@ fn typed_interp_format_part(part: StringPart, registry: Map<String, ItemInfo>, s
       let escaped = if has_interpolations { escape_rust_interp_text(s: v) } else { escape_string_literal_body(s: v) }
       InterpPart { format_segment: escaped, arg_expr: "" }
     Interpolation { expr: e } =>
-      InterpPart { format_segment: "{}", arg_expr: emit_typed_expr(texpr: e, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024) }
+      if is_map_typed_expr(texpr: e, source_indices: scope.type_env.source_indices) {
+        InterpPart { format_segment: "{}", arg_expr: emitted_map_rendering_refusal(site: "string interpolation") }
+      } else {
+        InterpPart { format_segment: "{}", arg_expr: emit_typed_expr(texpr: e, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024) }
+      }
   }
+}
+
+// RENDERING A MAP IN EMITTED RUST IS REFUSED, TYPED AND LOCATED, NOT LEFT TO rustc. The
+// interpreter renders a map in the canonical content order (std.algebra TotalOrder; the seed's
+// canonical_content_cmp). The emitted realization has no map rendering at all -- im::HashMap has
+// no Display -- so before this refusal the program died in rustc as an untyped E0277 and, had a
+// Display been added naively, it would have rendered in per-process RandomState order. Building
+// an emitted canonical rendering is a declared frontier, not done here: no v2 source renders a
+// map (none could compile), so it fails the v1 admission test (gunbc.v1_maintenance_standing).
+// Trigger: a v2 source renders a compound value. Ruling: deep-ferret-305, node
+// adhoc-77383faf-d07.
+fn emitted_map_rendering_refusal(site: String) -> String {
+  emit_rust_compile_error_expr(message: concat("EMIT REFUSED: ", site, " renders a Map; the emitted realization has no canonical map rendering (declared frontier: emitted compound rendering, trigger: a v2 source renders a compound value)"))
 }
 
 fn emit_typed_block(stmts: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
@@ -15923,7 +16046,8 @@ fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, regi
   } else {
     emit_pattern(pattern: arm_pat, path_prefix: [], shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
   }
-  let field_guards = collect_pattern_string_guards(pattern: arm_pat, path_prefix: [], source_indices: si)
+  let arm_rc_fields = if rc_analysis.needs_rc_pattern { rc_analysis.ref_bound_fields } else { [] }
+  let field_guards = collect_pattern_string_guards_outside(pattern: arm_pat, path_prefix: [], rc_fields: arm_rc_fields, source_indices: si)
   let rc_variant_guards = if rc_analysis.needs_rc_pattern {
     collect_pattern_rc_variant_guards(pattern: arm_pat, rc_analysis: rc_analysis, shared_types: shared_types, source_indices: si, emit_info: emit_info)
   } else { "" }
@@ -18339,10 +18463,22 @@ fn emit_native_claim_driver_pure_main_rs(crate_name: String, pipeline_mod: Strin
 // the rest. This main counts bytes against the contract's head limit, applies its read timeout,
 // strips line terminators, and writes what gunbc.native_serve native_serve_outgoing hands it
 // (status, content type, the header lines that fold rendered and admitted, and the body) with its
-// byte length. The
-// status line carries an empty reason phrase (RFC 9112 section 4 permits it), so no status table
-// is restated here. Serial by design, as the seed's loop is. No per-request budget is armed:
-// that is the declared drop gunbc.rung_drop.native_serve_request_budget_unrealized.
+// byte length. The status line carries an empty reason phrase (RFC 9112 section 4 permits it), so no
+// status table is restated here. Accepting and framing stay serial, as the seed's loop is.
+//
+// THE PER-REQUEST BUDGET. A compiled handler has no evaluator to interrupt, so each handler call runs
+// on its own worker thread and the loop waits for it only until the contract's request_deadline; a
+// miss is answered with native_serve_deadline_refused and the loop serves on. A missed worker cannot
+// be killed in-process, so it is counted as stuck until it returns, and before each handler call the
+// loop asks native_serve_admission with that count: at the declared ceiling it writes the typed 503
+// and exits with the code that fold names, for the supervisor to restart. A TIMEOUT IS ALWAYS THE
+// DEADLINE REFUSAL: the worker's state decides only whether it is counted stuck, never what the
+// client is told, so a worker finishing just after the deadline cannot turn the 500 back into its
+// answer. A worker that ends WITHOUT an answer (a panic: its sender is dropped) is a different arm,
+// answered with native_serve_handler_failed and never counted; its cleanup runs from a guard that
+// also runs during unwinding, so an abandoned worker uncounts itself exactly once however it ends. Every value -- deadline,
+// ceiling, both bodies, the exit code -- is gunbc.native_serve's; the worker sends back only owned
+// plain parts because the handler's values are reference-counted and stay on its thread.
 fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String) -> TextFile {
   let pipeline_mod = module_to_filename(name: pipeline_module)
   TextFile {
@@ -18359,12 +18495,31 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String)
       "use ", crate_name, "::std_measure::\{byte_size_count, millisecond_count\};", "\n",
       "use ", crate_name, "::gunbc_native_serve::\{", "\n",
       "    native_serve_announcement, native_serve_frame, native_serve_handler_name, native_serve_read_refused,", "\n",
-      "    native_serve_outgoing, native_serve_route, native_serve_start, NativeServeContract, NativeServeFrame,", "\n",
-      "    NativeServeOutgoing, NativeServeRoute, NativeServeStart,", "\n",
+      "    native_serve_admission, native_serve_deadline_refused, native_serve_handler_failed, native_serve_outgoing, native_serve_route,", "\n",
+      "    native_serve_start, NativeServeAdmission, NativeServeContract, NativeServeFrame, NativeServeOutgoing,", "\n",
+      "    NativeServeRoute, NativeServeStart,", "\n",
       "\};", "\n",
       "use ", crate_name, "::", pipeline_mod, "::native_serve_handle;", "\n",
       "\n",
-      "fn write_response(stream: &mut std::net::TcpStream, response: &NativeServeOutgoing) \{", "\n",
+      "// What a worker hands back across the thread boundary: owned plain values, because the compiled", "\n",
+      "// handler's values are reference-counted and stay on the worker's thread.", "\n",
+      "struct WireParts \{", "\n",
+      "    status: i64,", "\n",
+      "    content_type_label: String,", "\n",
+      "    header_lines: Vec<String>,", "\n",
+      "    body: String,", "\n",
+      "\}", "\n",
+      "\n",
+      "fn wire_parts(response: &NativeServeOutgoing) -> WireParts \{", "\n",
+      "    WireParts \{", "\n",
+      "        status: response.status,", "\n",
+      "        content_type_label: response.content_type_label.clone(),", "\n",
+      "        header_lines: response.header_lines.iter().cloned().collect(),", "\n",
+      "        body: response.body.clone(),", "\n",
+      "    \}", "\n",
+      "\}", "\n",
+      "\n",
+      "fn write_parts(stream: &mut std::net::TcpStream, response: &WireParts) \{", "\n",
       "    let mut head = format!(", "\n",
       "        \"HTTP/1.1 \{\} \\r\\nContent-Type: \{\}\\r\\nContent-Length: \{\}\\r\\nConnection: close\\r\\n\",", "\n",
       "        response.status, response.content_type_label, response.body.len()", "\n",
@@ -18374,6 +18529,47 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String)
       "    if let Err(cause) = stream.write_all(head.as_bytes()).and_then(|_| stream.write_all(response.body.as_bytes())) \{", "\n",
       "        eprintln!(\"native-serve: write error: \{\}\", cause);", "\n",
       "    \}", "\n",
+      "\}", "\n",
+      "\n",
+      "fn write_response(stream: &mut std::net::TcpStream, response: &NativeServeOutgoing) \{", "\n",
+      "    write_parts(stream, &wire_parts(response));", "\n",
+      "\}", "\n",
+      "\n",
+      "// A worker's state, shared with the loop: whether the loop stopped waiting for it. The loop counts a", "\n",
+      "// worker as stuck only when it abandons it, and the worker uncounts itself when it finally returns,", "\n",
+      "// under one lock, so the count is exact whichever side gets there first.", "\n",
+      "const WORKER_WAITING: u8 = 0;", "\n",
+      "const WORKER_ABANDONED: u8 = 1;", "\n",
+      "const WORKER_DONE: u8 = 2;", "\n",
+      "\n",
+      "fn lock_state<T>(m: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> \{", "\n",
+      "    m.lock().unwrap_or_else(|e| e.into_inner())", "\n",
+      "\}", "\n",
+      "\n",
+      "// The worker's cleanup, run when its guard drops: on return AND during a panic's unwind. A worker the", "\n",
+      "// loop abandoned uncounts itself here, exactly once; every worker ends DONE.", "\n",
+      "struct WorkerGuard \{", "\n",
+      "    state: std::sync::Arc<std::sync::Mutex<u8>>,", "\n",
+      "    stuck: std::sync::Arc<std::sync::Mutex<usize>>,", "\n",
+      "\}", "\n",
+      "\n",
+      "impl Drop for WorkerGuard \{", "\n",
+      "    fn drop(&mut self) \{", "\n",
+      "        let mut s = lock_state(&self.state);", "\n",
+      "        if *s == WORKER_ABANDONED \{", "\n",
+      "            let mut n = lock_state(&self.stuck);", "\n",
+      "            *n = n.saturating_sub(1);", "\n",
+      "        \}", "\n",
+      "        *s = WORKER_DONE;", "\n",
+      "    \}", "\n",
+      "\}", "\n",
+      "\n",
+      "struct HandlerCall \{", "\n",
+      "    method: String,", "\n",
+      "    path: String,", "\n",
+      "    body: String,", "\n",
+      "    tailscale_identity: String,", "\n",
+      "    release_revision: String,", "\n",
       "\}", "\n",
       "\n",
       "fn read_line(reader: &mut impl BufRead, budget: &mut usize) -> Result<Option<String>, String> \{", "\n",
@@ -18393,6 +18589,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String)
       "enum Exchange \{", "\n",
       "    Idle,", "\n",
       "    Answer(Rc<ServeWireResponse>),", "\n",
+      "    Handle(HandlerCall),", "\n",
       "\}", "\n",
       "\n",
       "fn exchange(stream: &std::net::TcpStream, contract: &Rc<NativeServeContract>, bound_host: &str, bound_port: i64) -> Exchange \{", "\n",
@@ -18429,13 +18626,13 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String)
       "    let (head, body) = head;", "\n",
       "    match &*native_serve_route(contract.clone(), head.clone(), native_serve_handler_name(), bound_host.to_string(), bound_port) \{", "\n",
       "        NativeServeRoute::NativeServeAnswered \{ response \} => Exchange::Answer(response.clone()),", "\n",
-      "        NativeServeRoute::NativeServeToHandler => Exchange::Answer(native_serve_handle(", "\n",
-      "            head.method.clone(),", "\n",
-      "            head.target.clone(),", "\n",
+      "        NativeServeRoute::NativeServeToHandler => Exchange::Handle(HandlerCall \{", "\n",
+      "            method: head.method.clone(),", "\n",
+      "            path: head.target.clone(),", "\n",
       "            body,", "\n",
-      "            head.tailscale_identity.clone(),", "\n",
-      "            contract.release_revision.clone(),", "\n",
-      "        )),", "\n",
+      "            tailscale_identity: head.tailscale_identity.clone(),", "\n",
+      "            release_revision: contract.release_revision.clone(),", "\n",
+      "        \}),", "\n",
       "    \}", "\n",
       "\}", "\n",
       "\n",
@@ -18460,6 +18657,8 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String)
       "    let bound_port = bound.port() as i64;", "\n",
       "    eprintln!(\"\{\}\", native_serve_announcement(contract.clone(), bound_host.clone(), bound_port));", "\n",
       "    let timeout = std::time::Duration::from_millis(millisecond_count(contract.read_timeout.clone()) as u64);", "\n",
+      "    let deadline = std::time::Duration::from_millis(millisecond_count(contract.request_deadline.clone()) as u64);", "\n",
+      "    let stuck = std::sync::Arc::new(std::sync::Mutex::new(0usize));", "\n",
       "    for accepted in listener.incoming() \{", "\n",
       "        let mut stream = match accepted \{", "\n",
       "            Ok(stream) => stream,", "\n",
@@ -18472,6 +18671,41 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String)
       "        match exchange(&stream, &contract, &bound_host, bound_port) \{", "\n",
       "            Exchange::Idle => \{\}", "\n",
       "            Exchange::Answer(response) => write_response(&mut stream, &native_serve_outgoing(response)),", "\n",
+      "            Exchange::Handle(call) => \{", "\n",
+      "                let stuck_now = *lock_state(&stuck) as i64;", "\n",
+      "                match &*native_serve_admission(contract.clone(), stuck_now) \{", "\n",
+      "                    NativeServeAdmission::NativeServeRefuseStuck \{ response, exit_code \} => \{", "\n",
+      "                        write_response(&mut stream, &native_serve_outgoing(response.clone()));", "\n",
+      "                        std::process::exit(*exit_code as i32);", "\n",
+      "                    \}", "\n",
+      "                    NativeServeAdmission::NativeServeAdmitWorker => \{", "\n",
+      "                        let (sender, receiver) = std::sync::mpsc::channel::<WireParts>();", "\n",
+      "                        let state = std::sync::Arc::new(std::sync::Mutex::new(WORKER_WAITING));", "\n",
+      "                        let guard = WorkerGuard \{ state: state.clone(), stuck: stuck.clone() \};", "\n",
+      "                        std::thread::spawn(move || \{", "\n",
+      "                            let _guard = guard;", "\n",
+      "                            let response = native_serve_handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision);", "\n",
+      "                            let _ = sender.send(wire_parts(&native_serve_outgoing(response)));", "\n",
+      "                        \});", "\n",
+      "                        match receiver.recv_timeout(deadline) \{", "\n",
+      "                            Ok(parts) => write_parts(&mut stream, &parts),", "\n",
+      "                            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => \{", "\n",
+      "                                write_response(&mut stream, &native_serve_outgoing(native_serve_handler_failed()));", "\n",
+      "                            \}", "\n",
+      "                            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => \{", "\n",
+      "                                \{", "\n",
+      "                                    let mut s = lock_state(&state);", "\n",
+      "                                    if *s != WORKER_DONE \{", "\n",
+      "                                        *s = WORKER_ABANDONED;", "\n",
+      "                                        *lock_state(&stuck) += 1;", "\n",
+      "                                    \}", "\n",
+      "                                \}", "\n",
+      "                                write_response(&mut stream, &native_serve_outgoing(native_serve_deadline_refused(contract.clone())));", "\n",
+      "                            \}", "\n",
+      "                        \}", "\n",
+      "                    \}", "\n",
+      "                \}", "\n",
+      "            \}", "\n",
       "        \}", "\n",
       "    \}", "\n",
       "\}", "\n"

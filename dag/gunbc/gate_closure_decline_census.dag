@@ -1,0 +1,136 @@
+module gunbc.gate_closure_decline_census
+
+import std.types { Bool, Int, String }
+import std.optional { Present, Absent }
+import v2.workflow.required_floor {
+  changed_selection_identity_module_path,
+  required_floor_disposition_name,
+  RequiredFloorDisposition,
+  Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember,
+  DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
+  DeclinedCostDebt, DeclinedNoCiWetLane, DeclinedChangedWitnessOutsideDiscovery
+}
+
+// THE POPULATION OF gunbc.recurring_failure_mode witness_outside_gate_closure_falsified_by_other_file,
+// READ FROM THE FLOOR'S OWN RECORD RATHER THAN RECOMPUTED. The floor decides, per qualified witness
+// identity, whether its module is in the prepared gate closure; an identity whose module is not is
+// written to required_floor_disposition.tsv with the disposition declined_outside_gate_closure
+// (gunbc.witness_floor_workflow required_floor_disposition_upload_bound_step publishes it as the
+// `required-floor-disposition` artifact). Recomputing the closure here would be a second authority
+// for one fact, so this module only folds rows the floor wrote.
+//
+// EVERY FUNCTION HERE IS PURE AND TAKES ITS LINES AS AN ARGUMENT. Reading the artifact off disk is
+// the instrument's fact (tools.gate_closure_decline_census_instrument).
+
+data gate_closure_decline_disposition: String = required_floor_disposition_name(d: DeclinedOutsideGateClosure)
+
+// THE WIRE VOCABULARY, DERIVED FROM THE ARMS' OWN NAMER rather than respelled. Payloads are blank
+// because the name does not read them. An arm added to RequiredFloorDisposition and not listed here
+// makes its rows REFUSE below rather than vanish, which is the direction a stale list must fail.
+data required_floor_disposition_names: List<String> = map([
+  Planned, PlannedAsChangedWitness, DeclinedLongModule { matched_prefix: "" },
+  DeclinedFixtureMember { matched_prefix: "" }, DeclinedOutsideRequiredGate,
+  DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded { matched_substring: "" },
+  DeclinedCostDebt, DeclinedNoCiWetLane { pattern: "" },
+  DeclinedChangedWitnessOutsideDiscovery { module_path: "" }
+], d => required_floor_disposition_name(d: d))
+
+// The grammar lane owns this population (gunbc#13374), so the census leaves it out by module
+// prefix rather than double-counting it.
+data gate_closure_decline_census_excluded_prefixes: List<String> = ["v2.test.parse."]
+
+type ModuleDeclineCount {
+  module: String
+  claims: Int
+}
+
+// A ROSTER IS READ WHOLE OR REFUSED, NEVER NARROWED. A data line with fewer than two columns, or a
+// disposition outside the floor's vocabulary, is an artifact defect located by its 1-based line;
+// dropping it would let a drifted roster print declined_identities=0, the one answer an unreadable
+// roster must never produce (DESIGN section 5, a failure arm refuses).
+type DispositionRosterRead
+  = DispositionRosterRows { identities: List<String> }
+  | DispositionRosterRefused { line_number: Int, line: String, cause: String }
+
+type DispositionLineRead
+  = DispositionLineSkipped
+  | DispositionLineRow { identity: String, disposition: String }
+  | DispositionLineRefused { cause: String }
+
+fn read_disposition_line(line: String) -> DispositionLineRead {
+  if line == "" || starts_with(s: line, prefix: "#") || starts_with(s: line, prefix: "identity\t") {
+    DispositionLineSkipped
+  } else {
+    let fields = split(s: line, delimiter: "\t")
+    match fields[0] {
+      Absent => DispositionLineRefused { cause: "no identity column" }
+      Present { value: identity } => match fields[1] {
+        Absent => DispositionLineRefused { cause: "fewer than two tab-separated columns" }
+        Present { value: disposition } =>
+          if !contains(required_floor_disposition_names, disposition) {
+            DispositionLineRefused { cause: "disposition outside the floor's vocabulary: " + disposition }
+          } else {
+            DispositionLineRow { identity: identity, disposition: disposition }
+          }
+      }
+    }
+  }
+}
+
+fn census_excludes_module(module: String) -> Bool {
+  fold(gate_closure_decline_census_excluded_prefixes, init: false, f: fn(acc, p) { acc || starts_with(s: module, prefix: p) })
+}
+
+// THE ACCUMULATOR IS A SUM, so a stopped fold cannot also hold a success arm (review 76598): the
+// only way to carry a refusal is the arm that carries nothing else.
+type RosterFold
+  = RosterReading { line_number: Int, identities_reversed: List<String> }
+  | RosterStopped { refusal: DispositionRosterRead }
+
+// The declined identities, after the exclusion, or the FIRST refused line. The accumulator is
+// built in reverse and reversed once, so the fold is linear in lines.
+fn gate_closure_declined_identities(lines: List<String>) -> DispositionRosterRead {
+  let done = fold(lines, init: RosterReading { line_number: 0, identities_reversed: [] }, f: fn(acc, line) {
+    match acc {
+      RosterStopped { refusal } => acc
+      RosterReading { line_number, identities_reversed } => {
+        let n = line_number + 1
+        match read_disposition_line(line: line) {
+          DispositionLineSkipped => RosterReading { line_number: n, identities_reversed: identities_reversed }
+          DispositionLineRefused { cause } => RosterStopped { refusal: DispositionRosterRefused { line_number: n, line: line, cause: cause } }
+          DispositionLineRow { identity, disposition } =>
+            if disposition == gate_closure_decline_disposition
+              && !census_excludes_module(module: changed_selection_identity_module_path(identity: identity)) {
+              RosterReading { line_number: n, identities_reversed: concat([identity], identities_reversed) }
+            } else {
+              RosterReading { line_number: n, identities_reversed: identities_reversed }
+            }
+        }
+      }
+    }
+  })
+  match done {
+    RosterStopped { refusal } => refusal
+    RosterReading { line_number: _, identities_reversed } => DispositionRosterRows { identities: reverse(identities_reversed) }
+  }
+}
+
+// One count per declining module, keyed once per identity (a map, so the tally is linear in rows).
+fn gate_closure_decline_by_module(identities: List<String>) -> List<ModuleDeclineCount> {
+  let counts = fold(identities, init: empty_map(), f: fn(m, identity) {
+    let module = changed_selection_identity_module_path(identity: identity)
+    map_insert(m, module, 1 + match map_get(m, module) { Present { value: n } => n  Absent => 0 })
+  })
+  map(map_keys(counts), k => ModuleDeclineCount { module: k, claims: match map_get(counts, k) { Present { value: n } => n  Absent => 0 } })
+}
+
+fn gate_closure_decline_census_lines(identities: List<String>) -> List<String> {
+  let modules = gate_closure_decline_by_module(identities: identities)
+  concat(
+    ["summary declined_identities=" + to_string(length(identities)) + " modules=" + to_string(length(modules))],
+    concat(
+      map(modules, c => "module " + c.module + " claims=" + to_string(c.claims)),
+      map(identities, i => "identity " + i)
+    )
+  )
+}

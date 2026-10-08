@@ -11,7 +11,7 @@ import test.fixture.decl_facts_reflection.witness_support {
 import v2.std.decl_index { DeclFact }
 import std.types { List }
 import std.algebra { Empty }
-import v2.std.optional { optional_present, optional_absent }
+import std.optional { optional_present, optional_absent }
 import v2.std.data_initializer_identity {
   projection_kind_lexeme_optional,
   projection_named_child_optional,

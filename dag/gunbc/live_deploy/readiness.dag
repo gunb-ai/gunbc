@@ -3,7 +3,7 @@ module gunbc.live_deploy.readiness
 import std.types { String, Bool, Int, NonEmptyStr, List, CommitSha }
 import std.evaluation_budget { LimitSet, LimitUnset }
 import std.measure { positive_millisecond_count, Second, second, second_count }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.content_hash { Fnv1a64Structural }
 import gunbc.live_deploy.candidate_identity { CandidateRelease }
 import gunbc.readiness { Readiness, Ready, Pending, Refused }
@@ -633,10 +633,8 @@ fn show_healthz_read_fixture_healthy(
   ReadObserved {
     value: HealthzBodyRead {
       body: healthz_body_with_release_identity(
-        roadmap: bundle.roadmap_md,
         dispatch: bundle.dispatch_json,
         daily: bundle.daily_html,
-        full: bundle.full_html,
         dispatch_js: bundle.dispatch_js,
         release_revision: release_revision,
         surface_bundle_identity: bundle.bundle_identity,

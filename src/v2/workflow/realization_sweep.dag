@@ -28,7 +28,7 @@ import v2.compiler.source_authority_read {
   source_root_ingest_build_from_source_refs
 }
 import std.integer { int_to_decimal_string }
-import v2.std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent }
 import v2.std.algebra { fold_list, length }
 import v2.std.collection { list_at_optional }
 import std.types { Int, List, String }

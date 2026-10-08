@@ -7,7 +7,7 @@ import std.algebra { list_append }
 import v2.std.collection { Map, map_lookup }
 import v2.std.integer { Int }
 import std.integer { int_to_decimal_string }
-import v2.std.optional { Optional, Present, Absent, optional_present, optional_absent }
+import std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import extdeps.bazel.target_pattern { TargetPattern, target_pattern_within }
 import v2.compiler.native_test_vocabulary {
   NativeTestVerdict, NativeTestPassed, NativeTestReturnedFalse, NativeTestReturnedOther, NativeTestRefused,

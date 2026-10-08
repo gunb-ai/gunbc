@@ -1,5 +1,6 @@
 module gunbc.tools.review
 
+import extdeps.cron.schedule_model { CronSchedule }
 import extdeps.git
 import std.types { GitRef, FilePath, Seconds }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }

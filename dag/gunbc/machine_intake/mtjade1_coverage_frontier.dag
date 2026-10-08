@@ -1,5 +1,6 @@
 module gunbc.machine_intake_mtjade1_coverage_frontier
 
+import gunbc.machine_intake_subject { BoardSerialAbsent }
 import std.types { List, String }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { unbound_dissolution }
@@ -156,6 +157,16 @@ data mtjade1_gsg_document_frontier_rows: List<FrontierRow> = [
 // only in a // note in gunbc.secret_provision, and an un-stripped census counts that mention as a
 // consumer -- the same "an annotation makes a row look consumed" failure this roster exists to
 // record, reproduced inside the tool checking for it.
+data mtjade1_j3_rmedia_residue_frontier_rows: List<FrontierRow> = frontier_rows_for_decls(
+  module_path: "gunbc.machine_intake_mtjade1_access_observation",
+  decl_names: [
+    "read_mtjade1_rmedia_general_residue",
+    "read_mtjade1_media_general_put_standing",
+  ],
+  reason: "The 2026-10-06 J3 RMedia general residue and the 2.11.104000 PUT-echo-without-persist standing. They are this unit's baseline facts, not factory or prior-life, and no production fold in this change consumes them yet.",
+  dissolution: unbound_dissolution(description: "NAMED CONSUMER: J2 archive and any later arrival/media converge that reads mtjade1's RMedia general baseline, so a stale 192.168.1.188:/srv/bmc path is never mistaken for factory empty or for another unit's share. TRIGGER: that archive or converge fold calls read_mtjade1_rmedia_general_residue and read_mtjade1_media_general_put_standing on the path that decides a media write or a baseline comparison. SUFFICIENT FOR deleting the NAME the fold reads. NOT satisfied by a witness decoding the GET."),
+)
+
 data mtjade1_access_observation_frontier_rows: List<FrontierRow> = frontier_rows_for_decls(
   module_path: "gunbc.machine_intake_mtjade1_access_observation",
   decl_names: [
@@ -208,7 +219,7 @@ data mtjade1_coverage_frontier_rows: List<FrontierRow> = concat(
   concat(
     concat(mtjade1_gsg_subject_frontier_rows, mtjade1_gsg_memory_frontier_rows),
     concat(
-      mtjade1_access_observation_frontier_rows,
+      concat(mtjade1_access_observation_frontier_rows, mtjade1_j3_rmedia_residue_frontier_rows),
       concat(mtjade1_first_dpc_plan_frontier_rows, mtjade1_fan_standing_frontier_rows),
     ),
   ),
