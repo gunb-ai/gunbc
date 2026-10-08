@@ -962,7 +962,7 @@ pub fn lookup_field_type_node(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
+        let is_optional = (crate::v1_std_core::cardinality_is_optional(n.return_cardinality.clone()));
         if is_optional.clone() {
             {
                 let inner = crate::v1_std_core::with_required_cardinality(n.clone());
@@ -1337,7 +1337,7 @@ pub fn field_summary_for_type(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let resolved = resolve_scrutinee_type_node(env.clone(), base_type.clone());
         let normed = crate::v1_compiler_infer_types::normalize_access_type_node(resolved.clone());
-        let normed_opt = (normed.return_cardinality.clone() == Cardinality::CardOptional);
+        let normed_opt = (crate::v1_std_core::cardinality_is_optional(normed.return_cardinality.clone()));
         if ((field.clone() == "value".to_string()) && normed_opt.clone()) {
             Some(Rc::new(FieldSummary {
                 access_style: FieldAccessStyle::OptionalUnwrap,
@@ -1424,13 +1424,7 @@ pub fn map_lookup_result_type(
         == "Map".to_string())
     {
         match product_field_result_type(field.clone()) {
-            Some(raw) => {
-                if (raw.return_cardinality.clone() == Cardinality::CardOptional) {
-                    Some(raw.clone())
-                } else {
-                    Some(crate::v1_std_core::with_optional_cardinality(raw.clone()))
-                }
-            }
+            Some(raw) => Some(crate::v1_std_core::with_optional_cardinality(raw.clone())),
             std::option::Option::None => std::option::Option::None,
         }
     } else {
@@ -1489,6 +1483,23 @@ pub fn lookup_structural_method(
     method_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<StructuralMethodLookup> {
+    if crate::v1_std_core::cardinality_is_optional(receiver_type.return_cardinality.clone()) {
+        let inner = crate::v1_std_core::with_required_cardinality(receiver_type.clone());
+        let inner_lookup = lookup_structural_method(inner, method_name.clone(), source_indices.clone());
+        match inner_lookup.resolution.clone() {
+            Some(mfr) => Rc::new(StructuralMethodLookup {
+                resolution: Some(Rc::new(MethodFieldResult {
+                    field_node: mfr.field_node.clone(),
+                    result_type: crate::v1_std_core::with_optional_cardinality(mfr.result_type.clone()),
+                    size_effect: mfr.size_effect.clone(),
+                    cost_shape: mfr.cost_shape.clone(),
+                    algebra_template: mfr.algebra_template.clone(),
+                })),
+                kernel_diagnostics: inner_lookup.kernel_diagnostics.clone(),
+            }),
+            std::option::Option::None => inner_lookup,
+        }
+    } else {
     {
         let is_product = (receiver_type.connective.clone() == Connective::Conj);
         if is_product.clone() {
@@ -1597,6 +1608,7 @@ pub fn lookup_structural_method(
                 }
             }
         }
+    }
     }
 }
 

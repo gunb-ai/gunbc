@@ -14,7 +14,7 @@ import v1.std.core { Unmarked,
   InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   Cardinality, Required,
   Connective, Disj, NoConnective,
-  CardOptional,
+  CardOptional, cardinality_is_optional,
   ErrorNode, make_error_node,
   VariantNotFound, FieldNotFound, NonExhaustiveMatch,
   MatchPattern, LitPattern, arm_pattern,
@@ -142,7 +142,7 @@ fn expand_scrut_type_for_variant_lookup(scrut_node: Node, env: TypeEnv) -> Node 
   let name = authored_name_at(source_indices: env.source_indices, node: scrut_node)
   let is_disj = scrut_node.connective == Disj
   let is_witness = is_witness_type_name(name: name)
-  let is_optional = scrut_node.return_cardinality == CardOptional
+  let is_optional = cardinality_is_optional(c: scrut_node.return_cardinality)
   if is_optional || is_disj || is_witness {
     scrut_node
   } else {
@@ -307,7 +307,7 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, site: Sou
         }
       } else {
       let scrut_node = expand_scrut_type_for_variant_lookup(scrut_node: scrut_node, env: env)
-      let scrut_opt = scrut_node.return_cardinality == CardOptional
+      let scrut_opt = cardinality_is_optional(c: scrut_node.return_cardinality)
       if scrut_node.connective == NoConnective && scrut_node.children |> count == 0 && scrut_opt == false {
         node_lookup_failed(diagnostics: [])
       } else {
@@ -486,7 +486,7 @@ type ConstructorField { name: String, type_node: Node }
 type PatternWitnessRow { cells: List<String> }
 
 fn resolve_scrutinee_type(type_node: Node, env: TypeEnv) -> Node {
-  let scrut_is_optional = type_node.return_cardinality == CardOptional
+  let scrut_is_optional = cardinality_is_optional(c: type_node.return_cardinality)
   let has_structure = type_node.connective != NoConnective
   let resolved_raw = if has_structure {
     type_node
@@ -536,7 +536,7 @@ fn resolve_scrutinee_type(type_node: Node, env: TypeEnv) -> Node {
 fn constructor_roster_for(type_node: Node, env: TypeEnv) -> ConstructorRoster {
   let resolved = resolve_scrutinee_type(type_node: type_node, env: env)
   let is_coproduct = resolved.connective == Disj
-  let resolved_is_optional = resolved.return_cardinality == CardOptional
+  let resolved_is_optional = cardinality_is_optional(c: resolved.return_cardinality)
   let resolved_is_witness = is_witness_type_name(name: authored_name_at(source_indices: env.source_indices, node: resolved)) && resolved.children |> count == 1
   if resolved_is_optional {
     ConstructorsClosed { names: ["Present", "Absent"] }

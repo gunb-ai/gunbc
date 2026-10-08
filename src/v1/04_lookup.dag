@@ -23,11 +23,11 @@ import v1.std.core {
   FieldAccessStyle, OptionalUnwrap,
   FieldValueShape, PlainValue, OptionalValue,
   FieldSummary,
-  with_optional_cardinality, with_required_cardinality, preserve_outer_optional_cardinality,
+  with_optional_cardinality, with_required_cardinality, compose_optional_cardinality_onto_node, cardinality_is_optional,
   Connective, Conj, Disj, NoConnective,
   ErrorNode,
 
-  CardOptional,
+  CardOptional, cardinality_is_optional,
   error_type
 }
 
@@ -678,7 +678,7 @@ fn census_declaration_bound_formals(type_env: TypeEnv, owner_module_path: String
       ResolvedFormal {
         parameter_identity: param_node_name_at(n: p, source_indices: type_env.source_indices),
         declared_type: declared_type,
-        declaration_bound_conformance: preserve_outer_optional_cardinality(
+        declaration_bound_conformance: compose_optional_cardinality_onto_node(
           outer: declared_type,
           inner: peel_nominal_alias_identity(n: declared_type, env: declaration_env, module_name: owner_module_path)),
         substitution_basis: declaration_substitution_basis(
@@ -784,7 +784,7 @@ fn global_bare_callable_node(type_env: TypeEnv, name: String) -> Node? {
 }
 
 fn lookup_field_type_node(n: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
-  let is_optional = n.return_cardinality == CardOptional
+  let is_optional = cardinality_is_optional(c: n.return_cardinality)
   if is_optional {
     let inner = with_required_cardinality(n: n)
     if field_name == "value" {
@@ -870,7 +870,7 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
   let normed = normalize_access_type_node(n: n)
   if normed.connective == NoConnective && normed.children |> count > 0 && normed.inferred != none {
     match normed.inferred {
-      Present { value: Resolved { node: target } } => preserve_outer_optional_cardinality(outer: normed, inner: resolve_scrutinee_type_node_seen(env: env, n: target, seen: seen))
+      Present { value: Resolved { node: target } } => compose_optional_cardinality_onto_node(outer: normed, inner: resolve_scrutinee_type_node_seen(env: env, n: target, seen: seen))
       _ => normed
     }
   } else if normed.connective == NoConnective && normed.children |> count == 0 {
@@ -882,7 +882,7 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
           if authored_name(env: env, node: target) == canonical && target.inferred == none && target.connective == NoConnective && target.children |> count == 0 {
             normed
           } else {
-            preserve_outer_optional_cardinality(outer: normed, inner: resolve_scrutinee_type_node_seen(env: env, n: target, seen: next_seen))
+            compose_optional_cardinality_onto_node(outer: normed, inner: resolve_scrutinee_type_node_seen(env: env, n: target, seen: next_seen))
           }
         _ => normed
       }
@@ -895,7 +895,7 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
           if authored_name(env: env, node: resolved) == canonical && resolved.inferred == none && resolved.connective == NoConnective && resolved.children |> count == 0 {
             normed
           } else {
-            preserve_outer_optional_cardinality(outer: normed, inner: resolve_scrutinee_type_node_seen(env: env, n: resolved, seen: next_seen))
+            compose_optional_cardinality_onto_node(outer: normed, inner: resolve_scrutinee_type_node_seen(env: env, n: resolved, seen: next_seen))
           }
         Absent => normed
       }
@@ -948,7 +948,7 @@ fn set_element_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
 fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> FieldSummary? {
   let resolved = resolve_scrutinee_type_node(env: env, n: base_type)
   let normed = normalize_access_type_node(n: resolved)
-  let normed_opt = normed.return_cardinality == CardOptional
+  let normed_opt = cardinality_is_optional(c: normed.return_cardinality)
   if field == "value" && normed_opt {
     Present { value: FieldSummary { access_style: OptionalUnwrap, value_shape: PlainValue } }
   } else if normed_opt {
@@ -1008,11 +1008,7 @@ fn map_lookup_result_type(product: Node, field: Node, source_indices: Map<String
   if authored_name_at(source_indices: source_indices, node: product) == "Map" {
     match product_field_result_type(field: field) {
       Present { value: raw } =>
-        if (raw.return_cardinality == CardOptional) {
-          Present { value: raw }
-        } else {
-          Present { value: with_optional_cardinality(n: raw) }
-        }
+        Present { value: with_optional_cardinality(n: raw) }
       Absent => none
     }
   } else {
@@ -1038,6 +1034,18 @@ fn lookup_field_in_product(product: Node, method_name: String, source_indices: M
 }
 
 fn lookup_structural_method(receiver_type: Node, method_name: String, source_indices: Map<String, NewlineIndex>) -> StructuralMethodLookup {
+  if cardinality_is_optional(c: receiver_type.return_cardinality) {
+    let inner = with_required_cardinality(n: receiver_type)
+    let inner_lookup = lookup_structural_method(receiver_type: inner, method_name: method_name, source_indices: source_indices)
+    match inner_lookup.resolution {
+      Present { value: mfr } =>
+        StructuralMethodLookup {
+          resolution: Present { value: MethodFieldResult { field_node: mfr.field_node, result_type: with_optional_cardinality(n: mfr.result_type), size_effect: mfr.size_effect, cost_shape: mfr.cost_shape, algebra_template: mfr.algebra_template } },
+          kernel_diagnostics: inner_lookup.kernel_diagnostics
+        }
+      Absent => inner_lookup
+    }
+  } else {
   let is_product = receiver_type.connective == Conj
   if is_product {
     let direct = lookup_field_in_product(product: receiver_type, method_name: method_name, source_indices: source_indices)
@@ -1074,6 +1082,7 @@ fn lookup_structural_method(receiver_type: Node, method_name: String, source_ind
     } else {
       StructuralMethodLookup { resolution: none, kernel_diagnostics: method_diagnostics }
     }
+  }
   }
 }
 

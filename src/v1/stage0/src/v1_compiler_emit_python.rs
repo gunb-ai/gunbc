@@ -831,10 +831,11 @@ pub fn emit_py_dataclass_field_from_child(child: Rc<Node>, env: Rc<TypeEnv>) -> 
             RenderTarget::Python,
             env.source_indices.clone(),
         );
-        let is_optional = (crate::v1_compiler_infer_types::resolved_type(child.clone())
-            .return_cardinality
-            .clone()
-            == Cardinality::CardOptional);
+        let is_optional = (crate::v1_std_core::cardinality_is_optional(
+            crate::v1_compiler_infer_types::resolved_type(child.clone())
+                .return_cardinality
+                .clone(),
+        ));
         let default_str = if is_optional.clone() {
             v1_rt::concat(" = ".to_string(), py_default_value())
         } else {

@@ -21,7 +21,7 @@ import v1.std.core {
   expr_field_access_summary, expr_method_call_semantics, record_lit_type_name_at, lambda_body,
   cast_expr, cast_target, return_value, foreach_variable_at, foreach_collection, foreach_body,
   method_arg_nodes, index_base, index_expr, slice_base, slice_start, slice_end,
-  with_required_cardinality, Connective, Conj, Disj, CardOptional, is_rest_transport,
+  with_required_cardinality, Connective, Conj, Disj, CardOptional, cardinality_is_optional, is_rest_transport,
   is_shell_transport
 }
 
@@ -352,7 +352,7 @@ fn emit_py_dataclass_from_children(name: String, children: List<Node>, env: Type
 
 fn emit_py_dataclass_field_from_child(child: Node, env: TypeEnv) -> String {
   let ty = emit_node_type(n: resolved_type(n: child), target: Python, source_indices: env.source_indices)
-  let is_optional = resolved_type(n: child).return_cardinality == CardOptional
+  let is_optional = cardinality_is_optional(c: resolved_type(n: child).return_cardinality)
   let default_str = if is_optional {
     concat(" = ", py_default_value())
   } else {

@@ -7168,7 +7168,7 @@ pub fn maybe_optional(
                 connective: te.connective.clone(),
                 params: te.params.clone(),
                 inferred: te.inferred.clone(),
-                return_cardinality: Cardinality::CardOptional,
+                return_cardinality: Cardinality::CardOptional { layers: ::std::rc::Rc::new(crate::v1_std_core::OptionalLayers::OneLayer) },
                 uses: te.uses.clone(),
                 body: te.body.clone(),
                 transport: te.transport.clone(),
@@ -10652,7 +10652,7 @@ pub fn node_to_name_str(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
+        let is_optional = (crate::v1_std_core::cardinality_is_optional(n.return_cardinality.clone()));
         let effective_n = if is_optional.clone() {
             crate::v1_std_core::with_required_cardinality(n.clone())
         } else {

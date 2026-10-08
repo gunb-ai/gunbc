@@ -877,7 +877,8 @@ pub fn has_nested_records_node(
             break true;
         } else {
             if is_coproduct.clone() {
-                let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
+                let is_optional =
+                    (crate::v1_std_core::cardinality_is_optional(n.return_cardinality.clone()));
                 if is_optional.clone() {
                     {
                         let __tco_0 = crate::v1_std_core::with_required_cardinality(n);
@@ -1870,7 +1871,8 @@ pub fn render_node_type(
                 return result;
             }
         }
-        let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
+        let is_optional =
+            (crate::v1_std_core::cardinality_is_optional(n.return_cardinality.clone()));
         if is_optional.clone() {
             {
                 let inner_str = render_node_type(
@@ -2742,7 +2744,7 @@ pub fn bind_file_result_field(
     )) {
         Some(c) => Some(Rc::new(FileResultField {
             channel: c.clone(),
-            optional: (ch.return_cardinality.clone() == Cardinality::CardOptional),
+            optional: (crate::v1_std_core::cardinality_is_optional(ch.return_cardinality.clone())),
         })),
         std::option::Option::None => std::option::Option::None,
     }
@@ -2946,7 +2948,7 @@ pub fn shell_bind_result_field(
     )) {
         Some(c) => Some(Rc::new(ShellResultField {
             channel: c.clone(),
-            optional: (ch.return_cardinality.clone() == Cardinality::CardOptional),
+            optional: (crate::v1_std_core::cardinality_is_optional(ch.return_cardinality.clone())),
         })),
         std::option::Option::None => std::option::Option::None,
     }
@@ -6181,7 +6183,7 @@ pub fn transparent_representation_root(
         if (fuel.clone() <= 0) {
             break n.clone();
         } else {
-            if (n.return_cardinality.clone() == Cardinality::CardOptional) {
+            if (crate::v1_std_core::cardinality_is_optional(n.return_cardinality.clone())) {
                 break n.clone();
             } else {
                 if crate::v1_compiler_infer::is_where_refinement_type(n.clone()) {

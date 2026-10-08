@@ -1373,7 +1373,7 @@ Rc::new(NodeResolveResult {
                     } else {
                         {
                             let is_optional =
-                                (n.return_cardinality.clone() == Cardinality::CardOptional);
+                                (crate::v1_std_core::cardinality_is_optional(n.return_cardinality.clone()));
                             if is_optional.clone() {
                                 {
                                     let inner =
@@ -2147,8 +2147,7 @@ Rc::new(NodeResolveResult {
                                                             n.clone(),
                                                         );
                                                     let is_optional =
-                                                        (n.return_cardinality.clone()
-                                                            == Cardinality::CardOptional);
+                                                        crate::v1_std_core::cardinality_is_optional((n.return_cardinality.clone()));
                                                     let final_resolved = if is_optional.clone() {
                                                         crate::v1_std_core::with_optional_cardinality(structurally_resolved.clone())
                                                     } else {

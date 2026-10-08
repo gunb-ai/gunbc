@@ -68,7 +68,9 @@ fn undetermined_carrier_refuses_not_null_default() {
 
 #[test]
 fn card_optional_emits_none() {
-    let rt = node_with_cardinality(Cardinality::CardOptional);
+    let rt = node_with_cardinality(Cardinality::CardOptional {
+        layers: ::std::rc::Rc::new(crate::v1_std_core::OptionalLayers::OneLayer),
+    });
     let resolved = Some(Rc::new(InferredNode::Resolved { node: rt }));
     let out = emit_none_keyword_for_resolved_type(resolved);
     // The spelling is the Rust keyword row's (`extdeps.languages.rust.emit`, key `null`), read

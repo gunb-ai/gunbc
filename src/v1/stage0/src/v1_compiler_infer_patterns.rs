@@ -245,7 +245,7 @@ pub fn expand_scrut_type_for_variant_lookup(
             crate::v1_std_core::authored_name_at(env.source_indices.clone(), scrut_node.clone());
         let is_disj = (scrut_node.connective.clone() == Connective::Disj);
         let is_witness = is_witness_type_name(name.clone());
-        let is_optional = (scrut_node.return_cardinality.clone() == Cardinality::CardOptional);
+        let is_optional = (crate::v1_std_core::cardinality_is_optional(scrut_node.return_cardinality.clone()));
         if ((is_optional.clone() || is_disj.clone()) || is_witness.clone()) {
             break scrut_node.clone();
         } else {
@@ -662,7 +662,7 @@ pub fn lookup_variant_in_type(
                     let scrut_node =
                         expand_scrut_type_for_variant_lookup(scrut_node.clone(), env.clone());
                     let scrut_opt =
-                        (scrut_node.return_cardinality.clone() == Cardinality::CardOptional);
+                        (crate::v1_std_core::cardinality_is_optional(scrut_node.return_cardinality.clone()));
                     if (((scrut_node.connective.clone() == Connective::NoConnective)
                         && ((scrut_node.children.clone().len() as i64) == 0))
                         && (scrut_opt.clone() == false))
@@ -904,7 +904,7 @@ pub struct PatternWitnessRow {
 
 pub fn resolve_scrutinee_type(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
     {
-        let scrut_is_optional = (type_node.return_cardinality.clone() == Cardinality::CardOptional);
+        let scrut_is_optional = (crate::v1_std_core::cardinality_is_optional(type_node.return_cardinality.clone()));
         let has_structure = (type_node.connective.clone() != Connective::NoConnective);
         let resolved_raw = if has_structure.clone() {
             type_node.clone()
@@ -927,7 +927,7 @@ pub fn constructor_roster_for(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Const
         let resolved = resolve_scrutinee_type(type_node.clone(), env.clone());
         let is_coproduct = (resolved.connective.clone() == Connective::Disj);
         let resolved_is_optional =
-            (resolved.return_cardinality.clone() == Cardinality::CardOptional);
+            (crate::v1_std_core::cardinality_is_optional(resolved.return_cardinality.clone()));
         let resolved_is_witness = (is_witness_type_name(crate::v1_std_core::authored_name_at(
             env.source_indices.clone(),
             resolved.clone(),

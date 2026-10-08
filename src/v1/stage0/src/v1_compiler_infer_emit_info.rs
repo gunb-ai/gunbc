@@ -942,7 +942,7 @@ pub fn find_variant_parent(
 pub fn field_value_shape_from_type_node(type_node: Rc<Node>) -> FieldValueShape {
     {
         let normed = crate::v1_compiler_infer_types::normalize_access_type_node(type_node.clone());
-        let is_optional = (normed.return_cardinality.clone() == Cardinality::CardOptional);
+        let is_optional = (crate::v1_std_core::cardinality_is_optional(normed.return_cardinality.clone()));
         if is_optional.clone() {
             FieldValueShape::OptionalValue
         } else {

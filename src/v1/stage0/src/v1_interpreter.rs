@@ -14213,12 +14213,18 @@ macro_rules! v1_algebra_method_arms {
 
             arm "method_call.first" { "first" } => {
                 let items = expect_list(&$receiver, "first")?;
-                Ok(items.front().cloned().unwrap_or(Value::Null))
+                Ok(match items.front().cloned() {
+                    Some(v) => optional_present(v, $ctx),
+                    None => optional_absent($ctx),
+                })
             },
 
             arm "method_call.last" { "last" } => {
                 let items = expect_list(&$receiver, "last")?;
-                Ok(items.last().cloned().unwrap_or(Value::Null))
+                Ok(match items.last().cloned() {
+                    Some(v) => optional_present(v, $ctx),
+                    None => optional_absent($ctx),
+                })
             },
 
             arm "method_call.reverse" { "reverse" } => {
@@ -14317,7 +14323,10 @@ macro_rules! v1_algebra_method_arms {
                     raw_map_lookup(&$receiver, key, $env, $ctx).map(RawMapLookup::into_raw)
                 } else if let Ok(items) = expect_list(&$receiver, "get") {
                     let idx = expect_int($args.first(), "get")?;
-                    Ok(list_get_at_or_null(&items, idx))
+                    Ok(match items.get(idx as usize).cloned() {
+                        Some(v) => optional_present(v, $ctx),
+                        None => optional_absent($ctx),
+                    })
                 } else {
                     let key = $args.first().ok_or_else(|| InterpError::TypeError {
                         msg: "get requires a key argument".to_string(),
@@ -18714,7 +18723,8 @@ fn map_shell_outputs(
     for child in children.iter() {
         let field_name = authored_name_at(ctx.si(), child.clone());
         let from_key = extract_from_key(child, ctx);
-        let is_optional_field = child.return_cardinality == Cardinality::CardOptional;
+        let is_optional_field =
+            crate::v1_std_core::cardinality_is_optional(child.return_cardinality.clone());
         if is_optional_field
             && result.exit_code != 0
             && matches!(from_key.as_deref(), Some("stdout" | "stderr"))
@@ -21135,7 +21145,7 @@ fn rest_output_child_is_list(child: &Rc<Node>, ctx: &InterpContext) -> bool {
 }
 
 fn rest_output_child_is_optional(child: &Rc<Node>) -> bool {
-    child.return_cardinality == Cardinality::CardOptional
+    crate::v1_std_core::cardinality_is_optional(child.return_cardinality.clone())
 }
 
 fn rest_optional_output_field_names(op_node: &Rc<Node>, ctx: &InterpContext) -> BTreeSet<String> {
@@ -23635,7 +23645,10 @@ macro_rules! v1_builtin_arms {
                 [list_val, idx_val] if free_monoid_to_vec(list_val).is_some() => {
                     let items = expect_list(list_val, "get")?;
                     let idx = expect_int(Some(idx_val), "get")?;
-                    Ok(Some(list_get_at_or_null(&items, idx)))
+                    Ok(Some(match items.get(idx as usize).cloned() {
+                        Some(v) => optional_present(v, $ctx),
+                        None => optional_absent($ctx),
+                    }))
                 }
                 _ => Ok(None),
             },
@@ -27785,7 +27798,9 @@ mod map_shell_outputs_optional_stream_tests {
             Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
             from_key.to_string(),
             str_type,
-            Cardinality::CardOptional,
+            Cardinality::CardOptional {
+                layers: ::std::rc::Rc::new(crate::v1_std_core::OptionalLayers::OneLayer),
+            },
             None,
             Rc::new(vec![].into()),
             span.clone(),

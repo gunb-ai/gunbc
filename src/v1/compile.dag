@@ -783,7 +783,7 @@ fn json_bool(value: Bool) -> String {
 fn cardinality_name(value: Cardinality) -> String {
   match value {
     Required => "Required"
-    CardOptional => "CardOptional"
+    CardOptional { layers: _ } => "CardOptional"
   }
 }
 

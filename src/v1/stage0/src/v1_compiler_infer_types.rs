@@ -2344,7 +2344,7 @@ pub fn node_type_shape(
                                 let __is_container =
                                     node_is_element_collection(n.clone(), source_indices.clone());
                                 let is_optional =
-                                    (n.return_cardinality.clone() == Cardinality::CardOptional);
+                                    (crate::v1_std_core::cardinality_is_optional(n.return_cardinality.clone()));
                                 let is_map =
                                     node_is_keyed_collection(n.clone(), source_indices.clone());
                                 if __is_container.clone() {
@@ -2486,8 +2486,8 @@ pub fn node_type_compatible(
         } else {
             false
         };
-        let left_opt = (left.return_cardinality.clone() == Cardinality::CardOptional);
-        let right_opt = (right.return_cardinality.clone() == Cardinality::CardOptional);
+        let left_opt = (crate::v1_std_core::cardinality_is_optional(left.return_cardinality.clone()));
+        let right_opt = (crate::v1_std_core::cardinality_is_optional(right.return_cardinality.clone()));
         let right_is_unit = is_unit_like(right.clone());
         let left_is_unit = is_unit_like(left.clone());
         if (left_err.clone() || right_err.clone()) {
@@ -2677,7 +2677,7 @@ pub fn prefer_specific_type(
 ) -> Rc<Node> {
     {
         let left_is_container = node_is_element_collection(left.clone(), source_indices.clone());
-        let left_is_optional = (left.return_cardinality.clone() == Cardinality::CardOptional);
+        let left_is_optional = (crate::v1_std_core::cardinality_is_optional(left.return_cardinality.clone()));
         let left_first_child = left.children.clone().first().cloned();
         let left_norm_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), left.clone());
@@ -2701,7 +2701,7 @@ pub fn prefer_specific_type(
             }
         };
         let right_is_container = node_is_element_collection(right.clone(), source_indices.clone());
-        let right_is_optional = (right.return_cardinality.clone() == Cardinality::CardOptional);
+        let right_is_optional = (crate::v1_std_core::cardinality_is_optional(right.return_cardinality.clone()));
         let same_kind = if (left_is_container.clone() && right_is_container.clone()) {
             (left_norm_name.clone()
                 == crate::v1_std_core::authored_name_at(source_indices.clone(), right.clone()))
@@ -2765,8 +2765,8 @@ pub fn node_type_equals(
         } else {
             false
         };
-        let left_opt = (left.return_cardinality.clone() == Cardinality::CardOptional);
-        let right_opt = (right.return_cardinality.clone() == Cardinality::CardOptional);
+        let left_opt = (crate::v1_std_core::cardinality_is_optional(left.return_cardinality.clone()));
+        let right_opt = (crate::v1_std_core::cardinality_is_optional(right.return_cardinality.clone()));
         let right_is_unit_eq = is_unit_like(right.clone());
         let left_is_unit_eq = is_unit_like(left.clone());
         if (left_err.clone() || right_err.clone()) {
@@ -3273,20 +3273,11 @@ pub fn method_receiver_element_node(
 
 pub fn extract_optional_inner_node(n: Rc<Node>) -> Rc<Node> {
     {
-        let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
+        let is_optional = (crate::v1_std_core::cardinality_is_optional(n.return_cardinality.clone()));
         if is_optional.clone() {
             crate::v1_std_core::with_required_cardinality(n.clone())
         } else {
-            if ((n.name.clone() == "Optional".to_string())
-                && ((n.children.clone().len() as i64) == 1))
-            {
-                match n.children.clone().first().cloned() {
-                    Some(inner) => inner.clone(),
-                    std::option::Option::None => n.clone(),
-                }
-            } else {
-                n.clone()
-            }
+            n.clone()
         }
     }
 }

@@ -11,7 +11,7 @@ import v1.std.core {
   FieldSummary,
   with_required_cardinality,
   Connective, Conj, NoConnective, Arrow,
-  CardOptional,
+  with_required_cardinality, CardOptional, cardinality_is_optional,
   param_node_name_at,
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
   ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
@@ -619,7 +619,7 @@ fn find_variant_parent(type_summaries: Map<String, TypeSummary>, variant_name: S
 
 fn field_value_shape_from_type_node(type_node: Node) -> FieldValueShape {
   let normed = normalize_access_type_node(n: type_node)
-  let is_optional = normed.return_cardinality == CardOptional
+  let is_optional = cardinality_is_optional(c: normed.return_cardinality)
   if is_optional { OptionalValue }
   else { PlainValue }
 }

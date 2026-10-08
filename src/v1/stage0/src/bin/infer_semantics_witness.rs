@@ -751,7 +751,9 @@ fn valid_map_index_preserves_optional_value_type() {
     {
         InferredNode::Resolved { node, .. } => {
             assert_eq!(node.name, "Int");
-            assert!(matches!(node.return_cardinality, Cardinality::CardOptional));
+            assert!(crate::v1_std_core::cardinality_is_optional(
+                node.return_cardinality.clone()
+            ));
         }
         other => panic!("expected resolved return type, got {:?}", other),
     }
@@ -911,7 +913,9 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
         connective: Connective::Disj,
         params: Rc::new(vec![]),
         inferred: None,
-        return_cardinality: Cardinality::CardOptional,
+        return_cardinality: Cardinality::CardOptional {
+            layers: ::std::rc::Rc::new(crate::v1_std_core::OptionalLayers::OneLayer),
+        },
         uses: Rc::new(vec![]),
         body: None,
         transport: None,
@@ -1113,7 +1117,9 @@ fn real_optional_coproduct_preserves_present_absent_pattern_names() {
             leaf_node("Absent".to_string()),
             leaf_node("Present".to_string()),
         ],
-        Cardinality::CardOptional,
+        Cardinality::CardOptional {
+            layers: ::std::rc::Rc::new(crate::v1_std_core::OptionalLayers::OneLayer),
+        },
     );
     let subject = v1_compiler_infer_patterns::pattern_subject_from_node(optional_sum);
 
@@ -1477,7 +1483,9 @@ fn structural_method_first_on_list_returns_optional_element() {
     assert!(
         matches!(
             result.result_type.return_cardinality,
-            Cardinality::CardOptional
+            Cardinality::CardOptional {
+                layers: ::std::rc::Rc::new(crate::v1_std_core::OptionalLayers::OneLayer)
+            }
         ),
         "first should return Optional"
     );
@@ -1590,7 +1598,9 @@ fn structural_method_get_on_map_returns_optional_value() {
     assert!(
         matches!(
             result.result_type.return_cardinality,
-            Cardinality::CardOptional
+            Cardinality::CardOptional {
+                layers: ::std::rc::Rc::new(crate::v1_std_core::OptionalLayers::OneLayer)
+            }
         ),
         "get should return Optional"
     );
@@ -1915,7 +1925,9 @@ fn map_index_with_correct_key_type_succeeds() {
     match result.inferred.as_ref().map(|i| i.as_ref()) {
         Some(InferredNode::Resolved { node }) => {
             assert_eq!(node.name, "Int");
-            assert!(matches!(node.return_cardinality, Cardinality::CardOptional));
+            assert!(crate::v1_std_core::cardinality_is_optional(
+                node.return_cardinality.clone()
+            ));
         }
         other => panic!("expected Resolved(Int?), got {:?}", other),
     }

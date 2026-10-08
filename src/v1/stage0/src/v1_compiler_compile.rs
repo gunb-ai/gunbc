@@ -1672,7 +1672,7 @@ pub fn json_bool(value: bool) -> String {
 pub fn cardinality_name(value: Cardinality) -> String {
     match value.clone() {
         Cardinality::Required => "Required".to_string(),
-        Cardinality::CardOptional => "CardOptional".to_string(),
+        Cardinality::CardOptional { layers: _ } => "CardOptional".to_string(),
     }
 }
 

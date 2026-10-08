@@ -61,7 +61,13 @@ type TokenShape
 
 type Connective = Conj | Disj | NoConnective | Arrow
 
-type Cardinality = Required | CardOptional
+type OptionalLayers
+  = OneLayer
+  | MoreLayers { inner: OptionalLayers }
+
+type Cardinality
+  = Required
+  | CardOptional { layers: OptionalLayers }
 
 type FieldAccessStyle = StoredField | EnumAccessor | OptionalUnwrap | TupleFirst | TupleSecond
 
@@ -2844,23 +2850,65 @@ fn pre_intern_tokens(tokens: List<Token>, table: InternTable) -> InternTable {
   )
 }
 
+fn cardinality_is_optional(c: Cardinality) -> Bool {
+  match c {
+    Required => false
+    CardOptional { layers: _ } => true
+  }
+}
+
+fn exact_optional_layers(left: Cardinality, right: Cardinality) -> Bool {
+  left == right
+}
+
+fn wrap_optional_layers_around(outer: OptionalLayers, inner: OptionalLayers) -> OptionalLayers {
+  match outer {
+    OneLayer => MoreLayers { inner: inner }
+    MoreLayers { inner: rest } => MoreLayers { inner: wrap_optional_layers_around(outer: rest, inner: inner) }
+  }
+}
+
+fn compose_optional_layers(outer: Cardinality, inner: Cardinality) -> Cardinality {
+  match outer {
+    Required => inner
+    CardOptional { layers: o } =>
+      match inner {
+        Required => CardOptional { layers: o }
+        CardOptional { layers: i } => CardOptional { layers: wrap_optional_layers_around(outer: o, inner: i) }
+      }
+  }
+}
+
+fn peel_optional_layer_cardinality(c: Cardinality) -> Cardinality {
+  match c {
+    Required => Required
+    CardOptional { layers: OneLayer } => Required
+    CardOptional { layers: MoreLayers { inner: rest } } => CardOptional { layers: rest }
+  }
+}
+
+fn reconcile_optional_layers(left: Cardinality, right: Cardinality) -> Cardinality? {
+  if exact_optional_layers(left: left, right: right) { Present { value: left } } else { none }
+}
+
+fn node_with_cardinality(n: Node, c: Cardinality) -> Node {
+  Node { occurrence_identity: n.occurrence_identity, name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: c, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data }
+}
+
 fn with_optional_cardinality(n: Node) -> Node {
-  Node { occurrence_identity: n.occurrence_identity, name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data }
+  node_with_cardinality(n: n, c: compose_optional_layers(outer: CardOptional { layers: OneLayer }, inner: n.return_cardinality))
 }
 
 fn with_required_cardinality(n: Node) -> Node {
-  Node { occurrence_identity: n.occurrence_identity, name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data }
+  node_with_cardinality(n: n, c: peel_optional_layer_cardinality(c: n.return_cardinality))
 }
 
-fn join_optional_cardinality(left: Cardinality, right: Cardinality) -> Cardinality {
-  let merge_optional = left == CardOptional || right == CardOptional
-  if merge_optional { CardOptional } else { right }
+fn peel_optional_layer(n: Node) -> Node {
+  with_required_cardinality(n: n)
 }
 
-fn preserve_outer_optional_cardinality(outer: Node, inner: Node) -> Node {
-  let joined = join_optional_cardinality(outer.return_cardinality, inner.return_cardinality)
-  let needs_restore = joined == CardOptional && inner.return_cardinality != CardOptional
-  if needs_restore { with_optional_cardinality(n: inner) } else { inner }
+fn compose_optional_cardinality_onto_node(outer: Node, inner: Node) -> Node {
+  node_with_cardinality(n: inner, c: compose_optional_layers(outer: outer.return_cardinality, inner: inner.return_cardinality))
 }
 
 fn module_path_segments(path: String) -> List<String> {

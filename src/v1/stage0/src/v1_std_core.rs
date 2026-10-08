@@ -162,13 +162,22 @@ pub enum Connective {
     Arrow,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum OptionalLayers {
+    OneLayer,
+    MoreLayers {
+        inner: Rc<OptionalLayers>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum Cardinality {
     Required,
-    CardOptional,
+    CardOptional {
+        layers: Rc<OptionalLayers>,
+    },
 }
 
 #[derive(
@@ -5271,7 +5280,54 @@ pub fn pre_intern_tokens(tokens: Rc<Vec<Rc<Token>>>, table: Rc<InternTable>) -> 
         })
 }
 
-pub fn with_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
+pub fn cardinality_is_optional(c: Cardinality) -> bool {
+    match c {
+        Cardinality::Required => false,
+        Cardinality::CardOptional { layers: _ } => true,
+    }
+}
+
+pub fn exact_optional_layers(left: Cardinality, right: Cardinality) -> bool {
+    left == right
+}
+
+pub fn wrap_optional_layers_around(
+    outer: Rc<OptionalLayers>,
+    inner: Rc<OptionalLayers>,
+) -> Rc<OptionalLayers> {
+    match &*outer {
+        OptionalLayers::OneLayer => Rc::new(OptionalLayers::MoreLayers { inner }),
+        OptionalLayers::MoreLayers { inner: rest } => Rc::new(OptionalLayers::MoreLayers {
+            inner: wrap_optional_layers_around(rest.clone(), inner),
+        }),
+    }
+}
+
+pub fn compose_optional_layers(outer: Cardinality, inner: Cardinality) -> Cardinality {
+    match outer {
+        Cardinality::Required => inner,
+        Cardinality::CardOptional { layers: o } => match inner {
+            Cardinality::Required => Cardinality::CardOptional { layers: o },
+            Cardinality::CardOptional { layers: i } => Cardinality::CardOptional {
+                layers: wrap_optional_layers_around(o, i),
+            },
+        },
+    }
+}
+
+pub fn peel_optional_layer_cardinality(c: Cardinality) -> Cardinality {
+    match c {
+        Cardinality::Required => Cardinality::Required,
+        Cardinality::CardOptional { layers } => match &*layers {
+            OptionalLayers::OneLayer => Cardinality::Required,
+            OptionalLayers::MoreLayers { inner: rest } => Cardinality::CardOptional {
+                layers: rest.clone(),
+            },
+        },
+    }
+}
+
+pub fn node_with_cardinality(n: Rc<Node>, c: Cardinality) -> Rc<Node> {
     Rc::new(Node {
         occurrence_identity: n.occurrence_identity.clone(),
         name: n.name.clone(),
@@ -5282,7 +5338,7 @@ pub fn with_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
         connective: n.connective.clone(),
         params: n.params.clone(),
         inferred: n.inferred.clone(),
-        return_cardinality: Cardinality::CardOptional,
+        return_cardinality: c,
         uses: n.uses.clone(),
         body: n.body.clone(),
         transport: n.transport.clone(),
@@ -5296,61 +5352,40 @@ pub fn with_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
         declaration: n.declaration.clone(),
         expr_data: n.expr_data.clone(),
     })
+}
+
+pub fn with_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
+    node_with_cardinality(
+        n.clone(),
+        compose_optional_layers(
+            Cardinality::CardOptional {
+                layers: Rc::new(OptionalLayers::OneLayer),
+            },
+            n.return_cardinality.clone(),
+        ),
+    )
 }
 
 pub fn with_required_cardinality(n: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node {
-        occurrence_identity: n.occurrence_identity.clone(),
-        name: n.name.clone(),
-        ident: n.ident.clone(),
-        span: n.span.clone(),
-        ident_span: n.ident_span.clone(),
-        children: n.children.clone(),
-        connective: n.connective.clone(),
-        params: n.params.clone(),
-        inferred: n.inferred.clone(),
-        return_cardinality: Cardinality::Required,
-        uses: n.uses.clone(),
-        body: n.body.clone(),
-        transport: n.transport.clone(),
-        properties: n.properties.clone(),
-        type_annotation: n.type_annotation.clone(),
-        is_self_recursive: n.is_self_recursive.clone(),
-        has_non_tail_self_call: n.has_non_tail_self_call.clone(),
-        match_pattern: n.match_pattern.clone(),
-        module_item_kind: n.module_item_kind.clone(),
-        declaration_marker: n.declaration_marker.clone(),
-        declaration: n.declaration.clone(),
-        expr_data: n.expr_data.clone(),
-    })
+    node_with_cardinality(
+        n.clone(),
+        peel_optional_layer_cardinality(n.return_cardinality.clone()),
+    )
+}
+
+pub fn compose_optional_cardinality_onto_node(outer: Rc<Node>, inner: Rc<Node>) -> Rc<Node> {
+    node_with_cardinality(
+        inner.clone(),
+        compose_optional_layers(outer.return_cardinality.clone(), inner.return_cardinality.clone()),
+    )
 }
 
 pub fn join_optional_cardinality(left: Cardinality, right: Cardinality) -> Cardinality {
-    {
-        let merge_optional = ((left.clone() == Cardinality::CardOptional)
-            || (right.clone() == Cardinality::CardOptional));
-        if merge_optional.clone() {
-            Cardinality::CardOptional
-        } else {
-            right.clone()
-        }
-    }
+    compose_optional_layers(left, right)
 }
 
 pub fn preserve_outer_optional_cardinality(outer: Rc<Node>, inner: Rc<Node>) -> Rc<Node> {
-    {
-        let joined = join_optional_cardinality(
-            outer.return_cardinality.clone(),
-            inner.return_cardinality.clone(),
-        );
-        let needs_restore = ((joined.clone() == Cardinality::CardOptional)
-            && (inner.return_cardinality.clone() != Cardinality::CardOptional));
-        if needs_restore.clone() {
-            with_optional_cardinality(inner.clone())
-        } else {
-            inner.clone()
-        }
-    }
+    compose_optional_cardinality_onto_node(outer, inner)
 }
 
 pub fn module_path_segments(path: String) -> Rc<Vec<String>> {
