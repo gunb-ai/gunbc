@@ -314,7 +314,7 @@ fn collision_path_derived_run() -> Optional<ParseMemoFrameReplayRun> {
   }
 }
 
-fn parse_memo_minted_ids(tree: Node) -> List<OccurrenceId> {
+fn parse_memo_minted_ids(tree: Node) -> List<std.occurrence_identity.OccurrenceId> {
   fold_list(
     xs: node_subtree_nodes(root: tree),
     empty: std.algebra.Empty,
@@ -329,7 +329,7 @@ fn parse_memo_minted_ids(tree: Node) -> List<OccurrenceId> {
   )
 }
 
-fn occurrence_id_set_empty() -> Map<OccurrenceId, Bool> {
+fn occurrence_id_set_empty() -> Map<std.occurrence_identity.OccurrenceId, Bool> {
   empty_map()
 }
 
