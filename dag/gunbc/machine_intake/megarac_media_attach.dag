@@ -615,6 +615,20 @@ fn megarac_close_and_reobserve(
   return megarac_session_release_by_reobservation(before: before, after: after, csrf: csrf)
 }
 
+// THE SESSION REPLY'S DECODER, a pure function of the body so a claim supplies the body at this
+// interface: the one member read is CSRFToken, and a body that is not a JSON document or lacks it
+// reads as absent, which the caller refuses as MegaRacSessionTokenUnreadable.
+fn megarac_session_csrf(session_body: String) -> String? {
+  let session_doc = match parse_json_document(s: session_body) {
+    JsonDocumentParsed { value: v } => some_json_value(v)
+    JsonDocumentUnreadable { gap: _ } => none
+  }
+  return match session_doc {
+    Absent => none
+    Present { value: doc } => json_string_member(doc: doc, key: "CSRFToken")
+  }
+}
+
 fn megarac_attach_remote_image(
   bmc_host: NonEmptyStr,
   username: NonEmptyStr,
@@ -645,16 +659,7 @@ fn megarac_attach_remote_image(
     }
   }
 
-  let session_doc = match parse_json_document(s: session.body) {
-    JsonDocumentParsed { value: v } => some_json_value(v)
-    JsonDocumentUnreadable { gap: _ } => none
-  }
-  let csrf = match session_doc {
-    Absent => none
-    Present { value: doc } => json_string_member(doc: doc, key: "CSRFToken")
-  }
-
-  return match csrf {
+  return match megarac_session_csrf(session_body: session.body) {
     Absent =>
       megarac_release_unreadable_session(
         bmc_host: bmc_host,
