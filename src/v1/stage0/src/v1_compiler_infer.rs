@@ -25007,8 +25007,7 @@ pub fn node_is_list_concat_operand(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (crate::v1_compiler_infer_types::node_is_element_collection(n.clone(), source_indices.clone())
-        || ((n.connective.clone() == Connective::Disj)
-            && formal_type_is_container_name(n.clone(), source_indices.clone())))
+        || list_concat_list_or_free_monoid(n.clone(), source_indices.clone()))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
