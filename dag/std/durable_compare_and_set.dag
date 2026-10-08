@@ -142,16 +142,15 @@ type CasSlotObservation<T>
 // as an instruction to every other realization to describe itself in terms of scanning. What is NOT
 // claimed is that every CAS realization can produce this: most cannot, and one that never has to
 // discover a head should never construct it.
+// `bound` is the exhausted observation-attempt budget (pass count), never a
+// generation. A windowed list that ran eight verifies against a live head at
+// generation 1500 reports bound 8. Rendering it as a generation is a meaning
+// fork of the field and a fabricated diagnostic.
 type CasUnreadableSlot
   = CasUnreadableMalformed { detail: NonEmptyStr }
   | CasUnreadableContentMissing { referenced: ContentHash }
   | CasUnreadableReadRefused { detail: NonEmptyStr }
   | CasUnreadableObservationBoundExceeded { bound: Int }
-
-// `bound` is the exhausted observation-attempt budget (pass count), never a
-// generation. A windowed list that ran eight verifies against a live head at
-// generation 1500 reports bound 8. Rendering it as a generation is a meaning
-// fork of the field and a fabricated diagnostic.
 
 // THE ONE RENDERING OF AN UNREADABLE CAUSE, so a consumer that must report "the slot could not be
 // read" carries the kind it was refused with rather than a fixed sentence: the first approval
