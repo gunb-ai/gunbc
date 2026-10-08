@@ -20,7 +20,7 @@ use std::process::Command;
 
 use v1_compiler::cli_run::namespace_baseline::{
     blob_id_at, environment_load_refusal_text, evaluate_environment_in, kernel_set_serves_both,
-    load_parse_environment_at, materialize_revision_paths, EnvironmentLoadRefusal, LiveDagIndex,
+    load_parse_environment_at, materialize_revision_paths, EnvironmentLoadRefusal,
 };
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::extdeps_languages_dag_syntax::dag_parse_environment;
@@ -201,8 +201,6 @@ fn the_kernel_guard_compares_names_not_bytes() {
     git(&scratch, &["add", "-A"]);
     git(&scratch, &["commit", "--quiet", "-m", "baseline"]);
     let baseline = git(&scratch, &["rev-parse", "HEAD"]);
-    // One live-tree index for every closure this test asks, as the floor carries it.
-    let live = LiveDagIndex::new();
 
     let types_path = scratch.join(KERNEL_TYPES_PATH);
     let original = std::fs::read_to_string(&types_path).expect("read scratch types.dag");
@@ -233,7 +231,7 @@ fn the_kernel_guard_compares_names_not_bytes() {
         blob_id_at(&scratch, &body_rev, KERNEL_TYPES_PATH).ok(),
         "the body edit did not change the blob, so the probe does not exercise the name-set arm"
     );
-    match kernel_set_serves_both(&scratch, &body_rev, &baseline, &live) {
+    match kernel_set_serves_both(&scratch, &body_rev, &baseline) {
         Ok(true) => {}
         other => panic!(
             "a function-body edit to {KERNEL_TYPES_PATH} was judged to change the kernel set: {:?}",
@@ -248,7 +246,7 @@ fn the_kernel_guard_compares_names_not_bytes() {
         "the probe could not find the kernel set to widen"
     );
     let widened_rev = commit_variant("kernel name added", &widened);
-    match kernel_set_serves_both(&scratch, &widened_rev, &baseline, &live) {
+    match kernel_set_serves_both(&scratch, &widened_rev, &baseline) {
         Ok(false) => {}
         other => panic!(
             "a base revision declaring an extra kernel name was judged served by this binary's set: {:?}",
@@ -266,7 +264,7 @@ fn the_kernel_guard_compares_names_not_bytes() {
         "kernel set undeclared",
         &renamed.replace("map_get(kernel_type_set,", "map_get(zz_kernel_type_set,"),
     );
-    match kernel_set_serves_both(&scratch, &unreadable_rev, &baseline, &live) {
+    match kernel_set_serves_both(&scratch, &unreadable_rev, &baseline) {
         Err(EnvironmentLoadRefusal::KernelSetNotReadable { revision, cause }) => {
             assert_eq!(
                 revision, unreadable_rev,
@@ -287,7 +285,7 @@ fn the_kernel_guard_compares_names_not_bytes() {
     git(&scratch, &["rm", "--quiet", KERNEL_TYPES_PATH]);
     git(&scratch, &["commit", "--quiet", "-m", "types.dag removed"]);
     let headless_rev = git(&scratch, &["rev-parse", "HEAD"]);
-    match kernel_set_serves_both(&scratch, &baseline, &headless_rev, &live) {
+    match kernel_set_serves_both(&scratch, &baseline, &headless_rev) {
         Err(EnvironmentLoadRefusal::KernelSetNotReadable { revision, .. }) => assert_eq!(
             revision, headless_rev,
             "the absent-head refusal named the wrong revision"
@@ -297,7 +295,7 @@ fn the_kernel_guard_compares_names_not_bytes() {
         ),
     }
     // ...and an absent file on BOTH sides is not equality.
-    match kernel_set_serves_both(&scratch, &headless_rev, &headless_rev, &live) {
+    match kernel_set_serves_both(&scratch, &headless_rev, &headless_rev) {
         Err(EnvironmentLoadRefusal::KernelSetNotReadable { .. }) => {}
         other => panic!("two absent declaring files were judged to agree: {other:?}"),
     }

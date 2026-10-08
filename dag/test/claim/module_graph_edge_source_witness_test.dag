@@ -12,7 +12,7 @@ data witness_subject_note: String = "THE EDGE SOURCE IS A UNION OF TWO PRODUCERS
 
 WHY A FIXTURE TREE RATHER THAN HAND-BUILT LISTS. A unit test of union_import_resolution_fact_lists proves the fold and leaves the defect untouched, because the defect is in WHICH PRODUCERS the production function calls — the fold receives whatever it is handed. So this points the production function itself at a four-module fixture: consumer imports provider_imported and provider_shared explicitly, and reaches provider_referenced ONLY through a qualified container.member reference with no import. The union is then asserted at identity grain in both directions — every expected edge present, and no surplus target — so a missing arm reds on the reference-only edge and a doubled arm reds on the surplus.
 
-WHY THERE IS NO SHARED-PROVIDER DEDUP CONTROL HERE, stated rather than quietly omitted: the two producers are DISJOINT BY FILE. reference_resolution_facts emits nothing for a file that still carries import lines, precisely so the reference producer cannot over-connect the un-stripped tree, so one path cannot appear in both producers and a same-path duplicate is unconstructible through this seam. Asserting a dedup that cannot arise would be a tautological control. What IS asserted instead is the union at identity grain in both directions - every producer row reaches the union, and the union carries no row neither producer produced - which is the property the dedup exists to preserve."
+THE PRODUCERS OVERLAP, SO THE DEDUP HAS ITS OWN CONTROL. reference_resolution_facts answers import-bearing files too, so one path can appear in both producers and a dual-backed edge is constructible; witness_union_has_no_duplicate_target is the control that such an edge appears once. Beside it, the union is asserted at identity grain in both directions - every producer row reaches the union, and the union carries no row neither producer produced - which is the property the dedup exists to preserve."
 
 data fixture_roots: List<String> = ["dag/test/fixture/module_graph_edge_source"]
 
@@ -89,9 +89,14 @@ test fn witness_every_producer_row_reaches_the_union() -> Bool {
   fold(produced, init: true, f: fn(acc, t) { acc && contains_str(xs: edge_targets, want: t) })
 }
 
+// consumer_imported imports provider_imported AND reaches it by a qualified reference, so BOTH
+// producers carry that edge: the overlap is constructed, not asserted in prose. Deleting the dedup
+// makes the union carry it twice and this reds.
 test fn witness_union_has_no_duplicate_target() -> Bool {
   let edge_targets = targets_of(edges: fixture_edges())
-  count_of(xs: edge_targets, want: imported_provider) == 1
+  contains_str(xs: fact_targets(facts: fixture_import_facts()), want: imported_provider)
+    && contains_str(xs: fact_targets(facts: fixture_reference_facts()), want: imported_provider)
+    && count_of(xs: edge_targets, want: imported_provider) == 1
     && count_of(xs: edge_targets, want: referenced_provider) == 1
 }
 

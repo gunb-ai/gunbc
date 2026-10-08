@@ -3,9 +3,10 @@ import gunbc.site.document { site_document_over, site_styles, site_styles_rules,
 import std.list { distinct_by_key }
 import gunbc.site.layout { site_layout_rules }
 import gunbc.roadmap_surface_style { roadmap_surface_rules }
-import gunbc.design.material { BuildRule, StaticRule, ResponseRule, decl }
+import gunbc.design.material { BuildRule, StaticRule, ResponseRule, MediaRule, decl }
 import gunbc.design.theme_transition { rule_decls, unthemed_color_decls, untokened_length_decls }
 import extdeps.languages.css.selectors { RawSelector, selector_subject_wire }
+import extdeps.languages.css.media_queries { coarse_pointer, reduced_motion, media_condition_wire }
 import extdeps.languages.css.properties { Color, Padding, BoxShadow, css_property_wire }
 import extdeps.languages.html { serialize_html_source }
 
@@ -14,6 +15,7 @@ fn static_selectors(rules: List<BuildRule>) -> List<String> {
     StaticRule { selector, decls: _ } => [selector_subject_wire(s: selector)]
     ResponseRule { subject: _, shape: _, trigger: _, transition_props: _, timing: _, base_decls: _, response_decls: _ } => []
     AmbientRule { selector: _, cycle: _, timing: _, repeat: _ } => []
+    MediaRule { condition, selector, decls: _ } => [join([media_condition_wire(c: condition), " ", selector_subject_wire(s: selector)], "")]
   })
 }
 fn distinct_names(names: List<String>) -> Bool {
@@ -31,6 +33,15 @@ test fn emitted_shared_and_surface_rules_have_one_owner() -> Bool {
 test fn duplicate_authoring_is_detected() -> Bool {
   let row = StaticRule { selector: RawSelector { text: ".duplicate" }, decls: [] }
   !distinct_names(names: static_selectors(rules: [row, row]))
+}
+// A selector owned once per CONDITION: the same selector re-stated under a media condition is the
+// conditioned override, not a second owner, while two rows for one selector under one condition are.
+test fn media_rule_ownership_is_per_condition() -> Bool {
+  let base = StaticRule { selector: RawSelector { text: ".owned" }, decls: [] }
+  let touch = MediaRule { condition: coarse_pointer, selector: RawSelector { text: ".owned" }, decls: [] }
+  let still = MediaRule { condition: reduced_motion, selector: RawSelector { text: ".owned" }, decls: [] }
+  distinct_names(names: static_selectors(rules: [base, touch, still]))
+    && !distinct_names(names: static_selectors(rules: [base, touch, touch]))
 }
 test fn shared_and_surface_rules_are_censused_at_the_emitted_boundary() -> Bool {
   let rules = surface_rules()
