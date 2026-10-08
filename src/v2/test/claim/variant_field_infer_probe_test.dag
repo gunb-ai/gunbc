@@ -345,7 +345,7 @@ fn vfp_arm_body_second(m: Optional<Node>) -> Optional<Node> {
 // conventions by hand made the probe a second copy of the lowering rather than an observation of
 // it, and its binder minting refused on exactly the conventions it copied (DESIGN 5: the reading
 // must come from the thing itself). The resolve-side and refusal controls ride the same route
-// (vfp_partial_src; vfp_nullary_sum_src and vfp_fx2_src sit below).
+// (vfp_partial_src).
 
 data vfp_fixture_src: String = "module vfp_fixture\n\ntype ParseTree {\n  root: Int\n}\n\ntype Verdict = Pass { at: Int } | Fail\n\nfn make() -> Verdict {\n  Pass { at: 1 }\n}\n\nfn unbox(s: Verdict) -> Int {\n  match s {\n    Pass { at: b1 } => b1\n    Fail => 0\n  }\n}\n\nfn pick(t: ParseTree) -> Int {\n  t.root\n}"
 
@@ -667,9 +667,7 @@ test fn vfp_the_partial_fixture_still_mints_its_variant_row_holds() -> Bool {
 // THE BISECT FIXTURES THE LEDGER CITES (temporary; they go out when their rows' follow-ups
 // land): the nullary single-arm sum the single_arm_sum_parses_as_an_alias row's 2026-10-06
 // receipt cites, and the recursive record the grounding-cascade row cites.
-data vfp_nullary_sum_src: String = "module p\n\ntype A = MkA\n\nfn f() -> A { MkA }"
 
-data vfp_fx2_src: String = "module p\n\ntype N = Wrap { seed: N }\n\nfn f(a: N) -> N {\n  a\n}"
 
 // TEMPORARY DECODE INSTRUMENT -- the one reading for the combined fixture: prints every field
 // through `gunbc run --function` so the actual values are readable, not guessed. DELETED WITH THE
