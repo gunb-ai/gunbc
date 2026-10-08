@@ -6776,8 +6776,7 @@ fn parse_production_emitted_identity_optional(node: Node) -> Optional<Symbol> {
 
 fn dag_node_is_fn_decl(node: Node) -> Bool {
   match parse_production_emitted_identity_optional(node: node) {
-    Present { value: id } =>
-      (id == ^dag_surface_fn_decl) || (id == ^dag_surface_test_fn_decl)
+    Present { value: id } => id == ^dag_surface_fn_decl
     Absent => false
   }
 }
@@ -7648,9 +7647,17 @@ fn dag_authored_name_is_parse_production_projection(name: Symbol) -> Bool {
 
 // Per-edge skip by identity only (DESIGN §5: refuse, never widen). A non-binder record
 // field that is an Atom or Disj must still be member_not_a_binder. fn-decl is the
-// production identity dag_surface_fn_decl, not a Conj-shape guess.
+// production identity dag_surface_fn_decl (unchanged meaning for other callers).
+// test-fn identity lives only here, not in dag_node_is_fn_decl.
 fn dag_node_is_namespace_member_target(node: Node) -> Bool {
-  dag_node_is_module_surface(node: node) || dag_node_is_fn_decl(node: node)
+  if dag_node_is_module_surface(node: node) || dag_node_is_fn_decl(node: node) {
+    true
+  } else {
+    match parse_production_emitted_identity_optional(node: node) {
+      Present { value: id } => id == ^dag_surface_test_fn_decl
+      Absent => false
+    }
+  }
 }
 
 // The one constructor of the marker node: emitted by namespace_graft_build_body_conj.
