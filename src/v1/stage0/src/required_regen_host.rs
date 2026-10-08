@@ -3977,12 +3977,29 @@ fn current_exe_on_disk() -> Result<PathBuf, String> {
 /// the exec target: `/proc/self/fd/N` names this inode, so a later replacement of the path
 /// cannot make the executed image differ from the hashed one.
 fn open_exec_target(path: &Path) -> Result<(fs::File, String), String> {
-    use std::io::Read;
     let mut file = fs::File::open(path).map_err(|e| format!("open {}: {e}", path.display()))?;
+    let digest = digest_open_file(&mut file)?;
+    Ok((file, digest))
+}
+
+/// Digest of the bytes of an open file, read from its start.
+fn digest_open_file(file: &mut fs::File) -> Result<String, String> {
+    use std::io::{Read, Seek};
+    file.rewind().map_err(|e| format!("rewind: {e}"))?;
     let mut bytes = std::vec::Vec::new();
     file.read_to_end(&mut bytes)
-        .map_err(|e| format!("read {}: {e}", path.display()))?;
-    Ok((file, bytes_digest(&bytes)))
+        .map_err(|e| format!("read: {e}"))?;
+    Ok(bytes_digest(&bytes))
+}
+
+/// The RUNNING image: `/proc/self/exe` opened directly, no installed-pathname reopen and no
+/// ` (deleted)` strip. Three identities stay separate: the build output (`current_exe_digest`,
+/// the installed path), the opened exec target (`open_exec_target`, carried as `built_exe`),
+/// and this one.
+fn running_image_digest() -> Result<String, String> {
+    let mut file =
+        fs::File::open("/proc/self/exe").map_err(|e| format!("open /proc/self/exe: {e}"))?;
+    digest_open_file(&mut file)
 }
 
 fn current_exe_digest() -> Result<String, String> {
@@ -5748,7 +5765,7 @@ pub fn run_regen_round_cost(
     let tree = git_head_sha(&workspace)?;
     let tree_dirty = git_tree_dirty(&workspace)?;
     let source_identity = source_identity(&workspace, &tree)?;
-    let exe_before = current_exe_digest()?;
+    let exe_before = running_image_digest()?;
 
     // Recover an interrupted transaction before attempting to build or observe a new subject.
     restore_regen_convergence_journal(&workspace)?;
@@ -6312,6 +6329,53 @@ mod regen_round_cost_tests {
 
     fn current_digest_of(p: &Path) -> String {
         bytes_digest(&fs::read(p).unwrap())
+    }
+
+    #[test]
+    fn running_image_is_read_from_proc_self_exe_not_the_installed_path() {
+        let direct = bytes_digest(&fs::read("/proc/self/exe").unwrap());
+        assert_eq!(running_image_digest().unwrap(), direct);
+    }
+
+    #[test]
+    fn modify_after_verify_and_installed_running_mismatch_refuse() {
+        let c = cost(1, 1, None);
+        // the first image hashed inode I = B and carried it; another writer then rewrote I
+        let dir = std::env::temp_dir().join(format!("rrc-mav-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("img");
+        fs::write(&path, b"B").unwrap();
+        let (_target, built) = open_exec_target(&path).unwrap();
+        let carry = SeedHandoff {
+            cost: c.clone(),
+            source: "S".into(),
+            built_exe: built.clone(),
+        };
+        // rewrite the same inode, then put B back at the installed path
+        let mut rewritten = fs::OpenOptions::new().write(true).open(&path).unwrap();
+        use std::io::Write as _;
+        rewritten.write_all(b"C").unwrap();
+        let running = digest_open_file(&mut fs::File::open(&path).unwrap()).unwrap();
+        assert_ne!(
+            running, built,
+            "the rewrite is visible through the running inode"
+        );
+        // receiver: running image C, installed path B again -> the old path-reopen said Proceed
+        assert!(matches!(
+            decide_seed_handoff(Some(&carry), &running, &built, "S", &c),
+            Err(SeedHandoffRefusal::WrongArtifactAcrossHandoff { .. })
+        ));
+        // installed/running mismatch with the carried artifact running
+        assert!(matches!(
+            decide_seed_handoff(Some(&carry), &built, &running, "S", &c),
+            Err(SeedHandoffRefusal::ExecutableReplacedAfterHandoff { .. })
+        ));
+        // same artifact everywhere proceeds
+        assert!(matches!(
+            decide_seed_handoff(Some(&carry), &built, &built, "S", &c),
+            Ok(SeedHandoffDecision::Proceed)
+        ));
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
