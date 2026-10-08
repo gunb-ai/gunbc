@@ -18,7 +18,8 @@ import gunbc.durable_cas_file_store {
   admit_cas_attempt, file_compare_and_set, DefaultAccessCreateOnly, observe_cas_slot_state, cas_file_slot_path,
   file_compare_and_set_windowed, observe_cas_slot_state_windowed, CasGenerationWindow,
   cas_generation_window, CasGenerationWindowAdmitted, CasGenerationWindowTooNarrow,
-  CasSlotProbe, ProbedHead, cas_probe_gallop,
+  CasSlotProbe, ProbedHead, cas_probe_gallop, cas_reclaim_below,
+  CasReclaimed, CasReclamationIncomplete, CasReclamationUnlisted, CasReclamationNotDeclared, CasReclamationNotCommitted,
 }
 
 // Wet controls for the file-backed CAS provider. Hermetic mint and classification
@@ -320,6 +321,35 @@ test fn a_window_observation_at_generation_1500_terminates_by_real_execution() -
   }
   let removed = shell.Remove.RecursiveForce(path: root_path)
   planted && observed && removed.success
+}
+
+// A DELETE THAT FAILS MUST NOT PUNCH A HOLE. Independent reclaim of every generation at or below
+// the floor could remove G+1 while G stayed, so named window verify would report G as head. This
+// plants G as a nonempty directory (unlink refuses) and G+1 as a file, then reclaims at head 4
+// with k=2. The later eligible generation must still read present.
+test fn reclaim_stops_before_a_later_generation_when_an_earlier_delete_fails_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let root = root_path as NonEmptyStr
+  let key = "hold-typed_module" as NonEmptyStr
+  let path1 = cas_file_slot_path(root: root, key: key, generation: 1)
+  let planted = shell.Mkdir.NewOwnerOnly(path: path1).success
+    && Filesystem.WriteCreateNew(path: concat(path1, "/stuck"), content: "x").success
+    && plant_generation(root: root, key: key, generation: 2, payload: "g2")
+    && plant_generation(root: root, key: key, generation: 3, payload: "g3")
+    && plant_generation(root: root, key: key, generation: 4, payload: "g4")
+  let reclaimed = match window_of(k: 2) {
+    Absent => false
+    Present { value: w } => match cas_reclaim_below(root: root, key: key, window: w, head: 4) {
+      CasReclamationIncomplete { removed: _, failed: f } => count(f) == 1
+      CasReclaimed { removed: _ } => false
+      CasReclamationUnlisted { cause: _ } => false
+      CasReclamationNotDeclared => false
+      CasReclamationNotCommitted => false
+    }
+  }
+  let successor_still_there = Filesystem.Read(path: cas_file_slot_path(root: root, key: key, generation: 2)).success
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  planted && reclaimed && successor_still_there && removed.success
 }
 
 // The window's floor is construction: k < 2 has no admitted window.

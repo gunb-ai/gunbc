@@ -516,6 +516,13 @@ fn cas_window_max_generation(generations: List<CasGeneration>) -> CasGeneration?
   })
 }
 
+fn cas_window_min_generation(generations: List<CasGeneration>) -> CasGeneration? {
+  fold(generations, init: none, f: (best, g) => match best {
+    Absent => Present { value: g }
+    Present { value: b } => if cas_generation_count(g: g) < cas_generation_count(g: b) { Present { value: g } } else { best }
+  })
+}
+
 data cas_window_observation_attempts: List<Int> = [1, 2, 3, 4, 5, 6, 7, 8]
 
 // ONE LIST-AND-VERIFY PASS. Recursion here was the unbounded arm: a window whose listed max is
@@ -1098,23 +1105,53 @@ type CasFileWrite {
   reclamation: CasWindowReclamation
 }
 
+type CasReclaimProgress {
+  remaining: List<CasGeneration>
+  removed: List<CasGeneration>
+  failed: List<CasGenerationReclaimFailure>
+  stopped: Bool
+}
+
+// ASCENDING, AND STOP AT THE FIRST HOST REFUSAL. Independent deletes of every generation at or
+// below the floor could remove G+1 while G survived, which punches a hole: named window verify
+// (G present and G+1 absent) would then report G as head while a later generation was live.
+// Deleting in generation order and leaving every later eligible generation in place when one
+// delete fails keeps the surviving prefix contiguous, so that two-read proof cannot mint a
+// stale head.
 fn cas_reclaim_below(root: NonEmptyStr, key: NonEmptyStr, window: CasGenerationWindow, head: CasGeneration) -> CasWindowReclamation
   admit_callers: [
     decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set_retained"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_settle_slot"),
+    decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "reclaim_stops_before_a_later_generation_when_an_earlier_delete_fails_by_real_execution"),
   ]
 {
   match cas_window_generations(root: root, key: key) {
     CasWindowGenerationsUnlisted { cause: c } => CasReclamationUnlisted { cause: c }
     CasWindowGenerationsListed { generations: gs } => {
       let floor = cas_generation_count(g: head) - window.k
-      let attempts = gs |> filter(g => cas_generation_count(g: g) <= floor) |> map(g => {
-        let d = Filesystem.Delete(path: cas_file_slot_path(root: root, key: key, generation: g))
-        CasGenerationDeleteAttempt { generation: g, success: d.success, error: d.error }
-      })
-      let removed = attempts |> filter(t => t.success) |> map(t => t.generation)
-      let failed = attempts |> filter(t => !t.success) |> map(t => CasGenerationReclaimFailure { generation: t.generation, host_error: t.error })
-      if count(failed) == 0 { CasReclaimed { removed: removed } } else { CasReclamationIncomplete { removed: removed, failed: failed } }
+      let eligible = gs |> filter(g => cas_generation_count(g: g) <= floor)
+      let walk = fold(eligible, init: CasReclaimProgress { remaining: eligible, removed: [], failed: [], stopped: false }, f: (acc, _) =>
+        if acc.stopped { acc } else {
+          match cas_window_min_generation(generations: acc.remaining) {
+            Absent => acc
+            Present { value: g } => {
+              let rest = acc.remaining |> filter(x => cas_generation_count(g: x) != cas_generation_count(g: g))
+              let d = Filesystem.Delete(path: cas_file_slot_path(root: root, key: key, generation: g))
+              if d.success {
+                CasReclaimProgress { remaining: rest, removed: acc.removed |> list_push(g), failed: acc.failed, stopped: false }
+              } else {
+                CasReclaimProgress {
+                  remaining: rest,
+                  removed: acc.removed,
+                  failed: [CasGenerationReclaimFailure { generation: g, host_error: d.error }],
+                  stopped: true,
+                }
+              }
+            }
+          }
+        }
+      )
+      if count(walk.failed) == 0 { CasReclaimed { removed: walk.removed } } else { CasReclamationIncomplete { removed: walk.removed, failed: walk.failed } }
     }
   }
 }
