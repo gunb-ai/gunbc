@@ -3606,9 +3606,9 @@ fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBi
 }
 
 /// Scratch index for one fixture-closure extension. Same `source_files` as the process-shared
-/// slot; own caches, dropped with the loader. Seeded with a *copy* of the shared slot's already
-/// computed edge/parse rows so a census does not cold-walk the gate closure, then writes stay on
-/// the scratch (MegaRAC rows never land on the fold's index and do not outlive the compile).
+/// slot; own caches, dropped with the loader. Reads fall through to the shared slot; writes stay
+/// on the scratch (MegaRAC rows never land on the fold's index and do not outlive the compile).
+/// parse_cache is not underlaid: those rows are intern-paired with the slot that parsed them.
 /// RFM `fixture_compile_retained_on_the_process_shared_index`.
 fn scratch_index_for_fixture_closure_extension() -> Result<MultiEntryIndex, String> {
     let layers = witness_layer_roots();
@@ -3617,26 +3617,8 @@ fn scratch_index_for_fixture_closure_extension() -> Result<MultiEntryIndex, Stri
         shared.source_files.clone(),
         &shared.source_roots,
     );
-    seed_fixture_scratch_from_shared(&scratch, &shared);
+    *scratch.scratch_underlay.borrow_mut() = Some(shared);
     Ok(scratch)
-}
-
-fn seed_fixture_scratch_from_shared(scratch: &MultiEntryIndex, shared: &MultiEntryIndex) {
-    if let Some(edges) = shared.both_closure_edges.borrow().as_ref() {
-        *scratch.both_closure_edges.borrow_mut() = Some(Rc::new((**edges).clone()));
-    }
-    scratch
-        .parsed_references
-        .borrow_mut()
-        .clone_from(&*shared.parsed_references.borrow());
-    scratch
-        .bare_reference_admission
-        .borrow_mut()
-        .clone_from(&*shared.bare_reference_admission.borrow());
-    scratch
-        .parse_cache
-        .borrow_mut()
-        .clone_from(&*shared.parse_cache.borrow());
 }
 
 /// Authored-import seeds of an in-memory fixture: the corpus modules its `import` lines name,
@@ -8417,6 +8399,11 @@ fn parsed_file_references_of(
     if let Some(hit) = index.parsed_references.borrow().get(&file) {
         return hit.clone();
     }
+    if let Some(base) = index.scratch_underlay.borrow().as_ref() {
+        if let Some(hit) = base.parsed_references.borrow().get(&file) {
+            return hit.clone();
+        }
+    }
     let module_names = pool_module_names(index);
     let self_module = extract_module_path(&sf.content).unwrap_or_default();
     index
@@ -8785,6 +8772,11 @@ fn admit_bare_references_of_file(
     let file = workspace_relative_repo_path(&source.path);
     if let Some(verdict) = index.bare_reference_admission.borrow().get(&file) {
         return verdict.clone();
+    }
+    if let Some(base) = index.scratch_underlay.borrow().as_ref() {
+        if let Some(verdict) = base.bare_reference_admission.borrow().get(&file) {
+            return verdict.clone();
+        }
     }
     let verdict = if source_declares_import_lines(&source.content) {
         Ok(())
@@ -9311,6 +9303,13 @@ fn build_both_closure_edge_index(
     if let Some(hit) = index.both_closure_edges.borrow().as_ref() {
         if hit.ref_out.contains_key(&file) {
             return Ok(hit.clone());
+        }
+    }
+    if let Some(base) = index.scratch_underlay.borrow().as_ref() {
+        if let Some(hit) = base.both_closure_edges.borrow().as_ref() {
+            if hit.ref_out.contains_key(&file) {
+                return Ok(hit.clone());
+            }
         }
     }
     let ref_started = std::time::Instant::now();
@@ -12637,6 +12636,8 @@ pub struct MultiEntryIndex {
     live_read_manifest: RefCell<Option<Result<Rc<LiveReadSelectionManifest>, String>>>,
     /// Only produced rows; consumers needing every row call whole_pool_closure_edge_index.
     both_closure_edges: RefCell<Option<Rc<BothClosureEdgeIndex>>>,
+    /// Fixture-scratch read-through: the process-shared index. Writes stay on this index.
+    scratch_underlay: RefCell<Option<Rc<MultiEntryIndex>>>,
     /// Admission and edge selection need declaration heads, not resolved signatures.
     /// None identifies the whole-pool name census; Some(root) the existing tree/import view.
     closure_name_censuses: RefCell<HashMap<Option<String>, Rc<SymbolIndex>>>,

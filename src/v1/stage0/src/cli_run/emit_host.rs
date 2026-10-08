@@ -4619,6 +4619,73 @@ mod fixture_closure_union_tests {
             "full last-wins flatten must be the leak (control that the overlay is doing work)"
         );
     }
+
+    /// A diamond visited under an earlier parent must still last-wins under a later
+    /// parent's own parent order (sibling walks do not share `seen`).
+    #[test]
+    fn diamond_reentered_under_later_parent_last_wins_with_that_parent() {
+        let k = Rc::new(v1_compiler_compile::SourceFile {
+            path: "chain_k.dag".to_string(),
+            content: "module chain.k\ntype Foo = { k: Int }\n".to_string(),
+        });
+        let d = Rc::new(v1_compiler_compile::SourceFile {
+            path: "chain_d.dag".to_string(),
+            content: "module chain.d\nimport chain.k { Foo }\ntype D = { d: Int }\n".to_string(),
+        });
+        let u = Rc::new(v1_compiler_compile::SourceFile {
+            path: "chain_u.dag".to_string(),
+            content: "module chain.u\ntype Foo = { u: Int }\n".to_string(),
+        });
+        let unique = Rc::new(v1_compiler_compile::SourceFile {
+            path: "chain_unique.dag".to_string(),
+            content: "module chain.unique\nimport chain.u { Foo }\ntype U = { x: Int }\n"
+                .to_string(),
+        });
+        let a = Rc::new(v1_compiler_compile::SourceFile {
+            path: "chain_a.dag".to_string(),
+            content: "module chain.a\nimport chain.d { D }\ntype A = { a: Int }\n".to_string(),
+        });
+        let b = Rc::new(v1_compiler_compile::SourceFile {
+            path: "chain_b.dag".to_string(),
+            content: "module chain.b\nimport chain.unique { U }\nimport chain.d { D }\ntype B = { b: Int }\n"
+                .to_string(),
+        });
+        let user = Rc::new(v1_compiler_compile::SourceFile {
+            path: "chain_user.dag".to_string(),
+            content: "module chain.user\nimport chain.a { A }\nimport chain.b { B }\nfn use_foo(x: Foo) -> Int { x.k }\n"
+                .to_string(),
+        });
+        let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(im::vector![
+            k, d, u, unique, a, b, user
+        ]));
+        assert!(
+            resolved.diagnostics.is_empty(),
+            "diamond last-wins must typecheck: {:?}",
+            resolved.diagnostics
+        );
+        let graph = resolved.graph.clone().expect("resolved graph");
+        let user_mod = graph
+            .modules
+            .iter()
+            .find(|m| m.type_env.module_path == "chain.user")
+            .expect("user module");
+        let looked = crate::v1_compiler_infer_env::lookup_binding_on_chain(
+            user_mod.type_env.clone(),
+            "Foo".to_string(),
+        )
+        .expect("Foo");
+        let field = looked
+            .resolved
+            .children
+            .iter()
+            .next()
+            .map(|ch| ch.name.as_str())
+            .expect("Foo field");
+        assert_eq!(
+            field, "k",
+            "later parent chain.b last-wins chain.d/chain.k over chain.unique/chain.u"
+        );
+    }
 }
 
 #[cfg(test)]

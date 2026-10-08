@@ -1162,19 +1162,22 @@ fn lookup_binding_on_chain_seen(
                             std::option::Option::None => env.parents.iter().cloned().fold(
                                 ChainBindingWalk {
                                     binding: std::option::Option::None,
-                                    seen,
+                                    seen: seen.clone(),
                                 },
                                 |st, parent| {
-                                    let nxt =
-                                        lookup_binding_on_chain_seen(parent, name.clone(), st.seen);
+                                    let nxt = lookup_binding_on_chain_seen(
+                                        parent,
+                                        name.clone(),
+                                        seen.clone(),
+                                    );
                                     match nxt.binding {
                                         Some(binding) => ChainBindingWalk {
                                             binding: Some(binding),
-                                            seen: nxt.seen,
+                                            seen: seen.clone(),
                                         },
                                         std::option::Option::None => ChainBindingWalk {
                                             binding: st.binding,
-                                            seen: nxt.seen,
+                                            seen: seen.clone(),
                                         },
                                     }
                                 },
