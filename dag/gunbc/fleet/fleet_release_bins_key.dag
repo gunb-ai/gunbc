@@ -161,6 +161,8 @@ type ReleaseBinsProduct {
   roster: List<String>
   build_line: String
   diagnostics: ReleaseBinsDiagnostics
+  sidecars: List<String>
+  sidecar_writer: List<String>
 }
 
 // WHAT THE BUILD SAID, CARRIED AS A PACK MEMBER. A build whose warnings were dropped is not the build
@@ -173,16 +175,27 @@ type ReleaseBinsDiagnostics
   = NoBuildDiagnostics
   | BuildLogMember { member: String, source: String }
 
+// A SIDECAR IS A DATA MEMBER THE PRODUCING JOB WROTE INTO target/release BESIDE THE BINARIES, named by
+// product and carried by the pack under the same digest, listing and verification as every member
+// (it is not executable, so it is not in the roster the executable checks run over). A consumer
+// promotes it only after the whole pack verified -- including ConsumerSourceTreeMismatch -- so its
+// presence beside a restored binary is evidence the pack was keyed on this tree. The compiler pair
+// uses one to carry the checker's input record (claim_executor --write-checker-inputs), the form of
+// cargo's dep-info that survives a change of checkout, so the floor's checker-subject rule can run
+// against a restored binary without a rebased copy of the old evidence.
 fn release_bins_pack_members(product: ReleaseBinsProduct) -> List<String> {
-  match product.diagnostics {
-    NoBuildDiagnostics => product.roster
-    BuildLogMember { member: m, source: _ } => concat(product.roster, [m])
-  }
+  concat(
+    match product.diagnostics {
+      NoBuildDiagnostics => product.roster
+      BuildLogMember { member: m, source: _ } => concat(product.roster, [m])
+    },
+    product.sidecars,
+  )
 }
 
 // THE FLEET PACK: every enrolled release binary, built by fleet-converge's build job.
 fn fleet_release_bins_product() -> ReleaseBinsProduct {
-  ReleaseBinsProduct { kind: release_bins_key_kind, roster: ci_floor_required_artifact_names(), build_line: ci_release_build_line(), diagnostics: NoBuildDiagnostics }
+  ReleaseBinsProduct { kind: release_bins_key_kind, roster: ci_floor_required_artifact_names(), build_line: ci_release_build_line(), diagnostics: NoBuildDiagnostics, sidecars: [], sidecar_writer: [] }
 }
 
 // THE COMPILER PAIR: the two binaries the required floor builds anyway (gunbc.ci_release_bins
@@ -191,12 +204,18 @@ fn fleet_release_bins_product() -> ReleaseBinsProduct {
 // consumes, so the key names the build the floor ran. It is the product the merge queue produces
 // as a candidate, fleet-desired publishes, and hw boot consumes -- none of which needs the other
 // fourteen binaries.
+// claim_executor's own spelling of the sidecar beside it: <stem>_checker_inputs
+// (v1_compiler cli_run checker_dependency restored_checker_inputs_path).
+data compiler_pair_checker_inputs_sidecar: String = "claim_executor_checker_inputs"
+
 fn compiler_pair_release_product() -> ReleaseBinsProduct {
   ReleaseBinsProduct {
     kind: "gunbc.compiler_pair_release_bins",
     roster: ci_floor_invoked_bins,
     build_line: repo_self_build_command(bins: ci_floor_invoked_bins),
     diagnostics: BuildLogMember { member: "build_diagnostics", source: floor_attempt_command_log_filename },
+    sidecars: [compiler_pair_checker_inputs_sidecar],
+    sidecar_writer: ["./target/release/claim_executor", "--write-checker-inputs"],
   }
 }
 data release_bins_admitted_producer_ref: String = "refs/heads/main"
@@ -316,6 +335,7 @@ type ReleaseBinsRefusal
   | ConsumerPreimageKeyMismatch
   | ConsumerSourceTreeMismatch
   | BuildDiagnosticsMissing { file: String }
+  | SidecarMissing { file: String }
   | ConsumerProductKindMismatch { kind: String }
 
 fn release_bins_refusal_name(refusal: ReleaseBinsRefusal) -> String {
@@ -346,6 +366,7 @@ fn release_bins_refusal_name(refusal: ReleaseBinsRefusal) -> String {
     ConsumerPreimageKeyMismatch => "ConsumerPreimageKeyMismatch"
     ConsumerSourceTreeMismatch => "ConsumerSourceTreeMismatch"
     BuildDiagnosticsMissing { file: _ } => "BuildDiagnosticsMissing"
+    SidecarMissing { file: _ } => "SidecarMissing"
     ConsumerProductKindMismatch { kind: _ } => "ConsumerProductKindMismatch"
   }
 }
@@ -378,6 +399,7 @@ fn release_bins_refusal_message(refusal: ReleaseBinsRefusal) -> String {
     ConsumerPreimageKeyMismatch => "the downloaded preimage does not hash to the build job's key"
     ConsumerSourceTreeMismatch => "the pack was keyed on a different source tree than this job's checkout"
     ConsumerProductKindMismatch { kind: k } => join(["the pack's preimage does not name the product kind ", k, " this consumer asked for; it is another product's pack"], "")
+    SidecarMissing { file: f } => join(["the product requires the sidecar ", f, " as a pack member and the producing job left none; a pack without it is incomplete, not smaller"], "")
     BuildDiagnosticsMissing { file: f } => join(["the product requires the build log ", f, " as a pack member and the build step left none; a pack without its diagnostics is incomplete, not smaller"], "")
   }
 }
@@ -801,11 +823,11 @@ fn release_bins_member_checks(site: ReleaseBinsVerifySite, dir: Node, product: R
 }
 
 fn release_bins_promote_all(dir: Node, product: ReleaseBinsProduct) -> List<Node> {
-  [
+  concat([
     cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), rooted(file: "target/release")]),
     in_dir(dir: rooted(file: "target/release"), command: cmd(ws: concat([lit(t: "rm"), lit(t: "-f")], release_bins_roster_words(product: product)))),
     in_dir(dir: dir, command: cmd(ws: concat(concat([lit(t: "cp"), lit(t: "-p")], release_bins_roster_words(product: product)), [rooted(file: "target/release/")]))),
-  ]
+  ], map(product.sidecars, f => in_dir(dir: dir, command: cmd(ws: [lit(t: "cp"), lit(t: "-p"), lit(t: f), rooted(file: "target/release/")]))))
 }
 
 fn release_bins_verify_pack(site: ReleaseBinsVerifySite, archive: Node, manifest: Node, dir: Node, product: ReleaseBinsProduct) -> List<Node> {
@@ -1108,6 +1130,7 @@ fn release_bins_pack_statements(product: ReleaseBinsProduct) -> List<Node> {
       cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), var(n: "STAGE")]),
     ],
     release_bins_diagnostics_capture(product: product),
+    release_bins_sidecar_capture(product: product),
     [
       bash_build_with_redir_to_file(
         inner: bash_build_subshell_from_stmts(stmts: [bash_build_and_then(
@@ -1136,6 +1159,25 @@ fn release_bins_diagnostics_capture(product: ReleaseBinsProduct) -> List<Node> {
       or_refuse(check: test_words(ws: [lit(t: "-s"), rooted(file: src)]), r: BuildDiagnosticsMissing { file: src }),
       cmd(ws: [lit(t: "cp"), rooted(file: src), rooted(file: join(["target/release/", m], ""))]),
     ]
+  }
+}
+
+// THE SIDECARS ARE ALREADY IN target/release (the producing job wrote them there), so capture only
+// requires each to exist non-empty: a product that declares a sidecar and finds none refuses.
+fn release_bins_sidecar_capture(product: ReleaseBinsProduct) -> List<Node> {
+  concat(release_bins_sidecar_writes(product: product), map(product.sidecars, f => or_refuse(
+    check: test_words(ws: [lit(t: "-s"), rooted(file: join(["target/release/", f], ""))]),
+    r: SidecarMissing { file: f },
+  )))
+}
+
+// THE WRITER RUNS IN THE SHARED PACK PATH, so every producer of the product (the witnesses seed job
+// and fleet-converge's CompilerPairOnly modes alike) emits the sidecar from the binary it just built;
+// a product whose writer is empty declares sidecars it expects the build itself to have left.
+fn release_bins_sidecar_writes(product: ReleaseBinsProduct) -> List<Node> {
+  match length(xs: product.sidecar_writer) == 0 {
+    true => []
+    false => map(product.sidecars, f => cmd(ws: concat(map(product.sidecar_writer, w => lit(t: w)), [rooted(file: join(["target/release/", f], ""))])))
   }
 }
 
