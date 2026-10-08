@@ -1367,11 +1367,15 @@ fn managed_reference_same(a: ManagedCredentialReference, b: ManagedCredentialRef
     && a.credential_epoch == b.credential_epoch
 }
 
-// THE OBSERVATION IS THE PAYLOAD, NOT A START TIME. `==` is the language's structural relation on
-// this closed record, so a new field cannot fall out of a hand-picked list. controller_clock is
-// ControllerClockReading?: gunbc.recurring_failure_mode optional_equality_answers_by_representation
-// says interpreter `==` over Optionals can answer by representation, not value, and a record `==`
-// inherits that field. Zero the Optional, compare the rest by `==`, and match the clock explicitly.
+// THE OBSERVATION IS THE PAYLOAD, NOT A START TIME. Record `==` is the language's structural
+// relation on the closed type, except controller_clock: ControllerClockReading? inherits
+// optional_equality_answers_by_representation, so that field is matched explicitly and the rest
+// compared by `==` after zeroing it. That match and observation_with_controller_clock are still
+// authored field lists: a new ControllerClockReading field or a new Optional on the observation
+// is not derived from the type declaration (no .dag value-layer reader of declared fields). The
+// class is gunbc.guarantee_stall.authored_record_field_list_standing_for_type_population_stall
+// authored_record_field_list_standing_for_type_population_stall -- a stall below ceiling, not a
+// section 4b(3) drop.
 fn controller_clock_reading_same(left: ControllerClockReading?, right: ControllerClockReading?) -> Bool {
   match left {
     Absent => match right { Absent => true  Present { value: _ } => false }
