@@ -55,3 +55,12 @@ test fn algebra_length_on_host_string_still_lowers_to_string_length() -> Bool {
     ["v2_std_algebra::length("]
   )
 }
+
+test fn host_text_receiver_length_lowers_to_string_length() -> Bool {
+  compile_dag_rust_emit_check(
+    "module host_text_length_method_probe\nimport std.types { String, Int }\nfn probe(s: String) -> Int { s.length() }\n",
+    "src/host_text_length_method_probe.rs",
+    ["string_length"],
+    []
+  )
+}
