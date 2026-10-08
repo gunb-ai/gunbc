@@ -681,18 +681,6 @@ fn gate_value_binders(names: List<Symbol>, outer: Scope, at: Node) -> BinderGate
   }
 }
 
-// A LOOP'S CARRIER IS A BINDER, SO IT OPENS A FRAME AND IS NOT WALKED AS A REFERENCE. v2.std.node says
-// it outright -- "^loop_carrier_edge targets the loop-carried state's BINDER, never a value" -- and
-// resolve did neither: a Loop fell to resolve_children_homogeneous_scope, which opens a frame only for
-// an Arrow domain, so the carrier bound nothing and the iterated body's uses of it reached the bare-name
-// census. That is the whole of the `found` refusal in `fold(xs, init: false, f: fn(found, e) { ... })`:
-// v2.compiler.fold_lowering destructures the step literal into an iteration body and ONE carrier symbol
-// and builds this Loop, so the step's Arrow is never constructed and its second binder is dropped.
-//
-// The carrier edge is carried UNWALKED for the same reason the Arrow's declared-order edge is
-// (resolve_arrow_node_in): its target names a binder, not a reference, so resolving it would ask the
-// scope to answer for a name the scope is being opened to introduce.
-
 fn harvest_conj_named_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
   match root.kind {
     TypeNode { connective: Conj } =>
