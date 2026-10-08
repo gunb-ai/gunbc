@@ -5239,32 +5239,45 @@ pub fn equality_operand_list_read_name(
 ) -> String {
     match (*n.expr_data.clone()).clone() {
         ExprData::ExprMethodCall {
-            method_semantics: _,
+            method_semantics: ms,
             ..
-        } => {
-            if equality_receiver_is_list(
-                crate::v1_std_core::method_receiver(n.clone()),
-                source_indices.clone(),
-            ) {
-                equality_list_read_leaf(n.name.clone())
-            } else {
-                "".to_string()
+        } => match ms.clone() {
+            Some(v) => match (*v.clone()).clone() {
+                MethodSemantics::AlgebraMethodSemantics { method_def: md, .. } => {
+                    if equality_receiver_is_list(
+                        crate::v1_std_core::method_receiver(n.clone()),
+                        source_indices.clone(),
+                    ) {
+                        equality_list_read_leaf(md.name.clone())
+                    } else {
+                        "".to_string()
+                    }
+                }
+                _ => "".to_string(),
+            },
+            _ => "".to_string(),
+        },
+        ExprData::ExprCall {
+            call_semantics: cs, ..
+        } => match (*crate::v1_std_core::call_semantics_target(cs.clone())).clone() {
+            CallTargetIdentity::RuntimePrimitiveCall {
+                primitive_name: pn, ..
+            } => {
+                if equality_receiver_is_list(
+                    crate::v1_std_core::arg_value(crate::v1_std_core::expr_child_at(
+                        n.clone(),
+                        0,
+                        "call argument".to_string(),
+                    )),
+                    source_indices.clone(),
+                ) {
+                    equality_list_read_leaf(pn.clone())
+                } else {
+                    "".to_string()
+                }
             }
-        }
-        ExprData::ExprCall { .. } => {
-            if equality_receiver_is_list(
-                crate::v1_std_core::arg_value(crate::v1_std_core::expr_child_at(
-                    n.clone(),
-                    0,
-                    "call argument".to_string(),
-                )),
-                source_indices.clone(),
-            ) {
-                equality_list_read_leaf(n.name.clone())
-            } else {
-                "".to_string()
-            }
-        }
+            _ => "".to_string(),
+        },
         _ => "".to_string(),
     }
 }
@@ -5415,6 +5428,10 @@ pub fn equality_admission_diags(
                                     right_typed.clone(),
                                     source_indices.clone(),
                                 ),
+                                operator: match op.clone() {
+                                    BinOp::Eq => "==".to_string(),
+                                    _ => "!=".to_string(),
+                                },
                                 span: span.clone(),
                             }),
                             scope.module_name.clone(),
