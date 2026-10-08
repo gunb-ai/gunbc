@@ -170,7 +170,7 @@ fn arrival_archive_slot_held(
 }
 
 // Acquire, body, then the caller-supplied release. Production binds arrival_archive_slot_release
-// at the one wet-door call site. The refused arm must not evaluate the body.
+// at the one wet-door call site. One inhabitance claim also binds that same function.
 fn arrival_after_acquire(
   outcome: ArrivalArchiveSlotAcquire,
   body: fn() -> ProcessExit,
