@@ -238,6 +238,11 @@ data fleet_cp_binary_path: NonEmptyStr = "/usr/bin/cp"
 
 data fleet_mv_binary_path: NonEmptyStr = "/usr/bin/mv"
 
+// THE DEPLOY PLAN READS EVERY DEMANDED DIRECTORY THROUGH IT (extdeps.shell shell.Stat IdentityOfPrivileged,
+// which spells this path in its argv): a managed directory whose mode admits only its owner cannot be
+// traversed by the job user, and its standing must still be observable before and after the apply.
+data fleet_stat_binary_path: NonEmptyStr = "/usr/bin/stat"
+
 // nft LIVES IN sbin AND IS PRIVILEGED EVEN TO READ: listing a table needs CAP_NET_ADMIN, so a
 // readback of the installed ruleset is a granted command like any mutation.
 data fleet_nft_binary_path: NonEmptyStr = nft_installed_path() as NonEmptyStr
@@ -289,6 +294,7 @@ type CiRunnerSudoBinary
   | SudoNfct
   | SudoCp
   | SudoMv
+  | SudoStat
 
 fn ci_runner_sudo_binary_path(b: CiRunnerSudoBinary) -> NonEmptyStr {
   match b {
@@ -306,6 +312,7 @@ fn ci_runner_sudo_binary_path(b: CiRunnerSudoBinary) -> NonEmptyStr {
     SudoNfct => fleet_nfct_binary_path
     SudoCp => fleet_cp_binary_path
     SudoMv => fleet_mv_binary_path
+    SudoStat => fleet_stat_binary_path
   }
 }
 
@@ -325,6 +332,7 @@ fn ci_runner_sudo_binary_probe(b: CiRunnerSudoBinary) -> SudoNopasswdProbeKind {
     SudoNfct => NopasswdExecuteCheck { check_argv: "--version" }
     SudoCp => NopasswdExecuteCheck { check_argv: "--version" }
     SudoMv => NopasswdExecuteCheck { check_argv: "--version" }
+    SudoStat => NopasswdExecuteCheck { check_argv: "--version" }
   }
 }
 
@@ -355,7 +363,7 @@ fn ci_runner_sudo_binary_probe(b: CiRunnerSudoBinary) -> SudoNopasswdProbeKind {
 // gunbc_deploy_sudoers_dropin) is rendered from, and the deploy preamble installs it
 // (gunbc.ci_deploy_sudoers deploy_sudoers_install_shell). So the new rows reach srv1 through the
 // operator-approved deploy that carries this change, not a hand edit.
-data ci_runner_sudo_binaries: List<CiRunnerSudoBinary> = [SudoAptGet, SudoInstall, SudoVisudo, SudoSystemctl, SudoTailscale, SudoRm, SudoUseradd, SudoUsermod, SudoCp, SudoMv]
+data ci_runner_sudo_binaries: List<CiRunnerSudoBinary> = [SudoAptGet, SudoInstall, SudoVisudo, SudoSystemctl, SudoTailscale, SudoRm, SudoUseradd, SudoUsermod, SudoCp, SudoMv, SudoStat]
 
 // THE GRANTS THE DROP-IN INSTALL ITSELF SPENDS, and so the only grants a deploy may demand BEFORE
 // the drop-in is installed. gunbc.ci_deploy_sudoers deploy_sudoers_install_shell is the one step that

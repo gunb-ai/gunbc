@@ -3,22 +3,33 @@ module test.claim.live_deploy.owned_directory_route_witness_test
 import std.types { Bool, String, NonEmptyStr, FilePath, List }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands }
-import gunbc.live_deploy.emit { owned_directory_apply_steps }
-import gunbc.live_deploy.member_identity { DirectoryRoot, converged_member_eq, converged_effect_plan }
-import gunbc.live_deploy.member_observe { deployment_member_roster }
-import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
+import gunbc.live_deploy.emit { owned_directory_apply_steps, live_deploy_sudoers_bootstrap_script }
+import gunbc.live_deploy.member_identity {
+  DirectoryRoot, converged_member_eq, converged_effect_plan, derive_member_plan, RootAt, DirectoryRootIdentity, RootConverged,
+  directory_root_standing_wire, ObservedMember, MemberObserved, MemberUnobservable, EffectsDerived, EffectsRefused, plan_mutation_count,
+}
+import gunbc.live_deploy.member_observe { deployment_member_roster, owned_directory_member_of_decision }
+import gunbc.fabric_storage_placement { fabric_storage_directory_demands }
+import gunbc.fleet_posix_accounts { fleet_stat_binary_path, fleet_posix_ci_runner_sudo_grants }
+import extdeps.access.posix { file_mode_octal }
+import std.optional { Present, Absent }
+import gunbc.owned_directory {
+  OwnedDirectoryTarget, owned_directory_path, owned_directory_mode, owned_directory_owner, OwnedDirectoryModeResolved, OwnedDirectoryModeRefused,
+  owned_directory_observation_of_probe, StatProbeRan,
+}
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv1_lab_dashboard_instance }
 import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance, roadmap_event_carrier_directory }
 import gunbc.auth.login_transaction_store { login_transaction_store_layout_for_instance, login_transaction_store_directory }
 import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_target, deploy_witness_spec_with_only_directory }
-
 // THE ROUTE, NOT ONLY THE ANSWER. For a consumer the production route used to leave without a creator,
-// each claim joins three facts on srv1_live: the path the consumer WRITES (its runtime layout) is its
-// declared demand's path; that demand is in the live_deploy srv1 transaction's directory list; and
-// the transaction both EMITS the provider's install for it (owned_directory_apply_steps over a plan
-// that makes no claim about it, which emits) and READS IT BACK (a DirectoryRoot member of the roster the post-apply readback
-// re-derives). RED CONTROL: deleting the consumer's row from
+// each claim joins four facts on srv1_live: the path the consumer WRITES (its runtime layout) is its
+// declared demand's path; that demand is in the live_deploy srv1 transaction's directory list; the
+// transaction's emitter RENDERS the provider's install text for it (owned_directory_apply_steps over
+// a plan that makes no claim about it); and it is ENROLLED in the roster the post-apply readback
+// re-derives over. Enrolment is membership, not an execution of the readback; the protected-tree
+// claims below execute the observation projection and the plan derivation. RED CONTROL: deleting the
+// consumer's row from
 // gunbc.roadmap.dashboard_instance_directories dashboard_instance_directory_demands removes the path
 // from deployment_directory_demands, so the membership, the roster member and the emitted install all
 // go false through the live_deploy route; pointing the layout anywhere but the demand reds the first
@@ -28,11 +39,11 @@ fn demands_contain(spec: DeploymentSpec, path: String) -> Bool {
   any(deployment_directory_demands(spec: spec), t => (owned_directory_path(t: t) as String) == path)
 }
 
-fn roster_reads_back(spec: DeploymentSpec, path: String) -> Bool {
+fn roster_enrols_it_for_readback(spec: DeploymentSpec, path: String) -> Bool {
   any(deployment_member_roster(spec: spec), m => converged_member_eq(a: m, b: DirectoryRoot { path: path as NonEmptyStr }))
 }
 
-fn transaction_emits_install(spec: DeploymentSpec, path: String) -> Bool {
+fn emitter_renders_its_install_text(spec: DeploymentSpec, path: String) -> Bool {
   string_contains(
     s: pipeline_steps_text(steps: owned_directory_apply_steps(spec: deploy_witness_spec_with_only_directory(spec: spec, path: path), plan: converged_effect_plan(roster: [], target: deploy_witness_release_target(spec: spec)))),
     pattern: path,
@@ -42,11 +53,11 @@ fn transaction_emits_install(spec: DeploymentSpec, path: String) -> Bool {
 fn routed(spec: DeploymentSpec, written: String, demanded: String) -> Bool {
   written == demanded
     && demands_contain(spec: spec, path: demanded)
-    && roster_reads_back(spec: spec, path: demanded)
-    && transaction_emits_install(spec: spec, path: demanded)
+    && roster_enrols_it_for_readback(spec: spec, path: demanded)
+    && emitter_renders_its_install_text(spec: spec, path: demanded)
 }
 
-test fn the_event_carrier_worktree_is_created_and_read_back_by_the_srv1_transaction() -> Bool {
+test fn the_event_carrier_worktree_is_demanded_enrolled_and_rendered_by_the_srv1_transaction() -> Bool {
   let live = srv1_live_dashboard_instance()
   routed(
     spec: deployment_spec_srv1(),
@@ -55,7 +66,7 @@ test fn the_event_carrier_worktree_is_created_and_read_back_by_the_srv1_transact
   )
 }
 
-test fn the_login_transaction_store_is_created_and_read_back_by_the_srv1_transaction() -> Bool {
+test fn the_login_transaction_store_is_demanded_enrolled_and_rendered_by_the_srv1_transaction() -> Bool {
   let live = srv1_live_dashboard_instance()
   routed(
     spec: deployment_spec_srv1(),
@@ -79,4 +90,94 @@ test fn a_converged_plan_emits_no_directory_install() -> Bool {
     spec: spec,
     plan: converged_effect_plan(roster: deployment_member_roster(spec: spec), target: deploy_witness_release_target(spec: spec)),
   )) == ""
+}
+
+// ── P1 CONTROL: A PROTECTED FABRIC TREE IS CONVERGED THROUGH THE DEPLOY PRINCIPAL'S GRANTED stat ──────
+//
+// The fabric store's root admits only its owner, so its children are invisible to a parent listing
+// and to the job user's unprivileged stat. The deploy observes through `sudo -n /usr/bin/stat`
+// (gunbc.live_deploy.member_observe owned_directory_probe_on_host), which reports each demanded
+// directory at its own derived owner, group and mode. These claims supply exactly that probe -- the
+// line stat prints for the tree at its REAL derived modes -- to the production projection
+// (owned_directory_member_of_decision) and the production plan derivation, and require: every member
+// converged, a plan that keeps them all, and a second deployment that emits no install. RED: the same
+// child probed as the unprivileged job user sees it (EACCES) refuses the derivation.
+fn derived_stat_line(t: OwnedDirectoryTarget) -> String {
+  match owned_directory_mode(t: t) {
+    OwnedDirectoryModeRefused { reason: _ } => ""
+    OwnedDirectoryModeResolved { mode } =>
+      join(["directory|", owned_directory_owner(t: t).user as String, "|", owned_directory_owner(t: t).group as String, "|", file_mode_octal(mode: mode)], "")
+  }
+}
+
+fn fabric_member_as_privileged_stat_reads_it(t: OwnedDirectoryTarget) -> ObservedMember {
+  let path = owned_directory_path(t: t) as String as NonEmptyStr
+  owned_directory_member_of_decision(
+    member: DirectoryRoot { path: path },
+    path: path,
+    target: t,
+    observation: owned_directory_observation_of_probe(program: fleet_stat_binary_path as String, path: owned_directory_path(t: t), probe: StatProbeRan { exit_code: 0, stdout: derived_stat_line(t: t), stderr: "" }),
+  )
+}
+
+fn fabric_tree() -> List<OwnedDirectoryTarget> {
+  fabric_storage_directory_demands(instance: srv1_live_dashboard_instance())
+}
+
+test fn a_protected_fabric_tree_is_converged_and_a_second_deployment_installs_nothing() -> Bool {
+  let spec = deployment_spec_srv1()
+  let tree = fabric_tree()
+  let roster = map(tree, t => DirectoryRoot { path: owned_directory_path(t: t) as String as NonEmptyStr })
+  let protected_root = any(tree, t => match owned_directory_mode(t: t) {
+    OwnedDirectoryModeResolved { mode } => !mode.other.execute && !mode.group.read
+    OwnedDirectoryModeRefused { reason: _ } => false
+  })
+  let derivation = derive_member_plan(
+    roster: roster,
+    desired: m => match m { DirectoryRoot { path } => RootAt { root: DirectoryRootIdentity { path: path, standing: RootConverged } }  _ => RootAt { root: DirectoryRootIdentity { path: "/" as NonEmptyStr, standing: RootConverged } } },
+    observed: m => match first(filter(xs: tree, predicate: t => converged_member_eq(a: DirectoryRoot { path: owned_directory_path(t: t) as String as NonEmptyStr }, b: m))) {
+      Present { value: t } => fabric_member_as_privileged_stat_reads_it(t: t)
+      Absent => MemberUnobservable { member: m, cause: "not a fabric demand" }
+    },
+    target: deploy_witness_release_target(spec: spec),
+  )
+  count(tree) > 0 && protected_root
+    && all(tree, t => match fabric_member_as_privileged_stat_reads_it(t: t) {
+      MemberObserved { identity } => match identity { RootAt { root } => directory_root_standing_wire(s: root.standing) == "converged"  _ => false }
+      _ => false
+    })
+    && match derivation {
+      EffectsRefused { refusals: _ } => false
+      EffectsDerived { plan } =>
+        plan_mutation_count(plan: plan) == 0
+          && pipeline_steps_text(steps: owned_directory_apply_steps(spec: spec, plan: plan)) == ""
+    }
+}
+
+// RED: the child as the unprivileged job user sees it under an owner-only parent -- stat ran and was
+// denied -- refuses, so the planning route is the privileged one or it cannot plan at all.
+test fn an_unprivileged_read_of_a_protected_child_refuses_the_derivation() -> Bool {
+  match first(filter(xs: fabric_tree(), predicate: t => string_contains(s: owned_directory_path(t: t) as String, pattern: "/objects"))) {
+    Absent => false
+    Present { value: t } => {
+      let path = owned_directory_path(t: t) as String as NonEmptyStr
+      match owned_directory_member_of_decision(
+        member: DirectoryRoot { path: path },
+        path: path,
+        target: t,
+        observation: owned_directory_observation_of_probe(program: fleet_stat_binary_path as String, path: owned_directory_path(t: t), probe: StatProbeRan { exit_code: 1, stdout: "", stderr: join([fleet_stat_binary_path as String, ": cannot statx '", path as String, "': Permission denied"], "") }),
+      ) {
+        MemberUnobservable { member: _, cause: _ } => true
+        _ => false
+      }
+    }
+  }
+}
+
+// THE PRINCIPAL HOLDS THE AUTHORITY THE PROBE SPENDS, AND THE DEPLOY INSTALLS IT BEFORE PLANNING: the
+// roster grants stat at the path the probe invokes, and the bootstrap the apply runs first carries
+// the drop-in install.
+test fn the_deploy_principal_is_granted_the_stat_the_plan_observes_through() -> Bool {
+  any(fleet_posix_ci_runner_sudo_grants(), g => (g.command_path as String) == (fleet_stat_binary_path as String))
+    && string_contains(s: live_deploy_sudoers_bootstrap_script(), pattern: "visudo")
 }

@@ -5,6 +5,8 @@ import std.algebra { trim }
 import std.types { String, NonEmptyStr, Bool, List, FilePath, GitRef, CommitSha }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.shell
+import extdeps.gunbc
+import gunbc.output_policy { OutcomeIsData }
 import extdeps.filesystem.filesystem_io
 import extdeps.git {
   shape_git_bundle_create_argv,
@@ -126,7 +128,7 @@ import gunbc.owned_directory {
   OwnedDirectoryInstallPlan,
   owned_directory_path,
   owned_directory_stat_args,
-  owned_directory_observation_of_stat,
+  owned_directory_observation_of_probe, OwnedDirectoryProbe, StatProbeRan, StatProbeNotRun,
   owned_directory_install_args,
   owned_directory_decide,
   owned_directory_ensure,
@@ -740,12 +742,34 @@ fn dashboard_owned_directory_observe(
   instance: HostDashboardInstance,
   path: FilePath,
 ) -> EnsureObservation<OwnedDirectoryReading> {
-  let r = dashboard_target_exec(
-    instance: instance,
-    program: instance.toolchain.environment_binding,
-    args: concat(["LC_ALL=C", instance.toolchain.path_stat as String], owned_directory_stat_args(path: path)),
+  owned_directory_observation_of_probe(
+    program: instance.toolchain.path_stat as String,
+    path: path,
+    probe: dashboard_owned_directory_probe(instance: instance, path: path),
   )
-  owned_directory_observation_of_stat(path: path, stat_succeeded: r.success, stdout: r.stdout, stderr: r.stderr)
+}
+
+// THE PROBE KEEPS STAT'S OWN EXIT STATUS, which dashboard_target_exec's Bool discards: an exit of 127
+// from env (no stat at path_stat) and an exit of 1 from stat about its operand are different facts,
+// and only the second can establish absence. A transport refusal is a probe that did not run.
+fn dashboard_owned_directory_probe(instance: HostDashboardInstance, path: FilePath) -> OwnedDirectoryProbe {
+  let argv = concat([instance.toolchain.environment_binding as String, "LC_ALL=C", instance.toolchain.path_stat as String], owned_directory_stat_args(path: path))
+  match instance.provision_transport {
+    DashboardLocalProvision => {
+      let r = gunbc.WitnessBin.Run(
+        workdir: dashboard_instance_controller_workdir(instance: instance),
+        bin_path: instance.toolchain.environment_binding,
+        args: argv.skip(n: 1),
+        expect: OutcomeIsData,
+      )
+      StatProbeRan { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
+    }
+    DashboardSshProvision { host } =>
+      match typed_argv_exec_over_ssh(host: host, argv: argv) {
+        TypedArgvExecConverged { result } => StatProbeRan { exit_code: result.exit_code, stdout: result.stdout, stderr: result.stderr }
+        TypedArgvExecRefused { reason } => StatProbeNotRun { reason: reason }
+      }
+  }
 }
 
 fn dashboard_owned_directory_install(instance: HostDashboardInstance, plan: OwnedDirectoryInstallPlan) -> Bool {

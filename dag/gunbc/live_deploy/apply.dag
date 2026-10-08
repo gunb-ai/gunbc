@@ -68,6 +68,7 @@ import gunbc.host_effect {
   LiveDeployMicrovmControllerInstall,
   LiveDeployEnsureDependency,
   LiveDeployDigestReadback,
+  LiveDeploySudoersBootstrap,
   LiveDeployServeRoute,
   DeployAccessPreflight,
 }
@@ -189,6 +190,7 @@ fn live_deploy_pre_mutation_access(effect: HostEffect, access: DeployAccess) -> 
     LiveDeployMicrovmControllerInstall { candidate: _ } => access
     LiveDeployEnsureDependency { dep: _ } => access
     LiveDeployDigestReadback { port: _ } => access
+    LiveDeploySudoersBootstrap {} => deploy_access_sudoers_install_scope(access: access)
     LiveDeployServeRoute { endpoint: _, enabled: _ } => access
     DeployAccessPreflight {} => access
     EnsureActionsRunnerRelease { runner_release: _ } => access
@@ -331,7 +333,31 @@ fn live_deploy_ensure_dependency(
 // THE PLAN IS DERIVED FROM THE HOST BEFORE THE MUTATION IS BUILT (gunbc.live_deploy.member_observe):
 // the same evaluation that decides also acts, and a plan that could not be derived refuses here with
 // every member's cause, installing nothing -- never the whole roster as a fallback.
+// THE SUDOERS DROP-IN IS INSTALLED FIRST, through the same gated fold every deploy effect takes: the
+// plan's directory observation spends the drop-in's SudoStat grant (gunbc.host_effect_realize
+// realize_live_deploy_sudoers_bootstrap_on_host).
 fn live_deploy_apply_mutation_via_transport(
+  spec: DeploymentSpec,
+  candidate: CandidateRelease,
+  transport: HostEffectTransport,
+  access: DeployAccess
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let bootstrap = live_deploy_fold(
+    spec: spec,
+    effect: LiveDeploySudoersBootstrap {},
+    transport: transport,
+    access: access,
+    fixture_actor: Absent,
+    fixture_host: Absent
+  )
+  if !reconciliation_converged(r: bootstrap) {
+    bootstrap
+  } else {
+    live_deploy_apply_mutation_after_bootstrap(spec: spec, candidate: candidate, transport: transport, access: access)
+  }
+}
+
+fn live_deploy_apply_mutation_after_bootstrap(
   spec: DeploymentSpec,
   candidate: CandidateRelease,
   transport: HostEffectTransport,

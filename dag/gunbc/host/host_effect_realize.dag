@@ -32,6 +32,7 @@ import gunbc.host_effect {
   LiveDeployMicrovmControllerInstall,
   LiveDeployEnsureDependency,
   LiveDeployDigestReadback,
+  LiveDeploySudoersBootstrap,
   LiveDeployServeRoute,
   DeployAccessPreflight,
   EnsureActionsRunnerRelease,
@@ -191,6 +192,7 @@ import extdeps.systemd.systemctl {
 }
 import gunbc.live_deploy.emit {
   live_deploy_apply_script_for,
+  live_deploy_sudoers_bootstrap_script,
   live_deploy_retract_script_for,
   deployment_ensure_dependency_script,
   deployment_serve_route_script,
@@ -458,6 +460,7 @@ type ResolvedHostEffectCell =
   | LiveDeployMicrovmControllerInstallOnHost { node: ComputeHost, candidate: CandidateRelease }
   | LiveDeployEnsureDependencyOnHost { node: ComputeHost, dep: DeploymentDependencyStep }
   | LiveDeployDigestReadbackOnHost { node: ComputeHost, port: Int }
+  | LiveDeploySudoersBootstrapOnHost { node: ComputeHost }
   | LiveDeployServeRouteOnHost { node: ComputeHost, endpoint: TailscaleServeEndpoint, enabled: Bool }
   | EnsureActionsRunnerReleaseOnHost { node: ComputeHost, runner_release: ActionsRunnerRelease }
   | EnsureRunnerSlotDirectoryOnHost {
@@ -549,6 +552,8 @@ fn resolve_host_os_effect_cell_after_direct_arms(n: ComputeHost, effect: HostEff
       LiveDeployEnsureDependencyOnHost { node: n, dep: d }
     LiveDeployDigestReadback { port: p } =>
       LiveDeployDigestReadbackOnHost { node: n, port: p }
+    LiveDeploySudoersBootstrap {} =>
+      LiveDeploySudoersBootstrapOnHost { node: n }
     LiveDeployServeRoute { endpoint: e, enabled: route_enabled } =>
       LiveDeployServeRouteOnHost { node: n, endpoint: e, enabled: route_enabled }
     EnsureActionsRunnerRelease { runner_release: r } =>
@@ -631,6 +636,8 @@ fn resolve_bmc_controller_effect_cell_after_direct_arms(n: ComputeHost, effect: 
       IncompatibleCell { reason: "host_effect: LiveDeployEnsureDependency is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
     LiveDeployDigestReadback { port: _ } =>
       IncompatibleCell { reason: "host_effect: LiveDeployDigestReadback is in-band (actuator host shell readback) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+    LiveDeploySudoersBootstrap {} =>
+      IncompatibleCell { reason: "host_effect: LiveDeploySudoersBootstrap is in-band (actuator host sudoers drop-in install) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
     LiveDeployServeRoute { endpoint: _, enabled: _ } =>
       IncompatibleCell { reason: "host_effect: LiveDeployServeRoute is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
     EnsureActionsRunnerRelease { runner_release: _ } =>
@@ -689,6 +696,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         LiveDeployMicrovmControllerInstall { candidate: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         LiveDeployEnsureDependency { dep: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         LiveDeployDigestReadback { port: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        LiveDeploySudoersBootstrap {} => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         LiveDeployServeRoute { endpoint: _, enabled: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         DeployAccessPreflight {} => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         EnsureActionsRunnerRelease { runner_release: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
@@ -733,6 +741,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           LiveDeployEnsureDependencyOnHost { node: n, dep: d }
         LiveDeployDigestReadback { port: p } =>
           LiveDeployDigestReadbackOnHost { node: n, port: p }
+        LiveDeploySudoersBootstrap {} =>
+          LiveDeploySudoersBootstrapOnHost { node: n }
         LiveDeployServeRoute { endpoint: e, enabled: route_enabled } =>
           LiveDeployServeRouteOnHost { node: n, endpoint: e, enabled: route_enabled }
         ProbeToolchainHomeInterference {} =>
@@ -793,6 +803,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         LiveDeployMicrovmControllerInstall { candidate: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         LiveDeployEnsureDependency { dep: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         LiveDeployDigestReadback { port: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        LiveDeploySudoersBootstrap {} => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         LiveDeployServeRoute { endpoint: _, enabled: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         DeployAccessPreflight {} => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureActionsRunnerRelease { runner_release: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
@@ -1637,6 +1648,7 @@ fn realize_provision_codex_runtime(
     LiveDeployMicrovmControllerInstall { candidate: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     LiveDeployEnsureDependency { dep: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     LiveDeployDigestReadback { port: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    LiveDeploySudoersBootstrap {} => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     LiveDeployServeRoute { endpoint: _, enabled: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     DeployAccessPreflight {} => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     EnsureActionsRunnerRelease { runner_release: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
@@ -3460,6 +3472,7 @@ fn realize_provision_build_cache(
     LiveDeployMicrovmControllerInstall { candidate: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     LiveDeployEnsureDependency { dep: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     LiveDeployDigestReadback { port: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    LiveDeploySudoersBootstrap {} => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     LiveDeployServeRoute { endpoint: _, enabled: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     DeployAccessPreflight {} => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     EnsureActionsRunnerRelease { runner_release: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
@@ -4613,6 +4626,24 @@ fn realize_live_deploy_serve_route_on_host(
   )
 }
 
+// THE DROP-IN INSTALL, ALONE, BEFORE THE PLAN IS DERIVED. The deployment plan reads every demanded
+// directory under the job user's granted `sudo -n stat` (gunbc.live_deploy.member_observe
+// owned_directory_probe_on_host); that grant is a row of the roster this drop-in renders, so the
+// observation would demand the grant its own deploy installs (gunbc.recurring_failure_mode
+// a_preflight_demands_the_grant_its_gated_step_installs). The same install the apply preamble runs
+// is realized first, spending only the install-scope grants; it is idempotent, so the apply's own
+// preamble run afterwards changes nothing.
+fn realize_live_deploy_sudoers_bootstrap_on_host(
+  transport: HostEffectTransport,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  realize_shell_on_host(
+    script: retained_srvn(body: live_deploy_sudoers_bootstrap_script(), reason: "live_deploy sudoers drop-in install before plan observation"),
+    transport: transport,
+    intent: intent,
+  )
+}
+
 fn realize_live_deploy_digest_readback_on_host(
   port: Int,
   transport: HostEffectTransport,
@@ -4684,6 +4715,8 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       realize_live_deploy_ensure_dependency_on_host(dep: d, transport: transport, intent: intent)
     LiveDeployDigestReadbackOnHost { node: _, port: p } =>
       realize_live_deploy_digest_readback_on_host(port: p, transport: transport, intent: intent)
+    LiveDeploySudoersBootstrapOnHost { node: _ } =>
+      realize_live_deploy_sudoers_bootstrap_on_host(transport: transport, intent: intent)
     LiveDeployServeRouteOnHost { node: _, endpoint: e, enabled: route_enabled } =>
       realize_live_deploy_serve_route_on_host(endpoint: e, enabled: route_enabled, transport: transport, intent: intent)
     EnsureActionsRunnerReleaseOnHost { node: _, runner_release: _ } =>
@@ -4889,6 +4922,8 @@ fn host_effect_apply_gated(
           realize_live_deploy_ensure_dependency_on_host(dep: d, transport: transport, intent: intent)
         LiveDeployDigestReadbackOnHost { node: _, port: p } =>
           realize_live_deploy_digest_readback_on_host(port: p, transport: transport, intent: intent)
+        LiveDeploySudoersBootstrapOnHost { node: _ } =>
+          realize_live_deploy_sudoers_bootstrap_on_host(transport: transport, intent: intent)
         LiveDeployServeRouteOnHost { node: _, endpoint: e, enabled: route_enabled } =>
           realize_live_deploy_serve_route_on_host(endpoint: e, enabled: route_enabled, transport: transport, intent: intent)
         EnsureActionsRunnerReleaseOnHost { node: _, runner_release: _ } =>
@@ -4972,6 +5007,7 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             LiveDeployMicrovmControllerInstallOnHost { node: _, candidate: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             LiveDeployEnsureDependencyOnHost { node: _, dep: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             LiveDeployDigestReadbackOnHost { node: _, port: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            LiveDeploySudoersBootstrapOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             LiveDeployServeRouteOnHost { node: _, endpoint: _, enabled: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EnsureActionsRunnerReleaseOnHost { node: _, runner_release: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EnsureRunnerSlotDirectoryOnHost { node: _, slot: _, artifact: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))

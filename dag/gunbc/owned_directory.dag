@@ -177,44 +177,62 @@ fn owned_directory_reading_of_stat_line(line: String) -> Optional<OwnedDirectory
   }
 }
 
-// THE STAT LINE OF A PATH KNOWN TO EXIST, CLASSIFIED. A present path whose stat refused or whose line
-// does not parse is INACCESSIBLE, never absent: absence is a different fact with the opposite
-// actuation, and only an observer that established it may say it (gunbc.ensure EnsureObservation).
-fn owned_directory_observation_of_present_stat(
-  path: FilePath,
-  stat_succeeded: Bool,
-  stdout: String,
-  stderr: String,
-) -> EnsureObservation<OwnedDirectoryReading> {
-  if !stat_succeeded {
-    EnsureInaccessible { reason: join(["stat of ", path as String, " refused: ", trim(s: stderr)], "") }
-  } else {
-    match owned_directory_reading_of_stat_line(line: stdout) {
-      Absent => EnsureInaccessible { reason: join(["stat of ", path as String, " is not an identity line: ", trim(s: stdout)], "") }
-      Present { value: reading } => EnsureObserved { evidence: reading }
-    }
-  }
-}
+// ── THE OBSERVATION CONTRACT: WHAT A ROUTE HANDS IN, AND WHAT IT MAY MEAN ───────────────────────
+//
+// A route supplies ONE PROBE of the target: either stat ran (its own exit status and both streams), or
+// the probe did not run at all (a transport refusal, an executor that could not start). Each route
+// supplies its own transport and the authority stat runs under (the dashboard apply: the instance's
+// toolchain stat under LC_ALL=C; the live_deploy transaction: the deploy principal's granted
+// `sudo -n stat`, which traverses every declared mode); this module alone decides what the probe
+// says.
+//
+// ABSENCE IS EVIDENCE ABOUT THE TARGET, NEVER A SUBSTRING. stat exits 1 for a failure about its
+// operand and prints one diagnostic naming that operand; an executor that could not start exits 126
+// or 127 (env's, sudo's or the shell's own diagnostic -- and a missing stat binary prints the same
+// "No such file or directory" text about ITSELF), and a refused sudo exits 1 with sudo's text. So a
+// probe is ABSENT only when stat itself ran (exit 1) and its whole stderr is exactly stat's ENOENT
+// diagnostic for THIS operand, spelled with the program word the route invoked. Everything else that
+// is not a parsed identity line is INACCESSIBLE: no install is decided over it under any policy.
+type OwnedDirectoryProbe
+  = StatProbeRan { exit_code: Int, stdout: String, stderr: String }
+  | StatProbeNotRun { reason: String }
 
-// THE ONE-PROBE FORM, for a route whose only observer is the stat itself (the dashboard apply's target
-// exec). The probe runs under LC_ALL=C, so ENOENT's strerror is the C library's fixed text; that text
-// and nothing else is absence. Every other failure -- EACCES on a parent, a transport refusal, a
-// missing stat binary -- is inaccessible.
 data owned_directory_enoent_text: String = "No such file or directory"
 
-fn owned_directory_observation_of_stat(
-  path: FilePath,
-  stat_succeeded: Bool,
-  stdout: String,
-  stderr: String,
-) -> EnsureObservation<OwnedDirectoryReading> {
-  if !stat_succeeded && string_contains(s: stderr, pattern: owned_directory_enoent_text) {
-    EnsureAbsent { reason: join(["owned directory ", path as String, " is absent"], "") }
-  } else {
-    owned_directory_observation_of_present_stat(path: path, stat_succeeded: stat_succeeded, stdout: stdout, stderr: stderr)
-  }
+// coreutils prints `<argv0>: cannot statx '<operand>': <strerror>` (statx builds) or
+// `<argv0>: cannot stat '<operand>': <strerror>` (stat(2) builds); the operand is quoted as written
+// for a path with no character that needs escaping, which every demanded path is.
+fn owned_directory_stat_enoent_diagnostics(program: String, path: FilePath) -> List<String> {
+  [
+    join([program, ": cannot statx '", path as String, "': ", owned_directory_enoent_text], ""),
+    join([program, ": cannot stat '", path as String, "': ", owned_directory_enoent_text], ""),
+  ]
 }
 
+fn owned_directory_observation_of_probe(
+  program: String,
+  path: FilePath,
+  probe: OwnedDirectoryProbe,
+) -> EnsureObservation<OwnedDirectoryReading> {
+  match probe {
+    StatProbeNotRun { reason } =>
+      EnsureInaccessible { reason: join(["stat of ", path as String, " did not run: ", reason], "") }
+    StatProbeRan { exit_code, stdout, stderr } =>
+      if exit_code == 0 {
+        match owned_directory_reading_of_stat_line(line: stdout) {
+          Absent => EnsureInaccessible { reason: join(["stat of ", path as String, " is not an identity line: ", trim(s: stdout)], "") }
+          Present { value: reading } => EnsureObserved { evidence: reading }
+        }
+      } else if exit_code == 1
+          && any(owned_directory_stat_enoent_diagnostics(program: program, path: path), d => d == trim(s: stderr)) {
+        EnsureAbsent { reason: join(["owned directory ", path as String, " is absent"], "") }
+      } else {
+        EnsureInaccessible {
+          reason: join(["stat of ", path as String, " exited ", to_string(value: exit_code), ": ", trim(s: stderr)], ""),
+        }
+      }
+  }
+}
 // ── DECISION ─────────────────────────────────────────────────────────────────────────────────────
 fn owned_directory_owner_matches(want: PosixOwnerNames, got: PosixOwnerNames) -> Bool {
   (want.user as String) == (got.user as String) && (want.group as String) == (got.group as String)

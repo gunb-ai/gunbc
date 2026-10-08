@@ -82,6 +82,7 @@ type HostEffect =
   | LiveDeployMicrovmControllerInstall { candidate: CandidateRelease }
   | LiveDeployEnsureDependency { dep: DeploymentDependencyStep }
   | LiveDeployDigestReadback { port: Int }
+  | LiveDeploySudoersBootstrap {}
   | LiveDeployServeRoute { endpoint: TailscaleServeEndpoint, enabled: Bool }
   | DeployAccessPreflight {}
   | EnsureActionsRunnerRelease { runner_release: ActionsRunnerRelease }

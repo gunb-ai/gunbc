@@ -23,12 +23,14 @@ import gunbc.live_deploy.spec {
   deployment_directory_demands,
 }
 import gunbc.live_deploy.candidate_identity { CandidateRelease }
+import gunbc.fleet_posix_accounts { fleet_stat_binary_path }
 import gunbc.ensure { EnsureMayApply, EnsureObservation, EnsureObserved, EnsureAbsent, EnsureInaccessible }
 import std.upsert_decision { Noop, Apply, Refuse }
 import extdeps.access.posix { file_mode_octal }
 import gunbc.owned_directory {
   OwnedDirectoryTarget, OwnedDirectoryReading, owned_directory_path, owned_directory_demand_at,
-  owned_directory_stat_args, owned_directory_observation_of_present_stat, owned_directory_decide,
+  owned_directory_stat_args, owned_directory_observation_of_probe, owned_directory_decide,
+  OwnedDirectoryProbe, StatProbeRan, StatProbeNotRun,
 }
 import gunbc.live_deploy.emit { live_deploy_systemd_unit_for }
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
@@ -513,30 +515,36 @@ fn deployment_member_roster(spec: DeploymentSpec) -> List<ConvergedMember> {
   )
 }
 
-// THE STAT LEG: file type, owning user, owning group and mode in one read
-// (extdeps.shell shell.Stat IdentityOf), the local arm calling the modelled operation and the remote
-// arm the same argv through the transport, as every leg in this module does.
-fn root_identity_leg(arm: ObservationArm, path: String) -> EnsureObservation<OwnedDirectoryReading> {
+// THE DIRECTORY'S OWN METADATA, READ DIRECTLY UNDER THE DEPLOY PRINCIPAL'S GRANTED stat, NEVER BY
+// LISTING ITS PARENT. A managed directory may admit only its owner (the fabric store's root derives
+// owner-execute alone), so listing it to find a child is EACCES for the job user while the child it
+// protects is perfectly observable to a principal with authority over the declared modes. The deploy
+// already performs its installs under `sudo -n`; the observation runs under the same principal's
+// `sudo -n /usr/bin/stat` (gunbc.fleet_posix_accounts SudoStat), so a correctly protected tree reads
+// as converged in planning and in the post-apply readback. The local arm calls the modelled operation
+// (extdeps.shell shell.Stat IdentityOfPrivileged); the remote arm sends the same argv through the
+// transport, whose portable-argv wall refuses the format word, so it reports a probe that did not run
+// -- inaccessible, never absent, and nothing is installed over it.
+fn owned_directory_probe_on_host(arm: ObservationArm, path: String) -> OwnedDirectoryProbe {
   match arm {
     OnTheHostItself => {
-      let r = shell.Stat.IdentityOf(path: path as FilePath)
-      owned_directory_observation_of_present_stat(path: path as FilePath, stat_succeeded: r.success, stdout: r.stdout, stderr: r.stderr)
+      let r = shell.Stat.IdentityOfPrivileged(path: path as FilePath)
+      StatProbeRan { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
     }
     OverTransport { transport } =>
-      match remote_leg(transport: transport, argv: concat(["stat"], owned_directory_stat_args(path: path as FilePath)), leg: join(["reading the identity of ", path], "")) {
-        LegRefused { cause } => EnsureInaccessible { reason: cause }
-        LegOut { stdout } => owned_directory_observation_of_present_stat(path: path as FilePath, stat_succeeded: true, stdout: stdout, stderr: "")
+      match run_typed_argv_transport(argv: concat(["sudo", "-n", fleet_stat_binary_path as String], owned_directory_stat_args(path: path as FilePath)), transport: transport) {
+        TypedArgvExecRefused { reason } => StatProbeNotRun { reason: reason }
+        TypedArgvExecConverged { result: r } => StatProbeRan { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
       }
   }
 }
 
-// PRESENCE FROM THE PARENT'S LISTING (an indeterminate listing is never absence), then the identity.
 fn owned_directory_observation_on_host(arm: ObservationArm, path: String) -> EnsureObservation<OwnedDirectoryReading> {
-  match entry_presence(arm: arm, path: path) {
-    EntryPresenceIndeterminate { cause } => EnsureInaccessible { reason: cause }
-    EntryAbsent => EnsureAbsent { reason: join(["owned directory ", path, " is absent"], "") }
-    EntryPresent => root_identity_leg(arm: arm, path: path)
-  }
+  owned_directory_observation_of_probe(
+    program: fleet_stat_binary_path as String,
+    path: path as FilePath,
+    probe: owned_directory_probe_on_host(arm: arm, path: path),
+  )
 }
 
 // THE PROVIDER DECIDES; THIS ONLY PROJECTS ITS DECISION ONTO THE MEMBER VOCABULARY. The decision is

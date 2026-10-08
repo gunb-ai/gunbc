@@ -499,6 +499,10 @@ service shell.Remove {
 // IdentityOf READS THE FOUR FACTS AN OWNED DIRECTORY IS JUDGED BY IN ONE stat CALL -- file type,
 // owning user, owning group, octal mode -- '|'-separated, so one parser (gunbc.owned_directory
 // owned_directory_reading_of_stat_line) reads every route's line. %F and %G are GNU directives too.
+// IdentityOfPrivileged is the same read under the deploy principal's granted `sudo -n /usr/bin/stat`
+// (gunbc.fleet_posix_accounts SudoStat), which traverses directories the principal cannot -- a
+// managed directory whose mode admits only its owner -- and carries stat's own exit status, because
+// absence is decided from it (gunbc.owned_directory owned_directory_observation_of_probe).
 service shell.Stat {
   operation ModeOf {
     requires none
@@ -529,6 +533,22 @@ service shell.Stat {
     exit {
       0 => Unit "the path exists and its file type, owning user, owning group and octal mode are on stdout"
       nonzero => String "stat could not read the path"
+    }
+  }
+
+  operation IdentityOfPrivileged {
+    requires none
+    input { path: FilePath }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["sudo", "-n", "/usr/bin/stat", "-c", "%F|%U|%G|%a", "--", "{path}"] }
+    exit {
+      0 => Unit "the path exists and its file type, owning user, owning group and octal mode are on stdout"
+      nonzero => String "sudo refused, or stat could not read the path; the exit status says which"
     }
   }
 
