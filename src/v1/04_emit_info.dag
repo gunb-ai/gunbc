@@ -739,15 +739,19 @@ fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> Type
   type_summary_decided(index: emit_info.type_summaries, key: type_name)
 }
 
-// A YES/NO QUESTION ABOUT A NAME TWO DECLARATIONS OWN is still decided when every declaration gives
-// the same answer: nothing is chosen, so nothing is guessed. Only disagreement is undecided, and it
-// answers Absent; the Bool readers below then answer false, which emits nothing from the name (the
-// variant-parent readers refuse an unresolved parent, v1.compiler.emit_rust
-// refuse_unresolved_bare_variant_pattern).
-fn type_summary_answer(index: TypeSummaryIndex, key: String, question: fn(TypeSummary) -> Bool) -> Bool? {
+// A YES/NO QUESTION ABOUT A NAME. Unanimous answers from every declaration of a leaf are decided.
+// Disagreement is not "no": collapsing it to false made `is this an enum?` emit the non-enum arm
+// for a name two declarations own, which rustc can accept. NotDeclared is a separate arm so a
+// missing name is not an ambiguous one.
+type TypeSummaryQuestion
+  = QuestionDecided { value: Bool }
+  | QuestionNameAmbiguous { leaf: String }
+  | QuestionNotDeclared
+
+fn type_summary_answer(index: TypeSummaryIndex, key: String, question: fn(TypeSummary) -> Bool) -> TypeSummaryQuestion {
   match type_summary_lookup(index: index, key: key) {
-    TypeSummaryFound { summary: summary } => Present { value: question(summary) }
-    TypeSummaryNotDeclared => none
+    TypeSummaryFound { summary: summary } => QuestionDecided { value: question(summary) }
+    TypeSummaryNotDeclared => QuestionNotDeclared
     TypeSummaryLeafAmbiguous { leaf: leaf } =>
       let answers = type_summary_keys_of_leaf(index: index, leaf: leaf) |> fold(init: [], f: (acc, k) =>
         match map_get(index.by_key, k) {
@@ -755,16 +759,10 @@ fn type_summary_answer(index: TypeSummaryIndex, key: String, question: fn(TypeSu
           Absent => acc
         }
       )
-      if answers |> all(a => a) { Present { value: true } }
-      else if answers |> all(a => !a) { Present { value: false } }
-      else { none }
-  }
-}
-
-fn type_summary_answer_or_false(index: TypeSummaryIndex, key: String, question: fn(TypeSummary) -> Bool) -> Bool {
-  match type_summary_answer(index: index, key: key, question: question) {
-    Present { value: v } => v
-    Absent => false
+      if (answers |> count) == 0 { QuestionNotDeclared }
+      else if answers |> all(a => a) { QuestionDecided { value: true } }
+      else if answers |> all(a => !a) { QuestionDecided { value: false } }
+      else { QuestionNameAmbiguous { leaf: leaf } }
   }
 }
 
@@ -831,18 +829,30 @@ fn summary_is_enum(summary: TypeSummary) -> Bool {
   }
 }
 
-fn variant_belongs_to_enum(type_summaries: TypeSummaryIndex, variant_name: String, enum_name: String) -> Bool {
-  type_summary_answer_or_false(index: type_summaries, key: enum_name, question: summary => summary_is_enum_with_variant(summary: summary, variant_name: variant_name))
+fn variant_belongs_to_enum(type_summaries: TypeSummaryIndex, variant_name: String, enum_name: String) -> TypeSummaryQuestion {
+  type_summary_answer(index: type_summaries, key: enum_name, question: summary => summary_is_enum_with_variant(summary: summary, variant_name: variant_name))
 }
 
-fn is_enum_in_summaries(type_summaries: TypeSummaryIndex, type_name: String) -> Bool {
-  type_summary_answer_or_false(index: type_summaries, key: type_name, question: summary => summary_is_enum(summary: summary))
+fn is_enum_in_summaries(type_summaries: TypeSummaryIndex, type_name: String) -> TypeSummaryQuestion {
+  type_summary_answer(index: type_summaries, key: type_name, question: summary => summary_is_enum(summary: summary))
 }
 
 fn find_variant_parent(type_summaries: TypeSummaryIndex, variant_name: String, scope_enums: List<String>) -> String? {
-  scope_enums |> filter(en =>
-    variant_belongs_to_enum(type_summaries: type_summaries, variant_name: variant_name, enum_name: en)
-  ) |> first
+  if scope_enums |> any(en =>
+    match variant_belongs_to_enum(type_summaries: type_summaries, variant_name: variant_name, enum_name: en) {
+      QuestionNameAmbiguous { leaf: _ } => true
+      _ => false
+    }
+  ) {
+    none
+  } else {
+    scope_enums |> filter(en =>
+      match variant_belongs_to_enum(type_summaries: type_summaries, variant_name: variant_name, enum_name: en) {
+        QuestionDecided { value: v } => v
+        _ => false
+      }
+    ) |> first
+  }
 }
 
 fn field_value_shape_from_type_node(type_node: Node) -> FieldValueShape {

@@ -235,14 +235,17 @@ use crate::v1_compiler_infer_emit_info::TypeRepr::{EnumRepr, StructRepr};
 use crate::v1_compiler_infer_emit_info::TypeSummaryLookup::{
     TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared,
 };
+use crate::v1_compiler_infer_emit_info::TypeSummaryQuestion::{
+    QuestionDecided, QuestionNameAmbiguous, QuestionNotDeclared,
+};
 pub use crate::v1_compiler_infer_emit_info::{
     collect_type_node_import_surface_names, collect_type_node_import_surface_occurrences,
     emit_info_with_expected_type, emit_info_with_fn_return, emit_info_with_fn_type_context,
     empty_emit_graph_info, find_variant_parent, is_enum_in_summaries, is_known_variant,
     lookup_emit_type_summary, resolve_type_decl_reference, summary_is_enum_with_variant,
-    type_decl_identities_of_leaf, type_decl_identity, type_summary_answer_or_false,
-    type_summary_decided, type_summary_keys_of_leaf, type_summary_lookup,
-    type_summary_of_reference, type_summary_values, variant_belongs_to_enum, variant_summary_key,
+    type_decl_identities_of_leaf, type_decl_identity, type_summary_answer, type_summary_decided,
+    type_summary_keys_of_leaf, type_summary_lookup, type_summary_of_reference, type_summary_values,
+    variant_belongs_to_enum, variant_summary_key,
 };
 pub use crate::v1_compiler_infer_emit_info::{
     EmitGraphInfo, TypeDeclIndex, TypeDeclResolution, TypeRepr, TypeSummary, TypeSummaryIndex,
@@ -11701,9 +11704,13 @@ pub fn is_import_graph_type_name(
         } {
             true
         } else {
-            if crate::v1_compiler_infer_emit_info::is_enum_in_summaries(
-                type_summaries.clone(),
-                name.clone(),
+            if matches!(
+                (*crate::v1_compiler_infer_emit_info::is_enum_in_summaries(
+                    type_summaries.clone(),
+                    name.clone(),
+                ))
+                .clone(),
+                QuestionDecided { value: true }
             ) {
                 false
             } else {
@@ -12370,11 +12377,14 @@ pub fn import_module_enum_scope(
                             if (crate::v1_compiler_infer_emit_info::is_known_variant(
                                 type_summaries.clone(),
                                 n.clone(),
-                            ) && (crate::v1_compiler_infer_emit_info::is_enum_in_summaries(
-                                type_summaries.clone(),
-                                n.clone(),
-                            ) == false))
-                            {
+                            ) && matches!(
+                                (*crate::v1_compiler_infer_emit_info::is_enum_in_summaries(
+                                    type_summaries.clone(),
+                                    n.clone(),
+                                ))
+                                .clone(),
+                                QuestionDecided { value: false } | QuestionNotDeclared
+                            )) {
                                 __result.push(n);
                             }
                         }
@@ -21768,23 +21778,28 @@ pub fn emit_pattern(
     }
 }
 
+pub fn rust_ambiguous_type_name_refusal(leaf: String) -> String {
+    v1_rt::concat(
+        v1_rt::concat("compile_error!(\"ambiguous type name '".to_string(), leaf),
+        "': declarations disagree\")".to_string(),
+    )
+}
+
 pub fn pattern_parent_enum(
     name: String,
     parent_enum: Option<String>,
     scrut_type: String,
     type_summaries: Rc<TypeSummaryIndex>,
 ) -> Option<String> {
-    {
-        let scrut_is_known_enum = ((scrut_type.clone() != "".to_string())
-            && is_enum_type_name(scrut_type.clone(), type_summaries.clone()));
-        if (parent_enum.clone() != std::option::Option::None) {
-            parent_enum.clone()
-        } else {
-            if scrut_is_known_enum.clone() {
-                Some(scrut_type.clone())
-            } else {
-                unique_variant_parent(type_summaries.clone(), name.clone())
-            }
+    if (parent_enum.clone() != std::option::Option::None) {
+        parent_enum.clone()
+    } else if (scrut_type.clone() == "".to_string()) {
+        unique_variant_parent(type_summaries.clone(), name.clone())
+    } else {
+        match (*is_enum_type_name(scrut_type.clone(), type_summaries.clone())).clone() {
+            QuestionDecided { value: true } => Some(scrut_type.clone()),
+            QuestionNameAmbiguous { leaf } => Some(rust_ambiguous_type_name_refusal(leaf)),
+            _ => unique_variant_parent(type_summaries.clone(), name.clone()),
         }
     }
 }
@@ -23986,10 +24001,14 @@ pub fn effective_variant_parent_from_enum_lookup(
         let rt_name = crate::v1_std_core::authored_name_at(source_indices.clone(), rt.clone());
         if (((rt.ident_span.clone() != std::option::Option::None)
             && (rt_name.clone() != leaf_name.clone()))
-            && crate::v1_compiler_infer_emit_info::variant_belongs_to_enum(
-                emit_info.type_summaries.clone(),
-                leaf_name.clone(),
-                rt_name.clone(),
+            && matches!(
+                (*crate::v1_compiler_infer_emit_info::variant_belongs_to_enum(
+                    emit_info.type_summaries.clone(),
+                    leaf_name.clone(),
+                    rt_name.clone(),
+                ))
+                .clone(),
+                QuestionDecided { value: true }
             ))
         {
             Some(rt_name.clone())
@@ -25678,10 +25697,14 @@ pub fn emit_rust_expr_record_lit(
             };
             let concrete_peel_would_erase_optional_ctor =
                 (is_optional_variant_name(variant_name.clone())
-                    && !crate::v1_compiler_infer_emit_info::variant_belongs_to_enum(
-                        emit_info.type_summaries.clone(),
-                        variant_name.clone(),
-                        crate::v1_std_core::authored_name_at(si.clone(), expanded_rt.clone()),
+                    && matches!(
+                        (*crate::v1_compiler_infer_emit_info::variant_belongs_to_enum(
+                            emit_info.type_summaries.clone(),
+                            variant_name.clone(),
+                            crate::v1_std_core::authored_name_at(si.clone(), expanded_rt.clone(),),
+                        ))
+                        .clone(),
+                        QuestionDecided { value: false } | QuestionNotDeclared
                     ));
             let peeled_type_name = if ((((parent_enum.clone() == std::option::Option::None)
                 && (expanded_rt.connective.clone() == Connective::Conj))
@@ -26374,7 +26397,10 @@ pub fn emit_cloned_arg(
     )
 }
 
-pub fn is_enum_type_name(type_name: String, type_summaries: Rc<TypeSummaryIndex>) -> bool {
+pub fn is_enum_type_name(
+    type_name: String,
+    type_summaries: Rc<TypeSummaryIndex>,
+) -> Rc<crate::v1_compiler_infer_emit_info::TypeSummaryQuestion> {
     crate::v1_compiler_infer_emit_info::is_enum_in_summaries(
         type_summaries.clone(),
         type_name.clone(),
@@ -26392,10 +26418,14 @@ pub fn contextual_variant_parent_from_type_name(
             crate::v1_std_core::authored_name_at(source_indices.clone(), resolved_type.clone());
         if (((resolved_type.ident_span.clone() != std::option::Option::None)
             && (rt_name.clone() != variant_name.clone()))
-            && crate::v1_compiler_infer_emit_info::variant_belongs_to_enum(
-                emit_info.type_summaries.clone(),
-                variant_name.clone(),
-                rt_name.clone(),
+            && matches!(
+                (*crate::v1_compiler_infer_emit_info::variant_belongs_to_enum(
+                    emit_info.type_summaries.clone(),
+                    variant_name.clone(),
+                    rt_name.clone(),
+                ))
+                .clone(),
+                QuestionDecided { value: true }
             ))
         {
             Some(rt_name.clone())
@@ -26442,10 +26472,14 @@ pub fn contextual_variant_parent(
 ) -> Option<String> {
     match parent_enum.clone() {
         Some(explicit_parent) => {
-            if crate::v1_compiler_infer_emit_info::variant_belongs_to_enum(
-                emit_info.type_summaries.clone(),
-                variant_name.clone(),
-                explicit_parent.clone(),
+            if matches!(
+                (*crate::v1_compiler_infer_emit_info::variant_belongs_to_enum(
+                    emit_info.type_summaries.clone(),
+                    variant_name.clone(),
+                    explicit_parent.clone(),
+                ))
+                .clone(),
+                QuestionDecided { value: true }
             ) {
                 Some(explicit_parent.clone())
             } else {
@@ -33324,10 +33358,14 @@ pub fn emit_field_value_with_context(
                     };
                     let corrected_parent = match expected_type.clone() {
                         Some(et) => {
-                            if crate::v1_compiler_infer_emit_info::variant_belongs_to_enum(
-                                emit_info.type_summaries.clone(),
-                                variant_name.clone(),
-                                et.clone(),
+                            if matches!(
+                                (*crate::v1_compiler_infer_emit_info::variant_belongs_to_enum(
+                                    emit_info.type_summaries.clone(),
+                                    variant_name.clone(),
+                                    et.clone(),
+                                ))
+                                .clone(),
+                                QuestionDecided { value: true }
                             ) {
                                 Some(et.clone())
                             } else {
@@ -34208,10 +34246,14 @@ pub fn emit_typed_record_lit(
                             && (rt_name.clone() != variant_surface_name.clone()))
                             && !rt_is_type_var.clone())
                             && (rt_name.clone() != "Error".to_string()))
-                            && crate::v1_compiler_infer_emit_info::variant_belongs_to_enum(
-                                emit_info.type_summaries.clone(),
-                                variant_surface_name.clone(),
-                                rt_name.clone(),
+                            && matches!(
+                                (*crate::v1_compiler_infer_emit_info::variant_belongs_to_enum(
+                                    emit_info.type_summaries.clone(),
+                                    variant_surface_name.clone(),
+                                    rt_name.clone(),
+                                ))
+                                .clone(),
+                                QuestionDecided { value: true }
                             ))
                         {
                             Some(rt_name.clone())

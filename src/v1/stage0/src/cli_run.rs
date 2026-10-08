@@ -22516,6 +22516,108 @@ mod defining_module_lookup_tests {
         );
         assert_eq!(resolved.name, "BoolWitnessClaim");
     }
+
+    #[test]
+    fn ambiguous_enum_name_is_not_answered_false() {
+        use crate::v1_compiler_infer_emit_info::{
+            empty_type_summary_index, is_enum_in_summaries, type_summary_index_insert, TypeRepr,
+            TypeSummary, TypeSummaryQuestion,
+        };
+        let enum_summary = Rc::new(TypeSummary {
+            name: "SharedName".to_string(),
+            key: "owner.enums.SharedName".to_string(),
+            repr: Rc::new(TypeRepr::EnumRepr { unit_only: false }),
+            field_summaries: crate::v1_rt::rc_empty_map(),
+            field_type_map: crate::v1_rt::rc_empty_map(),
+            field_import_surface_names: Rc::new(im::Vector::new()),
+            variant_name_set: crate::v1_rt::rc_empty_map(),
+            generic_param_names: Rc::new(im::Vector::new()),
+            has_fn_fields: false,
+        });
+        let struct_summary = Rc::new(TypeSummary {
+            name: "SharedName".to_string(),
+            key: "owner.types.SharedName".to_string(),
+            repr: Rc::new(TypeRepr::StructRepr),
+            field_summaries: crate::v1_rt::rc_empty_map(),
+            field_type_map: crate::v1_rt::rc_empty_map(),
+            field_import_surface_names: Rc::new(im::Vector::new()),
+            variant_name_set: crate::v1_rt::rc_empty_map(),
+            generic_param_names: Rc::new(im::Vector::new()),
+            has_fn_fields: false,
+        });
+        let index = type_summary_index_insert(
+            type_summary_index_insert(
+                empty_type_summary_index(),
+                "owner.enums.SharedName".to_string(),
+                "SharedName".to_string(),
+                enum_summary,
+            ),
+            "owner.types.SharedName".to_string(),
+            "SharedName".to_string(),
+            struct_summary,
+        );
+        assert!(
+            matches!(
+                (*is_enum_in_summaries(index, "SharedName".to_string())).clone(),
+                TypeSummaryQuestion::QuestionNameAmbiguous { leaf } if leaf == "SharedName"
+            ),
+            "disagreement must not collapse to a decided non-enum"
+        );
+    }
+
+    #[test]
+    fn ambiguous_enum_name_refuses_instead_of_non_enum_emission() {
+        use crate::v1_compiler_infer_emit_info::{
+            empty_type_summary_index, type_summary_index_insert, TypeRepr, TypeSummary,
+        };
+        let enum_summary = Rc::new(TypeSummary {
+            name: "SharedName".to_string(),
+            key: "owner.enums.SharedName".to_string(),
+            repr: Rc::new(TypeRepr::EnumRepr { unit_only: false }),
+            field_summaries: crate::v1_rt::rc_empty_map(),
+            field_type_map: crate::v1_rt::rc_empty_map(),
+            field_import_surface_names: Rc::new(im::Vector::new()),
+            variant_name_set: crate::v1_rt::rc_empty_map(),
+            generic_param_names: Rc::new(im::Vector::new()),
+            has_fn_fields: false,
+        });
+        let struct_summary = Rc::new(TypeSummary {
+            name: "SharedName".to_string(),
+            key: "owner.types.SharedName".to_string(),
+            repr: Rc::new(TypeRepr::StructRepr),
+            field_summaries: crate::v1_rt::rc_empty_map(),
+            field_type_map: crate::v1_rt::rc_empty_map(),
+            field_import_surface_names: Rc::new(im::Vector::new()),
+            variant_name_set: crate::v1_rt::rc_empty_map(),
+            generic_param_names: Rc::new(im::Vector::new()),
+            has_fn_fields: false,
+        });
+        let index = type_summary_index_insert(
+            type_summary_index_insert(
+                empty_type_summary_index(),
+                "owner.enums.SharedName".to_string(),
+                "SharedName".to_string(),
+                enum_summary,
+            ),
+            "owner.types.SharedName".to_string(),
+            "SharedName".to_string(),
+            struct_summary,
+        );
+        let parent = crate::v1_compiler_emit_rust::pattern_parent_enum(
+            "Arm".to_string(),
+            None,
+            "SharedName".to_string(),
+            index,
+        );
+        let refusal = crate::v1_compiler_emit_rust::rust_ambiguous_type_name_refusal(
+            "SharedName".to_string(),
+        );
+        assert_eq!(
+            parent,
+            Some(refusal),
+            "an ambiguous enum name must emit the typed refusal, not a non-enum parent"
+        );
+    }
 }
 
 fn lookup_resolved_type_node(graph: &ResolvedGraph, type_name: &str) -> Option<Rc<Node>> {

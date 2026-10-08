@@ -7,6 +7,7 @@ use self::TypeDeclReferenceRoute::*;
 use self::TypeDeclResolution::*;
 use self::TypeRepr::*;
 use self::TypeSummaryLookup::*;
+use self::TypeSummaryQuestion::*;
 pub use crate::gunbc_structural_realization_bindings::kernel_mint_declaration_rows;
 use crate::std_decl_ref::DeclField::{NamedField, TypeParameter, WholeDeclaration};
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
@@ -113,6 +114,14 @@ pub enum TypeSummaryLookup {
     TypeSummaryFound { summary: Rc<TypeSummary> },
     TypeSummaryLeafAmbiguous { leaf: String },
     TypeSummaryNotDeclared,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum TypeSummaryQuestion {
+    QuestionDecided { value: bool },
+    QuestionNameAmbiguous { leaf: String },
+    QuestionNotDeclared,
 }
 
 pub fn empty_type_summary_index() -> Rc<TypeSummaryIndex> {
@@ -1118,12 +1127,16 @@ pub fn type_summary_answer(
     index: Rc<TypeSummaryIndex>,
     key: String,
     question: impl Fn(Rc<TypeSummary>) -> bool + Clone,
-) -> Option<bool> {
+) -> Rc<TypeSummaryQuestion> {
     match (*type_summary_lookup(index.clone(), key.clone())).clone() {
         TypeSummaryLookup::TypeSummaryFound {
             summary: summary, ..
-        } => Some(question(summary.clone())),
-        TypeSummaryLookup::TypeSummaryNotDeclared => std::option::Option::None,
+        } => Rc::new(TypeSummaryQuestion::QuestionDecided {
+            value: question(summary.clone()),
+        }),
+        TypeSummaryLookup::TypeSummaryNotDeclared => {
+            Rc::new(TypeSummaryQuestion::QuestionNotDeclared)
+        }
         TypeSummaryLookup::TypeSummaryLeafAmbiguous { leaf: leaf, .. } => {
             let answers = type_summary_keys_of_leaf(index.clone(), leaf.clone())
                 .iter()
@@ -1140,7 +1153,9 @@ pub fn type_summary_answer(
                         std::option::Option::None => acc.clone(),
                     },
                 );
-            if {
+            if (answers.clone().len() as i64) == 0 {
+                Rc::new(TypeSummaryQuestion::QuestionNotDeclared)
+            } else if {
                 let mut __all = true;
                 for a in answers.iter().cloned() {
                     if !(a.clone()) {
@@ -1150,35 +1165,22 @@ pub fn type_summary_answer(
                 }
                 __all
             } {
-                Some(true)
-            } else {
-                if {
-                    let mut __all = true;
-                    for a in answers.iter().cloned() {
-                        if !(!a.clone()) {
-                            __all = false;
-                            break;
-                        }
+                Rc::new(TypeSummaryQuestion::QuestionDecided { value: true })
+            } else if {
+                let mut __all = true;
+                for a in answers.iter().cloned() {
+                    if !(!a.clone()) {
+                        __all = false;
+                        break;
                     }
-                    __all
-                } {
-                    Some(false)
-                } else {
-                    std::option::Option::None
                 }
+                __all
+            } {
+                Rc::new(TypeSummaryQuestion::QuestionDecided { value: false })
+            } else {
+                Rc::new(TypeSummaryQuestion::QuestionNameAmbiguous { leaf: leaf.clone() })
             }
         }
-    }
-}
-
-pub fn type_summary_answer_or_false(
-    index: Rc<TypeSummaryIndex>,
-    key: String,
-    question: impl Fn(Rc<TypeSummary>) -> bool + Clone,
-) -> bool {
-    match type_summary_answer(index.clone(), key.clone(), question.clone()) {
-        Some(v) => v.clone(),
-        std::option::Option::None => false,
     }
 }
 
@@ -1280,14 +1282,17 @@ pub fn variant_belongs_to_enum(
     type_summaries: Rc<TypeSummaryIndex>,
     variant_name: String,
     enum_name: String,
-) -> bool {
-    type_summary_answer_or_false(type_summaries.clone(), enum_name.clone(), |summary| {
+) -> Rc<TypeSummaryQuestion> {
+    type_summary_answer(type_summaries.clone(), enum_name.clone(), |summary| {
         summary_is_enum_with_variant(summary.clone(), variant_name.clone())
     })
 }
 
-pub fn is_enum_in_summaries(type_summaries: Rc<TypeSummaryIndex>, type_name: String) -> bool {
-    type_summary_answer_or_false(type_summaries.clone(), type_name.clone(), |summary| {
+pub fn is_enum_in_summaries(
+    type_summaries: Rc<TypeSummaryIndex>,
+    type_name: String,
+) -> Rc<TypeSummaryQuestion> {
+    type_summary_answer(type_summaries.clone(), type_name.clone(), |summary| {
         summary_is_enum(summary.clone())
     })
 }
@@ -1297,17 +1302,47 @@ pub fn find_variant_parent(
     variant_name: String,
     scope_enums: Rc<Vec<String>>,
 ) -> Option<String> {
-    Rc::new({
-        let mut __result = Vec::new();
+    let ambiguous = {
+        let mut __found = false;
         for en in scope_enums.iter().cloned() {
-            if variant_belongs_to_enum(type_summaries.clone(), variant_name.clone(), en.clone()) {
-                __result.push(en);
+            if matches!(
+                (*variant_belongs_to_enum(
+                    type_summaries.clone(),
+                    variant_name.clone(),
+                    en.clone()
+                ))
+                .clone(),
+                TypeSummaryQuestion::QuestionNameAmbiguous { .. }
+            ) {
+                __found = true;
+                break;
             }
         }
-        __result
-    })
-    .first()
-    .cloned()
+        __found
+    };
+    if ambiguous {
+        std::option::Option::None
+    } else {
+        Rc::new({
+            let mut __result = Vec::new();
+            for en in scope_enums.iter().cloned() {
+                if matches!(
+                    (*variant_belongs_to_enum(
+                        type_summaries.clone(),
+                        variant_name.clone(),
+                        en.clone()
+                    ))
+                    .clone(),
+                    TypeSummaryQuestion::QuestionDecided { value: true }
+                ) {
+                    __result.push(en);
+                }
+            }
+            __result
+        })
+        .first()
+        .cloned()
+    }
 }
 
 pub fn field_value_shape_from_type_node(type_node: Rc<Node>) -> FieldValueShape {

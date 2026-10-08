@@ -31469,9 +31469,15 @@ pub fn enum_variant_shape_sets_for_item(
 ) -> Rc<EnumVariantShapeSets> {
     {
         let item_name = crate::v1_std_core::authored_name_at(si.clone(), item.clone());
-        if crate::v1_compiler_infer_emit_info::is_enum_in_summaries(
-            type_summaries.clone(),
-            item_name.clone(),
+        if matches!(
+            (*crate::v1_compiler_infer_emit_info::is_enum_in_summaries(
+                type_summaries.clone(),
+                item_name.clone(),
+            ))
+            .clone(),
+            crate::v1_compiler_infer_emit_info::TypeSummaryQuestion::QuestionDecided {
+                value: true
+            }
         ) {
             item.children.clone().iter().cloned().fold(
                 acc,

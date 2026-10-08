@@ -189,7 +189,7 @@ import v1.compiler.infer_sigs {
 }
 import v1.compiler.infer_emit_info {
   TypeRepr, StructRepr, EnumRepr,
-  TypeSummary, EmitGraphInfo, EmitInfoBuildState, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared, type_summary_lookup, empty_type_summary_index, is_enum_in_summaries,
+  TypeSummary, EmitGraphInfo, EmitInfoBuildState, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared, TypeSummaryQuestion, QuestionDecided, QuestionNameAmbiguous, QuestionNotDeclared, type_summary_lookup, empty_type_summary_index, is_enum_in_summaries,
   empty_emit_graph_info, empty_type_env, lookup_emit_type_summary,
   build_struct_field_summaries, build_enum_field_summaries,
   add_emit_item_summary, derive_variant_to_enum, close_fn_fields, empty_type_decl_index, type_decl_index_with_qualified_names
@@ -17337,7 +17337,10 @@ type EnumVariantShapeSets {
 
 fn enum_variant_shape_sets_for_item(acc: EnumVariantShapeSets, item: Node, si: Map<String, NewlineIndex>, type_summaries: TypeSummaryIndex) -> EnumVariantShapeSets {
   let item_name = authored_name_at(source_indices: si, node: item)
-  if is_enum_in_summaries(type_summaries: type_summaries, type_name: item_name) {
+  if match is_enum_in_summaries(type_summaries: type_summaries, type_name: item_name) {
+    QuestionDecided { value: v } => v
+    _ => false
+  } {
     item.children |> fold(init: acc, f: (vacc, variant) =>
       let qualified = concat(item_name, "::", authored_name_at(source_indices: si, node: variant))
       let is_positional_payload = variant_has_positional_payload_shape(variant: variant, source_indices: si)

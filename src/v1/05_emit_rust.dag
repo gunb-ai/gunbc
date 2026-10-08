@@ -231,7 +231,7 @@ import v1.compiler.infer {
   caller_resource_requirements, established_resource_binding
 }
 import v1.compiler.infer_emit_info {
-  EmitGraphInfo, TypeSummary, StructRepr, EnumRepr, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared, type_summary_lookup, type_summary_values, type_summary_of_reference, type_summary_answer_or_false, type_summary_decided, summary_is_enum_with_variant, type_summary_keys_of_leaf,
+  EmitGraphInfo, TypeSummary, StructRepr, EnumRepr, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared, TypeSummaryQuestion, QuestionDecided, QuestionNameAmbiguous, QuestionNotDeclared, type_summary_lookup, type_summary_values, type_summary_of_reference, type_summary_answer, type_summary_decided, summary_is_enum_with_variant, type_summary_keys_of_leaf,
   lookup_emit_type_summary, empty_emit_graph_info,
   TypeDeclIndex, type_decl_identity, type_decl_identities_of_leaf,
   TypeDeclResolved, TypeDeclLeafAmbiguous, TypeDeclKernelSpellingUndecided, TypeDeclNotDeclared, resolve_type_decl_reference,
@@ -5844,7 +5844,11 @@ fn is_import_graph_type_name(name: String, import_module: String, typed_modules:
     Absent => false
   } {
     true
-  } else if is_enum_in_summaries(type_summaries: type_summaries, type_name: name) {
+  } else if match is_enum_in_summaries(type_summaries: type_summaries, type_name: name) {
+    QuestionDecided { value: v } => v
+    QuestionNameAmbiguous { leaf: _ } => false
+    QuestionNotDeclared => false
+  } {
     false
   } else if is_known_variant(type_summaries: type_summaries, name: name) {
     false
@@ -6142,7 +6146,11 @@ fn import_module_enum_scope(import_module: String, registry: Map<String, ItemInf
     Present { value: exported } =>
       sorted_map_keys(exported) |> filter(n =>
         is_known_variant(type_summaries: type_summaries, name: n)
-        && is_enum_in_summaries(type_summaries: type_summaries, type_name: n) == false
+        && match is_enum_in_summaries(type_summaries: type_summaries, type_name: n) {
+          QuestionDecided { value: v } => v == false
+          QuestionNotDeclared => true
+          QuestionNameAmbiguous { leaf: _ } => false
+        }
       ) |> map(n =>
         match reexport_variant_parent_in_import_module(
           variant_name: n,
@@ -10280,14 +10288,21 @@ fn emit_pattern(pattern: MatchPattern, path_prefix: List<String>, shared_types: 
   }
 }
 
+fn rust_ambiguous_type_name_refusal(leaf: String) -> String {
+  concat("compile_error!(\"ambiguous type name '", leaf, "': declarations disagree\")")
+}
+
 fn pattern_parent_enum(name: String, parent_enum: String?, scrut_type: String, type_summaries: TypeSummaryIndex) -> String? {
-  let scrut_is_known_enum = scrut_type != "" && is_enum_type_name(type_name: scrut_type, type_summaries: type_summaries)
   if parent_enum != none {
     parent_enum
-  } else if scrut_is_known_enum {
-    Present { value: scrut_type }
-  } else {
+  } else if scrut_type == "" {
     unique_variant_parent(type_summaries: type_summaries, variant_name: name)
+  } else {
+    match is_enum_type_name(type_name: scrut_type, type_summaries: type_summaries) {
+      QuestionDecided { value: true } => Present { value: scrut_type }
+      QuestionNameAmbiguous { leaf: leaf } => Present { value: rust_ambiguous_type_name_refusal(leaf: leaf) }
+      _ => unique_variant_parent(type_summaries: type_summaries, variant_name: name)
+    }
   }
 }
 
@@ -11225,7 +11240,10 @@ fn emit_freemonoid_empty_variant_body() -> String {
 
 fn effective_variant_parent_from_enum_lookup(leaf_name: String, rt: Node, binding_kind: VarBindingKind?, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
   let rt_name = authored_name_at(source_indices: source_indices, node: rt)
-  if rt.ident_span != none && rt_name != leaf_name && variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: leaf_name, enum_name: rt_name) {
+  if rt.ident_span != none && rt_name != leaf_name && match variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: leaf_name, enum_name: rt_name) {
+    QuestionDecided { value: v } => v
+    _ => false
+  } {
     Present { value: rt_name }
   } else {
     variant_parent_from_binding_kind(binding_kind: binding_kind)
@@ -12169,11 +12187,15 @@ fn emit_rust_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope:
       let variant_name = match tn { Present { value: n } => n  Absent => "" }
 
       let concrete_peel_would_erase_optional_ctor = is_optional_variant_name(name: variant_name)
-        && !variant_belongs_to_enum(
+        && match variant_belongs_to_enum(
           type_summaries: emit_info.type_summaries,
           variant_name: variant_name,
           enum_name: authored_name_at(source_indices: si, node: expanded_rt)
-        )
+        ) {
+          QuestionDecided { value: v } => v == false
+          QuestionNotDeclared => true
+          QuestionNameAmbiguous { leaf: _ } => false
+        }
       let peeled_type_name = if parent_enum == none && expanded_rt.connective == Conj && expanded_rt.ident_span != none && !concrete_peel_would_erase_optional_ctor {
         let concrete = authored_name_at(source_indices: si, node: expanded_rt)
         if concrete != "" && concrete != variant_name { Present { value: concrete } } else { tn }
@@ -12387,13 +12409,16 @@ fn emit_cloned_arg(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
   emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
 }
 
-fn is_enum_type_name(type_name: String, type_summaries: TypeSummaryIndex) -> Bool {
+fn is_enum_type_name(type_name: String, type_summaries: TypeSummaryIndex) -> TypeSummaryQuestion {
   is_enum_in_summaries(type_summaries: type_summaries, type_name: type_name)
 }
 
 fn contextual_variant_parent_from_type_name(variant_name: String, resolved_type: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
   let rt_name = authored_name_at(source_indices: source_indices, node: resolved_type)
-  if resolved_type.ident_span != none && rt_name != variant_name && variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_name, enum_name: rt_name) {
+  if resolved_type.ident_span != none && rt_name != variant_name && match variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_name, enum_name: rt_name) {
+    QuestionDecided { value: v } => v
+    _ => false
+  } {
     Present { value: rt_name }
   } else {
     none
@@ -12411,7 +12436,10 @@ fn contextual_variant_parent_absent(variant_name: String, resolved_type: Node, e
 fn contextual_variant_parent(variant_name: String, parent_enum: String?, resolved_type: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
   match parent_enum {
     Present { value: explicit_parent } =>
-      if variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_name, enum_name: explicit_parent) {
+      if match variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_name, enum_name: explicit_parent) {
+        QuestionDecided { value: v } => v
+        _ => false
+      } {
         Present { value: explicit_parent }
       } else { none }
     Absent => contextual_variant_parent_absent(variant_name: variant_name, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
@@ -15039,7 +15067,10 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
           }
           let corrected_parent = match expected_type {
             Present { value: et } =>
-              if variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_name, enum_name: et) {
+              if match variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_name, enum_name: et) {
+                QuestionDecided { value: v } => v
+                _ => false
+              } {
                 Present { value: et }
               } else { pe }
             Absent => pe
@@ -15328,7 +15359,10 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           let rt_name = qualified_last_segment(name: authored_name_at(source_indices: si, node: resolved_type))
 
           if resolved_type.ident_span != none && rt_name != variant_surface_name && !rt_is_type_var && rt_name != "Error"
-            && variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_surface_name, enum_name: rt_name) {
+            && match variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_surface_name, enum_name: rt_name) {
+              QuestionDecided { value: v } => v
+              _ => false
+            } {
             Present { value: rt_name }
           } else {
             bare_parent_enum
