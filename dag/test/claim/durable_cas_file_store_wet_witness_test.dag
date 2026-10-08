@@ -297,12 +297,13 @@ fn plant_generation(root: NonEmptyStr, key: NonEmptyStr, generation: CasGenerati
   Filesystem.WriteCreateNew(path: cas_file_slot_path(root: root, key: key, generation: generation), content: payload).success
 }
 
-// HIGH HEAD, SUCCESSOR PRESENT ON DISK. The recursive cas_observe_window retry (listed max G,
-// named G+1 present) did not bound its attempts under a TCO lowering that left `attempt` unchanged,
-// so one observation at hold-typed_module.1507/.1508 never returned. A fold over eight attempts
-// must. The fixture is two files at 1500 and 1501: if listing reports both, the head is 1501; if
-// listing omits the true max (the 757-file trace), G+1 still reads present and the fold answers
-// Unsettled rather than looping.
+// TERMINATION REGRESSION, NOT THE HANG'S RED. Measured against main's recursive
+// cas_observe_window this two-file plant is GREEN (listed max 1501, successor 1502 absent, retry
+// arm never runs): BuildBuddy invocation 492a33d7-ff9a-4fcf-8007-4fd7029aa139. It does not
+// reproduce the production hang at hold-typed_module.1507/.1508. It asserts that a fold over eight
+// cas_observe_window_once passes cannot fail to return. Persistent List-omits-true-max is a
+// frontier measured by gunbc#13482 after this lands; ProbedWindowHeadUnsettled there is a counted
+// store Unavailable, not a kill.
 test fn a_window_observation_at_generation_1500_terminates_by_real_execution() -> Bool {
   let root_path = fresh_root()
   let root = root_path as NonEmptyStr
