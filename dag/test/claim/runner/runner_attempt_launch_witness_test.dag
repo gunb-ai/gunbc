@@ -62,7 +62,7 @@ import extdeps.github.actions_jit_runner {
   EncodedJitConfig, JitConfigMinted, jit_config_mint_outcome,
 }
 import extdeps.transports.rest { RestExchangeCommitAmbiguous }
-import gunbc.runner_jit_mint { MicroVmJitSlot }
+import gunbc.runner.jit_registration_subject { microvm_registration_subject_of }
 import gunbc.runner.runner_jit_perform {
   JitCredentialBoundToAttempt, JitCredentialMintNotCreated,
 }
@@ -139,7 +139,7 @@ fn received_for(attempt: MicroVmAttempt, encoded: String) -> JitMintPerformance 
   match minted_credential(encoded: encoded) {
     Cons { head: c, tail: _ } =>
       JitMintReceived {
-        delivery: JitCredentialBoundToAttempt { slot: MicroVmJitSlot { attempt: attempt }, credential: c, runner_id: registration_fixture_id },
+        delivery: JitCredentialBoundToAttempt { subject: microvm_registration_subject_of(attempt: attempt), credential: c, runner_id: registration_fixture_id },
       }
     Empty {} => JitMintAppJwtUnsigned { detail: "fixture: credential fixture did not mint" }
   }
@@ -278,7 +278,7 @@ test fn a_credential_bound_to_another_attempt_stages_no_device() -> Bool {
               let plan = plan_for(pair: pair, account: pair.account, attempt: a, mint: live_grant(attempt: b), ground: GroundClear)
               no_device_no_vmm(plan: plan)
                 && match refusal_of(plan: plan) {
-                  Cons { head: JitCredentialBoundToDifferentAttempt { bound_to: other }, tail: _ } => other == MicroVmJitSlot { attempt: b }
+                  Cons { head: JitCredentialBoundToDifferentAttempt { bound_to: other }, tail: _ } => other == microvm_registration_subject_of(attempt: b)
                   _ => false
                 }
             }

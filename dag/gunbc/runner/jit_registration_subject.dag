@@ -1,0 +1,93 @@
+module gunbc.runner.jit_registration_subject
+
+import std.types { String, NonEmptyStr, Bool, List }
+import extdeps.github.actions { self_hosted_provenance_label }
+import extdeps.github.actions_jit_runner { JitRunnerName }
+import gunbc.runner_group_restriction_observation { microvm_shakedown_selected_workflow }
+import gunbc.runner_microvm_attempt {
+  MicroVmAttempt, MicroVmCellBinding, VmBoundToOwnedCell, VmUnboundCellNotOwned,
+  runner_microvm_attempt_unit_name,
+}
+import gunbc.runner.runner_host_unit_slot {
+  HostUnitSlot, HostUnitSlotStanding, HostUnitSlotBound, HostUnitSlotRefused, HostUnitSlotRefusal,
+}
+
+// WHAT A JIT REGISTRATION IS MINTED FOR: a name, the one workflow the registration exists to run,
+// and the labels it answers to. That is all gunbc.runner_jit_mint reads. It used to read them out
+// of a sum over realizations (microVM attempt | host unit), restating the realization in one match
+// per field, and every new realization widened the sum, the mint's refusals and the dispatch's
+// refusals together. The realization is not the mint's fact: how a slot comes to exist, where its
+// runner process lives and how the credential reaches it belong to the producer that proved it.
+//
+// THE ORDERING STAYS UNWRITABLE. The record is sole_constructor and its only constructors are the
+// producers below, each of which builds it only on the arm that already proved the slot exists --
+// an owned cell, a bound managed host. So a mint still cannot be planned for a slot whose existence
+// was not proven first, because no other value can reach it.
+type JitRegistrationSubject sole_constructor {
+  name: JitRunnerName
+  workflow: NonEmptyStr
+  labels: List<String>
+}
+
+// A PRODUCER THAT COULD NOT PROVE ITS SLOT refuses in its own vocabulary, carried unchanged.
+type JitRegistrationSubjectRefusal
+  = SubjectCellNotOwned { cause: String }
+  | SubjectHostUnitSlotRefused { refusal: HostUnitSlotRefusal }
+
+type JitRegistrationSubjectStanding
+  = JitRegistrationSubjectProven { subject: JitRegistrationSubject }
+  | JitRegistrationSubjectRefused { refusal: JitRegistrationSubjectRefusal }
+
+// THE RUNNER NAME IS THE UNIT NAME, not a fresh identifier minted beside it. A second naming scheme
+// for one attempt is a nickname (DESIGN §3), and it is the expensive kind: an orphaned GitHub runner
+// registration can only be reconciled against a host by name, so a name that does not appear on the
+// host makes the orphan unattributable.
+fn jit_runner_name_for(attempt: MicroVmAttempt) -> JitRunnerName {
+  JitRunnerName { value: runner_microvm_attempt_unit_name(attempt: attempt) }
+}
+
+// THE LABELS ARE THE ATTEMPT'S OWN, AND NO CALLER CAN HAND IN ANY OTHERS. A microVM attempt answers
+// to exactly two labels: the provenance label every self-hosted runner carries, and its OWN
+// registration name. It does NOT answer to the host's registration set
+// (gunbc.runner_registration_labels), because that set is what production jobs target, and a guest
+// registered under it could take a production converge job into a trusted-shakedown VM. A job
+// reaches this runner only by naming the attempt in its runs-on -- the binding
+// gunbc.runner_bound_attempt_receipt relies on for the mtcollins canary. Whether a JIT registration
+// also receives GitHub's OS and architecture defaults is not modeled; that arm is closed by the
+// runner group, not the label (gunbc.runner_jit_mint microvm_jit_runner_group_restriction_frontier).
+fn microvm_attempt_registration_labels(attempt: MicroVmAttempt) -> List<String> {
+  [self_hosted_provenance_label, jit_runner_name_for(attempt: attempt).value as String]
+}
+
+fn microvm_registration_subject_of(attempt: MicroVmAttempt) -> JitRegistrationSubject {
+  JitRegistrationSubject {
+    name: jit_runner_name_for(attempt: attempt),
+    workflow: microvm_shakedown_selected_workflow(),
+    labels: microvm_attempt_registration_labels(attempt: attempt),
+  }
+}
+
+fn microvm_registration_subject(binding: MicroVmCellBinding) -> JitRegistrationSubjectStanding {
+  match binding {
+    VmUnboundCellNotOwned { cause: c } => JitRegistrationSubjectRefused { refusal: SubjectCellNotOwned { cause: c } }
+    VmBoundToOwnedCell { attempt: a, rootfs_path: _, vm_config_path: _, unit_name: _, slice_property: _ } =>
+      JitRegistrationSubjectProven { subject: microvm_registration_subject_of(attempt: a) }
+  }
+}
+
+// THE LAUNCH'S BINDING CHECK. A delivered credential belongs to this attempt exactly when the
+// subject it was minted for is the subject this attempt yields -- a pure comparison, so the launch
+// needs no constructor of its own and cannot mint a subject it was not handed.
+fn subject_is_microvm_attempt(subject: JitRegistrationSubject, attempt: MicroVmAttempt) -> Bool {
+  subject == microvm_registration_subject_of(attempt: attempt)
+}
+
+fn host_unit_registration_subject(standing: HostUnitSlotStanding) -> JitRegistrationSubjectStanding {
+  match standing {
+    HostUnitSlotRefused { refusal: r } => JitRegistrationSubjectRefused { refusal: SubjectHostUnitSlotRefused { refusal: r } }
+    HostUnitSlotBound { slot: h } =>
+      JitRegistrationSubjectProven {
+        subject: JitRegistrationSubject { name: JitRunnerName { value: h.unit }, workflow: h.workflow, labels: h.labels },
+      }
+  }
+}

@@ -67,7 +67,7 @@ fn host_unit_slot_listener_argv() -> List<String> {
 }
 
 // THE WORKFLOW IS THE CALLER'S: the slot exists to run one workflow, and the mint refuses a runner
-// group restricted to any other (gunbc.runner_jit_mint jit_slot_workflow). It is spelled the way
+// group restricted to any other (gunbc.runner_jit_mint plan_jit_mint, over gunbc.runner.jit_registration_subject workflow). It is spelled the way
 // GitHub identifies a selected workflow, `<owner>/<repo>/<path>@<ref>`.
 fn host_unit_slot_for(host: ManagedHostBindingStanding, attempt: NonEmptyStr, workflow: NonEmptyStr) -> HostUnitSlotStanding {
   match host {

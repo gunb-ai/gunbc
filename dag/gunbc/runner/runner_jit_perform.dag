@@ -18,11 +18,11 @@ import gunbc.auth.github_credential {
   CredentialCapability,
 }
 import gunbc.runner.runner_jit_admission { JitAdmissionAxisStanding }
-import gunbc.runner.runner_host_unit_slot { HostUnitSlotRefusal }
+import gunbc.runner.jit_registration_subject { JitRegistrationSubject, JitRegistrationSubjectStanding, JitRegistrationSubjectRefusal }
 import gunbc.runner_group_restriction_observation { MicrovmRunnerGroupStanding, RunnerGroupRestrictionRefusal }
 import gunbc.runner_jit_mint {
-  JitSlotBinding, JitSlot, JitMintRefusedHostUnitSlot,
-  JitMintPlan, JitMintAuthorized, JitMintRefusedRunnerGroupForAnotherWorkflow, JitMintRefusedCellNotOwned, JitMintRefusedCredential,
+  JitMintRefusedSubject,
+  JitMintPlan, JitMintAuthorized, JitMintRefusedRunnerGroupForAnotherWorkflow, JitMintRefusedCredential,
   JitMintRefusedAttemptUnbound, JitMintRefusedRunnerGroupUnrestricted, plan_jit_mint,
 }
 
@@ -69,8 +69,7 @@ data runner_jit_perform_disposition: ConstructionMechanism = SingleAuthority
 // exhaustive match on JitMintPlan, so a new plan arm fails to compile here rather than falling into
 // a default that silently reports the wrong cause.
 type JitDispatchRefusal
-  = DispatchRefusedCellNotOwned { cause: String }
-  | DispatchRefusedHostUnitSlot { refusal: HostUnitSlotRefusal }
+  = DispatchRefusedSubject { refusal: JitRegistrationSubjectRefusal }
   | DispatchRefusedCredential {
       organization: NonEmptyStr
       unsatisfied: List<CredentialCapability>
@@ -107,7 +106,7 @@ type JitMintDispatch
 // admit_callers-sealed, as is every admitted caller that returns the dispatch onward: an admitted
 // call edge does not confine a value an exported wrapper hands back.
 type AuthorizedJitMintDispatch sole_constructor {
-  slot: JitSlot
+  subject: JitRegistrationSubject
   app: DeclaredGitHubApp
   installation: GitHubAppInstallationId
   organization: GitHubOrganizationRef
@@ -128,7 +127,7 @@ fn authority_installation(authority: GitHubCredentialAuthority) -> AuthorityInst
 }
 
 fn dispatch_jit_mint(
-  binding: JitSlotBinding,
+  subject: JitRegistrationSubjectStanding,
   authority: GitHubCredentialAuthority,
   control_plane: GitHubAppControlPlaneState,
   organization: GitHubOrganizationRef,
@@ -140,17 +139,15 @@ fn dispatch_jit_mint(
   decl_ref(module_path: "test.claim.github_app_registry", decl_name: "witness_jit_dispatch_refuses_when_the_attempt_binding_is_deferred"),
 ] {
   match plan_jit_mint(
-    binding: binding,
+    subject: subject,
     authority: authority,
     control_plane: control_plane,
     organization: organization,
     runner_group: runner_group,
     attempt_binding: attempt_binding,
   ) {
-    JitMintRefusedCellNotOwned { cause: c } =>
-      JitMintDispatchRefused { refusal: DispatchRefusedCellNotOwned { cause: c } }
-    JitMintRefusedHostUnitSlot { refusal: r } =>
-      JitMintDispatchRefused { refusal: DispatchRefusedHostUnitSlot { refusal: r } }
+    JitMintRefusedSubject { refusal: r } =>
+      JitMintDispatchRefused { refusal: DispatchRefusedSubject { refusal: r } }
     JitMintRefusedAttemptUnbound { cause: c } =>
       JitMintDispatchRefused { refusal: DispatchRefusedAttemptUnbound { cause: c } }
     JitMintRefusedRunnerGroupUnrestricted { group: g, cause: c } =>
@@ -162,7 +159,7 @@ fn dispatch_jit_mint(
         refusal: DispatchRefusedCredential { organization: org, unsatisfied: u },
       }
     JitMintAuthorized {
-      slot: slot,
+      subject: subject,
       request: request,
     } =>
       match authority_installation(authority: authority) {
@@ -175,7 +172,7 @@ fn dispatch_jit_mint(
         Present { value: held } =>
           JitMintDispatchAuthorized {
             dispatch: AuthorizedJitMintDispatch {
-              slot: slot,
+              subject: subject,
               app: held.app,
               installation: held.installation,
               organization: organization,
@@ -203,7 +200,7 @@ fn dispatch_jit_mint(
 // state no fold writes for a fork that drifts.
 type JitCredentialDelivery
   = JitCredentialBoundToAttempt {
-      slot: JitSlot
+      subject: JitRegistrationSubject
       credential: EncodedJitConfig
       runner_id: Int
     }
@@ -217,11 +214,11 @@ fn receive_jit_mint(
   match dispatch {
     JitMintDispatchRefused { refusal: r } => JitCredentialNotDispatched { refusal: r }
     JitMintDispatchAuthorized { dispatch: authorized } => {
-      let slot = authorized.slot
+      let subject = authorized.subject
       match outcome {
         JitConfigMinted { config: config, runner_id: runner_id } =>
           JitCredentialBoundToAttempt {
-            slot: slot,
+            subject: subject,
             credential: config,
             runner_id: runner_id,
           }
@@ -245,7 +242,7 @@ fn receive_jit_mint(
 fn jit_credential_delivered(delivery: JitCredentialDelivery) -> Bool {
   match delivery {
     JitCredentialBoundToAttempt {
-      slot: _,
+      subject: _,
       credential: _,
       runner_id: _,
     } => true
