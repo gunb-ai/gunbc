@@ -682,6 +682,54 @@ fn observe_cas_slot_state_windowed(root: NonEmptyStr, key: NonEmptyStr, window: 
   observe_cas_slot_state_retained(root: root, key: key, retention: KeepGenerationWindow { window: window })
 }
 
+// A WINDOWED HEAD READ BY CONSTRUCTED NAME, NOT BY LISTING THE SLOT ROOT.
+//
+// cas_observe_window finds the head by listing every name under the store root and keeping this
+// key's generation files. That is the correct discovery when the generation is unknown, because a
+// windowed slot is NOT a presence prefix: generations at or below head-k are deleted, so galloping
+// from generation 1 would read NotFound and report an empty slot while the live head sat at 100.
+// Listing is therefore retained for unknown-head observation (cas_observe_window).
+//
+// When the caller already names the generation it believes is head -- a hold it just acquired, a
+// release at the generation the protocol recorded -- the existing correctness argument does not
+// need the listing. The windowed contract's verify step is: the named generation reads present and
+// its successor reads absent. Those two reads are Filesystem.Read of cas_file_slot_path, O(1) in
+// the store's object count. A successor that is present means the head moved; an absent named
+// generation is not this head. The observation is never guessed.
+fn cas_verify_named_window_head(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration) -> CasSlotProbe
+  admit_callers: [
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "observe_cas_slot_state_windowed_at"),
+  ]
+{
+  match cas_read_generation(root: root, key: key, generation: generation) {
+    GenerationRefused { probe: p } => p
+    GenerationAbsent => ProbedAbsent
+    GenerationPresent { content: c } =>
+      match cas_generation_successor(g: generation) {
+        CasSuccessorExhausted { head: _ } => ProbedHead { generation: generation, value: c }
+        CasSuccessorGeneration { generation: next } =>
+          match cas_read_generation(root: root, key: key, generation: next) {
+            GenerationRefused { probe: p } => p
+            GenerationAbsent => ProbedHead { generation: generation, value: c }
+            GenerationPresent { content: _ } => ProbedWindowHeadUnsettled { attempts: 1 }
+          }
+      }
+  }
+}
+
+fn observe_cas_slot_state_windowed_at(root: NonEmptyStr, key: NonEmptyStr, window: CasGenerationWindow, generation: CasGeneration) -> CasSlotObservation<NonEmptyStr>
+  admit_callers: [
+    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "observe_file_hold_windowed_at"),
+  ]
+{
+  let _window = window
+  if !cas_key_is_slot_addressable(key: key) {
+    CasObservedUnreadable { cause: CasUnreadableReadRefused { detail: cas_key_not_slot_addressable_detail } }
+  } else {
+    cas_probe_as_observation(probe: cas_verify_named_window_head(root: root, key: key, generation: generation))
+  }
+}
+
 data cas_key_not_slot_addressable_detail: NonEmptyStr = "key is not slot-addressable: it carries a path separator"
 
 

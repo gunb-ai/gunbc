@@ -142,3 +142,15 @@ test fn a_direct_raw_observe_call_is_an_admission_refusal() -> Bool {
 test fn a_direct_raw_reclaim_call_is_an_admission_refusal() -> Bool {
   admission_refusals(source: direct_raw_reclaim_source, callee: "cas_reclaim_below") == 1
 }
+
+data direct_held_session_source: String = "module probe_direct_held_session\nimport std.cache_identity { ArtifactKindId }\nimport extdeps.realization.materialization_store_local { LocalStoreCapability, LocalStoreFamilyHeld, LocalStoreBracket, local_store_held_session }\nfn direct(c: LocalStoreCapability, f: ArtifactKindId) -> LocalStoreBracket<LocalStoreFamilyHeld> {\n  local_store_held_session(capability: c, family: f, run: h => h)\n}\n"
+
+data direct_named_window_observe_source: String = "module probe_direct_named_window_observe\nimport std.types { NonEmptyStr }\nimport std.durable_compare_and_set { CasGeneration, CasSlotObservation }\nimport gunbc.durable_cas_file_store { CasGenerationWindow, observe_cas_slot_state_windowed_at }\nfn direct(r: NonEmptyStr, k: NonEmptyStr, w: CasGenerationWindow, g: CasGeneration) -> CasSlotObservation<NonEmptyStr> {\n  observe_cas_slot_state_windowed_at(root: r, key: k, window: w, generation: g)\n}\n"
+
+test fn a_direct_held_session_call_is_an_admission_refusal() -> Bool {
+  admission_refusals(source: direct_held_session_source, callee: "local_store_held_session") == 1
+}
+
+test fn a_direct_named_window_observe_call_is_an_admission_refusal() -> Bool {
+  admission_refusals(source: direct_named_window_observe_source, callee: "observe_cas_slot_state_windowed_at") == 1
+}

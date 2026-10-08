@@ -42,9 +42,10 @@ import std.durable_exclusive_hold {
   DurableHoldHolderReport, DurableHoldRecoveryRefusal, HoldRecoveryEligible, HoldRecoveryRefused,
   durable_hold_recovery_assess,
 }
-import gunbc.durable_cas_file_store { KeepAllGenerations, CasSlotRetention,
-  DefaultAccessCreateOnly, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
-  admit_cas_attempt_for_derived_payload, file_compare_and_set, observe_cas_slot_state,
+import gunbc.durable_cas_file_store { KeepAllGenerations, KeepGenerationWindow, CasSlotRetention,
+  CasGenerationWindow, DefaultAccessCreateOnly, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
+  admit_cas_attempt_for_derived_payload, file_compare_and_set, file_compare_and_set_retained,
+  observe_cas_slot_state, observe_cas_slot_state_retained, observe_cas_slot_state_windowed_at,
 }
 
 // THE TAGS ARE NAMED ONCE AND THE BODY IS DERIVED FROM THE TAG THAT MATCHED.
@@ -161,6 +162,15 @@ fn observe_file_hold_windowed(root: NonEmptyStr, key: NonEmptyStr, window: CasGe
   ]
 {
   observe_file_hold_retained(root: root, key: key, retention: KeepGenerationWindow { window: window })
+}
+
+fn observe_file_hold_windowed_at(root: NonEmptyStr, key: NonEmptyStr, window: CasGenerationWindow, generation: CasGeneration) -> DurableHoldObservation
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_hold_check"),
+    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_release_assess_windowed_at"),
+  ]
+{
+  hold_observation_of_cas(observed: observe_cas_slot_state_windowed_at(root: root, key: key, window: window, generation: generation))
 }
 
 // EVERY EFFECTFUL HOLD WRITE IS LIVE READ -> SEALED PLAN -> CAS COMMIT, AND NO
@@ -373,6 +383,31 @@ fn file_hold_release_assess_windowed(root: NonEmptyStr, slot_key: NonEmptyStr, o
   ]
 {
   file_hold_release_assess_retained(root: root, slot_key: slot_key, owner: owner, acquired_generation: acquired_generation, released_by: released_by, retention: KeepGenerationWindow { window: window })
+}
+
+fn file_hold_release_assess_windowed_at(root: NonEmptyStr, slot_key: NonEmptyStr, owner: DurableHoldOwnerRef, acquired_generation: CasGeneration, released_by: DurableHoldReleaseRef, window: CasGenerationWindow) -> FileHoldReleaseAssessment
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_release_family_hold"),
+  ]
+{
+  match durable_hold_release_assess(
+    observed: observe_file_hold_windowed_at(root: root, key: slot_key, window: window, generation: acquired_generation),
+    owner: owner,
+    acquired_generation: acquired_generation,
+  ) {
+    HoldReleaseRefused { refusal: r } => FileHoldReleaseNotEligible { slot_key: slot_key, refusal: r }
+    HoldReleaseEligible { generation: g } =>
+      FileHoldReleasePlanned {
+        plan: FileHoldReleasePlan {
+          root: root,
+          slot_key: slot_key,
+          owner: owner,
+          generation: g,
+          free_payload: hold_slot_payload(state: DurableHoldFree { released_by: released_by }),
+          retention: KeepGenerationWindow { window: window },
+        },
+      }
+  }
 }
 
 // The commit still tells a lost race from an unavailable store. A release

@@ -48,6 +48,9 @@ import extdeps.realization.materialization_store_local {
   local_store_index_window,
   LocalStoreRecordDeleteAttempt, LocalStoreRecordGone, LocalStoreRecordFileRefused, LocalStoreRecordPartsRefused, LocalStoreRecordPartsUnlisted, LocalStoreStagedPart, LocalStorePartsLookup, local_store_lookup_parts, local_store_part_name,
 }
+import gunbc.typecheck_module_store {
+  typecheck_module_store_session, typecheck_module_store_commit_under, typecheck_module_store_lookup,
+}
 import gunbc.process_hold_identity { self_process_identity, SelfIdentified, SelfUnidentified, process_hold_text }
 import gunbc.build_cache_instance { ProcessIdentity }
 import gunbc.durable_exclusive_hold_file_store { file_hold_acquire_windowed, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable }
@@ -1339,3 +1342,55 @@ test fn a_leftover_copy_that_cannot_be_removed_leaves_the_store_unwritable_by_re
   let removed = shell.Remove.RecursiveForce(path: root_path)
   verdict && removed.success
 }
+
+fn hold_slot_head_generation(root_path: String) -> Int {
+  let key = local_store_hold_key(family: native_module_verdict_bundle_artifact_kind) as String
+  fold([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16], init: 0, f: (best, n) =>
+    if Filesystem.Read(path: store_path(root_path: root_path, name: concat(concat(key, "."), n as String))).success { n } else { best }
+  )
+}
+
+fn session_commit_ok(c: LocalStoreCommit) -> Bool {
+  commit_tag(c: c.commit) == "committed"
+}
+
+// N COMMITS UNDER ONE SESSION ACQUIRE THE HOLD ONCE. The hold slot's generation is the acquire
+// count: one acquire and one release leave head 2. The same N commits through local_store_commit
+// (the per-commit bracket) leave head 2N. That second measurement is the RED: if the session were
+// secretly the per-commit bracket, both heads would match and this claim would fail. Lookups run
+// under the same session and do not take a second hold. Dummy files in the root make a per-commit
+// whole-root List O(store size); the session still finishes with head 2.
+test fn n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution() -> Bool {
+  let n = 6
+  let session_root_path = fresh_root_path()
+  let bracket_root_path = fresh_root_path()
+  let session_root = WitnessScratchRoot { root: session_root_path }
+  let bracket_root = WitnessScratchRoot { root: bracket_root_path }
+  let session_ok = match opened(root: session_root) {
+    Absent => false
+    Present { value: store } => {
+      let planted = fold([1, 2, 3, 4, 5, 6, 7, 8], init: true, f: (ok, i) =>
+        ok && Filesystem.WriteCreateNew(path: store_path(root_path: session_root_path, name: concat("dummy-", i as String)), content: "x").success
+      )
+      match typecheck_module_store_session(capability: store, family: native_module_verdict_bundle_artifact_kind, run: h => {
+        let writes = [1, 2, 3, 4, 5, 6] |> map(i => typecheck_module_store_commit_under(held: h, req: bundle_req(module: concat("s", i as String)), payloads: verdicts(text: "s pass"), parts: []))
+        let hits = [1, 2, 3, 4, 5, 6] |> map(i => store_lookup_is_hit(l: typecheck_module_store_lookup(capability: store, req: bundle_req(module: concat("s", i as String)))))
+        writes |> all(c => session_commit_ok(c: c)) && hits |> all(x => x)
+      }) {
+        LocalStoreBracketRefused { refusal: _ } => false
+        LocalStoreBracketRan { value: body_ok, hold_release: _ } => planted && body_ok && hold_slot_head_generation(root_path: session_root_path) == 2
+      }
+    }
+  }
+  let bracket_ok = match opened(root: bracket_root) {
+    Absent => false
+    Present { value: store } => {
+      let writes = [1, 2, 3, 4, 5, 6] |> map(i => local_store_commit(capability: store, req: bundle_req(module: concat("b", i as String)), payloads: verdicts(text: "b pass"), parts: []))
+      writes |> all(c => session_commit_ok(c: c)) && hold_slot_head_generation(root_path: bracket_root_path) == (2 * n)
+    }
+  }
+  let removed_s = shell.Remove.RecursiveForce(path: session_root_path)
+  let removed_b = shell.Remove.RecursiveForce(path: bracket_root_path)
+  session_ok && bracket_ok && removed_s.success && removed_b.success
+}
+
