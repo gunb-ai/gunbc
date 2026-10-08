@@ -213,14 +213,15 @@ test fn the_live_merge_path_runs_on_the_fleet_and_names_its_lanes() -> Bool {
     && any(path, id => id == compiler_gate_aggregate_job_id)
 }
 
-// THE NATIVE PRODUCT STORE IS BOUND TO PULL REQUESTS ONLY: the merge queue's composed revision builds its
-// own compiler, so a pull request's job cannot seed the compiler the gate then judges with. Deleting the
-// condition makes the step run on merge_group, which this refuses.
-test fn the_native_cache_root_step_runs_on_pull_requests_and_never_on_the_merge_queue() -> Bool {
+// THE NATIVE PRODUCT STORE IS BOUND ON PULL REQUESTS AND THE MERGE QUEUE, NEVER ELSEWHERE: the root is
+// job-private (under RUNNER_TEMP, empty at job start), so a pull request's job cannot seed the compiler
+// the queue judges; the queue also restores from the shared store and publishes only admitted entries.
+// Narrowing the condition off merge_group, or widening it to other events, makes this refuse.
+test fn the_native_cache_root_step_runs_on_pull_requests_and_the_merge_queue_only() -> Bool {
   let condition = step_if_text(step: compiler_gate_emit_build_native_cache_root_bound_step().step)
   condition == compiler_gate_native_cache_condition()
     && string_contains(s: condition, pattern: "pull_request")
-    && !string_contains(s: condition, pattern: "merge_group")
+    && string_contains(s: condition, pattern: "merge_group")
 }
 
 // THE STORE ROOT IS JOB-PRIVATE: a shared host directory (RUNNER_TOOL_CACHE) is writable by any job's
