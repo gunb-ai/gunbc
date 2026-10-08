@@ -21,14 +21,16 @@ import gunbc.compiler_gate_workflow {
   compiler_gate_blocking_rows, compiler_gate_lane_rows,
   compiler_gate_same_repo_expression, compiler_gate_floor_job_condition,
   compiler_gate_emit_build_notice_step,
-  compiler_gate_emit_build_notice_lines
+  compiler_gate_emit_build_notice_lines,
+  compiler_gate_emit_build_step, compiler_gate_unit_test_job_condition
 }
 import gunbc.emitted_subject_build_gate {
   NativeEmitBuildStanding, EmitBuildExpectedGreen, EmitBuildExpectedRed, EmittedBuildSignature,
   emit_build_standing_notice_for,
   emitted_subject_build_rows,
   emitted_subject_build_label_text,
-  emitted_subject_build_command
+  emitted_subject_build_command,
+  native_fault_experiment_env_name, native_fault_experiment_skip_value
 }
 import extdeps.exec.command { shell_command_render }
 import v2.std.algebra { length, filter }
@@ -485,4 +487,33 @@ test fn the_seed_lane_entries_are_the_instrument_rows() -> Bool {
   let runner = Filesystem.Read(path: native_lane_runner_source_path, expect: ExpectSuccess).content
   string_contains(s: runner, pattern: rust_str_const_line(name: "NATIVE_COMPILE_ENTRY", value: self_host_entry()))
     && string_contains(s: runner, pattern: rust_str_const_line(name: "V2_NATIVE_CLI_ENTRY", value: v2_native_cli_entry()))
+}
+
+// THE PER-PR RELIEF IS A MODELED INPUT ON EVERY EMIT-BUILD SUBJECT STEP (gunbc.rung_drop
+// native_fault_experiment_off_pull_requests): each step passes the env var, whose expression skips
+// on pull_request and runs otherwise. A step lacking it would run the fault experiment on PRs.
+test fn every_emit_build_subject_step_passes_the_fault_experiment_input() -> Bool {
+  all(emitted_subject_build_rows(), row => match compiler_gate_emit_build_step(row: row) {
+    RunStep { name: _, id: _, run: _, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match e {
+        Present { value: kvs } => any(kvs, k => k.key == native_fault_experiment_env_name)
+        Absent => false
+      }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  })
+}
+
+// THE UNIT LANE DOES NOT RUN ON pull_request: its condition excludes the event and so admits
+// merge_group and workflow_dispatch.
+test fn w_RED_the_unit_test_lane_condition_excludes_pull_request() -> Bool {
+  compiler_gate_unit_test_job_condition() == "github.event_name != 'pull_request'"
+}
+
+// THE RUNNER'S COPY OF THE SKIP CONTRACT IS PINNED TO THE .dag ROWS (review 77571): renaming the env
+// var or the skip value on one side alone reds here instead of leaving the runner silently ignoring
+// the workflow's input.
+test fn the_seed_fault_experiment_input_is_the_dag_rows() -> Bool {
+  let runner = Filesystem.Read(path: native_lane_runner_source_path, expect: ExpectSuccess).content
+  string_contains(s: runner, pattern: rust_str_const_line(name: "FAULT_EXPERIMENT_ENV", value: native_fault_experiment_env_name))
+    && string_contains(s: runner, pattern: rust_str_const_line(name: "FAULT_EXPERIMENT_SKIP_VALUE", value: native_fault_experiment_skip_value))
 }

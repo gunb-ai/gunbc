@@ -86,6 +86,7 @@ use serde::Serialize;
 mod active_workset;
 mod census_heads;
 mod checker_dependency;
+pub use checker_dependency::write_checker_inputs_record;
 #[path = "declaration_index.rs"]
 pub mod declaration_index;
 pub mod derived_row_roster;
@@ -118,6 +119,7 @@ mod entry_resolve;
 pub mod pre_entry_phase;
 mod required_lane_resolution_census;
 pub(crate) use active_workset::*;
+pub use entry_resolve::resolve_virtual_entry_compile_closure;
 pub(crate) use entry_resolve::*;
 pub use required_lane_resolution_census::{
     entry_closure_module_identities, required_floor_nominal_subject_module_identities,
@@ -4111,7 +4113,7 @@ pub fn observe_declared_import_closure_symbol_binding(
 
 thread_local! {
     static COMPILE_DAG_RUST_EMIT_CHECK_MEMO: std::cell::RefCell<
-        std::collections::HashMap<String, Result<bool, FixtureRenderRefusal>>,
+        std::collections::HashMap<String, Result<EmitCheckRead, FixtureRenderRefusal>>,
     > = std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
@@ -5036,81 +5038,193 @@ const COMPILE_CLEAN_DIAGNOSTIC_POLICY_ENTRY: &str = "dag/gunbc/compile_clean_dia
 /// restored deliberately: docs/probes was bankrupted 2026-08-24 (d3bebd0072f, every
 /// transcription deleted), and re-landing a probe document there would re-open that corpus.
 ///
-/// FAIL-CLOSED BY CONSTRUCTION (DESIGN §5): every arm that cannot produce the exact closure
-/// REFUSES with a typed, located message naming the module and the file — never a whole-tree
-/// fallback, which would restore today's cost, zero the deficit's frequency by construction,
-/// and make the widening unrankable. Contrast `resolve_virtual_source_with_imports`, whose BFS
-/// silently SKIPS an unresolvable import; a silent skip here would answer from a graph missing
-/// the very module the answer depends on.
-/// PRECONDITION, UNCHECKED AND UNTIL NOW UNSTATED: THE ENTRY'S CLOSURE MUST BE IMPORT-COMPLETE.
+/// Compile-subject closure of a policy entry: compile and evaluate that module, so membership
+/// is everything the entry depends on — the one closure authority, not an import-line BFS.
 ///
-/// This walks `extract_import_paths` — EXPLICIT IMPORT EDGES ONLY. The corpus also resolves BARE
-/// references through the tree census (namespace Rule-1), which
-/// `extend_sources_to_both_closure_fixpoint` does and this deliberately does not. An entry whose
-/// closure reaches a name it does not import typechecks to `function '<name>' not found in scope`
-/// here; that failure is a property of the ENTRY, not of this function.
-///
-/// MEASURED: `dag/gunbc/output_policy.dag` was routed through here and broke on
-/// `dag/std/observation.dag` reaching `fold_list` with no import. The one surviving caller,
-/// `compile_clean_unlisted_import_use_blocks_from_policy`, is sound BY LUCK — its closure happens
-/// to be import-complete, which this corpus does not guarantee; one bare reference authored into
-/// it and it breaks too. It breaks LOUDLY there, which makes the luck survivable: that caller
-/// returns `Result<bool, String>` and propagates with `?` — same fragility, opposite failure mode
-/// from the silent arm this helper's other caller used to have.
+/// FAIL-CLOSED: an unreadable entry or a refused closure is `Err` naming the policy module.
+/// Contrast the previous body, which walked `extract_import_paths` only. That was sound only
+/// while `gunbc.compile_clean_diagnostic_policy` happened to be import-complete. Measured:
+/// `dag/gunbc/output_policy.dag` through the same walker broke on `dag/std/observation.dag`
+/// reaching `fold_list` with no import.
 fn policy_entry_closure_sources(
     roots: &[String],
     entry_rel: &str,
     policy_module: &str,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
     let ws = process_workspace_root();
-    let module_index = build_module_path_index(roots);
-    let read = |rel: &str| -> Result<String, String> {
-        let abs = ws.join(rel);
-        std::fs::read_to_string(&abs).map_err(|e| {
-            format!(
-                "{policy_module} closure: cannot read `{}` ({e})",
-                abs.display()
-            )
-        })
+    let abs = if Path::new(entry_rel).is_absolute() {
+        PathBuf::from(entry_rel)
+    } else {
+        ws.join(entry_rel)
     };
+    let entry_content = std::fs::read_to_string(&abs).map_err(|e| {
+        format!(
+            "{policy_module} closure: cannot read `{}` ({e})",
+            abs.display()
+        )
+    })?;
+    let seed_path = workspace_relative_repo_path(&abs.to_string_lossy());
+    let seed = Rc::new(v1_compiler_compile::SourceFile {
+        path: seed_path,
+        content: entry_content,
+    });
+    let index = try_index_for_run_or_owned_pool(roots)
+        .map_err(|e| format!("{policy_module} closure: cannot index source roots: {e}"))?;
+    extend_sources_to_both_closure_fixpoint(vec![seed], index.as_ref())
+        .map_err(|e| format!("{policy_module} closure: {e}"))
+}
 
-    let entry_content = read(entry_rel)?;
-    let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
-    let mut queue: Vec<String> = vec![entry_content.clone()];
-    while let Some(content) = queue.pop() {
-        for module_path in extract_import_paths(&content) {
-            let Some(rel_path) = module_index.get(&module_path) else {
-                return Err(format!(
-                    "{policy_module} closure: import `{module_path}` \
-                     (reached from `{entry_rel}`) names no module in the source roots"
-                ));
-            };
-            // `entry_rel` may be absolute (an entry argument typically is) while the module
-            // index stores workspace-relative keys, so compare canonically — a string compare
-            // would miss and admit the entry twice under two spellings.
-            if same_canonical_file(rel_path, entry_rel) || seen.contains_key(rel_path) {
-                continue;
-            }
-            let file_content = read(rel_path)?;
-            seen.insert(
-                rel_path.clone(),
-                Rc::new(v1_compiler_compile::SourceFile {
-                    path: rel_path.clone(),
-                    content: file_content.clone(),
-                }),
-            );
-            queue.push(file_content);
-        }
+#[cfg(test)]
+mod policy_entry_closure_sources_controls {
+    use super::*;
+    use std::collections::HashSet;
+
+    const ENTRY: &str = "entry.dag";
+    const PROVIDER: &str = "provider.dag";
+    const BROKEN: &str = "broken.dag";
+
+    const ENTRY_SRC: &str = "module policy.closure.entry\n\
+fn use_provider() -> policy.closure.provider.ProviderToken {\n\
+  policy.closure.provider.ProviderToken { n: 1 }\n\
+}\n";
+
+    const PROVIDER_SRC: &str = "module policy.closure.provider\n\
+type ProviderToken {\n\
+  n: Int\n\
+}\n";
+
+    const BROKEN_SRC: &str = "module policy.closure.broken\n\
+fn broken() -> policy.closure.provider.ProviderToken {\n\
+  no_such_function_anywhere()\n\
+}\n";
+
+    fn fixture_tree() -> &'static Path {
+        static DIR: OnceLock<PathBuf> = OnceLock::new();
+        DIR.get_or_init(|| {
+            let dir = process_workspace_root()
+                .join("target")
+                .join(format!("policy_entry_closure_{}", std::process::id()));
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join(ENTRY), ENTRY_SRC).unwrap();
+            std::fs::write(dir.join(PROVIDER), PROVIDER_SRC).unwrap();
+            std::fs::write(dir.join(BROKEN), BROKEN_SRC).unwrap();
+            dir
+        })
+        .as_path()
     }
 
-    let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
-        seen.into_iter().map(|(_, v)| v).collect();
-    sources.sort_by(|a, b| a.path.cmp(&b.path));
-    sources.push(Rc::new(v1_compiler_compile::SourceFile {
-        path: entry_rel.to_string(),
-        content: entry_content,
-    }));
-    Ok(sources)
+    fn provider_path(dir: &Path) -> String {
+        workspace_relative_repo_path(&dir.join(PROVIDER).to_string_lossy())
+    }
+
+    fn entry_rel(dir: &Path, file: &str) -> String {
+        workspace_relative_repo_path(&dir.join(file).to_string_lossy())
+    }
+
+    fn roots(dir: &Path) -> Vec<String> {
+        vec![dir.to_string_lossy().into_owned()]
+    }
+
+    /// Import-line BFS the production helper used to run. THE MUTANT.
+    fn import_only_policy_entry_closure_sources(
+        roots: &[String],
+        entry_rel: &str,
+    ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+        let ws = process_workspace_root();
+        let module_index = build_module_path_index(roots);
+        let read = |rel: &str| -> Result<String, String> {
+            let abs = ws.join(rel);
+            std::fs::read_to_string(&abs).map_err(|e| format!("mutant read {}: {e}", abs.display()))
+        };
+        let entry_content = read(entry_rel)?;
+        let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
+        let mut queue: Vec<String> = vec![entry_content.clone()];
+        while let Some(content) = queue.pop() {
+            for module_path in extract_import_paths(&content) {
+                let Some(rel_path) = module_index.get(&module_path) else {
+                    return Err(format!(
+                        "mutant closure: import `{module_path}` \
+                         (reached from `{entry_rel}`) names no module in the source roots"
+                    ));
+                };
+                if same_canonical_file(rel_path, entry_rel) || seen.contains_key(rel_path) {
+                    continue;
+                }
+                let file_content = read(rel_path)?;
+                seen.insert(
+                    rel_path.clone(),
+                    Rc::new(v1_compiler_compile::SourceFile {
+                        path: rel_path.clone(),
+                        content: file_content.clone(),
+                    }),
+                );
+                queue.push(file_content);
+            }
+        }
+        let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
+            seen.into_iter().map(|(_, v)| v).collect();
+        sources.push(Rc::new(v1_compiler_compile::SourceFile {
+            path: entry_rel.to_string(),
+            content: entry_content,
+        }));
+        Ok(sources)
+    }
+
+    fn paths(sources: &[Rc<v1_compiler_compile::SourceFile>]) -> HashSet<String> {
+        sources
+            .iter()
+            .map(|s| workspace_relative_repo_path(&s.path))
+            .collect()
+    }
+
+    #[test]
+    fn a_provider_reached_only_by_reference_is_closed() {
+        let dir = fixture_tree();
+        let closed =
+            policy_entry_closure_sources(&roots(&dir), &entry_rel(&dir, ENTRY), "policy.closure")
+                .expect("closure");
+        let provider = provider_path(&dir);
+        assert!(
+            paths(&closed).contains(&provider),
+            "provider {provider} missing from {:?}",
+            paths(&closed)
+        );
+    }
+
+    #[test]
+    fn import_only_mutant_omits_the_reference_only_provider() {
+        let dir = fixture_tree();
+        let mutant =
+            import_only_policy_entry_closure_sources(&roots(&dir), &entry_rel(&dir, ENTRY))
+                .expect("mutant");
+        let provider = provider_path(&dir);
+        assert!(
+            !paths(&mutant).contains(&provider),
+            "the import-only mutant must omit {provider}; got {:?}",
+            paths(&mutant)
+        );
+    }
+
+    #[test]
+    fn a_real_error_in_the_entry_closure_still_refuses() {
+        let dir = fixture_tree();
+        let closed =
+            policy_entry_closure_sources(&roots(&dir), &entry_rel(&dir, BROKEN), "policy.closure")
+                .expect("closure");
+        let provider = provider_path(&dir);
+        assert!(
+            paths(&closed).contains(&provider),
+            "the broken entry must still close the reference-only provider"
+        );
+        let refusal = resolved_graph_from_sources(closed)
+            .expect_err("a call to a function nothing declares must refuse");
+        assert!(
+            refusal.contains("no_such_function_anywhere")
+                || refusal.contains("not found")
+                || refusal.contains("blocking_diagnostics"),
+            "refusal must name the real error, got: {refusal}"
+        );
+    }
 }
 
 fn format_compile_clean_hard_diagnostic_line(d: &Rc<ErrorNode>) -> String {
