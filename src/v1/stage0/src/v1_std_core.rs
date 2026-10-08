@@ -5289,7 +5289,12 @@ pub fn compose_optional_layers(outer: Cardinality, inner: Cardinality) -> Cardin
         Cardinality::Required => inner,
         Cardinality::CardOptional { layers: o } => match inner {
             Cardinality::Required => Cardinality::CardOptional { layers: o },
-            Cardinality::CardOptional { layers: i } => Cardinality::CardOptional { layers: o + i },
+            Cardinality::CardOptional { layers: i } => {
+                let n = o + i;
+                Cardinality::CardOptional {
+                    layers: if n > 8 { 8 } else { n },
+                }
+            }
         },
     }
 }

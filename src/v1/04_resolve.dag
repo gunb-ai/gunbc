@@ -34,7 +34,7 @@ import v1.std.core { Unmarked,
   make_transport_node, local_transport_node,
   is_local_transport, transport_request_body,
   is_kernel_type, is_container_type,
-  with_optional_cardinality, with_required_cardinality, preserve_outer_optional_cardinality, preserve_optional_layers,
+  with_optional_cardinality, with_required_cardinality, without_optional_cardinality, preserve_outer_optional_cardinality, preserve_optional_layers,
   Connective, Conj, Disj, Arrow, NoConnective,
   CardOptional, cardinality_is_optional, no_span,
   unit_type, string_type,
@@ -669,7 +669,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
     } else {
       let is_optional = cardinality_is_optional(c: n.return_cardinality)
       if is_optional {
-        let inner = with_required_cardinality(n: n)
+        let inner = without_optional_cardinality(n: n)
         let inner_result = resolve_node_bounded(n: inner, env: env, module_name: module_name, depth: depth + 1, masked: masked)
         let inner_resolved = inner_result.resolved
         let inner_diags = inner_result.diagnostics

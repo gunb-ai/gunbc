@@ -2863,7 +2863,9 @@ fn compose_optional_layers(outer: Cardinality, inner: Cardinality) -> Cardinalit
     CardOptional { layers: o } =>
       match inner {
         Required => CardOptional { layers: o }
-        CardOptional { layers: i } => CardOptional { layers: o + i }
+        CardOptional { layers: i } =>
+          let n = o + i
+          CardOptional { layers: if n > 8 { 8 } else { n } }
       }
   }
 }

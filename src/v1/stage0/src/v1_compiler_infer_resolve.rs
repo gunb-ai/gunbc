@@ -1377,7 +1377,7 @@ Rc::new(NodeResolveResult {
                             if is_optional.clone() {
                                 {
                                     let inner =
-                                        crate::v1_std_core::with_required_cardinality(n.clone());
+                                        crate::v1_std_core::without_optional_cardinality(n.clone());
                                     let inner_result = resolve_node_bounded(
                                         inner.clone(),
                                         env.clone(),

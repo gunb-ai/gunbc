@@ -2955,6 +2955,7 @@ pub fn rust_fn_sig_preserves_authored_alias_leaf(
 }
 
 pub fn rust_wrap_optional_layers(layers: i64, rendered: String) -> String {
+    let layers = if layers > 8 { 8 } else { layers };
     if layers <= 1 {
         v1_rt::concat(
             v1_rt::concat("Option<".to_string(), rendered.clone()),

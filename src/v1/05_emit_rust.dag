@@ -1756,6 +1756,7 @@ fn rust_fn_sig_preserves_authored_alias_leaf(name: String, decision: TypeRealiza
 }
 
 fn rust_wrap_optional_layers(layers: Int, rendered: String) -> String {
+  let layers = if layers > 8 { 8 } else { layers }
   if layers <= 1 {
     concat("Option<", rendered, ">")
   } else {
