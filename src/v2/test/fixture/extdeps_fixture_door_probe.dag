@@ -1,5 +1,5 @@
 module extdeps.fixture.door_probe
 
-import std.integer { Int }
+type Flag {}
 
-fn f() -> Int { 1 }
+fn f() -> Flag { Flag {} }

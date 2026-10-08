@@ -66,9 +66,10 @@ data ledger_pool_roots: List<String> = ["dag", "src/v2"]
 
 data door_probe_path: String = "src/v2/test/fixture/extdeps_fixture_door_probe.dag"
 
-// Isolated single-file ingest (no std in the ingest): the HARNESS that produced
-// find_witness_reason_no_candidate. Used only to pin that roster lenses are not the fatal.
-data isolated_probe_source: String = "module extdeps.fixture.door_probe\n\nfn f() -> Int { 1 }\n"
+// Isolated ingest with a locally bound return type so infer can accept and subtree
+// lenses actually run (review 77884: find_witness_reason_no_candidate is infer, before
+// lenses). No std.integer import — that was the unbound Int that never reached the roster.
+data isolated_probe_source: String = "module extdeps.fixture.door_probe\n\ntype Flag {}\n\nfn f() -> Flag { Flag {} }\n"
 
 data isolated_probe_artifact: Artifact = Artifact {
   kind: SourceFile,
@@ -112,7 +113,7 @@ fn isolated_probe_fatal_or_admitted() -> Symbol {
 }
 
 fn isolated_probe_is_not_a_roster_lens_refusal(reason: Symbol) -> Bool {
-  (reason == ^compile_door_roster_admitted) || (reason == ^find_witness_reason_no_candidate)
+  reason == ^compile_door_roster_admitted
 }
 
 fn describe_node_kind(n: Node) -> String {
@@ -270,8 +271,8 @@ fn ledger_style_probe_row() -> DoorLedgerRow {
 // NOT a test fn: door_ledger_row over import_closure including std.integer was still inside
 // Filesystem.Read of dag/std/{integer,optional,algebra}.dag with no door verdict after 38+
 // minutes of interpreted eval (rss ~9.5GiB). A claim-run of that path would hang the long
-// lane. Dump with --function ledger_style_fatal_or_admitted. Remaining obstacle: std
-// inhabitance of Int is a live import-closure compile, not a roster-lens refusal.
+// lane. Dump with --function ledger_style_fatal_or_admitted. Remaining obstacle: QN-spine
+// Conj members still member_not_a_binder until #13513 member_kinds.
 fn ledger_style_fatal_or_admitted() -> Symbol {
   match ledger_style_probe_row().outcome {
     DoorCompiled => ^compile_door_roster_admitted

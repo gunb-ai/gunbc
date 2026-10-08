@@ -54,12 +54,14 @@ import v2.extdeps.languages.dag {
 // declaration subtree, never a per-node subtree re-walk (the required_lens_grain_note O(n^2) bar).
 // Door grain (validate_then_compile / compile_source_root_ingest_with_admission) is no longer
 // blocked by the subtree unit_modeling/lifecycle_carrier member_not_a_binder false-positive on
-// module surfaces. The executing proof is v2.test.long.compile_door_minimal_module
-// isolated_minimal_module_is_not_refused_by_roster_lenses, which runs the
-// `module extdeps.fixture.door_probe` / `fn f() -> Int { 1 }` ingest through that door and
-// requires compile_door_roster_admitted or find_witness_reason_no_candidate. That makes
-// gunbc.guarantee_stall member_kind_door_binding_executed_by_no_claim_stall (#13513) a
-// satisfiable trigger, not a harness that dies on an unrelated lens.
+// module surfaces. The inhabitance claim is v2.test.long.compile_door_minimal_module
+// isolated_minimal_module_is_not_refused_by_roster_lenses: isolated
+// `module extdeps.fixture.door_probe` with a locally bound `Flag` (infer can accept) through
+// that door, requiring compile_door_roster_admitted only. find_witness_reason_no_candidate is
+// infer, before lenses, and is not that proof (DESIGN §3 route, review 77884). The claim is
+// RED while the QN spine is still member_not_a_binder; it greens when the door returns
+// admitted, which is when subtree lenses have run and not refused. That is the trigger for
+// gunbc.guarantee_stall member_kind_door_binding_executed_by_no_claim_stall (#13513).
 // Corpus grain: the same fold is consumed at parse grain by the live witness in
 // src/v2/test/claim/long/mandatory_tag_extdeps_corpus_test.dag over dag/extdeps/** via
 // filesystem_list_dag_files + filesystem_read + the v2 grammar - the Node-tree projection that
