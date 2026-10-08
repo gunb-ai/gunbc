@@ -55,6 +55,11 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "no per-cause trigger — dissolves by construction at the namespace-only containment flip (admit_named_exports flat-merge replaced by position-distinct containment; nimble-boar-198)"
   },
   CauseOwnership {
+    cause: ^member_not_a_binder,
+    lane: MigrationOwned,
+    flip_trigger: "KEEP until an executed door-ledger census of dag/std/error_primitives.dag and dag/std/bit.dag shows member_not_a_binder at zero on those subjects (fatals moved), then delete this row. The carrier predicate no longer judges a module-surface Authored member as a record field; that is not by itself the census. DIAGNOSIS (advisories step 2, bold-lynx-438): reading the fatal element exposed this cause on those two files at synthetic dag_surface_module targets. Do not retire on an unrelated histogram substitution."
+  },
+  CauseOwnership {
     cause: ^parse_g0_tokens_remain,
     lane: MigrationOwned,
     flip_trigger: "no per-cause trigger — same grammar-surgery class as parse_grammar_choice_overlap_residue (nimble-boar-198). Measured 2026-09-09 by the gunbc.witness_v2_native_route census as the fatal refusal on 706 real v2.test.* modules through the emitted native binary"

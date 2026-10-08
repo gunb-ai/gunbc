@@ -6776,7 +6776,8 @@ fn parse_production_emitted_identity_optional(node: Node) -> Optional<Symbol> {
 
 fn dag_node_is_fn_decl(node: Node) -> Bool {
   match parse_production_emitted_identity_optional(node: node) {
-    Present { value: id } => id == ^dag_surface_fn_decl
+    Present { value: id } =>
+      (id == ^dag_surface_fn_decl) || (id == ^dag_surface_test_fn_decl)
     Absent => false
   }
 }

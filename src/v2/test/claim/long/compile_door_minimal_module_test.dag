@@ -79,7 +79,7 @@ fn isolated_probe_fatal_or_admitted() -> Symbol {
 }
 
 fn isolated_probe_is_not_a_roster_lens_refusal(reason: Symbol) -> Bool {
-  (reason != ^member_not_a_binder) && (reason != ^fact_density_hollow_alias_locus)
+  (reason == ^compile_door_roster_admitted) || (reason == ^find_witness_reason_no_candidate)
 }
 
 // LONG-LANE: interpreted door + LM in-frame (mandatory_tag_gate_witness class, over 72300

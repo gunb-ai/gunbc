@@ -226,3 +226,36 @@ test fn a_computation_shaped_record_field_is_still_member_not_a_binder() -> Bool
     Accepted { value: _, diagnostics: _ } => false
   }
 }
+
+// GREEN: the exception is producer identity dag_surface_fn_decl on the member, not Conj shape.
+data fn_decl_identity_atom: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^dag_surface_fn_decl } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data stamped_fn_shell: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Authored { name: ^grammar_production_identity_node_projection },
+      target: fn_decl_identity_atom
+    }
+  ],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data module_with_stamped_fn_member: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge { label: Authored { name: ^f }, target: stamped_fn_shell }
+  ],
+  occurrence_id: OccurrenceSynthetic
+}
+
+test fn a_stamped_fn_decl_member_is_not_member_not_a_binder() -> Bool {
+  match unit_modeling_gate(node: module_with_stamped_fn_member) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: r } => r.head.reason != ^member_not_a_binder
+  }
+}
