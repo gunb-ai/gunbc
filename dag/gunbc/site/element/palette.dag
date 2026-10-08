@@ -1,0 +1,218 @@
+module gunbc.site.element.palette
+
+import std.types { Bool, List, String }
+import extdeps.color.srgb { Srgb8 }
+import extdeps.google.issue_tracker {
+  issue_tracker_visual_tokens,
+  issue_tracker_measured_palette_light,
+  issue_tracker_measured_palette_dark,
+  issue_tracker_measured_code_ink_light,
+  issue_tracker_measured_relation_table,
+}
+import gunbc.design.palette { Swatch, swatch_paint }
+import gunbc.design.material { CssDecl, decl }
+import extdeps.languages.css.properties { CustomProperty }
+
+// The one palette of the internal tools frontend. Each slot is one custom property, and each
+// scheme answers every slot through a total match, so a slot defined for day and missing for
+// night does not compile. The values are ADOPTED: most read an upstream measurement by reference
+// (extdeps.google.issue_tracker), and the ones that depart from it or that the capture never
+// reached are spelled here with the reason, never written back into the upstream rows.
+type PaletteSlot
+  = SlotText
+  | SlotTextDim
+  | SlotBorder
+  | SlotHover
+  | SlotSubtle
+  | SlotHighlight
+  | SlotAction
+  | SlotActionHover
+  | SlotError
+  | SlotGround
+  | SlotSurface
+  | SlotLink
+  | SlotOnAction
+  | SlotCodeInk
+  | SlotLeadingBar
+  | SlotClosedRow
+  | SlotStatusReady
+  | SlotStatusAssigned
+  | SlotStatusBlocked
+  | SlotMeterReason
+  | SlotMeterRead
+  | SlotMeterWrite
+  | SlotMeterEdit
+  | SlotMeterRun
+  | SlotMeterSearch
+  | SlotMeterReport
+  | SlotMeterWorker
+  | SlotMeterWorkerLight
+  | SlotMeterWorkerShade
+  | SlotMeterWorkerFeature
+  | SlotMeterFinish
+  | SlotMeterSuccess
+
+data palette_slots: List<PaletteSlot> = [
+  SlotText, SlotTextDim, SlotBorder, SlotHover, SlotSubtle, SlotHighlight, SlotAction,
+  SlotActionHover, SlotError, SlotGround, SlotSurface, SlotLink, SlotOnAction, SlotCodeInk,
+  SlotLeadingBar, SlotClosedRow, SlotStatusReady, SlotStatusAssigned, SlotStatusBlocked,
+  SlotMeterReason, SlotMeterRead, SlotMeterWrite, SlotMeterEdit, SlotMeterRun, SlotMeterSearch, SlotMeterReport,
+  SlotMeterWorker, SlotMeterWorkerLight, SlotMeterWorkerShade, SlotMeterWorkerFeature, SlotMeterFinish, SlotMeterSuccess,
+]
+
+fn palette_slot_name(slot: PaletteSlot) -> String {
+  match slot {
+    SlotText => "issue-text"
+    SlotTextDim => "issue-text-dim"
+    SlotBorder => "issue-border"
+    SlotHover => "issue-bg-hover"
+    SlotSubtle => "issue-bg-subtle"
+    SlotHighlight => "issue-highlight"
+    SlotAction => "issue-action"
+    SlotActionHover => "issue-action-hover"
+    SlotError => "issue-error"
+    SlotGround => "issue-ground"
+    SlotSurface => "issue-surface"
+    SlotLink => "issue-link"
+    SlotOnAction => "issue-on-action"
+    SlotCodeInk => "issue-code-ink"
+    SlotLeadingBar => "issue-leading-bar"
+    SlotClosedRow => "issue-closed-row"
+    SlotStatusReady => "status-ready-ink"
+    SlotStatusAssigned => "status-assigned-ink"
+    SlotStatusBlocked => "status-blocked-ink"
+    SlotMeterReason => "meter-reason"
+    SlotMeterRead => "meter-read"
+    SlotMeterWrite => "meter-write"
+    SlotMeterEdit => "meter-edit"
+    SlotMeterRun => "meter-run"
+    SlotMeterSearch => "meter-search"
+    SlotMeterReport => "meter-report"
+    SlotMeterWorker => "meter-worker"
+    SlotMeterWorkerLight => "meter-worker-light"
+    SlotMeterWorkerShade => "meter-worker-shade"
+    SlotMeterWorkerFeature => "meter-worker-feature"
+    SlotMeterFinish => "meter-finish"
+    SlotMeterSuccess => "meter-success"
+  }
+}
+
+fn palette_var(slot: PaletteSlot) -> String {
+  join(["var(--", palette_slot_name(slot: slot), ")"], "")
+}
+
+// Day. Hover, highlight, pressed action and error come from the 2026-09-22 token row; the rest
+// from the 2026-10-04 measured row. SlotLink is a local adoption: the action colour on the grey
+// ground is 4.27:1 and fails AA at body size, so link-coloured text there takes the product's own
+// darker action colour (its hover value), which clears it. SlotOnAction is the label on a filled
+// button, which the product draws in the card colour. SlotClosedRow is the ground of a closed
+// relation row, read from the relation table's own measurement. The three status inks are house colours
+// (green ready, blue assigned, amber blocked) with no upstream counterpart; they moved here
+// from gunbc.site.status so the frontend has one palette.
+// The meter slots are the build meter's (gunbc.site.element.build_meter). The seven kind colours
+// are the ones the worker scene's prototype settled, one per operation kind. The worker paints are
+// the brand's stark colourway of the gunbai mark: ink on cream by day, stone on void by night
+// (gunb-ai/frontend legacy/moodboard.html, the same source gunbc.site.robot_mark cites); the light
+// and shade paints are that body colour's two neighbours, used for a one-pixel highlight and
+// shadow. The finish colour marks a published attempt's strip.
+fn palette_day(slot: PaletteSlot) -> Srgb8 {
+  match slot {
+    SlotText => issue_tracker_measured_palette_light.text
+    SlotTextDim => issue_tracker_measured_palette_light.text_muted
+    SlotBorder => issue_tracker_measured_palette_light.hairline
+    SlotHover => issue_tracker_visual_tokens.background_hover
+    SlotSubtle => issue_tracker_measured_palette_light.field
+    SlotHighlight => issue_tracker_visual_tokens.highlight
+    SlotAction => issue_tracker_measured_palette_light.action
+    SlotActionHover => issue_tracker_visual_tokens.action_hover
+    SlotError => issue_tracker_visual_tokens.error
+    SlotGround => issue_tracker_measured_palette_light.ground
+    SlotSurface => issue_tracker_measured_palette_light.card
+    SlotLink => issue_tracker_visual_tokens.action_hover
+    SlotOnAction => issue_tracker_measured_palette_light.card
+    SlotCodeInk => issue_tracker_measured_code_ink_light
+    SlotLeadingBar => issue_tracker_measured_palette_light.leading_bar
+    SlotClosedRow => issue_tracker_measured_relation_table.closed_row_ground
+    SlotStatusReady => Srgb8 { r: 38, g: 105, b: 68 }
+    SlotStatusAssigned => Srgb8 { r: 54, g: 90, b: 155 }
+    SlotStatusBlocked => Srgb8 { r: 142, g: 83, b: 21 }
+    SlotMeterReason => Srgb8 { r: 79, g: 75, b: 176 }
+    SlotMeterRead => Srgb8 { r: 59, g: 143, b: 208 }
+    SlotMeterWrite => Srgb8 { r: 226, g: 87, b: 58 }
+    SlotMeterEdit => Srgb8 { r: 238, g: 162, b: 44 }
+    SlotMeterRun => Srgb8 { r: 67, g: 160, b: 101 }
+    SlotMeterSearch => Srgb8 { r: 23, g: 160, b: 151 }
+    SlotMeterReport => Srgb8 { r: 180, g: 86, b: 159 }
+    SlotMeterWorker => Srgb8 { r: 15, g: 15, b: 15 }
+    SlotMeterWorkerLight => Srgb8 { r: 61, g: 60, b: 57 }
+    SlotMeterWorkerShade => Srgb8 { r: 0, g: 0, b: 0 }
+    SlotMeterWorkerFeature => Srgb8 { r: 244, g: 241, b: 236 }
+    SlotMeterFinish => Srgb8 { r: 184, g: 134, b: 46 }
+    SlotMeterSuccess => Srgb8 { r: 52, g: 168, b: 83 }
+  }
+}
+
+// Night. Text, muted text, hairline, action, field, ground and card are the measured dark row.
+// The dark capture did not reach a hovered row, a selection, a pressed action or an error, so
+// those four keep the values the owner directed on 2026-09-23; they are local until a capture
+// shows them. A filled button's label takes the dark ground, the link needs no adjustment on the
+// dark ground, and code takes the text ink because the dark capture shows no inline code.
+// A closed relation row was not captured in the dark scheme either; it takes the same grey the
+// hovered row was given, which is the pairing the light capture shows.
+fn palette_night(slot: PaletteSlot) -> Srgb8 {
+  match slot {
+    SlotText => issue_tracker_measured_palette_dark.text
+    SlotTextDim => issue_tracker_measured_palette_dark.text_muted
+    SlotBorder => issue_tracker_measured_palette_dark.hairline
+    SlotHover => Srgb8 { r: 41, g: 42, b: 45 }
+    SlotSubtle => issue_tracker_measured_palette_dark.field
+    SlotHighlight => Srgb8 { r: 26, g: 58, b: 92 }
+    SlotAction => issue_tracker_measured_palette_dark.action
+    SlotActionHover => Srgb8 { r: 174, g: 203, b: 250 }
+    SlotError => Srgb8 { r: 242, g: 139, b: 130 }
+    SlotGround => issue_tracker_measured_palette_dark.ground
+    SlotSurface => issue_tracker_measured_palette_dark.card
+    SlotLink => issue_tracker_measured_palette_dark.action
+    SlotOnAction => issue_tracker_measured_palette_dark.ground
+    SlotCodeInk => issue_tracker_measured_palette_dark.text
+    SlotLeadingBar => issue_tracker_measured_palette_dark.leading_bar
+    SlotClosedRow => Srgb8 { r: 41, g: 42, b: 45 }
+    SlotStatusReady => Srgb8 { r: 146, g: 201, b: 166 }
+    SlotStatusAssigned => Srgb8 { r: 146, g: 181, b: 238 }
+    SlotStatusBlocked => Srgb8 { r: 226, g: 181, b: 109 }
+    SlotMeterReason => Srgb8 { r: 141, g: 138, b: 242 }
+    SlotMeterRead => Srgb8 { r: 92, g: 176, b: 242 }
+    SlotMeterWrite => Srgb8 { r: 243, g: 118, b: 88 }
+    SlotMeterEdit => Srgb8 { r: 246, g: 186, b: 78 }
+    SlotMeterRun => Srgb8 { r: 95, g: 197, b: 134 }
+    SlotMeterSearch => Srgb8 { r: 57, g: 198, b: 186 }
+    SlotMeterReport => Srgb8 { r: 216, g: 130, b: 198 }
+    SlotMeterWorker => Srgb8 { r: 206, g: 197, b: 182 }
+    SlotMeterWorkerLight => Srgb8 { r: 232, g: 225, b: 214 }
+    SlotMeterWorkerShade => Srgb8 { r: 156, g: 146, b: 130 }
+    SlotMeterWorkerFeature => Srgb8 { r: 21, g: 21, b: 20 }
+    SlotMeterFinish => Srgb8 { r: 217, g: 178, b: 95 }
+    SlotMeterSuccess => Srgb8 { r: 129, g: 201, b: 149 }
+  }
+}
+
+fn palette_color(night: Bool, slot: PaletteSlot) -> Srgb8 {
+  if night { palette_night(slot: slot) } else { palette_day(slot: slot) }
+}
+
+// The ink for action-coloured text is contextual: it defaults to the link colour, which is safe
+// on both the ground and a card, and a card restores the product's action colour for its own
+// contents (gunbc.site.element.card). Elements read this property, never SlotAction, for text.
+data palette_action_ink_name: String = "issue-action-ink"
+
+fn palette_action_ink_var() -> String {
+  join(["var(--", palette_action_ink_name, ")"], "")
+}
+
+fn palette_decls(night: Bool) -> List<CssDecl> {
+  concat(
+    map(palette_slots, s => decl(
+      prop: CustomProperty { name: palette_slot_name(slot: s) },
+      value: swatch_paint(sw: Swatch { name: palette_slot_name(slot: s), color: palette_color(night: night, slot: s) }))),
+    [decl(prop: CustomProperty { name: palette_action_ink_name }, value: palette_var(slot: SlotLink))])
+}

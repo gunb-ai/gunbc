@@ -4208,6 +4208,72 @@ pub fn match_arm_types_are_proven_disjoint(
     }
 }
 
+pub fn match_arm_type_is_bare_concrete(t: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    {
+        let name = crate::v1_std_core::authored_name_at(
+            scope.type_env.clone().source_indices.clone(),
+            t.clone(),
+        );
+        let generic = ((((t.params.clone().len() as i64) > 0)
+            || ((t.inferred.clone() != std::option::Option::None)
+                && crate::v1_std_core::is_compiler_error(t.inferred.clone().clone().unwrap())))
+            || match t.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::TypeVariable { id: _, .. }) => true,
+                _ => false,
+            });
+        (((name.clone() != "".to_string()) && !generic.clone())
+            && !declared_type_carries_optional(t.clone(), scope.clone()))
+    }
+}
+
+pub fn match_arm_mixes_bare_and_optional(
+    unified_arm_type: Rc<Node>,
+    arm_type: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    ((declared_type_carries_optional(unified_arm_type.clone(), scope.clone())
+        && match_arm_type_is_bare_concrete(arm_type.clone(), scope.clone()))
+        || (match_arm_type_is_bare_concrete(unified_arm_type.clone(), scope.clone())
+            && declared_type_carries_optional(arm_type.clone(), scope.clone())))
+}
+
+pub fn match_arm_body_is_present_payload_binding(
+    arm: Rc<ArmInferResult>,
+    scope: Rc<InferScope>,
+) -> bool {
+    match (*crate::v1_std_core::arm_pattern(arm.typed_arm.clone())).clone() {
+        MatchPattern::VariantPattern {
+            name: variant_name,
+            field_bindings: bindings,
+            ..
+        } => {
+            let body_name = crate::v1_std_core::expr_var_name_at(
+                crate::v1_std_core::arm_body(arm.typed_arm.clone()),
+                scope.type_env.clone().source_indices.clone(),
+            );
+            (((variant_name.clone() == "Present".to_string())
+                && (body_name.clone() != "".to_string()))
+                && {
+                    let mut __found = false;
+                    for fb in bindings.iter().cloned() {
+                        if match (*crate::v1_std_core::field_binding_pattern(fb.clone())).clone() {
+                            MatchPattern::Bind {
+                                declaration: declaration,
+                                ..
+                            } => (declaration.name.clone() == body_name.clone()),
+                            _ => false,
+                        } {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                })
+        }
+        _ => false,
+    }
+}
+
 pub fn match_arm_join_diagnostics(
     unified_arm_type: Rc<Node>,
     arm: Rc<ArmInferResult>,
@@ -4216,35 +4282,61 @@ pub fn match_arm_join_diagnostics(
     if arm_body_diverges(crate::v1_std_core::arm_body(arm.typed_arm.clone())) {
         Rc::new(vec![])
     } else {
-        if match_arm_types_are_proven_disjoint(
-            unified_arm_type.clone(),
-            arm.body_type.clone(),
-            scope.clone(),
-        ) {
-            Rc::new(vec![inference_error(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            "match arms produce proven-disjoint types: ".to_string(),
-                            crate::v1_compiler_infer_types::node_type_shape(
-                                unified_arm_type.clone(),
-                                scope.type_env.clone().source_indices.clone(),
-                            ),
-                        ),
-                        " vs ".to_string(),
+        if (!match_arm_body_is_present_payload_binding(arm.clone(), scope.clone())
+            && match_arm_mixes_bare_and_optional(
+                unified_arm_type.clone(),
+                arm.body_type.clone(),
+                scope.clone(),
+            ))
+        {
+            Rc::new(vec![crate::v1_std_core::make_error_node(
+                Rc::new(CompilerDiagnostic::DeclaredTypeNotInhabited {
+                    position: "match arm".to_string(),
+                    expected: crate::v1_compiler_infer_types::node_type_shape(
+                        unified_arm_type.clone(),
+                        scope.type_env.clone().source_indices.clone(),
                     ),
-                    crate::v1_compiler_infer_types::node_type_shape(
+                    got: crate::v1_compiler_infer_types::node_type_shape(
                         arm.body_type.clone(),
                         scope.type_env.clone().source_indices.clone(),
                     ),
-                ),
-                crate::v1_std_core::arm_body(arm.typed_arm.clone())
-                    .span
-                    .clone(),
+                    span: crate::v1_std_core::arm_body(arm.typed_arm.clone())
+                        .span
+                        .clone(),
+                }),
                 scope.module_name.clone(),
             )])
         } else {
-            Rc::new(vec![])
+            if match_arm_types_are_proven_disjoint(
+                unified_arm_type.clone(),
+                arm.body_type.clone(),
+                scope.clone(),
+            ) {
+                Rc::new(vec![inference_error(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                "match arms produce proven-disjoint types: ".to_string(),
+                                crate::v1_compiler_infer_types::node_type_shape(
+                                    unified_arm_type.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                ),
+                            ),
+                            " vs ".to_string(),
+                        ),
+                        crate::v1_compiler_infer_types::node_type_shape(
+                            arm.body_type.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                        ),
+                    ),
+                    crate::v1_std_core::arm_body(arm.typed_arm.clone())
+                        .span
+                        .clone(),
+                    scope.module_name.clone(),
+                )])
+            } else {
+                Rc::new(vec![])
+            }
         }
     }
 }
@@ -6256,6 +6348,69 @@ pub fn declared_type_inhabitance(
     }
 }
 
+pub fn declared_type_carries_optional(declared: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    {
+        let source_indices = scope.type_env.clone().source_indices.clone();
+        let declared_peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+            declared.clone(),
+            scope.type_env.clone(),
+            scope.module_name.clone(),
+        );
+        ((((declared.return_cardinality.clone() == Cardinality::CardOptional)
+            || (declared_peeled.return_cardinality.clone() == Cardinality::CardOptional))
+            || (crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
+                source_indices.clone(),
+                declared.clone(),
+            )) == "Optional".to_string()))
+            || (crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
+                source_indices.clone(),
+                declared_peeled.clone(),
+            )) == "Optional".to_string()))
+    }
+}
+
+pub fn position_forbids_bare_lift(position: DeclaredTypePosition) -> bool {
+    match position.clone() {
+        DeclaredTypePosition::PositionDeclaredReturn => true,
+        DeclaredTypePosition::PositionDataInitializer => true,
+        _ => false,
+    }
+}
+
+pub fn required_produced_at_optional_declared(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    {
+        let source_indices = scope.type_env.clone().source_indices.clone();
+        let declared_name =
+            crate::v1_std_core::authored_name_at(source_indices.clone(), declared.clone());
+        let produced_name =
+            crate::v1_std_core::authored_name_at(source_indices.clone(), produced.clone());
+        let produced_carries_optional = ((produced.return_cardinality.clone()
+            == Cardinality::CardOptional)
+            || (crate::v1_std_core::qualified_last_segment(produced_name.clone())
+                == "Optional".to_string()));
+        let produced_is_generic = ((((produced.params.clone().len() as i64) > 0)
+            || ((produced.inferred.clone() != std::option::Option::None)
+                && crate::v1_std_core::is_compiler_error(
+                    produced.inferred.clone().clone().unwrap(),
+                )))
+            || match produced.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::TypeVariable { id: _, .. }) => true,
+                _ => false,
+            });
+        ((((((declared_type_carries_optional(declared.clone(), scope.clone())
+            && !produced_carries_optional.clone())
+            && !produced_is_generic.clone())
+            && (produced_name.clone() != "".to_string()))
+            && (declared_name.clone() != "".to_string()))
+            && !type_node_is_callable(declared.clone()))
+            && !type_node_is_callable(produced.clone()))
+    }
+}
+
 pub fn optional_produced_at_required_declared(
     declared: Rc<Node>,
     produced: Rc<Node>,
@@ -6276,21 +6431,8 @@ pub fn optional_produced_at_required_declared(
                 Some(InferredNode::TypeVariable { id: _, .. }) => true,
                 _ => false,
             });
-        let declared_peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
-            declared.clone(),
-            scope.type_env.clone(),
-            scope.module_name.clone(),
-        );
-        let declared_carries_optional = ((((declared.return_cardinality.clone()
-            == Cardinality::CardOptional)
-            || (declared_peeled.return_cardinality.clone() == Cardinality::CardOptional))
-            || (crate::v1_std_core::qualified_last_segment(declared_name.clone())
-                == "Optional".to_string()))
-            || (crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
-                source_indices.clone(),
-                declared_peeled.clone(),
-            )) == "Optional".to_string()));
-        ((((((produced_carries_optional.clone() && !declared_carries_optional.clone())
+        ((((((produced_carries_optional.clone()
+            && !declared_type_carries_optional(declared.clone(), scope.clone()))
             && !declared_is_generic.clone())
             && (declared_name.clone() != "".to_string()))
             && !type_node_is_callable(declared.clone()))
@@ -6303,11 +6445,17 @@ pub fn optional_at_required_obligation_diags(
     obligation: Rc<DeclaredTypeObligation>,
     scope: Rc<InferScope>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
-    if optional_produced_at_required_declared(
+    if (optional_produced_at_required_declared(
         obligation.declared.clone(),
         obligation.produced.clone(),
         scope.clone(),
-    ) {
+    ) || (position_forbids_bare_lift(obligation.position.clone())
+        && required_produced_at_optional_declared(
+            obligation.declared.clone(),
+            obligation.produced.clone(),
+            scope.clone(),
+        )))
+    {
         Rc::new(vec![crate::v1_std_core::make_error_node(
             Rc::new(CompilerDiagnostic::DeclaredTypeNotInhabited {
                 position: declared_type_position_label(

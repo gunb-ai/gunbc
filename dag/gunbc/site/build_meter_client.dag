@@ -1,0 +1,278 @@
+module gunbc.site.build_meter_client
+
+import std.types { Int, List, String }
+import extdeps.languages.typescript.program {
+  TsExpr, TsStmt, ts_ident, ts_lit_str, ts_lit_num, ts_member, ts_call, ts_arrow, ts_block, ts_const, ts_let,
+  ts_return, ts_expr_stmt, ts_if, ts_cond, ts_prefix, ts_binop, ts_for_of, ts_spread,
+}
+import gunbc.site.element.build_meter {
+  build_meter_class, build_meter_worker_class, build_meter_look_attribute, build_meter_look_left, build_meter_look_right,
+  build_meter_drowsy_class, build_meter_asleep_class, build_meter_waking_class, build_meter_beat_class, build_meter_beat_timing,
+  build_meter_canvas_class, build_meter_changing_class, build_meter_change_ms,
+  build_meter_scene_attribute, build_meter_settle_attribute, build_meter_stance_attribute, build_meter_worker_x_attribute,
+  build_meter_rounds_attribute, build_meter_side_attribute, build_meter_from_attribute, build_meter_to_attribute,
+  build_meter_walk_property, build_meter_walk_steps_property, build_meter_from_width_property, build_meter_to_width_property,
+  BuildMeterSettleAtOnce, build_meter_settle_key, BuildMeterLeaving, BuildMeterArriving, build_meter_side_key,
+}
+
+// The build meter's pointer decoration. It sets a look attribute and three state classes on the
+// element and nothing else: the element's own rules (gunbc.site.element.build_meter) decide what
+// they look like, and no fact about the attempt is read or written here. While the pointer moves
+// over the meter the worker looks toward the pointer's side. A pointer that rests there makes it
+// drowsy and then asleep; leaving wakes it slowly. Under prefers-reduced-motion nothing is set.
+data build_meter_reduced_motion_query: String = "(prefers-reduced-motion: reduce)"
+data build_meter_drowse_after_ms: Int = 4200
+data build_meter_sleep_after_ms: Int = 2600
+data build_meter_wake_ms: Int = 1000
+
+// THE METER TAKES A NEWER RENDERING OF ITSELF. The page's workflow observation dispatches this
+// event on the meter with the rendering it read and accepted (gunbc.roadmap.roadmap_component).
+// Every fact is taken at once: the body's attributes, the badge, the accessible name, the digest
+// and the link destination. The drawing is drawn when its scene settles. A drawing of the scene
+// already drawn replaces it at once, and the worker beats if the strip grew. A new scene is held
+// until it has been observed without a break for the dwell, and a newer rendering back in the
+// drawn scene discards it, so activity that flaps between observations is never drawn; a drawing
+// that settles at once (the attempt stopped or published) is not held. A held scene then changes
+// over build_meter_change_ms by the element's choreography rows, or at once under reduced motion. A
+// rendering that arrives while a change plays waits for it to end.
+data build_meter_fresh_event: String = "gunbc-meter-fresh"
+
+// The dwell is a reading duration, long enough that a scene seen in only one or two of the page's
+// observations is never drawn and short enough that a real change is drawn within a few seconds.
+data build_meter_dwell_ms: Int = 6000
+
+fn build_meter_reduced_motion_expr() -> TsExpr {
+  ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "window"), property: "matchMedia"), args: [ts_lit_str(value: build_meter_reduced_motion_query)]), property: "matches")
+}
+
+fn meter_class_call(method: String, class_name: String) -> TsExpr {
+  ts_call(callee: ts_member(object: ts_member(object: ts_ident(name: "meter"), property: "classList"), property: method), args: [ts_lit_str(value: class_name)])
+}
+
+fn meter_later(body: List<TsStmt>, after_ms: Int) -> TsExpr {
+  ts_call(callee: ts_ident(name: "setTimeout"), args: [ts_arrow(params: [], body: ts_block(stmts: body)), ts_lit_num(text: to_string(after_ms))])
+}
+
+fn meter_listen(event: String, params: List<String>, body: List<TsStmt>) -> TsStmt {
+  ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "meter"), property: "addEventListener"), args: [ts_lit_str(value: event), ts_arrow(params: params, body: ts_block(stmts: body))]))
+}
+
+fn meter_assign(name: String, value: TsExpr) -> TsStmt {
+  ts_expr_stmt(expr: ts_binop(left: ts_ident(name: name), op: "=", right: value))
+}
+
+fn meter_method(object: String, method: String, args: List<TsExpr>) -> TsExpr {
+  ts_call(callee: ts_member(object: ts_ident(name: object), property: method), args: args)
+}
+
+fn meter_call_stmt(object: String, method: String, args: List<TsExpr>) -> TsStmt {
+  ts_expr_stmt(expr: meter_method(object: object, method: method, args: args))
+}
+
+fn meter_attribute(object: String, attribute: String) -> TsExpr {
+  meter_method(object: object, method: "getAttribute", args: [ts_lit_str(value: attribute)])
+}
+
+fn meter_number(object: String, attribute: String) -> TsExpr {
+  ts_prefix(op: "+", expr: meter_attribute(object: object, attribute: attribute))
+}
+
+fn meter_math(method: String, args: List<TsExpr>) -> TsExpr {
+  meter_method(object: "Math", method: method, args: args)
+}
+
+fn meter_canvas_property(property: String, value: TsExpr) -> TsStmt {
+  ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_member(object: ts_ident(name: "canvas"), property: "style"), property: "setProperty"), args: [ts_lit_str(value: join(["--", property], "")), value]))
+}
+
+fn meter_px(value: TsExpr) -> TsExpr {
+  ts_binop(left: value, op: "+", right: ts_lit_str(value: "px"))
+}
+
+fn meter_return_unless(cond: TsExpr) -> TsStmt {
+  ts_if(cond: ts_prefix(op: "!", expr: cond), then_stmt: ts_block(stmts: [ts_return(expr: none)]), else_stmt: none)
+}
+
+// The drawn drawing, read where it is drawn each time.
+fn meter_drawn_stmts() -> List<TsStmt> {
+  [
+    ts_const(name: "canvas", value: meter_method(object: "meter", method: "querySelector", args: [ts_lit_str(value: join([".", build_meter_canvas_class], ""))])),
+    ts_const(name: "drawn", value: ts_binop(left: ts_ident(name: "canvas"), op: "&&", right: ts_member(object: ts_ident(name: "canvas"), property: "firstElementChild"))),
+    meter_return_unless(cond: ts_ident(name: "drawn")),
+  ]
+}
+
+// The same scene, newer: replace the drawing, and beat once if the strip holds more rounds.
+fn meter_redraw_stmt() -> TsStmt {
+  ts_const(name: "redraw", value: ts_arrow(params: ["canvas", "drawn", "art"], body: ts_block(stmts: [
+    meter_call_stmt(object: "canvas", method: "replaceChild", args: [ts_ident(name: "art"), ts_ident(name: "drawn")]),
+    ts_if(
+      cond: ts_binop(
+        left: ts_binop(left: meter_number(object: "art", attribute: build_meter_rounds_attribute), op: ">", right: meter_number(object: "drawn", attribute: build_meter_rounds_attribute)),
+        op: "&&",
+        right: ts_prefix(op: "!", expr: build_meter_reduced_motion_expr())),
+      then_stmt: ts_block(stmts: [
+        ts_expr_stmt(expr: meter_class_call(method: "add", class_name: build_meter_beat_class)),
+        ts_expr_stmt(expr: meter_later(body: [ts_expr_stmt(expr: meter_class_call(method: "remove", class_name: build_meter_beat_class))], after_ms: build_meter_beat_timing.duration_ms)),
+      ]),
+      else_stmt: none),
+  ])))
+}
+
+// A new scene: the arriving drawing goes under the drawn one, both marked with their side, and
+// the canvas carries the two stances, the walk and the two widths while the change plays.
+fn meter_change_stmt() -> TsStmt {
+  ts_const(name: "change", value: ts_arrow(params: ["art"], body: ts_block(stmts: concat(meter_drawn_stmts(), [
+    ts_if(cond: build_meter_reduced_motion_expr(), then_stmt: ts_block(stmts: [
+      meter_call_stmt(object: "canvas", method: "replaceChild", args: [ts_ident(name: "art"), ts_ident(name: "drawn")]),
+      ts_return(expr: none),
+    ]), else_stmt: none),
+    meter_assign(name: "changing", value: ts_ident(name: "true")),
+    ts_const(name: "walk", value: ts_binop(left: meter_number(object: "art", attribute: build_meter_worker_x_attribute), op: "-", right: meter_number(object: "drawn", attribute: build_meter_worker_x_attribute))),
+    meter_canvas_property(property: build_meter_walk_property, value: meter_px(value: ts_ident(name: "walk"))),
+    meter_canvas_property(property: build_meter_walk_steps_property, value: ts_call(callee: ts_ident(name: "String"), args: [
+      meter_math(method: "max", args: [ts_lit_num(text: "1"), meter_math(method: "round", args: [ts_binop(left: meter_math(method: "abs", args: [ts_ident(name: "walk")]), op: "/", right: ts_lit_num(text: "2"))])]),
+    ])),
+    meter_canvas_property(property: build_meter_from_width_property, value: meter_px(value: meter_attribute(object: "drawn", attribute: "width"))),
+    meter_canvas_property(property: build_meter_to_width_property, value: meter_px(value: meter_attribute(object: "art", attribute: "width"))),
+    meter_call_stmt(object: "canvas", method: "setAttribute", args: [ts_lit_str(value: build_meter_from_attribute), meter_attribute(object: "drawn", attribute: build_meter_stance_attribute)]),
+    meter_call_stmt(object: "canvas", method: "setAttribute", args: [ts_lit_str(value: build_meter_to_attribute), meter_attribute(object: "art", attribute: build_meter_stance_attribute)]),
+    meter_call_stmt(object: "drawn", method: "setAttribute", args: [ts_lit_str(value: build_meter_side_attribute), ts_lit_str(value: build_meter_side_key(side: BuildMeterLeaving))]),
+    meter_call_stmt(object: "art", method: "setAttribute", args: [ts_lit_str(value: build_meter_side_attribute), ts_lit_str(value: build_meter_side_key(side: BuildMeterArriving))]),
+    ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_member(object: ts_ident(name: "canvas"), property: "classList"), property: "add"), args: [ts_lit_str(value: build_meter_changing_class)])),
+    meter_call_stmt(object: "canvas", method: "insertBefore", args: [ts_ident(name: "art"), ts_ident(name: "drawn")]),
+    ts_expr_stmt(expr: meter_later(body: [
+      meter_call_stmt(object: "drawn", method: "remove", args: []),
+      meter_call_stmt(object: "art", method: "removeAttribute", args: [ts_lit_str(value: build_meter_side_attribute)]),
+      ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_member(object: ts_ident(name: "canvas"), property: "classList"), property: "remove"), args: [ts_lit_str(value: build_meter_changing_class)])),
+      meter_call_stmt(object: "canvas", method: "removeAttribute", args: [ts_lit_str(value: build_meter_from_attribute)]),
+      meter_call_stmt(object: "canvas", method: "removeAttribute", args: [ts_lit_str(value: build_meter_to_attribute)]),
+      meter_call_stmt(object: "canvas", method: "removeAttribute", args: [ts_lit_str(value: "style")]),
+      meter_assign(name: "changing", value: ts_ident(name: "false")),
+      ts_const(name: "next", value: ts_ident(name: "queued")),
+      meter_assign(name: "queued", value: ts_ident(name: "null")),
+      ts_if(cond: ts_ident(name: "next"), then_stmt: ts_block(stmts: [ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "present"), args: [ts_ident(name: "next")]))]), else_stmt: none),
+    ], after_ms: build_meter_change_ms)),
+  ]))))
+}
+
+fn meter_scene_of(object: String) -> TsExpr {
+  meter_attribute(object: object, attribute: build_meter_scene_attribute)
+}
+
+// Settle on a drawing: draw the same scene at once, and hold a new one for the dwell.
+fn meter_present_stmt() -> TsStmt {
+  ts_const(name: "present", value: ts_arrow(params: ["art"], body: ts_block(stmts: concat([
+    ts_if(cond: ts_ident(name: "changing"), then_stmt: ts_block(stmts: [meter_assign(name: "queued", value: ts_ident(name: "art")), ts_return(expr: none)]), else_stmt: none),
+  ], concat(meter_drawn_stmts(), [
+    ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "clearTimeout"), args: [ts_ident(name: "heldTimer")])),
+    ts_if(cond: ts_binop(left: meter_scene_of(object: "art"), op: "===", right: meter_scene_of(object: "drawn")), then_stmt: ts_block(stmts: [
+      meter_assign(name: "held", value: ts_ident(name: "null")),
+      ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "redraw"), args: [ts_ident(name: "canvas"), ts_ident(name: "drawn"), ts_ident(name: "art")])),
+      ts_return(expr: none),
+    ]), else_stmt: none),
+    ts_if(
+      cond: ts_binop(left: ts_prefix(op: "!", expr: ts_ident(name: "held")), op: "||", right: ts_binop(left: meter_scene_of(object: "held"), op: "!==", right: meter_scene_of(object: "art"))),
+      then_stmt: ts_block(stmts: [meter_assign(name: "heldSince", value: meter_method(object: "Date", method: "now", args: []))]),
+      else_stmt: none),
+    meter_assign(name: "held", value: ts_ident(name: "art")),
+    meter_assign(name: "heldTimer", value: ts_call(callee: ts_ident(name: "setTimeout"), args: [
+      ts_arrow(params: [], body: ts_block(stmts: [
+        ts_const(name: "next", value: ts_ident(name: "held")),
+        meter_assign(name: "held", value: ts_ident(name: "null")),
+        ts_if(cond: ts_ident(name: "next"), then_stmt: ts_block(stmts: [ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "change"), args: [ts_ident(name: "next")]))]), else_stmt: none),
+      ])),
+      ts_cond(
+        test: ts_binop(left: meter_attribute(object: "art", attribute: build_meter_settle_attribute), op: "===", right: ts_lit_str(value: build_meter_settle_key(settle: BuildMeterSettleAtOnce))),
+        consequent: ts_lit_num(text: "0"),
+        alternate: meter_math(method: "max", args: [
+          ts_lit_num(text: "0"),
+          ts_binop(left: ts_binop(left: ts_ident(name: "heldSince"), op: "+", right: ts_lit_num(text: to_string(build_meter_dwell_ms))), op: "-", right: meter_method(object: "Date", method: "now", args: [])),
+        ])),
+    ])),
+  ])))))
+}
+
+// The newer rendering: its facts now, its drawing through present.
+fn meter_fresh_listener_stmt() -> TsStmt {
+  meter_listen(event: build_meter_fresh_event, params: ["event"], body: [
+    ts_const(name: "fresh", value: ts_member(object: ts_ident(name: "event"), property: "detail")),
+    ts_const(name: "body", value: ts_member(object: ts_ident(name: "meter"), property: "firstElementChild")),
+    ts_const(name: "freshBody", value: ts_binop(left: ts_ident(name: "fresh"), op: "&&", right: ts_member(object: ts_ident(name: "fresh"), property: "firstElementChild"))),
+    ts_const(name: "freshCanvas", value: ts_binop(left: ts_ident(name: "freshBody"), op: "&&", right: meter_method(object: "freshBody", method: "querySelector", args: [ts_lit_str(value: join([".", build_meter_canvas_class], ""))]))),
+    ts_const(name: "art", value: ts_binop(left: ts_ident(name: "freshCanvas"), op: "&&", right: ts_member(object: ts_ident(name: "freshCanvas"), property: "firstElementChild"))),
+    meter_return_unless(cond: ts_binop(left: ts_ident(name: "body"), op: "&&", right: ts_ident(name: "art"))),
+    meter_call_stmt(object: "freshCanvas", method: "remove", args: []),
+    ts_for_of(var_name: "name", iterable: meter_method(object: "freshBody", method: "getAttributeNames", args: []), body: ts_block(stmts: [
+      meter_call_stmt(object: "body", method: "setAttribute", args: [ts_ident(name: "name"), meter_method(object: "freshBody", method: "getAttribute", args: [ts_ident(name: "name")])]),
+    ])),
+    ts_for_of(var_name: "old", iterable: meter_method(object: "Array", method: "from", args: [ts_member(object: ts_ident(name: "body"), property: "children")]), body: ts_block(stmts: [
+      ts_if(
+        cond: ts_prefix(op: "!", expr: ts_call(callee: ts_member(object: ts_member(object: ts_ident(name: "old"), property: "classList"), property: "contains"), args: [ts_lit_str(value: build_meter_canvas_class)])),
+        then_stmt: ts_block(stmts: [meter_call_stmt(object: "old", method: "remove", args: [])]),
+        else_stmt: none),
+    ])),
+    meter_call_stmt(object: "body", method: "append", args: [ts_spread(expr: meter_method(object: "Array", method: "from", args: [ts_member(object: ts_ident(name: "freshBody"), property: "children")]))]),
+    meter_call_stmt(object: "meter", method: "setAttribute", args: [ts_lit_str(value: "href"), meter_method(object: "fresh", method: "getAttribute", args: [ts_lit_str(value: "href")])]),
+    ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "present"), args: [ts_ident(name: "art")])),
+  ])
+}
+
+fn build_meter_bind_statements() -> List<TsStmt> {
+  [
+    ts_const(name: "siteBindBuildMeter", value: ts_arrow(params: ["meter"], body: ts_block(stmts: [
+      ts_let(name: "drowse", value: ts_lit_num(text: "0")),
+      ts_let(name: "sleep", value: ts_lit_num(text: "0")),
+      ts_const(name: "rouse", value: ts_arrow(params: [], body: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "clearTimeout"), args: [ts_ident(name: "drowse")])),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "clearTimeout"), args: [ts_ident(name: "sleep")])),
+        ts_const(name: "slept", value: ts_binop(left: meter_class_call(method: "contains", class_name: build_meter_drowsy_class), op: "||", right: meter_class_call(method: "contains", class_name: build_meter_asleep_class))),
+        ts_expr_stmt(expr: meter_class_call(method: "remove", class_name: build_meter_drowsy_class)),
+        ts_expr_stmt(expr: meter_class_call(method: "remove", class_name: build_meter_asleep_class)),
+        ts_return(expr: Present { value: ts_ident(name: "slept") }),
+      ]))),
+      meter_listen(event: "pointermove", params: ["event"], body: [
+        ts_if(cond: build_meter_reduced_motion_expr(), then_stmt: ts_block(stmts: [ts_return(expr: none)]), else_stmt: none),
+        ts_const(name: "worker", value: ts_call(callee: ts_member(object: ts_ident(name: "meter"), property: "querySelector"), args: [ts_lit_str(value: join([".", build_meter_worker_class], ""))])),
+        ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "worker")), then_stmt: ts_block(stmts: [ts_return(expr: none)]), else_stmt: none),
+        ts_const(name: "box", value: ts_call(callee: ts_member(object: ts_ident(name: "worker"), property: "getBoundingClientRect"), args: [])),
+        ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "meter"), property: "setAttribute"), args: [
+          ts_lit_str(value: build_meter_look_attribute),
+          ts_cond(
+            test: ts_binop(
+              left: ts_member(object: ts_ident(name: "event"), property: "clientX"),
+              op: "<",
+              right: ts_binop(left: ts_member(object: ts_ident(name: "box"), property: "left"), op: "+", right: ts_binop(left: ts_member(object: ts_ident(name: "box"), property: "width"), op: "/", right: ts_lit_num(text: "2")))),
+            consequent: ts_lit_str(value: build_meter_look_left),
+            alternate: ts_lit_str(value: build_meter_look_right)),
+        ])),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "rouse"), args: [])),
+        meter_assign(name: "drowse", value: meter_later(body: [
+          ts_expr_stmt(expr: meter_class_call(method: "add", class_name: build_meter_drowsy_class)),
+          meter_assign(name: "sleep", value: meter_later(body: [
+            ts_expr_stmt(expr: meter_class_call(method: "add", class_name: build_meter_asleep_class)),
+          ], after_ms: build_meter_sleep_after_ms)),
+        ], after_ms: build_meter_drowse_after_ms)),
+      ]),
+      meter_listen(event: "pointerleave", params: [], body: [
+        ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "meter"), property: "removeAttribute"), args: [ts_lit_str(value: build_meter_look_attribute)])),
+        ts_if(cond: ts_call(callee: ts_ident(name: "rouse"), args: []), then_stmt: ts_block(stmts: [
+          ts_expr_stmt(expr: meter_class_call(method: "add", class_name: build_meter_waking_class)),
+          ts_expr_stmt(expr: meter_later(body: [
+            ts_expr_stmt(expr: meter_class_call(method: "remove", class_name: build_meter_waking_class)),
+          ], after_ms: build_meter_wake_ms)),
+        ]), else_stmt: none),
+      ]),
+      ts_let(name: "held", value: ts_ident(name: "null")),
+      ts_let(name: "heldSince", value: ts_lit_num(text: "0")),
+      ts_let(name: "heldTimer", value: ts_lit_num(text: "0")),
+      ts_let(name: "changing", value: ts_ident(name: "false")),
+      ts_let(name: "queued", value: ts_ident(name: "null")),
+      meter_redraw_stmt(),
+      meter_change_stmt(),
+      meter_present_stmt(),
+      meter_fresh_listener_stmt(),
+    ]))),
+    ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "Array"), property: "from"), args: [ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"), args: [ts_lit_str(value: join([".", build_meter_class], ""))])]), property: "forEach"), args: [ts_ident(name: "siteBindBuildMeter")])),
+  ]
+}

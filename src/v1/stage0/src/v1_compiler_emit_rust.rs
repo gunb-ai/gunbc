@@ -39989,34 +39989,37 @@ pub fn emit_capability_method(
     }
 }
 
-pub fn data_value_has_cross_refs(value: Rc<Node>) -> bool {
+pub fn data_value_is_json_literal_tree(value: Rc<Node>) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*value.expr_data.clone()).clone() {
-            ExprData::ExprVar {
-                binding_kind: _, ..
-            } => true,
-            ExprData::ExprCall { .. } => true,
+            ExprData::ExprLiteral { value: _, .. } => true,
             ExprData::ExprListLit => {
-                let mut __found = false;
+                let mut __all = true;
                 for c in value.children.clone().iter().cloned() {
-                    if data_value_has_cross_refs(c.clone()) {
-                        __found = true;
+                    if !(data_value_is_json_literal_tree(c.clone())) {
+                        __all = false;
                         break;
                     }
                 }
-                __found
+                __all
             }
             ExprData::ExprRecordLit { parent_enum: _, .. } => {
-                let mut __found = false;
+                let mut __all = true;
                 for f in value.children.clone().iter().cloned() {
-                    if data_value_has_cross_refs(crate::v1_std_core::field_init_node_value(
-                        f.clone(),
+                    if !(data_value_is_json_literal_tree(
+                        crate::v1_std_core::field_init_node_value(f.clone()),
                     )) {
-                        __found = true;
+                        __all = false;
                         break;
                     }
                 }
-                __found
+                __all
+            }
+            ExprData::ExprUnaryOp {
+                op: UnaryOpKind::Neg,
+                ..
+            } => {
+                data_value_is_json_literal_tree(crate::v1_std_core::unaryop_operand(value.clone()))
             }
             _ => false,
         }
@@ -40439,7 +40442,7 @@ pub fn emit_data_def_body(
                 if ((crate::v1_compiler_emit::has_nested_records_node(
                     type_node.clone(),
                     scope.type_env.clone().source_indices.clone(),
-                ) && !data_value_has_cross_refs(value.clone()))
+                ) && data_value_is_json_literal_tree(value.clone()))
                     && !data_row_type_forbids_deserialize(
                         type_node.clone(),
                         emit_info.clone(),

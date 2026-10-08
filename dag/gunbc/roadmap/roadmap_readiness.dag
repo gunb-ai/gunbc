@@ -194,6 +194,24 @@ fn readiness_gap_reason(g: ReadinessGap) -> String {
   }
 }
 
+// THE PREREQUISITES A GAP NAMES AS UNMET: the blockers of a dependency gap, and none for any other
+// gap. A reader that wants to know which prerequisites are holding a node asks this of the node's
+// readiness, and never re-derives it from the prerequisites' statuses.
+fn readiness_gap_blockers(g: ReadinessGap) -> List<String> {
+  match g {
+    GapDependencies { blockers } => blockers
+    GapSuperseded { by: _ } => []
+    GapAccepted => []
+    GapInReview => []
+    GapParent => []
+    GapRoot { detail: _ } => []
+    GapCentering => []
+    GapDispatch => []
+    GapContract { detail: _ } => []
+    GapNotAgentWork { mode: _ } => []
+  }
+}
+
 fn readiness_missing_labels(r: NodeReadiness) -> List<String> {
   match r {
     ReadyToDispatch => []
