@@ -99,6 +99,7 @@ import gunbc.toolchain_home_standing {
   admit_workflow_toolchain_homes, WorkflowToolchainHomesAdmitted, WorkflowToolchainHomeRefused, toolchain_home_refusal_reason
 }
 import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain_pin_rustup_default_step }
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 import gunbc.witness_floor_workflow {
   witness_floor_workflow_name,
   witness_floor_triggers,
@@ -1229,12 +1230,11 @@ fn compiler_gate_native_save_step() -> Step {
   }
 }
 
-// Hand-authored two-line shell (scaffold): dissolves when the restore step of the shared native
-// product store is itself an emitted intent that names its job-private directory, at which point this
-// script is derived from that intent rather than spelled here.
 data compiler_gate_native_cache_root_step_name: String = "Bind job-private native product store root"
 
-data compiler_gate_native_cache_root_script: String = "mkdir -p \"$RUNNER_TEMP/gunbc-native-products\"\necho \"GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TEMP/gunbc-native-products\" >> \"$GITHUB_ENV\""
+data compiler_gate_native_cache_root_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: compiler_gate_native_cache_root_script — hand-authored two-line shell binding the job-private native product store root under RUNNER_TEMP. DISSOLVES WHEN the restore of the shared native product store is an emitted intent that names its job-private directory (a typed host-effect realization through v2.workflow.bash_emit bash_emit_program), so the mkdir and the GITHUB_ENV append are derived from that intent rather than spelled here.")
+
+data compiler_gate_native_cache_root_script: String = concat("# ", concat(dissolution_description(condition: compiler_gate_native_cache_root_shell_emit_dissolution_trigger), concat("\n", "mkdir -p \"$RUNNER_TEMP/gunbc-native-products\"\necho \"GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TEMP/gunbc-native-products\" >> \"$GITHUB_ENV\"")))
 
 fn compiler_gate_native_cache_root_step_for_pull_requests() -> Step {
   RunStep {
