@@ -37,7 +37,7 @@ import v2.std.collection { List }
 import std.algebra { Cons, Empty, FreeMonoid }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.types { NonEmptyStr }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 
 // THE TYPED-ARGV CONSTRUCTION CENSUS, AT IDENTITY GRAIN (debt paydown trial, brief of
 // lively-ram-153 to witty-tern-54, 2026-10-03; grain widened by the same parent in reply:

@@ -48,7 +48,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.algebra { fold_list, length }
 import v2.std.logic { Bool }
 import v2.std.collection { List }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import std.process { ExitSuccess, ProcessExit, ExitFailure }
 
 // A real module file under the declared src/v2 root (claim_batch's filesystem is confined to the
