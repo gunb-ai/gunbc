@@ -9869,6 +9869,95 @@ mod closure_edge_demand_tests {
         assert!(modules.contains("frontier.child.consumer"), "{modules:?}");
     }
 
+    /// Unique off-chain declarer: UniqueBinding still accepts, so UniqueBare must emit
+    /// (dropping it is an undercount) and the real resolve path must succeed.
+    #[test]
+    fn unique_off_chain_bare_name_compiles_and_keeps_its_uniquebare_edge() {
+        let fixture = Fixture::new(&[
+            (
+                "decl.dag",
+                "module test.decl\nfn shared_fn() -> Int { 1 }\n",
+            ),
+            (
+                "user.dag",
+                "module test.user\nfn use_it() -> Int { shared_fn() }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let sources =
+            load_sources_for_entry_with_pool(&index, &fixture.0.join("user.dag").to_string_lossy())
+                .expect("UniqueBinding pulls the census-unique off-chain provider");
+        let compiled = v1_compiler_compile::compile_sources(
+            Rc::new(sources.iter().cloned().collect()),
+            crate::v1_compiler_artifact::RenderTarget::Dag,
+        );
+        assert!(
+            !compiled
+                .diagnostics
+                .iter()
+                .any(|d| { is_interpreter_blocking_diagnostic(d.diagnostic.clone()) }),
+            "resolver-accepted UniqueBinding must compile: {:?}",
+            compiled.diagnostics
+        );
+        let roots = vec![fixture.0.to_string_lossy().into_owned()];
+        let facts = dependency_resolution_facts(&roots, &roots, &[]);
+        assert!(
+            facts
+                .iter()
+                .any(|f| f.path.contains("user.dag") && f.import_module == "test.decl"),
+            "resolver-accepted UniqueBinding must remain a UniqueBare edge: {facts:?}"
+        );
+    }
+
+    /// Two off-chain homonyms, none on the consumer's chain: proximity UniqueBare is gone,
+    /// and the real resolve path refuses rather than silently picking a neighbor.
+    #[test]
+    fn off_chain_homonym_with_no_lexical_binder_is_refused_on_the_resolve_path() {
+        let fixture = Fixture::new(&[
+            ("a.dag", "module aa.one\nfn shared() -> Int { 1 }\n"),
+            ("b.dag", "module bb.two\nfn shared() -> Int { 2 }\n"),
+            (
+                "user.dag",
+                "module cc.user\nfn use_it() -> Int { shared() }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let sources =
+            load_sources_for_entry_with_pool(&index, &fixture.0.join("user.dag").to_string_lossy())
+                .expect("admission does not fabricate a proximity provider");
+        let compiled = v1_compiler_compile::compile_sources(
+            Rc::new(sources.iter().cloned().collect()),
+            crate::v1_compiler_artifact::RenderTarget::Dag,
+        );
+        let msgs: Vec<String> = compiled
+            .diagnostics
+            .iter()
+            .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+            .map(|d| format!("{:?}", d.diagnostic))
+            .collect();
+        let joined = msgs.join("\n");
+        assert!(
+            !msgs.is_empty()
+                && joined.contains("shared")
+                && (joined.contains("undefined")
+                    || joined.contains("not found in scope")
+                    || joined.contains("AMBIGUOUS")
+                    || joined.contains("unresolved")),
+            "refusal must name the bare identifier: {joined:?}"
+        );
+        let roots = vec![fixture.0.to_string_lossy().into_owned()];
+        let facts = dependency_resolution_facts(&roots, &roots, &[]);
+        let user_targets: Vec<&str> = facts
+            .iter()
+            .filter(|f| f.path.contains("user.dag"))
+            .map(|f| f.import_module.as_str())
+            .collect();
+        assert!(
+            user_targets.is_empty(),
+            "no UniqueBare to a proximity winner: {user_targets:?}"
+        );
+    }
+
     /// ONE PARSE PER FILE ON THE ENTRY ROUTE. A module reached only by a dotted reference is
     /// pulled by the fixpoint's reference half, which reads the index's shared parse; the
     /// per-entry module-path scan (`extend_with_reference_closure`, timed as
@@ -26325,7 +26414,7 @@ fn parse_unified_diff_added_paths(diff_text: &str) -> HashSet<String> {
     // added-side entry, so it stays fail-closed as before.
     //
     // DECLARED GAP (DESIGN §4b(3)) — copy destinations are NOT enrolled. A `copy to NEW`
-    // destination is new-at-path by the same argument as `rename to`: every declaration at
+    // destination is new-at- the same argument as `rename to`: every declaration at
     // NEW is a newly qualified identity that has never executed under that spelling. It is
     // not matched here, so such a file would enroll only the declarations the copy's own
     // edited lines reach. POPULATION: empty — the floor's observation is
@@ -31202,6 +31291,27 @@ fn on_chain_declarers<'a>(
     out
 }
 
+/// Import-less UniqueBare pick: on-chain unique, else the census-unique declarer the
+/// resolver UniqueBinding-accepts, else nothing (never nearest-prefix among homonyms).
+enum ImportlessBarePick<'a> {
+    Unique(&'a String),
+    Ambiguous(Vec<&'a String>),
+    None,
+}
+
+fn pick_importless_bare<'a>(
+    referencing_module: &str,
+    mods: &'a std::collections::BTreeSet<String>,
+) -> ImportlessBarePick<'a> {
+    let on_chain = on_chain_declarers(referencing_module, mods.iter());
+    match on_chain.len() {
+        1 => ImportlessBarePick::Unique(on_chain[0]),
+        n if n > 1 => ImportlessBarePick::Ambiguous(on_chain),
+        _ if mods.len() == 1 => ImportlessBarePick::Unique(mods.iter().next().unwrap()),
+        _ => ImportlessBarePick::None,
+    }
+}
+
 /// Longest module-path prefix of a qualified chain that names a declared module.
 fn longest_declared_module_prefix(
     chain: &[String],
@@ -31274,8 +31384,29 @@ pub struct BareRefReachability {
 }
 
 #[cfg(test)]
+fn pool_dag_sources_for_dump(roots: &[String]) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for root in roots {
+        let path = Path::new(root);
+        if !path.is_dir() {
+            continue;
+        }
+        let mut files = Vec::new();
+        collect_dag_files_tolerant(path, &mut files);
+        files.sort();
+        for file in files {
+            let rel = rel_path_for_layer_import(&file);
+            if let Ok(content) = std::fs::read_to_string(&file) {
+                out.push((rel, content));
+            }
+        }
+    }
+    out
+}
+
+#[cfg(test)]
 mod reference_edge_producer_tests {
-    use super::reference_resolution_facts;
+    use super::*;
 
     fn fixture_root(tag: &str) -> std::path::PathBuf {
         // Under the workspace `target/` (gitignored): `rel_path_for_layer_import` fail-closes on
@@ -31335,7 +31466,7 @@ mod reference_edge_producer_tests {
 
         assert!(
             !has_edge("refless.dag", "test.decl"),
-            "an off-chain unique declarer is not a UniqueBare edge; only an ancestor is"
+            "test.decl and test.reflocal both declare shared_fn; neither is on test.refless's chain, so UniqueBare/AmbiguousBare must not pick a neighbor"
         );
         assert!(
             !emits_any("reflocal.dag"),
@@ -31422,6 +31553,112 @@ mod reference_edge_producer_tests {
             .collect();
         assert_eq!(consumer_targets, vec!["frontier"]);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Corpus delta vs the deleted proximity rank. Opt-in only (`GUNBC_DUMP_DEP_FACTS=1`):
+    /// walking dag+src/v2 is a floor-scale parse, not a 100ms unit.
+    #[test]
+    fn dump_dependency_resolution_facts_when_env_set() {
+        if std::env::var("GUNBC_DUMP_DEP_FACTS").is_err() {
+            return;
+        }
+        let roots = vec!["dag".to_string(), "src/v2".to_string()];
+        let names = entry_resolve::reference_pool_names(&roots);
+        let after = dependency_resolution_facts(&roots, &roots, &[]);
+        let after_set: std::collections::BTreeSet<(String, String)> = after
+            .iter()
+            .map(|f| (f.path.clone(), f.import_module.clone()))
+            .collect();
+        let mut before_unique: std::collections::BTreeSet<(String, String)> =
+            std::collections::BTreeSet::new();
+        let mut after_unique: std::collections::BTreeSet<(String, String)> =
+            std::collections::BTreeSet::new();
+        for (rel, content) in pool_dag_sources_for_dump(&roots) {
+            let Some(self_module) = extract_module_path(&content) else {
+                continue;
+            };
+            if !extract_import_paths(&content).is_empty() {
+                continue;
+            }
+            let Ok(refs) = entry_resolve::parsed_file_references(
+                &rel,
+                &content,
+                &self_module,
+                &names.module_names,
+            ) else {
+                continue;
+            };
+            for name in &refs.bare {
+                if is_substrate_vocabulary(name) {
+                    continue;
+                }
+                let Some(mods) = names.decl_index.get(name) else {
+                    continue;
+                };
+                if mods.contains(&self_module) {
+                    continue;
+                }
+                for m in proximity_unique_winners(&self_module, mods) {
+                    before_unique.insert((rel.clone(), m.clone()));
+                }
+                if let ImportlessBarePick::Unique(m) = pick_importless_bare(&self_module, mods) {
+                    after_unique.insert((rel.clone(), m.clone()));
+                }
+            }
+        }
+        let dropped_u: Vec<_> = before_unique.difference(&after_unique).cloned().collect();
+        let added_u: Vec<_> = after_unique.difference(&before_unique).cloned().collect();
+        let mut before_union = after_set.clone();
+        for e in &added_u {
+            before_union.remove(e);
+        }
+        for e in &dropped_u {
+            before_union.insert(e.clone());
+        }
+        let dropped: Vec<_> = before_union.difference(&after_set).cloned().collect();
+        let added: Vec<_> = after_set.difference(&before_union).cloned().collect();
+        eprintln!(
+            "DEPFACT_DELTA union_before={} union_after={} union_dropped={} union_added={} uniquebare_dropped={} uniquebare_added={}",
+            before_union.len(),
+            after_set.len(),
+            dropped.len(),
+            added.len(),
+            dropped_u.len(),
+            added_u.len()
+        );
+        for (p, m) in &dropped {
+            eprintln!("DEPFACT_DROPPED\t{p}\t{m}");
+        }
+        for (p, m) in &added {
+            eprintln!("DEPFACT_ADDED\t{p}\t{m}");
+        }
+    }
+
+    fn proximity_unique_winners<'a>(
+        self_module: &str,
+        mods: &'a std::collections::BTreeSet<String>,
+    ) -> Vec<&'a String> {
+        let mut best_len = 0usize;
+        let mut winners: Vec<&String> = Vec::new();
+        for m in mods.iter() {
+            let shared = self_module
+                .split('.')
+                .zip(m.split('.'))
+                .take_while(|(x, y)| x == y)
+                .count();
+            if winners.is_empty() || shared > best_len {
+                best_len = shared;
+                winners.clear();
+                winners.push(m);
+            } else if shared == best_len {
+                winners.push(m);
+            }
+        }
+        if winners.len() == 1 {
+            winners
+        } else {
+            Vec::new()
+        }
     }
 
     fn str_list_value(items: &[String]) -> crate::v1_interpreter::Value {
@@ -39113,8 +39350,16 @@ pub fn reference_targets_of(index: &ReferenceClosureIndex, module: &str) -> Vec<
         if mods.contains(module) {
             continue;
         }
-        for w in on_chain_declarers(module, mods.iter()) {
-            out.insert(w.clone());
+        match pick_importless_bare(module, mods) {
+            ImportlessBarePick::None => {}
+            ImportlessBarePick::Unique(w) => {
+                out.insert(w.clone());
+            }
+            ImportlessBarePick::Ambiguous(winners) => {
+                for w in winners {
+                    out.insert(w.clone());
+                }
+            }
         }
     }
     out.into_iter().collect()
