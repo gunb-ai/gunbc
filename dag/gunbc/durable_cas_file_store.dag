@@ -1101,7 +1101,6 @@ type CasFileWrite {
 type CasReclaimProgress {
   removed: List<CasGeneration>
   failed: List<CasGenerationReclaimFailure>
-  stopped: Bool
 }
 
 // ASCENDING, AND STOP AT THE FIRST HOST REFUSAL. Independent deletes of every generation at or
@@ -1121,16 +1120,15 @@ fn cas_reclaim_below(root: NonEmptyStr, key: NonEmptyStr, window: CasGenerationW
     CasWindowGenerationsListed { generations: gs } => {
       let floor = cas_generation_count(g: head) - window.k
       let ordered = gs |> filter(g => cas_generation_count(g: g) <= floor) |> sort_by(g => cas_generation_count(g: g))
-      let walk = fold(ordered, init: CasReclaimProgress { removed: [], failed: [], stopped: false }, f: (acc, g) =>
-        if acc.stopped { acc } else {
+      let walk = fold(ordered, init: CasReclaimProgress { removed: [], failed: [] }, f: (acc, g) =>
+        if count(acc.failed) != 0 { acc } else {
           let d = Filesystem.Delete(path: cas_file_slot_path(root: root, key: key, generation: g))
           if d.success {
-            CasReclaimProgress { removed: acc.removed |> list_push(g), failed: acc.failed, stopped: false }
+            CasReclaimProgress { removed: acc.removed |> list_push(g), failed: acc.failed }
           } else {
             CasReclaimProgress {
               removed: acc.removed,
               failed: [CasGenerationReclaimFailure { generation: g, host_error: d.error }],
-              stopped: true,
             }
           }
         }
