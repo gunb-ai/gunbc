@@ -1345,7 +1345,7 @@ test fn a_leftover_copy_that_cannot_be_removed_leaves_the_store_unwritable_by_re
 
 fn hold_slot_head_generation(root_path: String) -> Int {
   let key = local_store_hold_key(family: native_module_verdict_bundle_artifact_kind) as String
-  fold([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16], init: 0, f: (best, n) =>
+  fold([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24], init: 0, f: (best, n) =>
     if Filesystem.Read(path: store_path(root_path: root_path, name: concat(concat(key, "."), n as String))).success { n } else { best }
   )
 }
@@ -1354,12 +1354,12 @@ fn session_commit_ok(c: LocalStoreCommit) -> Bool {
   commit_tag(c: c.commit) == "committed"
 }
 
-// N COMMITS UNDER ONE SESSION ACQUIRE THE HOLD ONCE. The hold slot's generation is the acquire
-// count: one acquire and one release leave head 2. The same N commits through local_store_commit
-// (the per-commit bracket) leave head 2N. That second measurement is the RED: if the session were
-// secretly the per-commit bracket, both heads would match and this claim would fail. Lookups run
-// under the same session and do not take a second hold. Dummy files in the root make a per-commit
-// whole-root List O(store size); the session still finishes with head 2.
+// N COMMITS UNDER ONE SESSION ACQUIRE THE HOLD ONCE. Open already takes and releases the family
+// hold (the sweep), so the discriminator is the DELTA after open: one session acquire+release
+// advances the slot by 2; N per-commit brackets advance it by 2N. If the session were secretly
+// the per-commit path, the two deltas would match and this claim would fail. Lookups run under
+// the same session. Dummy names in the root make a whole-root List grow with store size; they
+// do not change the hold generation.
 test fn n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution() -> Bool {
   let n = 6
   let session_root_path = fresh_root_path()
@@ -1369,6 +1369,7 @@ test fn n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution
   let session_ok = match opened(root: session_root) {
     Absent => false
     Present { value: store } => {
+      let before = hold_slot_head_generation(root_path: session_root_path)
       let planted = fold([1, 2, 3, 4, 5, 6, 7, 8], init: true, f: (ok, i) =>
         ok && Filesystem.WriteCreateNew(path: store_path(root_path: session_root_path, name: concat("dummy-", i as String)), content: "x").success
       )
@@ -1378,15 +1379,17 @@ test fn n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution
         writes |> all(c => session_commit_ok(c: c)) && hits |> all(x => x)
       }) {
         LocalStoreBracketRefused { refusal: _ } => false
-        LocalStoreBracketRan { value: body_ok, hold_release: _ } => planted && body_ok && hold_slot_head_generation(root_path: session_root_path) == 2
+        LocalStoreBracketRan { value: body_ok, hold_release: _ } =>
+          planted && body_ok && (hold_slot_head_generation(root_path: session_root_path) - before) == 2
       }
     }
   }
   let bracket_ok = match opened(root: bracket_root) {
     Absent => false
     Present { value: store } => {
+      let before = hold_slot_head_generation(root_path: bracket_root_path)
       let writes = [1, 2, 3, 4, 5, 6] |> map(i => local_store_commit(capability: store, req: bundle_req(module: concat("b", i as String)), payloads: verdicts(text: "b pass"), parts: []))
-      writes |> all(c => session_commit_ok(c: c)) && hold_slot_head_generation(root_path: bracket_root_path) == (2 * n)
+      writes |> all(c => session_commit_ok(c: c)) && (hold_slot_head_generation(root_path: bracket_root_path) - before) == (2 * n)
     }
   }
   let removed_s = shell.Remove.RecursiveForce(path: session_root_path)
