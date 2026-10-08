@@ -1345,6 +1345,13 @@ fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcom
 // COMPILE door's corpus invariants; the floor's seed-interpreter route does not run them per
 // test either, and running them here would conflate the modeling door with the execution route
 // and multiply their whole-tree cost by the test population.
+// THIS IS NOT A MISSING PER-MODULE ROOT-LENS WIRING. A CompileLensRoot registration runs once
+// at the compile subject's tree root, through that one door. native_test_infer_resolved is
+// the prepare half of NativeTest evaluation; it is not a compile subject. That mandatory_tag
+// therefore does not fire on every native-universe module is the layering, not a hole:
+// corpus coverage of modules that never enter the door lives on v2.lens.mandatory_tag's
+// parse-grain witness, and native compile-door coverage climbs when admitted subjects enter
+// validate_then_compile (gunbc.v2_compile_obligation_census native_door_entry_trigger).
 
 // The source-root index and the active roots live on `resolution` (ResolutionContext binds them once
 // per ingest as admission inputs); a second copy here would be two authorities for one fact.
