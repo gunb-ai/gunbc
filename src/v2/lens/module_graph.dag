@@ -56,10 +56,12 @@ import v2.compiler.resolution_provenance {
 }
 import v2.compiler.source_authority {
   SourceRef,
+  SourceRootArgumentAdmitted,
+  SourceRootArgumentUnrecognized,
   SourceRootIngest,
+  admit_source_root_argument,
   source_ref_for_storage_path
 }
-import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
 import v2.compiler.source_authority_read { source_root_ingest_from_source_refs }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
 import v2.extdeps.languages.dag {
@@ -273,25 +275,64 @@ fn reference_derived_path_under_roots(path: String, roots: List<String>) -> Bool
   any(xs: roots, predicate: fn(root) { starts_with(s: path, prefix: concat(root, "/")) })
 }
 
-fn declared_module_source_root(path: String) -> SourceRootRef {
-  if starts_with(s: path, prefix: "src/v2") {
-    V2Tree
-  } else {
-    DagTree
-  }
+fn discovering_pool_root(path: String, pool_roots: List<String>) -> Optional<String> {
+  fold_list(
+    xs: pool_roots,
+    empty: Absent,
+    cons: fn(acc, root) {
+      match acc {
+        Present { value: found } => Present { value: found }
+        Absent =>
+          if (path == root) || starts_with(s: path, prefix: concat(root, "/")) {
+            Present { value: root }
+          } else {
+            Absent
+          }
+      }
+    }
+  )
 }
 
-fn source_refs_from_declared(declared: List<ModuleDeclarationFact>) -> List<SourceRef> {
+fn source_refs_from_declared(
+  declared: List<ModuleDeclarationFact>,
+  pool_roots: List<String>
+) -> Outcome<List<SourceRef>> {
   fold_list(
     xs: declared,
-    empty: no_source_refs,
+    empty: outcome_accepted(value: no_source_refs),
     cons: fn(acc, fact) {
-      list_snoc_item(
-        xs: acc,
-        item: source_ref_for_storage_path(
-          path: fact.path,
-          source_root: declared_module_source_root(path: fact.path)
-        )
+      bind_outcome(
+        o: acc,
+        f: fn(refs) {
+          match discovering_pool_root(path: fact.path, pool_roots: pool_roots) {
+            Absent =>
+              outcome_rejected(
+                d: Diagnostic {
+                  reason: ^declared_module_pool_root_unknown,
+                  at: Textual { file: ^declared_module_pool_root_unknown, extent: WholeFile },
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                }
+              )
+            Present { value: origin } =>
+              match admit_source_root_argument(argument: origin) {
+                SourceRootArgumentAdmitted { tree: tree } =>
+                  outcome_accepted(
+                    value: list_snoc_item(
+                      xs: refs,
+                      item: source_ref_for_storage_path(path: fact.path, source_root: tree)
+                    )
+                  )
+                SourceRootArgumentUnrecognized { argument: _ } =>
+                  outcome_rejected(
+                    d: Diagnostic {
+                      reason: ^declared_module_source_root_undetermined,
+                      at: Textual { file: ^declared_module_source_root_undetermined, extent: WholeFile },
+                      correction: Unavailable { reason: ExternalContractUnknown }
+                    }
+                  )
+              }
+          }
+        }
       )
     }
   )
@@ -390,15 +431,21 @@ fn edges_from_provenance_owners(
 }
 
 fn load_reference_derived_pool(
-  declared: List<ModuleDeclarationFact>
+  declared: List<ModuleDeclarationFact>,
+  pool_roots: List<String>
 ) -> Outcome<ReferenceDerivedPool> {
   bind_outcome(
-    o: source_root_ingest_from_source_refs(refs: source_refs_from_declared(declared: declared)),
-    f: fn(ingest) {
+    o: source_refs_from_declared(declared: declared, pool_roots: pool_roots),
+    f: fn(refs) {
       bind_outcome(
-        o: located_roots_from_source_root_ingest(ingest: ingest),
-        f: fn(items) {
-          outcome_accepted(value: reference_derived_pool_from_located_roots(items: items))
+        o: source_root_ingest_from_source_refs(refs: refs),
+        f: fn(ingest) {
+          bind_outcome(
+            o: located_roots_from_source_root_ingest(ingest: ingest),
+            f: fn(items) {
+              outcome_accepted(value: reference_derived_pool_from_located_roots(items: items))
+            }
+          )
         }
       )
     }
@@ -614,7 +661,7 @@ fn reference_derived_resolution_facts(
   let declared = module_declaration_facts_live(pool_roots: pool_roots)
     |> filter(fact => !reference_derived_path_excluded(path: fact.path, exclude_substrings: exclude_substrings))
   bind_outcome(
-    o: load_reference_derived_pool(declared: declared),
+    o: load_reference_derived_pool(declared: declared, pool_roots: pool_roots),
     f: fn(pool) {
       bind_outcome(
         o: fold_list(
