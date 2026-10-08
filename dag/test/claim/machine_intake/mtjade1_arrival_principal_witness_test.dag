@@ -4,7 +4,7 @@ import std.logic { Bool }
 import std.types { List, NonEmptyStr, String }
 import std.durable_exclusive_hold { DurableHoldOwnerRef }
 import gunbc.machine_intake_arrival_subject {
-  arrival_converge_subject_options, admit_arrival_subject, arrival_subject_admission_refuses_before_effect,
+  arrival_converge_subject_options, admit_arrival_subject,
   ArrivalSubjectInPopulation, ArrivalSubjectUnknown, ArrivalSubjectIsManagedHostExecutorConfusion,
 }
 import gunbc.machine_intake_arrival_interlock {
@@ -76,9 +76,6 @@ test fn w_mtjade1_is_admitted_and_mtcollins1_and_outsiders_refuse_before_effect(
       ArrivalSubjectUnknown { wire: w } => w == "not-a-unit"
       _ => false
     }
-    && arrival_subject_admission_refuses_before_effect(admission: admit_arrival_subject(wire: "not-a-unit"))
-    && arrival_subject_admission_refuses_before_effect(admission: admit_arrival_subject(wire: operator_host_mtcollins1 as String))
-    && !arrival_subject_admission_refuses_before_effect(admission: admit_arrival_subject(wire: "mtjade1"))
 }
 
 test fn w_grant_covers_arrival_arms_on_mtjade1_only() -> Bool {

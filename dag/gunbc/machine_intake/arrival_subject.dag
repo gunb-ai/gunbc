@@ -18,6 +18,11 @@ import gunbc.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollin
 // A row is a unit that has an arrival-prefix producer (today: converge_mtjade1_arrival_prefix). It
 // is not a HostIdentity enrollment and not a managed-host row.
 
+// This cut's population is one row, mtjade1. Dispatch options project from the
+// rows. admit_arrival_subject then joins that singleton to mtjade1_live_standing_grant
+// on operator_host_mtjade1; the grant is not a field of the row. A second row
+// would appear in the options and still refuse ArrivalSubjectOutsideGrant until
+// the admit fold joins each row to its own standing grant and host.
 type ArrivalConvergePopulationRow {
   wire: NonEmptyStr
   producer: DeclarationRef
@@ -50,8 +55,8 @@ fn arrival_population_row(wire: String) -> ArrivalConvergePopulationRow? {
 }
 
 // THE ADMIT FOLD THE ARRIVAL JOB RUNS BEFORE WIF. mtcollins1 is not a member. A spelling that is
-// not in arrival_converge_population refuses. Grant coverage is required for the BMC-write arms;
-// the archive arm is covered too (BMC read that writes our store).
+// not in arrival_converge_population refuses. Grant coverage for this singleton is
+// mtjade1_live_standing_grant on operator_host_mtjade1 (archive and firmware arms).
 fn admit_arrival_subject(wire: String) -> ArrivalSubjectAdmission {
   if wire == (operator_host_mtcollins1 as String) {
     ArrivalSubjectIsManagedHostExecutorConfusion { wire: wire }
@@ -78,11 +83,3 @@ fn admit_arrival_subject(wire: String) -> ArrivalSubjectAdmission {
   }
 }
 
-fn arrival_subject_admission_refuses_before_effect(admission: ArrivalSubjectAdmission) -> Bool {
-  match admission {
-    ArrivalSubjectInPopulation { subject: _ } => false
-    ArrivalSubjectUnknown { wire: _ } => true
-    ArrivalSubjectIsManagedHostExecutorConfusion { wire: _ } => true
-    ArrivalSubjectOutsideGrant { wire: _ } => true
-  }
-}

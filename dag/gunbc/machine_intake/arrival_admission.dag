@@ -8,7 +8,9 @@ import gunbc.actions_run_binding {
 }
 import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.machine_intake_arrival_subject {
-  admit_arrival_subject, arrival_subject_admission_refuses_before_effect,
+  admit_arrival_subject,
+  ArrivalSubjectInPopulation, ArrivalSubjectUnknown,
+  ArrivalSubjectIsManagedHostExecutorConfusion, ArrivalSubjectOutsideGrant,
 }
 
 // CREDENTIAL-FREE ARRIVAL ADMISSION. Same split as mtcollins1_boot_admission: the job's first
@@ -26,10 +28,14 @@ fn arrival_admit_executor() -> ProcessExit {
           ActionsVariableAbsent { variable: v, detail: d } =>
             exit_failure(reason: concat("arrival_converge: ", concat(v, concat(" ", d))))
           ActionsVariablePresent { value: wire } =>
-            if arrival_subject_admission_refuses_before_effect(admission: admit_arrival_subject(wire: wire)) {
-              exit_failure(reason: concat("arrival_converge refuses arrival_subject '", concat(wire, "' (gunbc.machine_intake_arrival_subject admit_arrival_subject)")))
-            } else {
-              ExitSuccess
+            match admit_arrival_subject(wire: wire) {
+              ArrivalSubjectInPopulation { subject: _ } => ExitSuccess
+              ArrivalSubjectUnknown { wire: w } =>
+                exit_failure(reason: concat("arrival_converge refuses unknown arrival_subject '", concat(w, "'")))
+              ArrivalSubjectIsManagedHostExecutorConfusion { wire: w } =>
+                exit_failure(reason: concat("arrival_converge refuses executor/host as arrival_subject '", concat(w, "'")))
+              ArrivalSubjectOutsideGrant { wire: w } =>
+                exit_failure(reason: concat("arrival_converge refuses arrival_subject '", concat(w, "' outside the standing grant")))
             }
         }
       } else {
