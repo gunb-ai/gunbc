@@ -14276,17 +14276,11 @@ fn type_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv {
   } else { parent_env }
 }
 
-// Interface-grain scope parent (S2a move 2 increment B, resolver-graph-major-design.md 7): a
-// dependent's typecheck may read exactly its direct import's exported surface - str_bindings, the
-// flattened ancestry maps, the MERGED inductive_fields/recursive sets (each inductively carries the
-// parent's own ancestry, so one level suffices) - and never the parent's parent-chain env OBJECTS.
-// parents: [] cuts the whole-ancestry retention (the measured ~16.3MiB/module residency class)
-// while every chain consumer stays satisfied: phantom-variant and paramless-generic retries read
-// direct parents' str_bindings (carried), inductive_fields_for reads the merged fields (carried),
-// and the kernel stays the dependent's own last scope parent. Discriminating receipt:
-// transitive_interface_binding_test (green arm = a C-declared record projected through B's exported
-// signature still typechecks in A; red control = a bogus field on the same transitive record still
-// errors).
+// Interface-grain scope parent (S2a move 2 increment B): a dependent's typecheck reads a
+// direct import's exported surface (str_bindings as that module's locals, merged
+// inductive_fields/recursive sets) and walks `parents` on a miss when ancestry_str_bindings
+// is empty. It does not retain a flattened ancestry overlay on the TypeEnv. Discriminating
+// receipt: transitive_interface_binding_test.
 
 fn interface_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv {
   let filtered = type_env_for_import(module_path: module_path, parent_env: parent_env)
@@ -14310,11 +14304,11 @@ fn interface_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv
 
 // S2a move 2 increment B (resolver-graph-major-design.md §7): build_type_env reads a direct
 // import's ModuleInterface (std.interface_summary carrier + interface-grain env/cache realization)
-// — never the parent's full TypeEnv+TypeEnvCache chains. interface.env is the export surface with
-// parents: [] (ancestry-complete via flattened str_bindings/ancestry maps and merged
-// inductive/recursive sets); interface.cache is the flattened import-union grain (variant_locals
-// stripped — interpretation-local). Consumption still runs interface_env_for_import for
-// importer-specific std.types filtering. Discriminating receipt: transitive_interface_binding_test.
+// — never the parent's full TypeEnv+TypeEnvCache chains. interface.env is the export
+// surface: locals in str_bindings, empty ancestry overlay, parents walked on a miss;
+// interface.cache unions deps/variant_locals and does not flatten str_bindings.
+// Consumption still runs interface_env_for_import for importer-specific std.types
+// filtering. Discriminating receipt: transitive_interface_binding_test.
 
 // Interim v0 export signature fingerprint (export_entry_from_item): name-grain, NOT yet structural
 // type shape. Type/data/service exports fingerprint name + authored_name_at(binding.resolved) under

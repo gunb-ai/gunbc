@@ -1009,6 +1009,7 @@ struct ChainNameWalk {
 struct ChainBindingWalk {
     binding: Option<Rc<TypeBinding>>,
     seen: Rc<HashMap<String, bool>>,
+    hits: Rc<HashMap<String, Rc<TypeBinding>>>,
 }
 
 struct PeerImportForkLedger {
@@ -1075,7 +1076,7 @@ pub fn str_bindings_from_bindings(
 }
 
 pub fn lookup_binding_on_chain(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
-    lookup_binding_on_chain_seen(env, name, v1_rt::rc_empty_map()).binding
+    lookup_binding_on_chain_seen(env, name, v1_rt::rc_empty_map(), v1_rt::rc_empty_map()).binding
 }
 
 fn last_wins_merge_bindings(
@@ -1124,11 +1125,13 @@ fn lookup_binding_on_chain_seen(
     env: Rc<TypeEnv>,
     name: String,
     seen: Rc<HashMap<String, bool>>,
+    hits: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> ChainBindingWalk {
     match v1_rt::map_get(&seen, env.module_path.clone()) {
         Some(_) => ChainBindingWalk {
-            binding: std::option::Option::None,
+            binding: v1_rt::map_get(&hits, env.module_path.clone()),
             seen,
+            hits,
         },
         std::option::Option::None => {
             let seen = v1_rt::rc_map_insert(seen, env.module_path.clone(), true);
@@ -1136,41 +1139,64 @@ fn lookup_binding_on_chain_seen(
                 Some(binding) => ChainBindingWalk {
                     binding: Some(binding.clone()),
                     seen,
+                    hits: v1_rt::rc_map_insert(hits, env.module_path.clone(), binding.clone()),
                 },
                 std::option::Option::None => {
                     if env.ancestry_str_bindings.is_empty() {
-                        env.parents.iter().cloned().fold(
+                        let walked = env.parents.iter().cloned().fold(
                             ChainBindingWalk {
                                 binding: std::option::Option::None,
                                 seen: seen.clone(),
+                                hits,
                             },
                             |st, parent| {
                                 let nxt = lookup_binding_on_chain_seen(
                                     parent,
                                     name.clone(),
-                                    seen.clone(),
+                                    st.seen,
+                                    st.hits,
                                 );
                                 match nxt.binding {
                                     Some(binding) => ChainBindingWalk {
                                         binding: Some(binding),
-                                        seen: seen.clone(),
+                                        seen: nxt.seen,
+                                        hits: nxt.hits,
                                     },
                                     std::option::Option::None => ChainBindingWalk {
                                         binding: st.binding,
-                                        seen: seen.clone(),
+                                        seen: nxt.seen,
+                                        hits: nxt.hits,
                                     },
                                 }
                             },
-                        )
+                        );
+                        match walked.binding.clone() {
+                            Some(binding) => ChainBindingWalk {
+                                binding: Some(binding.clone()),
+                                seen: walked.seen,
+                                hits: v1_rt::rc_map_insert(
+                                    walked.hits,
+                                    env.module_path.clone(),
+                                    binding,
+                                ),
+                            },
+                            std::option::Option::None => walked,
+                        }
                     } else {
                         match v1_rt::map_get(&env.ancestry_str_bindings.clone(), name.clone()) {
                             Some(binding) => ChainBindingWalk {
                                 binding: Some(binding.clone()),
                                 seen,
+                                hits: v1_rt::rc_map_insert(
+                                    hits,
+                                    env.module_path.clone(),
+                                    binding.clone(),
+                                ),
                             },
                             std::option::Option::None => ChainBindingWalk {
                                 binding: std::option::Option::None,
                                 seen,
+                                hits,
                             },
                         }
                     }

@@ -622,6 +622,7 @@ type ChainNameWalk {
 type ChainBindingWalk {
   binding: TypeBinding?
   seen: Map<String, Bool>
+  hits: Map<String, TypeBinding>
 }
 
 type PeerImportForkLedger {
@@ -671,14 +672,13 @@ fn str_bindings_from_bindings(bindings: Map<Int, TypeBinding>) -> Map<String, Ty
 // v1 PURPOSE-TEST ADMISSION (gunbc.v1_maintenance_standing v1_seed_standing).
 // Production TypeEnvs carry an empty ancestry overlay; a miss walks the parent Rc chain
 // with the SAME last-wins order the flatten used (later parent full chain overlays
-// earlier, including transitives). That is not a homonym-precedence change: required-ci
-// on the floor control refused when direct-export-over-leak made host String and
-// FreeMonoid<Char> String diverge in one `if`. The pin cut is not retaining the overlay.
-// A non-empty ancestry_str_bindings is still a COMPLETE overlay (miss does not walk).
-// Sibling parent walks do not share `seen`. The class stays UNFIXED until
-// prepared-subject-warm high is 0 (required_floor_strict_prep_sits_on_memory_high).
+// earlier, including transitives). Sibling walks share seen and per-module hits so a
+// diamond is visited once per name (not once per path). The pin cut is not retaining
+// the overlay. A non-empty ancestry_str_bindings is still a COMPLETE overlay.
+// The class stays UNFIXED until prepared-subject-warm high is 0
+// (required_floor_strict_prep_sits_on_memory_high).
 fn lookup_binding_on_chain(env: TypeEnv, name: String) -> TypeBinding? {
-  lookup_binding_on_chain_seen(env: env, name: name, seen: empty_map()).binding
+  lookup_binding_on_chain_seen(env: env, name: name, seen: empty_map(), hits: empty_map()).binding
 }
 
 fn last_wins_merge_bindings(base: Map<String, TypeBinding>, overlay: Map<String, TypeBinding>) -> Map<String, TypeBinding> {
@@ -703,26 +703,51 @@ fn collect_chain_lookup_index_seen(env: TypeEnv, memo: Map<String, Map<String, T
   }
 }
 
-fn lookup_binding_on_chain_seen(env: TypeEnv, name: String, seen: Map<String, Bool>) -> ChainBindingWalk {
+fn lookup_binding_on_chain_seen(
+  env: TypeEnv,
+  name: String,
+  seen: Map<String, Bool>,
+  hits: Map<String, TypeBinding>
+) -> ChainBindingWalk {
   match map_get(seen, env.module_path) {
-    Present { value: _ } => ChainBindingWalk { binding: none, seen: seen }
+    Present { value: _ } =>
+      ChainBindingWalk { binding: map_get(hits, env.module_path), seen: seen, hits: hits }
     Absent =>
       let seen = map_insert(seen, env.module_path, true)
       match map_get(env.str_bindings, name) {
-        Present { value: binding } => ChainBindingWalk { binding: Present { value: binding }, seen: seen }
+        Present { value: binding } =>
+          ChainBindingWalk {
+            binding: Present { value: binding },
+            seen: seen,
+            hits: map_insert(hits, env.module_path, binding)
+          }
         Absent =>
           if (env.ancestry_str_bindings |> map_keys |> count) == 0 {
-            fold(env.parents, init: ChainBindingWalk { binding: none, seen: seen }, f: (st, parent) =>
-              let nxt = lookup_binding_on_chain_seen(env: parent, name: name, seen: seen)
+            let walked = fold(env.parents, init: ChainBindingWalk { binding: none, seen: seen, hits: hits }, f: (st, parent) =>
+              let nxt = lookup_binding_on_chain_seen(env: parent, name: name, seen: st.seen, hits: st.hits)
               match nxt.binding {
-                Present { value: binding } => ChainBindingWalk { binding: Present { value: binding }, seen: seen }
-                Absent => ChainBindingWalk { binding: st.binding, seen: seen }
+                Present { value: binding } => ChainBindingWalk { binding: Present { value: binding }, seen: nxt.seen, hits: nxt.hits }
+                Absent => ChainBindingWalk { binding: st.binding, seen: nxt.seen, hits: nxt.hits }
               }
             )
+            match walked.binding {
+              Present { value: binding } =>
+                ChainBindingWalk {
+                  binding: Present { value: binding },
+                  seen: walked.seen,
+                  hits: map_insert(walked.hits, env.module_path, binding)
+                }
+              Absent => walked
+            }
           } else {
             match map_get(env.ancestry_str_bindings, name) {
-              Present { value: binding } => ChainBindingWalk { binding: Present { value: binding }, seen: seen }
-              Absent => ChainBindingWalk { binding: none, seen: seen }
+              Present { value: binding } =>
+                ChainBindingWalk {
+                  binding: Present { value: binding },
+                  seen: seen,
+                  hits: map_insert(hits, env.module_path, binding)
+                }
+              Absent => ChainBindingWalk { binding: none, seen: seen, hits: hits }
             }
           }
       }
