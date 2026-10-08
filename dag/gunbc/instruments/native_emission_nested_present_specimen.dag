@@ -1,0 +1,37 @@
+module gunbc.instruments.native_emission_nested_present_specimen
+
+import std.types { Bool, String }
+
+// AN EXPECTING-RED SPECIMEN for gunbc.recurring_failure_mode
+// emitter_nested_variant_pattern_inside_present_drops_the_rc_deref. It is NOT enrolled in
+// gunbc.instruments.native_emission_controls: that label requires every carrier to emit as
+// compilable Rust, and specimen_nested_is_lit does not until the emitter rule lands. Enrolling it
+// there, as a case beside the green control, is the row's next-rung step.
+//
+// The shape: a record pattern whose field is an Optional of a coproduct, with the coproduct variant
+// pattern nested inside Present. The emitter renders the inner pattern against the Rc carrier
+// without dereferencing it (Some(Shade::Lit{..}) against Option<Rc<Shade>>, rustc E0308).
+type SpecimenNestedShade = SpecimenNestedLit { name: String } | SpecimenNestedDark
+
+type SpecimenNestedCard {
+  shade: SpecimenNestedShade?
+}
+
+fn specimen_nested_is_lit(card: SpecimenNestedCard) -> Bool {
+  match card {
+    SpecimenNestedCard { shade: Present { value: SpecimenNestedLit { name: _ } } } => true
+    _ => false
+  }
+}
+
+fn specimen_nested_is_lit_split(card: SpecimenNestedCard) -> Bool {
+  match card {
+    SpecimenNestedCard { shade: s } => match s {
+      Present { value: v } => match v {
+        SpecimenNestedLit { name: _ } => true
+        SpecimenNestedDark => false
+      }
+      _ => false
+    }
+  }
+}
