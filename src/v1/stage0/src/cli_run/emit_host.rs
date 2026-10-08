@@ -3894,13 +3894,8 @@ mod fixture_closure_union_tests {
     fn fixture_closure_extension_does_not_populate_the_process_shared_index() {
         let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let layers = crate::cli_run::witness_layer_roots();
-        let shared = match super::entry_resolve::try_process_shared_index(&layers) {
-            Ok(idx) => idx,
-            Err(e) => {
-                eprintln!("no process-shared index in this process: {e}");
-                return;
-            }
-        };
+        let shared = super::entry_resolve::try_process_shared_index(&layers)
+            .unwrap_or_else(|e| panic!("process-shared index is the subject of this control: {e}"));
         let typed_before = shared.typed_module_cache.borrow().len();
         let edges_before = shared
             .both_closure_edges
@@ -3950,13 +3945,8 @@ mod fixture_closure_union_tests {
     fn fixture_closure_extension_via_shared_index_grows_both_closure_edges() {
         let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let layers = crate::cli_run::witness_layer_roots();
-        let shared = match super::entry_resolve::try_process_shared_index(&layers) {
-            Ok(idx) => idx,
-            Err(e) => {
-                eprintln!("no process-shared index in this process: {e}");
-                return;
-            }
-        };
+        let shared = super::entry_resolve::try_process_shared_index(&layers)
+            .unwrap_or_else(|e| panic!("process-shared index is the subject of this control: {e}"));
         let edges_before = shared
             .both_closure_edges
             .borrow()
