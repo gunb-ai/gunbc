@@ -818,8 +818,9 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // One more was added from floor run 37145732420 (gunbc#13123): the construction-confinement module was
 // restructured per the witness rule -- six decision claims supplied at
 // v2.compiler.construction_confinement construction_confinement_member, each ~5ms -- and its ONE
-// real-route inhabitance claim, the sole demander of cc_real_route_reading, measured 1,083,372 eval
-// steps; that claim IS the kept front-end path, so its fill is the debt this row exposes.
+// real-route inhabitance claim, the sole demander of cc_real_route_reading, exceeds the new-witness
+// budget on that run (re-derive its step count there); that claim IS the kept front-end path, so its
+// fill is the debt this row exposes.
 // gunbc#13207 (XL-2 collection concat): its ONE real-path inhabitance claim, kept per the DESIGN section 3
 // witness rule (every other claim in the module supplies its input; sharp-raven-357 approved this member).
 // Measured on that PR's floor run 37238836376: 902,997 eval steps against the 72,300 new-witness budget -- the
