@@ -640,10 +640,20 @@ fn str_bindings_from_bindings(bindings: Map<Int, TypeBinding>) -> Map<String, Ty
   )
 }
 
+// v1 PURPOSE-TEST ADMISSION (gunbc.v1_maintenance_standing v1_seed_standing): parent-chain
+// lookup lets the prepared graph drop the flattened ancestry overlay after Strict-prep (the
+// floor's dominant resident term at prepared-subject-warm). Serves the v2 self-host floor.
 fn lookup_binding_on_chain(env: TypeEnv, name: String) -> TypeBinding? {
   match map_get(env.str_bindings, name) {
     Present { value: binding } => Present { value: binding }
-    Absent => map_get(env.ancestry_str_bindings, name)
+    Absent => match map_get(env.ancestry_str_bindings, name) {
+      Present { value: binding } => Present { value: binding }
+      Absent =>
+        fold(env.parents, init: none, f: (acc, parent) => match acc {
+          Present { value: binding } => Present { value: binding }
+          Absent => lookup_binding_on_chain(env: parent, name: name)
+        })
+    }
   }
 }
 

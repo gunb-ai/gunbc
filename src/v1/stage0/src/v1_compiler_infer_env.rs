@@ -1039,10 +1039,34 @@ pub fn str_bindings_from_bindings(
 }
 
 pub fn lookup_binding_on_chain(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
+    lookup_binding_on_chain_seen(env, name, &mut std::collections::HashSet::new())
+}
+
+fn lookup_binding_on_chain_seen(
+    env: Rc<TypeEnv>,
+    name: String,
+    seen: &mut std::collections::HashSet<usize>,
+) -> Option<Rc<TypeBinding>> {
+    let ptr = Rc::as_ptr(&env) as usize;
+    if !seen.insert(ptr) {
+        return std::option::Option::None;
+    }
     match v1_rt::map_get(&env.str_bindings.clone(), name.clone()) {
         Some(binding) => Some(binding.clone()),
         std::option::Option::None => {
-            v1_rt::map_get(&env.ancestry_str_bindings.clone(), name.clone())
+            match v1_rt::map_get(&env.ancestry_str_bindings.clone(), name.clone()) {
+                Some(binding) => Some(binding.clone()),
+                std::option::Option::None => {
+                    for parent in env.parents.iter() {
+                        if let Some(binding) =
+                            lookup_binding_on_chain_seen(parent.clone(), name.clone(), seen)
+                        {
+                            return Some(binding);
+                        }
+                    }
+                    std::option::Option::None
+                }
+            }
         }
     }
 }

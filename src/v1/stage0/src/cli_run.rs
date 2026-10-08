@@ -38263,17 +38263,28 @@ pub fn prepare_repository_from_corpus(
 ///
 /// So the repository holds a projection with the cache emptied. The resolve is a fresh compile
 /// with no process-level memo, so the original modules drop here and their caches with them.
-/// Every other field is the same `Rc`, so no evaluated value changes.
+///
+/// `TypeEnv.ancestry_str_bindings` is the same lifetime defect at the floor's dominant
+/// cardinality (merge_group prepared-subject-warm: 10_521_069 retained entries, 3055 spines
+/// ≈ one flattened overlay per typed module). Typecheck already closed the subject; evaluation
+/// looks up remaining names through `str_bindings` then `parents` (`lookup_binding_on_chain`).
+/// Emptying the flattened overlay here is DESIGN §2: discovery and the claim fold do not need
+/// a second copy of every ancestor binding on every module.
 fn prepared_graph_without_typecheck_caches(
     graph: &Rc<v1_compiler_compile::ResolvedGraph>,
 ) -> Rc<v1_compiler_compile::ResolvedGraph> {
     let empty = crate::v1_compiler_infer_env::empty_type_env_cache();
+    let empty_ancestry = crate::v1_rt::rc_empty_map();
     let modules: Vec<Rc<crate::v1_compiler_infer_items::TypedModule>> = graph
         .modules
         .iter()
         .map(|m| {
             Rc::new(crate::v1_compiler_infer_items::TypedModule {
                 type_env_cache: empty.clone(),
+                type_env: Rc::new(TypeEnv {
+                    ancestry_str_bindings: empty_ancestry.clone(),
+                    ..(*m.type_env).clone()
+                }),
                 ..(**m).clone()
             })
         })
