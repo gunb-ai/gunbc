@@ -275,6 +275,10 @@ fn reference_derived_path_under_roots(path: String, roots: List<String>) -> Bool
   any(xs: roots, predicate: fn(root) { starts_with(s: path, prefix: concat(root, "/")) })
 }
 
+fn path_is_under_pool_root(path: String, root: String) -> Bool {
+  path == root || starts_with(s: path, prefix: concat(root, "/"))
+}
+
 fn discovering_pool_root(path: String, pool_roots: List<String>) -> Optional<String> {
   fold_list(
     xs: pool_roots,
@@ -282,16 +286,10 @@ fn discovering_pool_root(path: String, pool_roots: List<String>) -> Optional<Str
     cons: fn(acc, root) {
       match acc {
         Present { value: found } => Present { value: found }
-        Absent =>
-          if path == root {
-            Present { value: root }
-          } else {
-            if starts_with(s: path, prefix: concat(root, "/")) {
-              Present { value: root }
-            } else {
-              Absent
-            }
-          }
+        Absent => match path_is_under_pool_root(path: path, root: root) {
+          true => Present { value: root }
+          false => Absent
+        }
       }
     }
   )
