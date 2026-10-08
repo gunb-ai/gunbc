@@ -6,7 +6,8 @@ import v2.std.compilers.lexing { StreamLayout, Token, TokenStream, stream_layout
 import v2.test.parse.expression_bodied_fn_decl_parse { g_fatal_at, g_tokenize_parse }
 import v2.test.parse.supplied_token_stream_support { supplied_stream_parse }
 import v2.std.algebra { Cons, Empty }
-import v2.std.collection { List }
+import v2.std.collection { List, Map, map_lookup }
+import v2.std.integer { Int }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node { Symbol }
 import std.optional { Absent, Optional, Present }
@@ -222,7 +223,7 @@ test fn kvn_contextual_pattern_binder_control_holds() -> Bool {
 // EACH SUPPLIED STREAM IS PROVEN TO BE THE TOKENIZER'S OUTPUT, POSITIONS AND LAYOUT INCLUDED. The located
 // claims assert byte ranges and the statement claims depend on line breaks, so the shared class-and-lexeme
 // projection is not enough here: kvn_stream_matches_tokenize compares every token's class, lexeme, start and
-// end, and the recorded layout's digest, against the real tokenizer over the same source text.
+// end, and the recorded layout's line breaks, against the real tokenizer over the same source text.
 fn kvn_tokens_agree(left: List<Token>, right: List<Token>) -> Bool {
   match left {
     Empty =>
@@ -246,9 +247,18 @@ fn kvn_layouts_agree(left: Optional<StreamLayout>, right: Optional<StreamLayout>
     Present { value: l } =>
       match right {
         Absent => false
-        Present { value: r } => l.digest == r.digest
+        Present { value: r } => kvn_line_breaks_agree(left: l.line_break_before, right: r.line_break_before)
       }
   }
+}
+
+// The same recorded gaps on both sides: equal entry counts, and every left entry found on the right
+// with the same gap start.
+fn kvn_line_breaks_agree(left: Map<Int, Int>, right: Map<Int, Int>) -> Bool {
+  ((map_keys(left) |> count) == (map_keys(right) |> count))
+    && (map_keys(left) |> fold(init: true, f: (acc, k) =>
+      acc && (map_lookup(m: right, key: k) == map_lookup(m: left, key: k))
+    ))
 }
 
 fn kvn_stream_matches_tokenize(text: String, file: Symbol, supplied: TokenStream) -> Bool {
