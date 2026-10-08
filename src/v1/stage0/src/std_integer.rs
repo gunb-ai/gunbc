@@ -14,6 +14,7 @@ pub use crate::std_measure::{bit_width, bit_width_count, bits_per_byte};
 use crate::std_nat::DecimalDigit::{D0, D1, D2, D3, D4, D5, D6, D7, D8, D9};
 pub use crate::std_nat::{decimal_digit_glyph, decimal_digit_value};
 pub use crate::std_nat::{DecimalDigit, Nat};
+pub use crate::std_optional::Optional;
 pub use crate::std_types::gt_zero;
 pub use crate::std_types::List;
 use crate::v1_rt;
