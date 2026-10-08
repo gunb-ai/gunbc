@@ -83,7 +83,7 @@ test fn an_unbound_hole_in_a_data_initializer_refuses() -> Bool {
 test fn a_data_initializer_template_keeps_its_hole() -> Bool {
   match sth_assembly().program {
     Rejected { diagnostics: _ } => false
-    Accepted { value: tree, diagnostics: _ } => sth_k_references(tree: tree) >= 1
+    Accepted { value: tree, diagnostics: _ } => sth_k_references(tree: tree.root) >= 1
   }
 }
 
