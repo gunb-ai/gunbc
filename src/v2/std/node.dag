@@ -1,5 +1,6 @@
 module v2.std.node
 
+import v2.std.compilers.lowered_shape { LoweredShape }
 import std.types { List }
 import std.algebra { Cons, Empty, list_snoc_item }
 import std.optional { Present }
@@ -185,7 +186,29 @@ type CoreEdgeLabel
   | LexicalReferenceEdge
   | MapLiteralEntryEdge
   | MapLiteralEntriesEdge
+  | BodyTermLoweredEdge { seal: BodyTermLoweredSeal }
   | MatchArmScopeExitEdge
+
+// THE LOWERED TERM'S SEAL (MQ-5). Body lowering wraps each producer's result in a node whose one edge
+// carries this marker, and readers take a node under it as lowered output, whole
+// (v2.compiler.body_lowering_fold body_term_of). The marker carries a sole_constructor record, so the
+// only way to write the label is through body_term_lowered_seal, and that mint admits one caller: the
+// body-lowering mint. A lookalike built anywhere else does not compile -- the record has no other
+// constructor and the mint refuses the call. The record is not on the codec's closed marker list
+// (core_edge_labels), so no wire form decodes to it either. On the native route admit_callers is
+// discarded (gunbc.rung_drop admit_callers_discarded_on_the_native_route), so there the record's
+// sole construction site is the whole wall.
+type BodyTermLoweredSeal sole_constructor {
+  shape: LoweredShape,
+}
+
+fn body_term_lowered_seal(shape: LoweredShape) -> BodyTermLoweredSeal
+  admit_callers: [
+    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_term_seal")
+  ]
+{
+  BodyTermLoweredSeal { shape: shape }
+}
 
 fn core_edge_label(marker: CoreEdgeLabel) -> EdgeLabel {
   StructuralLabel { label: CoreMarker { marker: marker } }
@@ -284,6 +307,7 @@ fn core_edge_label_canonical_symbol(marker: CoreEdgeLabel) -> Symbol {
     LexicalReferenceEdge => ^core_lexical_reference_edge
     MapLiteralEntryEdge => ^core_map_literal_entry_edge
     MapLiteralEntriesEdge => ^core_map_literal_entries_edge
+    BodyTermLoweredEdge { seal: _ } => ^core_body_term_lowered_edge
     MatchArmScopeExitEdge => ^core_match_arm_scope_exit_edge
   }
 }

@@ -1,6 +1,7 @@
 module v2.compiler.normalized_tree
 
 import v2.compiler.body_lowering_fold {
+  body_term_erase_tree,
   BodyLoweredTree,
   DeclaredTypeKind,
   DeclaredTypeModifiers,
@@ -88,7 +89,7 @@ type NormalizedTree sole_constructor {
 // BodyWrapperRetained and drops it -- never through a silent `diagnostics: _`.
 fn admit_retention_free(tree: BodyLoweredTree, diagnostics: Diagnostics) -> Outcome<Node> {
   match tree.retained {
-    Empty => Accepted { value: tree.node, diagnostics: diagnostics }
+    Empty => Accepted { value: body_term_erase_tree(n: tree.node), diagnostics: diagnostics }
     Cons { head: first, tail: _ } =>
       Rejected {
         diagnostics: rejected_with_pending(
