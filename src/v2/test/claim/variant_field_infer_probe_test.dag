@@ -18,7 +18,7 @@ import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty, list_append }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.diagnostic { Accepted, Diagnostic, NonEmptyDiagnostics, None, Outcome, Rejected, Some }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, None, Outcome, Rejected, Some }
 import v2.std.algebra { contains, list_map }
 import v2.compiler.inferred_tree { ObligatedInferredTree }
 import v2.std.node_query { construct_tag_optional }
@@ -27,7 +27,6 @@ import v2.std.node {
   ComputationNode,
   CoreMarker,
   FieldProjectionBaseEdge,
-  FieldProjectionFieldEdge,
   Match,
   MatchArmBodyEdge,
   Node,
@@ -35,7 +34,6 @@ import v2.std.node {
   StructuralLabel,
   Symbol,
   TypeNode,
-  symbol_eq,
   symbol_lexeme
 }
 import std.optional { Absent, Optional, Present }
@@ -43,12 +41,6 @@ import v2.std.text { String }
 import v2.std.collection { List }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import std.process { ExitSuccess }
-
-data vfp_artifact: Artifact = Artifact {
-  kind: SourceFile,
-  id: ^variant_field_infer_probe_artifact,
-  file_path: "src/v2/pilot/variant_field_infer_probe_pilot.dag"
-}
 
 fn vfp_assemble(src: String) -> Outcome<ResolvedTree> {
   assemble_program_from_ingest(
