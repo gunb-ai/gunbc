@@ -50,7 +50,7 @@ use crate::module_path_index::{
 };
 use crate::std_node::compiler_recursive_types;
 use crate::std_syntax::LiteralValue;
-use crate::std_types::{kernel_type_set, SourceSpan};
+use crate::std_types::{is_kernel_type, kernel_type_set, SourceSpan};
 use crate::v1_compiler_compile;
 use crate::v1_compiler_infer;
 use crate::v1_compiler_infer_env::{
@@ -3238,29 +3238,47 @@ mod process_workspace_root_tests {
 /// fixture spellings. Witness: `dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness_test.dag`.
 #[cfg(test)]
 mod cli_run_arg_channel_tests {
-    use super::{bind_run_arg_specs_against_declared_types, parse_run_arg_specs};
+    use super::{bind_run_arg_specs_against_admissions, parse_run_arg_specs, CliArgAdmission};
     use crate::v1_interpreter::Value;
 
     fn spec(items: &[&str]) -> Vec<String> {
         items.iter().map(|s| s.to_string()).collect()
     }
 
-    fn declared(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+    fn admission(label: &str) -> CliArgAdmission {
+        match label {
+            "String" => CliArgAdmission::String,
+            "Int" => CliArgAdmission::Int,
+            "Bool" => CliArgAdmission::Bool,
+            "NonEmptyStr" => CliArgAdmission::RefinedString {
+                display: "NonEmptyStr".to_string(),
+                predicates: vec!["string_non_empty".to_string()],
+            },
+            other => CliArgAdmission::Unsupported {
+                display: other.to_string(),
+            },
+        }
+    }
+
+    fn declared(pairs: &[(&str, &str)]) -> Vec<(String, CliArgAdmission)> {
         pairs
             .iter()
-            .map(|(n, t)| (n.to_string(), t.to_string()))
+            .map(|(n, t)| (n.to_string(), admission(t)))
             .collect()
+    }
+
+    fn bind(
+        function: &str,
+        declared: &[(String, CliArgAdmission)],
+        specs: &[(String, String)],
+    ) -> Result<Vec<(Option<String>, Value)>, String> {
+        bind_run_arg_specs_against_admissions(function, declared, specs)
     }
 
     #[test]
     fn named_arg_parses_to_a_named_string_value() {
         let specs = parse_run_arg_specs(&spec(&["node_id=roadmap-7"])).expect("well-formed --arg");
-        let got = bind_run_arg_specs_against_declared_types(
-            "entry",
-            &declared(&[("node_id", "String")]),
-            &specs,
-        )
-        .expect("String bind");
+        let got = bind("entry", &declared(&[("node_id", "String")]), &specs).expect("String bind");
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].0.as_deref(), Some("node_id"));
         assert!(matches!(&got[0].1, Value::Str(s) if s.as_ref() == "roadmap-7"));
@@ -3270,24 +3288,14 @@ mod cli_run_arg_channel_tests {
     fn value_may_contain_further_equals_signs() {
         let specs =
             parse_run_arg_specs(&spec(&["diff=a=b=c"])).expect("split on the first `=` only");
-        let got = bind_run_arg_specs_against_declared_types(
-            "entry",
-            &declared(&[("diff", "String")]),
-            &specs,
-        )
-        .expect("String bind");
+        let got = bind("entry", &declared(&[("diff", "String")]), &specs).expect("String bind");
         assert!(matches!(&got[0].1, Value::Str(s) if s.as_ref() == "a=b=c"));
     }
 
     #[test]
     fn empty_value_is_admitted_and_distinct_from_absent() {
         let specs = parse_run_arg_specs(&spec(&["flag="])).expect("empty value is a value");
-        let got = bind_run_arg_specs_against_declared_types(
-            "entry",
-            &declared(&[("flag", "String")]),
-            &specs,
-        )
-        .expect("String bind");
+        let got = bind("entry", &declared(&[("flag", "String")]), &specs).expect("String bind");
         assert!(matches!(&got[0].1, Value::Str(s) if s.is_empty()));
     }
 
@@ -3322,7 +3330,7 @@ mod cli_run_arg_channel_tests {
 
     #[test]
     fn int_parameter_given_non_numeric_refuses() {
-        let err = bind_run_arg_specs_against_declared_types(
+        let err = bind(
             "belt_scm_corrective_integrate_cli",
             &declared(&[("supersedes", "Int")]),
             &[("supersedes".into(), "stale".into())],
@@ -3336,7 +3344,7 @@ mod cli_run_arg_channel_tests {
 
     #[test]
     fn int_parameter_given_decimal_two_is_int_two() {
-        let got = bind_run_arg_specs_against_declared_types(
+        let got = bind(
             "belt_scm_corrective_integrate_cli",
             &declared(&[("supersedes", "Int")]),
             &[("supersedes".into(), "2".into())],
@@ -3350,7 +3358,7 @@ mod cli_run_arg_channel_tests {
 
     #[test]
     fn unsupported_declared_type_refuses() {
-        let err = bind_run_arg_specs_against_declared_types(
+        let err = bind(
             "entry",
             &declared(&[("source", "List<String>")]),
             &[("source".into(), "a".into())],
@@ -3365,7 +3373,7 @@ mod cli_run_arg_channel_tests {
     #[test]
     fn qualified_or_branded_int_label_refuses_rather_than_matching_the_leaf() {
         for label in ["foo.Int", "std.integer.Int"] {
-            let err = bind_run_arg_specs_against_declared_types(
+            let err = bind(
                 "entry",
                 &declared(&[("source", label)]),
                 &[("source".into(), "2".into())],
@@ -3380,7 +3388,7 @@ mod cli_run_arg_channel_tests {
 
     #[test]
     fn nonemptystr_non_empty_binds_as_string() {
-        let got = bind_run_arg_specs_against_declared_types(
+        let got = bind(
             "fci1_assert_checkpoint_token",
             &declared(&[("token", "NonEmptyStr")]),
             &[("token".into(), "none".into())],
@@ -3391,7 +3399,7 @@ mod cli_run_arg_channel_tests {
 
     #[test]
     fn nonemptystr_empty_refuses_naming_the_parameter() {
-        let err = bind_run_arg_specs_against_declared_types(
+        let err = bind(
             "fci1_assert_checkpoint_token",
             &declared(&[("token", "NonEmptyStr")]),
             &[("token".into(), "".into())],
@@ -3407,14 +3415,14 @@ mod cli_run_arg_channel_tests {
 
     #[test]
     fn bool_parameter_accepts_true_false_only() {
-        let got = bind_run_arg_specs_against_declared_types(
+        let got = bind(
             "entry",
             &declared(&[("flag", "Bool")]),
             &[("flag".into(), "true".into())],
         )
         .expect("Bool true");
         assert!(matches!(got[0].1, Value::Bool(true)));
-        let err = bind_run_arg_specs_against_declared_types(
+        let err = bind(
             "entry",
             &declared(&[("flag", "Bool")]),
             &[("flag".into(), "yes".into())],
@@ -19897,25 +19905,44 @@ fn parse_cli_decimal_int(text: &str) -> Option<i64> {
     text.parse().ok()
 }
 
-/// Bind one `--arg` text value against the parameter's authored type label.
-///
-/// Kernel labels `String`, `Int`, and `Bool` inhabit as themselves. A type that
-/// is a `where`-refinement of `String` or `Int` inhabits through that
-/// refinement's own admission (`decidable_where_*` in v1.compiler.infer) —
-/// `NonEmptyStr` is `String where string_non_empty`. Qualified or branded
-/// spellings with no such route refuse (DESIGN §4: leaf-name agreement is not
-/// inhabitance; DESIGN §4d: refusing a refinement that already has an
-/// admission is over-prohibition).
+/// Admission derived from a parameter's resolved type (or supplied in tests).
+#[derive(Clone, Debug)]
+pub enum CliArgAdmission {
+    String,
+    Int,
+    Bool,
+    RefinedString {
+        display: String,
+        predicates: Vec<String>,
+    },
+    RefinedInt {
+        display: String,
+        predicates: Vec<(String, Rc<Node>)>,
+    },
+    Unsupported {
+        display: String,
+    },
+}
+
+fn cli_arg_no_inhabitance_route(function: &str, param: &str, type_label: &str) -> String {
+    format!(
+        "--arg `{param}`: function `{function}` declares `{param}: {type_label}`, \
+         which `gunbc run --arg` cannot inhabit; only String, Int, Bool, and \
+         decidable where-refinements of String or Int are admitted"
+    )
+}
+
+/// Bind one `--arg` text value against a resolved admission.
 pub fn bind_cli_arg_text(
     function: &str,
     param: &str,
-    type_label: &str,
+    admission: &CliArgAdmission,
     text: &str,
 ) -> Result<v1_interpreter::Value, String> {
-    match type_label {
-        "String" => Ok(str_value(text)),
-        "Int" => bind_cli_int(function, param, type_label, text),
-        "Bool" => match text {
+    match admission {
+        CliArgAdmission::String => Ok(str_value(text)),
+        CliArgAdmission::Int => bind_cli_int(function, param, "Int", text),
+        CliArgAdmission::Bool => match text {
             "true" => Ok(Value::Bool(true)),
             "false" => Ok(Value::Bool(false)),
             _ => Err(format!(
@@ -19923,29 +19950,66 @@ pub fn bind_cli_arg_text(
                  but `{text}` is not `true` or `false`"
             )),
         },
-        _ => {
-            if let Some(pred) = cli_arg_string_refinement_predicate(type_label) {
-                bind_cli_string_refinement(function, param, type_label, pred, text)
-            } else {
-                Err(cli_arg_no_inhabitance_route(function, param, type_label))
+        CliArgAdmission::RefinedString {
+            display,
+            predicates,
+        } => {
+            for pred in predicates {
+                match v1_compiler_infer::decidable_where_string_predicate_holds(
+                    pred.clone(),
+                    text.to_string(),
+                ) {
+                    Some(true) => {}
+                    Some(false) => {
+                        return Err(format!(
+                            "--arg `{param}`: function `{function}` declares `{param}: {display}`, \
+                             but the value fails `{pred}`"
+                        ));
+                    }
+                    None => {
+                        return Err(cli_arg_no_inhabitance_route(function, param, display));
+                    }
+                }
             }
+            Ok(str_value(text))
         }
-    }
-}
-
-fn cli_arg_no_inhabitance_route(function: &str, param: &str, type_label: &str) -> String {
-    format!(
-        "--arg `{param}`: function `{function}` declares `{param}: {type_label}`, \
-         which `gunbc run --arg` cannot inhabit; only String, Int, Bool, and \
-         refinements of String or Int with a declared admission are admitted"
-    )
-}
-
-/// Authored labels that are `String where …` in `std.types` (and nowhere else).
-fn cli_arg_string_refinement_predicate(type_label: &str) -> Option<&'static str> {
-    match type_label {
-        "NonEmptyStr" => Some("string_non_empty"),
-        _ => None,
+        CliArgAdmission::RefinedInt {
+            display,
+            predicates,
+        } => {
+            let n = match bind_cli_int(function, param, display, text)? {
+                Value::Int(n) => n,
+                _ => {
+                    return Err(format!(
+                        "--arg `{param}`: function `{function}` declares `{param}: {display}`, \
+                         but `{text}` is not a decimal integer"
+                    ));
+                }
+            };
+            for (pred, pred_node) in predicates {
+                match v1_compiler_infer::decidable_where_int_predicate_holds(
+                    pred.clone(),
+                    pred_node.clone(),
+                    n,
+                    Rc::new(im::HashMap::new()),
+                ) {
+                    Some(true) => {}
+                    Some(false) => {
+                        return Err(format!(
+                            "--arg `{param}`: function `{function}` declares `{param}: {display}`, \
+                             but `{text}` fails `{pred}`"
+                        ));
+                    }
+                    None => {
+                        return Err(cli_arg_no_inhabitance_route(function, param, display));
+                    }
+                }
+            }
+            Ok(Value::Int(n))
+        }
+        CliArgAdmission::Unsupported { display } => {
+            Err(cli_arg_no_inhabitance_route(function, param, display))
+        }
     }
 }
 
@@ -19964,30 +20028,101 @@ fn bind_cli_int(
     }
 }
 
-fn bind_cli_string_refinement(
-    function: &str,
-    param: &str,
-    type_label: &str,
-    pred: &str,
-    text: &str,
-) -> Result<v1_interpreter::Value, String> {
-    match v1_compiler_infer::decidable_where_string_predicate_holds(
-        pred.to_string(),
-        text.to_string(),
-    ) {
-        Some(true) => Ok(str_value(text)),
-        Some(false) => Err(format!(
-            "--arg `{param}`: function `{function}` declares `{param}: {type_label}`, \
-             but the value fails `{pred}`"
-        )),
-        None => Err(cli_arg_no_inhabitance_route(function, param, type_label)),
+/// Walk a parameter type expr to kernel String/Int/Bool plus `where` predicates
+/// taken from the resolved alias chain (`std.types` NonEmptyStr is
+/// `String where string_non_empty` on that chain — not a CLI-side table).
+fn cli_arg_admission_from_type_expr(
+    ctx: &v1_interpreter::InterpContext,
+    type_expr: Rc<Node>,
+) -> CliArgAdmission {
+    let display = v1_compiler_infer::type_node_label(type_expr.clone(), ctx.source_indices.clone());
+    let mut ty = match type_expr.inferred.as_deref() {
+        Some(InferredNode::Resolved { node }) => node.clone(),
+        _ => type_expr.clone(),
+    };
+    let mut string_preds: Vec<String> = Vec::new();
+    let mut int_preds: Vec<(String, Rc<Node>)> = Vec::new();
+    let mut seen = HashSet::new();
+    for _ in 0..32 {
+        if v1_compiler_infer::is_where_refinement_type(ty.clone()) {
+            for pred in v1_compiler_infer::type_expr_where_refinement_predicates(ty.clone())
+                .iter()
+                .cloned()
+            {
+                let pname = v1_compiler_infer::where_predicate_name_at(
+                    pred.clone(),
+                    ctx.source_indices.clone(),
+                );
+                if v1_compiler_infer::where_refinement_is_deferred_predicate(pname.clone()) {
+                    continue;
+                }
+                if v1_compiler_infer::where_refinement_is_string_literal_predicate(pname.clone()) {
+                    string_preds.push(pname);
+                } else if v1_compiler_infer::where_refinement_is_int_literal_predicate(
+                    pname.clone(),
+                ) {
+                    int_preds.push((pname, pred));
+                } else {
+                    return CliArgAdmission::Unsupported {
+                        display: display.clone(),
+                    };
+                }
+            }
+            match ty.children.iter().next().cloned() {
+                Some(base) => {
+                    ty = base;
+                    continue;
+                }
+                None => break,
+            }
+        }
+        let name = v1_compiler_infer::type_node_label(ty.clone(), ctx.source_indices.clone());
+        if name.is_empty() || !seen.insert(name.clone()) {
+            break;
+        }
+        if is_kernel_type(name.clone()) {
+            return cli_arg_admission_for_kernel(&name, display, string_preds, int_preds);
+        }
+        if let Some(item) = v1_interpreter::lookup_type_item(ctx, &name) {
+            if let Some(rhs) = v1_interpreter::type_declaration_rhs(&item) {
+                if Rc::ptr_eq(&rhs, &ty) {
+                    break;
+                }
+                ty = rhs;
+                continue;
+            }
+        }
+        return cli_arg_admission_for_kernel(&name, display, string_preds, int_preds);
+    }
+    CliArgAdmission::Unsupported { display }
+}
+
+fn cli_arg_admission_for_kernel(
+    ground: &str,
+    display: String,
+    string_preds: Vec<String>,
+    int_preds: Vec<(String, Rc<Node>)>,
+) -> CliArgAdmission {
+    match (ground, string_preds.is_empty(), int_preds.is_empty()) {
+        ("String", true, true) => CliArgAdmission::String,
+        ("Int", true, true) => CliArgAdmission::Int,
+        ("Bool", true, true) => CliArgAdmission::Bool,
+        ("String", false, true) => CliArgAdmission::RefinedString {
+            display,
+            predicates: string_preds,
+        },
+        ("Int", true, false) => CliArgAdmission::RefinedInt {
+            display,
+            predicates: int_preds,
+        },
+        _ => CliArgAdmission::Unsupported { display },
     }
 }
 
-/// Bind `--arg` specs against a function's declared `(name, type)` pairs.
-pub fn bind_run_arg_specs_against_declared_types(
+/// Bind `--arg` specs against caller-supplied admissions (unit tests).
+pub fn bind_run_arg_specs_against_admissions(
     function: &str,
-    declared: &[(String, String)],
+    declared: &[(String, CliArgAdmission)],
     specs: &[(String, String)],
 ) -> Result<Vec<(Option<String>, v1_interpreter::Value)>, String> {
     let mut seen = HashSet::new();
@@ -19998,8 +20133,8 @@ pub fn bind_run_arg_specs_against_declared_types(
                 "--arg `{name}`: supplied more than once for function `{function}`"
             ));
         }
-        let type_label = match declared.iter().find(|(n, _)| n == name) {
-            Some((_, ty)) => ty.as_str(),
+        let admission = match declared.iter().find(|(n, _)| n == name) {
+            Some((_, a)) => a,
             None => {
                 let known: Vec<&str> = declared.iter().map(|(n, _)| n.as_str()).collect();
                 return Err(format!(
@@ -20015,13 +20150,13 @@ pub fn bind_run_arg_specs_against_declared_types(
         };
         bound.push((
             Some(name.clone()),
-            bind_cli_arg_text(function, name, type_label, text)?,
+            bind_cli_arg_text(function, name, admission, text)?,
         ));
     }
     Ok(bound)
 }
 
-/// Bind `--arg` text against `entry_fn`'s declared parameter types.
+/// Bind `--arg` text against `entry_fn`'s resolved parameter types.
 ///
 /// No `.dag` binder exists: `gunbc.cli_dispatch_surface` owns the option as
 /// `CliTextValue` (argv is text). This seed function is the typed inhabitance.
@@ -20033,9 +20168,38 @@ pub fn bind_run_args_for_entry(
     if specs.is_empty() {
         return Ok(Vec::new());
     }
-    let declared = v1_interpreter::declared_parameter_type_labels(ctx, entry_fn)
+    let declared = v1_interpreter::declared_parameter_type_exprs(ctx, entry_fn)
         .ok_or_else(|| format!("--arg: function `{entry_fn}` is not in the loaded entry"))?;
-    bind_run_arg_specs_against_declared_types(entry_fn, &declared, specs)
+    let mut seen = HashSet::new();
+    let mut bound = Vec::with_capacity(specs.len());
+    for (name, text) in specs {
+        if !seen.insert(name.clone()) {
+            return Err(format!(
+                "--arg `{name}`: supplied more than once for function `{entry_fn}`"
+            ));
+        }
+        let ty = match declared.iter().find(|(n, _)| n == name) {
+            Some((_, ty)) => ty.clone(),
+            None => {
+                let known: Vec<&str> = declared.iter().map(|(n, _)| n.as_str()).collect();
+                return Err(format!(
+                    "--arg `{name}`: function `{entry_fn}` has no parameter `{name}` \
+                     (declared: {})",
+                    if known.is_empty() {
+                        "(none)".to_string()
+                    } else {
+                        known.join(", ")
+                    }
+                ));
+            }
+        };
+        let admission = cli_arg_admission_from_type_expr(ctx, ty);
+        bound.push((
+            Some(name.clone()),
+            bind_cli_arg_text(entry_fn, name, &admission, text)?,
+        ));
+    }
+    Ok(bound)
 }
 
 struct ScopedRunObservation {

@@ -7366,21 +7366,21 @@ pub fn declared_parameter_names(ctx: &InterpContext, entry_fn: &str) -> Option<V
     )
 }
 
-/// Authored `(name, type-label)` pairs `entry_fn` declares, in declaration order.
-pub fn declared_parameter_type_labels(
+/// Authored `(name, type-expr)` pairs `entry_fn` declares, in declaration order.
+pub fn declared_parameter_type_exprs(
     ctx: &InterpContext,
     entry_fn: &str,
-) -> Option<Vec<(String, String)>> {
+) -> Option<Vec<(String, Rc<Node>)>> {
     let fn_node = ctx.lookup_fn(entry_fn)?;
     Some(
         fn_node
             .params
             .iter()
             .map(|p| {
-                let name = authored_name_at(ctx.si(), p.clone());
-                let ty = param_node_type_expr(p.clone());
-                let label = crate::v1_compiler_infer::type_node_label(ty, ctx.si());
-                (name, label)
+                (
+                    authored_name_at(ctx.si(), p.clone()),
+                    param_node_type_expr(p.clone()),
+                )
             })
             .collect(),
     )
@@ -13413,6 +13413,22 @@ fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Opti
         TYPE_LOOKUP_CALLS.with(|c| c.set(c.get() + 1));
     }
     ctx.indexes.type_items.get(type_name).cloned()
+}
+
+/// First authored type declaration of `type_name` in this closure (same slot casts use).
+pub fn lookup_type_item(ctx: &InterpContext, type_name: &str) -> Option<Rc<Node>> {
+    lookup_type_item_across_modules(ctx, type_name)
+}
+
+/// RHS of a type declaration, when the item is an alias or resolved target.
+pub fn type_declaration_rhs(item: &Rc<Node>) -> Option<Rc<Node>> {
+    if let Some(rhs) = item.children.iter().next().cloned() {
+        return Some(rhs);
+    }
+    match item.inferred.as_deref() {
+        Some(InferredNode::Resolved { node }) => Some(node.clone()),
+        _ => None,
+    }
 }
 
 #[cfg(test)]

@@ -563,7 +563,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     text_default: std::option::Option::None,
 }),
     arity: CliOptionArity::CliRepeated,
-    doc: Rc::new(vec!["Named argument for the entry function, repeatable: `--arg name=value`.".to_string(), "Bound against the declared parameter type (String, Int, Bool, and String/Int refinements such as NonEmptyStr); others refuse.".to_string()]),
+    doc: Rc::new(vec!["Named argument for the entry function, repeatable: `--arg name=value`.".to_string(), "Bound against the resolved parameter type: String, Int, Bool, and decidable where-refinements of those (e.g. NonEmptyStr); others refuse.".to_string()]),
     emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 })]),
     realization: Rc::new(CliArmRealization::CliDelegatesToHostFn {
