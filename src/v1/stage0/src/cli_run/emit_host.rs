@@ -3938,6 +3938,54 @@ mod fixture_closure_union_tests {
         );
     }
 
+    /// A second fixture extend of the same specimen must reuse the fixture-only slot
+    /// (both_closure_edges already filled), not cold-extend again.
+    #[test]
+    fn second_fixture_extend_reuses_the_scratch_slot() {
+        let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let module_index = crate::cli_run::build_module_path_index_from_witness_roots();
+        crate::cli_run::resolve_virtual_source_with_imports(
+            FIXTURE_SOURCE_PATH,
+            FIXTURE_CLOSURE_REFERENCE_REACH_MEMBER,
+            &module_index,
+        )
+        .unwrap_or_else(|e| panic!("first fixture extend must close: {e}"));
+        let scratch = crate::cli_run::fixture_extension_index_for_test()
+            .expect("the production loader must install the fixture-only slot");
+        let edges_after_first = scratch
+            .both_closure_edges
+            .borrow()
+            .as_ref()
+            .map(|e| e.ref_out.len())
+            .unwrap_or(0);
+        assert!(
+            edges_after_first > 0,
+            "the first extend must populate the fixture-only edge map"
+        );
+        crate::cli_run::resolve_virtual_source_with_imports(
+            FIXTURE_SOURCE_PATH,
+            FIXTURE_CLOSURE_REFERENCE_REACH_MEMBER,
+            &module_index,
+        )
+        .unwrap_or_else(|e| panic!("second fixture extend must close: {e}"));
+        let same = crate::cli_run::fixture_extension_index_for_test()
+            .expect("the fixture-only slot must survive the second extend");
+        let edges_after_second = same
+            .both_closure_edges
+            .borrow()
+            .as_ref()
+            .map(|e| e.ref_out.len())
+            .unwrap_or(0);
+        assert_eq!(
+            edges_after_first, edges_after_second,
+            "a second extend of the same specimen must hit the fixture-only caches, not rebuild them"
+        );
+        assert!(
+            Rc::ptr_eq(&scratch, &same),
+            "the fixture-only slot must be one index, not a fresh shell per compile"
+        );
+    }
+
     /// THE DISCRIMINATING RED of the class: the pre-fix loader
     /// (`try_index_for_run_or_owned_pool` over the layer roots) grows `both_closure_edges`
     /// on the process-shared index. If this greens, the green control above has no red.
