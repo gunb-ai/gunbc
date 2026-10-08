@@ -227,7 +227,7 @@ fn plan_binds_source_ref_translation(
 test fn dashboard_provision_plan_consumes_one_instance() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  count(plan) == 8
+  count(plan) == 9
     && demands_cover_every_auth_store(instance: lab)
     && plan_binds_instance_paths(plan: plan, instance: lab)
     && plan_binds_source_ref_translation(plan: plan, instance: lab)
@@ -625,7 +625,7 @@ test fn srv2_lab_owns_paths_disjoint_from_preview_and_production() -> Bool {
 test fn srv2_lab_has_a_provision_plan_bound_to_itself() -> Bool {
   let lab = srv2_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  count(plan) == 8
+  count(plan) == 9
     && demands_cover_every_auth_store(instance: lab)
     && plan_binds_instance_paths(plan: plan, instance: lab)
     && plan_binds_source_ref_translation(plan: plan, instance: lab)
