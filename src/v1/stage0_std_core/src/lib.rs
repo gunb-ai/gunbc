@@ -63,6 +63,9 @@ pub mod std_types;
 #[path = "../../stage0/src/std_unicode_types.rs"]
 pub mod std_unicode_types;
 #[rustfmt::skip]
+#[path = "../../stage0/src/std_optional.rs"]
+pub mod std_optional;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_algebra.rs"]
 pub mod std_algebra;
 #[rustfmt::skip]

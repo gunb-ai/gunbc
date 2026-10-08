@@ -1,0 +1,289 @@
+module test.claim.roadmap.roadmap_belt_supersession_witness_test
+
+// THE LEGACY CONVERSION AND THE CORRECTIVE SUPERSESSION (parent ruling on gunbc#13402: no re-seed;
+// the corrective squash goes into head 2 and records the correction). The scene is srv2's
+// shell-typed-invocation built by the production verbs and aged through a real v8 document
+// (test.fixture.legacy_intake_scene). Claims, at the interfaces they are about:
+//   * the conversion types the pre-intake line in place and the stale standings are then TYPED --
+//     IntegratesStale for head 2 with no spawn origin read; an unobservable base refuses the whole
+//     conversion; a second run is the no-op;
+//   * the positive, over the NO-LAND ruling's upstream-added/worker-deleted path: the recapture of
+//     the stale work, superseding head 2, yields a CORRECTED MANIFEST -- src/new.dag absent (the
+//     worker deleted it on R1), src/other.dag the worker's -- and only then a clean line publishing
+//     from the R0..R1 advance;
+//   * one red per guard: an unrelated fresh capture (the ruling's silent-clean case), a commit that
+//     integrated nothing, an integration that is not stale, an integration already superseded, a
+//     source that is itself stale.
+
+import std.types { Bool, String, List, Int }
+import std.minted_identity { minted_id_ordinal }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.scm.ancestry { RepositoryCommitRef, repository_commit_ref_eq }
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope,
+  record_legacy_intakes, LegacyIntakesRecorded, LegacyIntakesNothingUnrecorded, LegacyIntakesRefused,
+  RepositoryCommit, commit_at_reference,
+  SupersessionRefusal, SupersessionNotAnIntegration, SupersessionStaleIntegrationIsARoot, SupersessionNotStale,
+  SupersessionAlreadySuperseded, SupersessionSourceNotFresh, SupersessionSourceNotACapture, SupersessionWorkMismatch, SupersessionMergeBaseRefused,
+}
+import gunbc.scm.squash_merge { SquashMergeBaseRefused, SquashMergeConflicted, SquashMergeRootMissing, SquashMergeRootIsAuthoredSource, SquashMergeRootIsSemanticNode, SquashMergeResultLocatorCollision, SquashMergeAllocatorInvalid, SquashMergeSourceUnrecoverable, squash_merge, SquashMerged, squash_merge_superseding, SupersedingSquashMerged, SupersedingSquashRefused }
+import gunbc.roadmap_belt_actuate {
+  belt_line_standing, LineClean, IntegratesStale, LineStandingUnderivable,
+  belt_legacy_intake_plan, LegacyIntakePlanned, LegacyIntakePlanRefused, BeltLegacyCaptureBase,
+  BaseShaObserved, BaseShaUnobserved,
+  belt_publish_base, PublishBaseDerived, PublishBaseUnderivable,
+}
+import gunbc.roadmap.roadmap_fanin {
+  fanin_correct_integration, FaninCorrected, FaninSupersessionRefused,
+  FaninIntegrated, FaninAlreadyIntegrated, FaninConflicted, FaninRefused,
+}
+import gunbc.scm.object_store { find_corpus_manifest_record, CorpusManifestFound, CorpusManifestAbsent, CorpusManifestIsAuthoredSource, CorpusManifestIsSemanticNode, scm_object_identity, authored_source_object }
+import gunbc.scm.object_table_json { object_id_key }
+import test.fixture.legacy_intake_scene {
+  legacy_unconverted, legacy_converted, legacy_observed, legacy_corrective_scene, legacy_ref,
+  legacy_r0_hex, legacy_r1_hex,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn standing_text(repository: RepositoryEnvelope, head: Int) -> String {
+  match belt_line_standing(commits: repository.commits, head: legacy_ref(ordinal: head)) {
+    LineClean => "clean"
+    LineStandingUnderivable { detail: _ } => "underivable"
+    IntegratesStale { integration, source, captured_against, repository_base } =>
+      join(["integrates_stale ", to_string(integration), " ", to_string(source), " ", captured_against, " ", repository_base], "")
+  }
+}
+
+// BEFORE CONVERSION THE LINE IS UNDERIVABLE, NEVER CLEAN; AFTER IT, head 2 IS IntegratesStale --
+// from typed members alone, so no attempt is observed when a belt reads it.
+test fn the_conversion_types_the_stale_line_in_place() -> Bool {
+  let before = match legacy_unconverted() {
+    Absent => false
+    Present { value: legacy } => standing_text(repository: legacy, head: 2) == "underivable"
+  }
+  let after = match legacy_converted(observed: legacy_observed(c1: legacy_r1_hex, c3: legacy_r1_hex)) {
+    Absent => false
+    Present { value: converted } =>
+      standing_text(repository: converted, head: 2) == join(["integrates_stale 2 1 ", legacy_r1_hex, " ", legacy_r0_hex], "")
+  }
+  before && after
+}
+
+// A CANDIDATE WHOSE ATTEMPT BRANCHED FROM THE LINE'S OWN BASE CONVERTS ON BASE: the line is clean.
+test fn a_candidate_captured_on_its_lines_base_converts_clean() -> Bool {
+  match legacy_converted(observed: legacy_observed(c1: legacy_r0_hex, c3: legacy_r0_hex)) {
+    Absent => false
+    Present { value: converted } => standing_text(repository: converted, head: 2) == "clean"
+  }
+}
+
+// AN UNOBSERVABLE CAPTURE BASE REFUSES THE WHOLE CONVERSION -- a half-typed line no reader could
+// stand on -- and a converted repository converts to nothing the second time.
+test fn the_conversion_refuses_unread_evidence_and_is_idempotent() -> Bool {
+  let refused = match legacy_unconverted() {
+    Absent => false
+    Present { value: legacy } =>
+      match belt_legacy_intake_plan(commits: legacy.commits, observed: [
+        BeltLegacyCaptureBase { commit: 1, base: BaseShaObserved { base_sha: legacy_r1_hex } },
+        BeltLegacyCaptureBase { commit: 3, base: BaseShaUnobserved { reason: "spawn origin unreadable" } },
+      ]) {
+        LegacyIntakePlanRefused { detail: _ } => true
+        LegacyIntakePlanned { records: _ } => false
+      }
+  }
+  let idempotent = match legacy_converted(observed: legacy_observed(c1: legacy_r1_hex, c3: legacy_r1_hex)) {
+    Absent => false
+    Present { value: converted } =>
+      match record_legacy_intakes(repository: converted, records: []) {
+        LegacyIntakesNothingUnrecorded => true
+        LegacyIntakesRecorded { repository: _ } => false
+        LegacyIntakesRefused { cause: _ } => false
+      }
+  }
+  refused && idempotent
+}
+
+// THE POSITIVE: stale -> superseded -> publishable, ASSERTED ON THE TREE. The corrective commit c7 is
+// head 2's child; its manifest is the recapture merged into c0 (the line before the stale
+// integration), so the path the worker deleted on R1 is absent although R1 added it, the path the
+// worker modified carries the worker's bytes, and the path upstream changed carries R1's bytes -- the
+// change the stale tree lacked. Only after that does the line read clean.
+fn corrected_paths(repository: RepositoryEnvelope, head: RepositoryCommitRef) -> List<String> {
+  match commit_at_reference(commits: repository.commits, reference: head) {
+    Absent => []
+    Present { value: c } =>
+      match find_corpus_manifest_record(store: repository.store, identity: c.root.locator) {
+        CorpusManifestFound(record) => sort_by(map(record.entries, e => join([e.path as String, "=", object_id_key(identity: e.source.locator)], "")), r => r)
+        CorpusManifestAbsent { identity: _ } => []
+        CorpusManifestIsAuthoredSource { identity: _ } => []
+        CorpusManifestIsSemanticNode { identity: _ } => []
+      }
+  }
+}
+
+fn expected_entry(path: String, text: String) -> String {
+  join([path, "=", object_id_key(identity: scm_object_identity(object: authored_source_object(text: text)))], "")
+}
+
+test fn a_superseded_stale_line_is_clean_on_the_corrected_tree() -> Bool {
+  match legacy_corrective_scene() {
+    Absent => false
+    Present { value: scene } =>
+      standing_text(repository: scene, head: 2) != "clean"
+        && match squash_merge_superseding(repository: scene, supersedes: legacy_ref(ordinal: 2), source: legacy_ref(ordinal: 5), message: "correct 2") {
+          SupersedingSquashRefused { cause: _ } => false
+          SupersedingSquashMerged(outcome) =>
+            match outcome {
+              SquashMerged { repository: corrected, reference: head } =>
+                corrected_paths(repository: corrected, head: head) == sort_by([
+                  expected_entry(path: "src/a.dag", text: "A at R0"),
+                  expected_entry(path: "src/other.dag", text: "O as worker 1 left it"),
+                  expected_entry(path: "src/up.dag", text: "U at R1"),
+                ], r => r)
+                  && match belt_line_standing(commits: corrected.commits, head: head) {
+                    LineClean =>
+                      match belt_publish_base(commits: corrected.commits, head: head) {
+                        PublishBaseDerived { base } => repository_commit_ref_eq(left: base.commit.reference, right: legacy_ref(ordinal: 4)) && base.sha == legacy_r1_hex
+                        PublishBaseUnderivable { detail: _ } => false
+                      }
+                    IntegratesStale { integration: _, source: _, captured_against: _, repository_base: _ } => false
+                    LineStandingUnderivable { detail: _ } => false
+                  }
+              SquashMergeBaseRefused { refusal: _ } => false
+              SquashMergeConflicted { conflicts: _ } => false
+              SquashMergeRootMissing { side: _, root: _ } => false
+              SquashMergeRootIsAuthoredSource { side: _, root: _ } => false
+              SquashMergeRootIsSemanticNode { side: _, root: _ } => false
+              SquashMergeResultLocatorCollision { identity: _ } => false
+              SquashMergeAllocatorInvalid => false
+              SquashMergeSourceUnrecoverable { cause: _ } => false
+            }
+        }
+  }
+}
+
+fn supersession_refusal(scene: RepositoryEnvelope, source: Int, supersedes: Int) -> String {
+  match squash_merge_superseding(repository: scene, supersedes: legacy_ref(ordinal: supersedes), source: legacy_ref(ordinal: source), message: "correct") {
+    SupersedingSquashMerged(_) => "merged"
+    SupersedingSquashRefused { cause } =>
+      match cause {
+        SupersessionNotAnIntegration { named: _ } => "not_an_integration"
+        SupersessionStaleIntegrationIsARoot { named: _ } => "root"
+        SupersessionNotStale { named: _ } => "not_stale"
+        SupersessionAlreadySuperseded { named: _, by: _ } => "already_superseded"
+        SupersessionSourceNotFresh { source: _ } => "source_not_fresh"
+        SupersessionSourceNotACapture { source: _ } => "not_a_capture"
+        SupersessionWorkMismatch { stale: _, source: _ } => "work_mismatch"
+        SupersessionMergeBaseRefused { refusal: _ } => "merge_base"
+      }
+  }
+}
+
+// THE RULING'S SILENT-CLEAN CASE REFUSES: c6 is fresh, on the right line, and leaves src/new.dag present
+// -- an ordinary merge would take it without conflict -- but it is not a capture of the stale work.
+// And a source that is not a capture at all (c4, the intake advance) is refused as one: supersession
+// reads work only through an admitted capture.
+test fn an_unrelated_fresh_source_cannot_supersede_the_stale_integration() -> Bool {
+  match legacy_corrective_scene() {
+    Absent => false
+    Present { value: scene } =>
+      supersession_refusal(scene: scene, source: 6, supersedes: 2) == "work_mismatch"
+        && supersession_refusal(scene: scene, source: 5, supersedes: 0) == "not_an_integration"
+        && supersession_refusal(scene: scene, source: 4, supersedes: 2) == "not_a_capture"
+  }
+}
+
+test fn a_supersession_from_a_stale_source_refuses() -> Bool {
+  match legacy_corrective_scene() {
+    Absent => false
+    Present { value: scene } => supersession_refusal(scene: scene, source: 3, supersedes: 2) == "source_not_fresh"
+  }
+}
+
+// A FRESH INTEGRATION IS NOT STALE, AND A SUPERSEDED ONE IS NOT SUPERSEDED TWICE.
+test fn a_supersession_of_a_fresh_or_already_superseded_integration_refuses() -> Bool {
+  match legacy_corrective_scene() {
+    Absent => false
+    Present { value: scene } => {
+      let not_stale = match squash_merge(repository: scene, target: legacy_ref(ordinal: 2), source: legacy_ref(ordinal: 6), message: "plain") {
+        SquashMerged { repository: plain, reference: head } =>
+          supersession_refusal(scene: plain, source: 5, supersedes: minted_ordinal_of(r: head)) == "not_stale"
+        SquashMergeBaseRefused { refusal: _ } => false
+        SquashMergeConflicted { conflicts: _ } => false
+        SquashMergeRootMissing { side: _, root: _ } => false
+        SquashMergeRootIsAuthoredSource { side: _, root: _ } => false
+        SquashMergeRootIsSemanticNode { side: _, root: _ } => false
+        SquashMergeResultLocatorCollision { identity: _ } => false
+        SquashMergeAllocatorInvalid => false
+        SquashMergeSourceUnrecoverable { cause: _ } => false
+      }
+      let twice = match squash_merge_superseding(repository: scene, supersedes: legacy_ref(ordinal: 2), source: legacy_ref(ordinal: 5), message: "correct 2") {
+        SupersedingSquashRefused { cause: _ } => false
+        SupersedingSquashMerged(outcome) =>
+          match outcome {
+            SquashMerged { repository: corrected, reference: _ } =>
+              supersession_refusal(scene: corrected, source: 5, supersedes: 2) == "already_superseded"
+            SquashMergeBaseRefused { refusal: _ } => false
+            SquashMergeConflicted { conflicts: _ } => false
+            SquashMergeRootMissing { side: _, root: _ } => false
+            SquashMergeRootIsAuthoredSource { side: _, root: _ } => false
+            SquashMergeRootIsSemanticNode { side: _, root: _ } => false
+            SquashMergeResultLocatorCollision { identity: _ } => false
+            SquashMergeAllocatorInvalid => false
+            SquashMergeSourceUnrecoverable { cause: _ } => false
+          }
+      }
+      not_stale && twice
+    }
+  }
+}
+
+fn minted_ordinal_of(r: RepositoryCommitRef) -> Int {
+  minted_id_ordinal(id: r.identity)
+}
+
+fn fanin_route(scene: RepositoryEnvelope, source: Int, supersedes: Int) -> String {
+  match fanin_correct_integration(
+    repository: scene,
+    supersedes: legacy_ref(ordinal: supersedes),
+    candidate: legacy_ref(ordinal: source),
+    message: "correct",
+  ) {
+    FaninSupersessionRefused { cause } =>
+      match cause {
+        SupersessionNotAnIntegration { named: _ } => "not_an_integration"
+        SupersessionStaleIntegrationIsARoot { named: _ } => "root"
+        SupersessionNotStale { named: _ } => "not_stale"
+        SupersessionAlreadySuperseded { named: _, by: _ } => "already_superseded"
+        SupersessionSourceNotFresh { source: _ } => "source_not_fresh"
+        SupersessionSourceNotACapture { source: _ } => "not_a_capture"
+        SupersessionWorkMismatch { stale: _, source: _ } => "work_mismatch"
+        SupersessionMergeBaseRefused { refusal: _ } => "merge_base"
+      }
+    FaninCorrected(outcome) =>
+      match outcome {
+        FaninIntegrated { repository: _, head: _ } => "corrected"
+        FaninAlreadyIntegrated { head: _ } => "already"
+        FaninConflicted { conflicts: _ } => "conflicted"
+        FaninRefused { detail: _ } => "refused"
+      }
+  }
+}
+
+// THE RECAPTURE OF THE STALE ATTEMPT IS THE SOURCE fanin_correct_integration ADMITS -- the route,
+// not only the corrected tree. c5 captures work {n, 1}, the same unit the stale capture c1 recorded.
+test fn a_recapture_of_the_stale_attempts_work_is_admitted_as_the_corrective_source() -> Bool {
+  match legacy_corrective_scene() {
+    Absent => false
+    Present { value: scene } => fanin_route(scene: scene, source: 5, supersedes: 2) == "corrected"
+  }
+}
+
+// A FRESH CAPTURE OF A DIFFERENT ATTEMPT IS REFUSED AS THE SOURCE: same admission, named cause.
+test fn a_recapture_of_a_different_attempt_is_refused_as_work_mismatch() -> Bool {
+  match legacy_corrective_scene() {
+    Absent => false
+    Present { value: scene } => fanin_route(scene: scene, source: 6, supersedes: 2) == "work_mismatch"
+  }
+}

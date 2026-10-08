@@ -13,7 +13,7 @@ import v2.std.collection {
   map_insert,
   map_lookup
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,
@@ -650,9 +650,9 @@ fn formal_production_to_node(production: FormalProduction) -> Node {
 }
 
 fn grammar_atom_identity_from_node(node: Node) -> Witness<Symbol> {
-  match node.kind {
-    TypeNode { connective: Atom { identity: id } } => Holds { value: id }
-  _ =>
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } => Holds { value: id }
+    Absent =>
     Violates {
       diagnostic: Diagnostic {
         reason: ^grammar_relation_production_not_found,
@@ -682,14 +682,22 @@ fn formal_nonterminal_from_node(node: Node) -> Witness<FormalNonterminal> {
             }
           }
       }
-    _ =>
-      Violates {
-        diagnostic: Diagnostic {
-          reason: ^grammar_relation_production_not_found,
-          at: node_locus(node: node),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      }
+    TypeNode { connective: Atom { identity: _ } } => formal_nonterminal_from_node_otherwise(node: node)
+    TypeNode { connective: Disj } => formal_nonterminal_from_node_otherwise(node: node)
+    TypeNode { connective: Arrow } => formal_nonterminal_from_node_otherwise(node: node)
+    TypeNode { connective: Cardinality } => formal_nonterminal_from_node_otherwise(node: node)
+    TypeNode { connective: Instantiation } => formal_nonterminal_from_node_otherwise(node: node)
+    ComputationNode { behavior: _ } => formal_nonterminal_from_node_otherwise(node: node)
+  }
+}
+
+fn formal_nonterminal_from_node_otherwise(node: Node) -> Witness<FormalNonterminal> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^grammar_relation_production_not_found,
+      at: node_locus(node: node),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
   }
 }
 
@@ -712,14 +720,22 @@ fn formal_terminal_from_node(node: Node) -> Witness<FormalTerminal> {
             }
           }
       }
-    _ =>
-      Violates {
-        diagnostic: Diagnostic {
-          reason: ^grammar_relation_production_not_found,
-          at: node_locus(node: node),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      }
+    TypeNode { connective: Atom { identity: _ } } => formal_terminal_from_node_otherwise(node: node)
+    TypeNode { connective: Disj } => formal_terminal_from_node_otherwise(node: node)
+    TypeNode { connective: Arrow } => formal_terminal_from_node_otherwise(node: node)
+    TypeNode { connective: Cardinality } => formal_terminal_from_node_otherwise(node: node)
+    TypeNode { connective: Instantiation } => formal_terminal_from_node_otherwise(node: node)
+    ComputationNode { behavior: _ } => formal_terminal_from_node_otherwise(node: node)
+  }
+}
+
+fn formal_terminal_from_node_otherwise(node: Node) -> Witness<FormalTerminal> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^grammar_relation_production_not_found,
+      at: node_locus(node: node),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
   }
 }
 
@@ -803,14 +819,22 @@ fn formal_grammar_symbol_from_node(node: Node) -> Witness<FormalGrammarSymbol> {
           }
           }
       }
-    _ =>
-      Violates {
-        diagnostic: Diagnostic {
-          reason: ^grammar_relation_production_not_found,
-          at: node_locus(node: node),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      }
+    TypeNode { connective: Atom { identity: _ } } => formal_grammar_symbol_from_node_otherwise(node: node)
+    TypeNode { connective: Disj } => formal_grammar_symbol_from_node_otherwise(node: node)
+    TypeNode { connective: Arrow } => formal_grammar_symbol_from_node_otherwise(node: node)
+    TypeNode { connective: Cardinality } => formal_grammar_symbol_from_node_otherwise(node: node)
+    TypeNode { connective: Instantiation } => formal_grammar_symbol_from_node_otherwise(node: node)
+    ComputationNode { behavior: _ } => formal_grammar_symbol_from_node_otherwise(node: node)
+  }
+}
+
+fn formal_grammar_symbol_from_node_otherwise(node: Node) -> Witness<FormalGrammarSymbol> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^grammar_relation_production_not_found,
+      at: node_locus(node: node),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
   }
 }
 
@@ -842,14 +866,22 @@ fn formal_rhs_from_node(node: Node) -> Witness<List<FormalGrammarSymbol>> {
         Holds { value: symbols } => Holds { value: symbols }
         Violates { diagnostic: d } => Violates { diagnostic: d }
       }
-    _ =>
-      Violates {
-        diagnostic: Diagnostic {
-          reason: ^grammar_relation_production_not_found,
-          at: node_locus(node: node),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      }
+    TypeNode { connective: Atom { identity: _ } } => formal_rhs_from_node_otherwise(node: node)
+    TypeNode { connective: Disj } => formal_rhs_from_node_otherwise(node: node)
+    TypeNode { connective: Arrow } => formal_rhs_from_node_otherwise(node: node)
+    TypeNode { connective: Cardinality } => formal_rhs_from_node_otherwise(node: node)
+    TypeNode { connective: Instantiation } => formal_rhs_from_node_otherwise(node: node)
+    ComputationNode { behavior: _ } => formal_rhs_from_node_otherwise(node: node)
+  }
+}
+
+fn formal_rhs_from_node_otherwise(node: Node) -> Witness<List<FormalGrammarSymbol>> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^grammar_relation_production_not_found,
+      at: node_locus(node: node),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
   }
 }
 
@@ -889,14 +921,22 @@ fn formal_production_from_node(node: Node) -> Witness<FormalProduction> {
             }
           }
       }
-    _ =>
-      Violates {
-        diagnostic: Diagnostic {
-          reason: ^grammar_relation_production_not_found,
-          at: node_locus(node: node),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      }
+    TypeNode { connective: Atom { identity: _ } } => formal_production_from_node_otherwise(node: node)
+    TypeNode { connective: Disj } => formal_production_from_node_otherwise(node: node)
+    TypeNode { connective: Arrow } => formal_production_from_node_otherwise(node: node)
+    TypeNode { connective: Cardinality } => formal_production_from_node_otherwise(node: node)
+    TypeNode { connective: Instantiation } => formal_production_from_node_otherwise(node: node)
+    ComputationNode { behavior: _ } => formal_production_from_node_otherwise(node: node)
+  }
+}
+
+fn formal_production_from_node_otherwise(node: Node) -> Witness<FormalProduction> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^grammar_relation_production_not_found,
+      at: node_locus(node: node),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
   }
 }
 
@@ -954,15 +994,23 @@ fn grammar_relation_rules_formal_productions_from_rows(rules: Node) -> Outcome<L
           }
         }
       )
-    _ =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^grammar_relation_production_not_found,
-          at: node_locus(node: rules),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
+    TypeNode { connective: Atom { identity: _ } } => grammar_relation_rules_formal_productions_from_rows_otherwise(rules: rules)
+    TypeNode { connective: Disj } => grammar_relation_rules_formal_productions_from_rows_otherwise(rules: rules)
+    TypeNode { connective: Arrow } => grammar_relation_rules_formal_productions_from_rows_otherwise(rules: rules)
+    TypeNode { connective: Cardinality } => grammar_relation_rules_formal_productions_from_rows_otherwise(rules: rules)
+    TypeNode { connective: Instantiation } => grammar_relation_rules_formal_productions_from_rows_otherwise(rules: rules)
+    ComputationNode { behavior: _ } => grammar_relation_rules_formal_productions_from_rows_otherwise(rules: rules)
   }
+}
+
+fn grammar_relation_rules_formal_productions_from_rows_otherwise(rules: Node) -> Outcome<List<FormalProduction>> {
+  outcome_rejected(
+    Diagnostic {
+      reason: ^grammar_relation_production_not_found,
+      at: node_locus(node: rules),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  )
 }
 
 fn formal_productions_catalog_to_node(productions: List<FormalProduction>) -> Node {
@@ -1013,15 +1061,23 @@ fn formal_productions_from_catalog_node(node: Node) -> Outcome<List<FormalProduc
           )
         }
       )
-    _ =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^grammar_relation_production_not_found,
-          at: node_locus(node: node),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
+    TypeNode { connective: Atom { identity: _ } } => formal_productions_from_catalog_node_otherwise(node: node)
+    TypeNode { connective: Disj } => formal_productions_from_catalog_node_otherwise(node: node)
+    TypeNode { connective: Arrow } => formal_productions_from_catalog_node_otherwise(node: node)
+    TypeNode { connective: Cardinality } => formal_productions_from_catalog_node_otherwise(node: node)
+    TypeNode { connective: Instantiation } => formal_productions_from_catalog_node_otherwise(node: node)
+    ComputationNode { behavior: _ } => formal_productions_from_catalog_node_otherwise(node: node)
   }
+}
+
+fn formal_productions_from_catalog_node_otherwise(node: Node) -> Outcome<List<FormalProduction>> {
+  outcome_rejected(
+    Diagnostic {
+      reason: ^grammar_relation_production_not_found,
+      at: node_locus(node: node),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  )
 }
 
 fn grammar_relation_rules_formal_productions(rules: Node) -> Outcome<List<FormalProduction>> {
@@ -1157,7 +1213,12 @@ fn conj_positional_children(parent: Node) -> List<Node> {
           }
         }
       )
-    _ => Empty
+    TypeNode { connective: Atom { identity: _ } } => Empty
+    TypeNode { connective: Disj } => Empty
+    TypeNode { connective: Arrow } => Empty
+    TypeNode { connective: Cardinality } => Empty
+    TypeNode { connective: Instantiation } => Empty
+    ComputationNode { behavior: _ } => Empty
   }
 }
 
@@ -1251,7 +1312,8 @@ fn formal_production_rhs_singleton_terminal_identity(production: FormalProductio
     cons: formal_production_rhs_singleton_terminal_identity_step
   ) {
     RhsSingletonTerminalFound { identity: id } => Present { value: id }
-    _ => Absent
+    RhsSingletonTerminalNotSeen => Absent
+    RhsSingletonTerminalAmbiguous => Absent
   }
 }
 
@@ -1287,14 +1349,20 @@ fn formal_production_rhs_singleton_binding(production: FormalProduction) -> Symb
     cons: formal_production_rhs_singleton_binding_step
   ) {
     RhsSingletonBindingFound { binding: b } => Present { value: b }
-    _ => Absent
+    RhsSingletonBindingNotSeen => Absent
+    RhsSingletonBindingAmbiguous => Absent
   }
 }
 
 fn node_atom_identity_optional(node: Node) -> Symbol? {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } => Present { value: id }
-    _ => Absent
+    TypeNode { connective: Conj } => Absent
+    TypeNode { connective: Disj } => Absent
+    TypeNode { connective: Arrow } => Absent
+    TypeNode { connective: Cardinality } => Absent
+    TypeNode { connective: Instantiation } => Absent
+    ComputationNode { behavior: _ } => Absent
   }
 }
 
@@ -1461,7 +1529,12 @@ fn formal_production_rhs_matches_emitted_conj(
         children: children,
         child_count: child_count
       )
-    _ => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -1518,7 +1591,11 @@ fn formal_production_matches_resolution(
         children: children,
         child_count: child_count
       )
-    _ => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -1526,7 +1603,11 @@ fn emitted_shape_supported_for_lhs_exact(child: Node) -> Bool {
   match child.kind {
     TypeNode { connective: Conj } => true
     TypeNode { connective: Atom { identity: _ } } => true
-    _ => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -1693,7 +1774,11 @@ fn formal_emitted_index_key(emitted: Node, children: List<Node>) -> Symbol? {
         Empty => optional_absent()
         Cons { head: first, tail: _ } => node_atom_identity_optional(node: first)
       }
-    _ => optional_absent()
+    TypeNode { connective: Disj } => optional_absent()
+    TypeNode { connective: Arrow } => optional_absent()
+    TypeNode { connective: Cardinality } => optional_absent()
+    TypeNode { connective: Instantiation } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
   }
 }
 
@@ -2017,7 +2102,11 @@ fn emitted_node_slot_count(emitted: Node) -> Int {
     TypeNode { connective: Conj } =>
       conj_positional_child_count(children: conj_positional_children(parent: emitted))
     TypeNode { connective: Atom { identity: _ } } => 0
-    _ => 0 - 1
+    TypeNode { connective: Disj } => 0 - 1
+    TypeNode { connective: Arrow } => 0 - 1
+    TypeNode { connective: Cardinality } => 0 - 1
+    TypeNode { connective: Instantiation } => 0 - 1
+    ComputationNode { behavior: _ } => 0 - 1
   }
 }
 
@@ -2249,14 +2338,22 @@ fn derive_grammar_relation_row_node_resolved(
           }
         Violates { diagnostic: d } => Violates { diagnostic: d }
       }
-    _ =>
-      Violates {
-        diagnostic: Diagnostic {
-          reason: ^grammar_relation_emitted_not_conj,
-          at: node_locus(node: emitted),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      }
+    TypeNode { connective: Atom { identity: _ } } => derive_grammar_relation_row_node_resolved_otherwise(emitted: emitted)
+    TypeNode { connective: Disj } => derive_grammar_relation_row_node_resolved_otherwise(emitted: emitted)
+    TypeNode { connective: Arrow } => derive_grammar_relation_row_node_resolved_otherwise(emitted: emitted)
+    TypeNode { connective: Cardinality } => derive_grammar_relation_row_node_resolved_otherwise(emitted: emitted)
+    TypeNode { connective: Instantiation } => derive_grammar_relation_row_node_resolved_otherwise(emitted: emitted)
+    ComputationNode { behavior: _ } => derive_grammar_relation_row_node_resolved_otherwise(emitted: emitted)
+  }
+}
+
+fn derive_grammar_relation_row_node_resolved_otherwise(emitted: Node) -> Witness<Node> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^grammar_relation_emitted_not_conj,
+      at: node_locus(node: emitted),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
   }
 }
 
@@ -2436,7 +2533,12 @@ fn grammar_node_insert_atom_identities(m: Map<Symbol, Bool>, n: Node) -> Map<Sym
     empty: match n.kind {
       TypeNode { connective: Atom { identity: id } } =>
         grammar_symbol_map_put(m: m, sym: id)
-      _ => m
+      TypeNode { connective: Conj } => m
+      TypeNode { connective: Disj } => m
+      TypeNode { connective: Arrow } => m
+      TypeNode { connective: Cardinality } => m
+      TypeNode { connective: Instantiation } => m
+      ComputationNode { behavior: _ } => m
     },
     cons: fn(acc, e) {
       grammar_node_insert_atom_identities_child(m: acc, e: e)
@@ -2927,12 +3029,20 @@ fn grammar_relation_row_reverse_parse_selection(rules: Node, emitted: Node) -> O
                 emitted: emitted
               )
           }
-        _ =>
-          outcome_rejected(
-            grammar_relation_row_reverse_parse_selection_not_found_diagnostic(emitted: emitted)
-          )
+        TypeNode { connective: Atom { identity: _ } } => grammar_relation_row_reverse_parse_selection_otherwise(emitted: emitted)
+        TypeNode { connective: Disj } => grammar_relation_row_reverse_parse_selection_otherwise(emitted: emitted)
+        TypeNode { connective: Arrow } => grammar_relation_row_reverse_parse_selection_otherwise(emitted: emitted)
+        TypeNode { connective: Cardinality } => grammar_relation_row_reverse_parse_selection_otherwise(emitted: emitted)
+        TypeNode { connective: Instantiation } => grammar_relation_row_reverse_parse_selection_otherwise(emitted: emitted)
+        ComputationNode { behavior: _ } => grammar_relation_row_reverse_parse_selection_otherwise(emitted: emitted)
       }
     }
+  )
+}
+
+fn grammar_relation_row_reverse_parse_selection_otherwise(emitted: Node) -> Outcome<Node> {
+  outcome_rejected(
+    grammar_relation_row_reverse_parse_selection_not_found_diagnostic(emitted: emitted)
   )
 }
 
@@ -2987,7 +3097,12 @@ fn grammar_relation_row_forward_select(
           }
         }
       )
-    _ => GrammarRelationForwardRowNone
+    TypeNode { connective: Atom { identity: _ } } => GrammarRelationForwardRowNone
+    TypeNode { connective: Disj } => GrammarRelationForwardRowNone
+    TypeNode { connective: Arrow } => GrammarRelationForwardRowNone
+    TypeNode { connective: Cardinality } => GrammarRelationForwardRowNone
+    TypeNode { connective: Instantiation } => GrammarRelationForwardRowNone
+    ComputationNode { behavior: _ } => GrammarRelationForwardRowNone
   }
 }
 
@@ -3084,15 +3199,23 @@ fn grammar_relation_row_forward_token_spine_selection(
           }
         )
       )
-    _ =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^parse_tree_to_emitted_node_no_matching_row,
-          at: node_locus(node: rules),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
+    TypeNode { connective: Atom { identity: _ } } => grammar_relation_row_forward_token_spine_selection_otherwise(rules: rules)
+    TypeNode { connective: Disj } => grammar_relation_row_forward_token_spine_selection_otherwise(rules: rules)
+    TypeNode { connective: Arrow } => grammar_relation_row_forward_token_spine_selection_otherwise(rules: rules)
+    TypeNode { connective: Cardinality } => grammar_relation_row_forward_token_spine_selection_otherwise(rules: rules)
+    TypeNode { connective: Instantiation } => grammar_relation_row_forward_token_spine_selection_otherwise(rules: rules)
+    ComputationNode { behavior: _ } => grammar_relation_row_forward_token_spine_selection_otherwise(rules: rules)
   }
+}
+
+fn grammar_relation_row_forward_token_spine_selection_otherwise(rules: Node) -> Outcome<Node> {
+  outcome_rejected(
+    Diagnostic {
+      reason: ^parse_tree_to_emitted_node_no_matching_row,
+      at: node_locus(node: rules),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  )
 }
 
 fn grammar_node_carries_surface_identity(node: Node, surface_identity: Symbol) -> Bool {
@@ -3123,7 +3246,11 @@ fn grammar_node_carries_surface_identity(node: Node, surface_identity: Symbol) -
           }
         }
       })
-    _ => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -3171,13 +3298,21 @@ fn grammar_relation_row_forward_production_selection(
         none_reason: ^grammar_relation_row_forward_production_not_found,
         many_reason: ^grammar_relation_row_forward_production_ambiguous
       )
-    _ =>
-      outcome_rejected(
-        grammar_relation_row_forward_production_selection_not_found_diagnostic(
-          surface_identity: surface_identity
-        )
-      )
+    TypeNode { connective: Atom { identity: _ } } => grammar_relation_row_forward_production_selection_otherwise(surface_identity: surface_identity)
+    TypeNode { connective: Disj } => grammar_relation_row_forward_production_selection_otherwise(surface_identity: surface_identity)
+    TypeNode { connective: Arrow } => grammar_relation_row_forward_production_selection_otherwise(surface_identity: surface_identity)
+    TypeNode { connective: Cardinality } => grammar_relation_row_forward_production_selection_otherwise(surface_identity: surface_identity)
+    TypeNode { connective: Instantiation } => grammar_relation_row_forward_production_selection_otherwise(surface_identity: surface_identity)
+    ComputationNode { behavior: _ } => grammar_relation_row_forward_production_selection_otherwise(surface_identity: surface_identity)
   }
+}
+
+fn grammar_relation_row_forward_production_selection_otherwise(surface_identity: Symbol) -> Outcome<Node> {
+  outcome_rejected(
+    grammar_relation_row_forward_production_selection_not_found_diagnostic(
+      surface_identity: surface_identity
+    )
+  )
 }
 
 // ONE GRAMMAR, READ BACKWARD (docs/plans/dag-emit-one-grammar-backward.md). Emit's subject is the

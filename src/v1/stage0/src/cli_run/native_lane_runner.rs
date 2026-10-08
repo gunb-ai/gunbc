@@ -46,6 +46,12 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// THE FAULT-EXPERIMENT INPUT, joined to `gunbc.emitted_subject_build_gate`
+/// `native_fault_experiment_env_name` / `native_fault_experiment_skip_value` by
+/// `test.claim.compiler_gate_emit_build_lane_witness_test` `the_seed_fault_experiment_input_is_the_dag_rows`.
+const FAULT_EXPERIMENT_ENV: &str = "GUNBC_NATIVE_FAULT_EXPERIMENT";
+const FAULT_EXPERIMENT_SKIP_VALUE: &str = "skip_pull_request";
+
 /// The compiler entry whose closure becomes the lane's emitted-native compiler. Its
 /// `compiler_pipeline_entry` is `SourceRootEvalDriver`, so the emitted crate's `main.rs` is the
 /// whole-source-root Eval driver this lane exists to route through — and, since the admission
@@ -258,8 +264,8 @@ pub fn emitted_build_not_clean_cause(
         .collect();
     Some(format!(
         "{label} REFUSAL cause=EmittedBuildWarnings warning_count={warning_count} \
-         distinct_headers={} — the emitted crate built with status 0 under -D warnings and cargo \
-         stderr carried these warning headers (first 40 distinct, with multiplicity):\n{}",
+         distinct_headers={} — the emitted crate built with status 0 under -D warnings and cargo's \
+         JSON stream carried these warning-level compiler messages on the emitted crate (first 40 distinct, with multiplicity):\n{}",
         distinct.len(),
         shown.join("\n")
     ))
@@ -413,6 +419,15 @@ fn prepare_emitted_compiler_for_entry(
         &probe_root.target_dir(),
         super::emitted_closure_compile_host::MUTATION_PROBE_SYMBOL,
     );
+    if let super::emitted_closure_compile_host::CargoVerdict::DependencyFetchFailed { .. } =
+        &verdict
+    {
+        // INFRA, NOT A SELF-HOST DEFECT: no compiler judged the emitted crate.
+        return Err(format!(
+            "V2-NATIVE REFUSAL cause=EmittedBuildDependencyFetchFailed class=Infra — {}",
+            super::emitted_closure_compile_host::cargo_verdict_summary(&verdict),
+        ));
+    }
     if !super::emitted_closure_compile_host::cargo_verdict_compiled(&verdict) {
         return Err(emitted_build_failed_refusal(
             probe_root,
@@ -508,30 +523,44 @@ fn prepare_emitted_compiler_for_entry(
     // to the entrypoint step as though it were the baseline's.
     let entry_module = super::emitted_closure_compile_host::entry_rust_module(entry, &workspace)
         .map_err(|cause| format!("V2-NATIVE REFUSAL cause=EntryModuleUnreadable — {cause}"))?;
-    eprintln!("v2-native-route: establishing the discriminating red on {entry_module}");
-    let mutation = super::emitted_closure_compile_host::establish_discriminating_red(
-        &crate_dir,
-        &probe_root.target_dir(),
-        &entry_module,
-    );
-    if !super::emitted_closure_compile_host::mutation_verdict_discriminated(&mutation) {
-        return Err(format!(
-            "V2-NATIVE REFUSAL cause=EmittedBuildNotDiscriminating — {}",
+    // THE FAULT EXPERIMENT IS SKIPPED ONLY WHEN THE WORKFLOW SAYS SO, and says so in the log. The
+    // input is `gunbc.emitted_subject_build_gate` `native_fault_experiment_env_name`, set by
+    // `gunbc.compiler_gate_workflow` from the event: pull_request passes `skip_pull_request`,
+    // merge_group and workflow_dispatch pass `run`. Absent or any other value RUNS it. The skip is
+    // the declared drop `gunbc.rung_drop` `native_fault_experiment_off_pull_requests`.
+    if std::env::var(FAULT_EXPERIMENT_ENV).ok().as_deref() == Some(FAULT_EXPERIMENT_SKIP_VALUE) {
+        eprintln!(
+            "v2-native-route: DISCRIMINATING RED SKIPPED — GUNBC_NATIVE_FAULT_EXPERIMENT=skip_pull_request \
+             (pull_request run; declared drop native_fault_experiment_off_pull_requests). The emit, \
+             build, census pair, door, refusal and filesystem controls still run; the fault-and-\
+             restoration rebuild runs on merge_group and workflow_dispatch."
+        );
+    } else {
+        eprintln!("v2-native-route: establishing the discriminating red on {entry_module}");
+        let mutation = super::emitted_closure_compile_host::establish_discriminating_red(
+            &crate_dir,
+            &probe_root.target_dir(),
+            &entry_module,
+        );
+        if !super::emitted_closure_compile_host::mutation_verdict_discriminated(&mutation) {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=EmittedBuildNotDiscriminating — {}",
+                super::emitted_closure_compile_host::mutation_verdict_summary(&mutation)
+            ));
+        }
+        eprintln!(
+            "v2-native-route: discriminating red established — {}",
             super::emitted_closure_compile_host::mutation_verdict_summary(&mutation)
-        ));
-    }
-    eprintln!(
-        "v2-native-route: discriminating red established — {}",
-        super::emitted_closure_compile_host::mutation_verdict_summary(&mutation)
-    );
-    let identity_after_mutation = sha256_file(&binary_path)?;
-    if identity_after_mutation != binary_identity {
-        return Err(format!(
-            "V2-NATIVE REFUSAL cause=EmittedCompilerReplacedByFaultedArm — {} was {binary_identity} \
-             when the clean baseline built it and is {identity_after_mutation} after the fault was \
-             injected and removed; the executable handed on is not the one the green build produced",
-            binary_path.display()
-        ));
+        );
+        let identity_after_mutation = sha256_file(&binary_path)?;
+        if identity_after_mutation != binary_identity {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=EmittedCompilerReplacedByFaultedArm — {} was {binary_identity} \
+                 when the clean baseline built it and is {identity_after_mutation} after the fault was \
+                 injected and removed; the executable handed on is not the one the green build produced",
+                binary_path.display()
+            ));
+        }
     }
 
     Ok(EmittedPreparation {
@@ -2531,6 +2560,7 @@ pub struct NativeServeProgramRun {
     pub responses: Vec<String>,
     pub refused_status: Option<i32>,
     pub refused_stderr: String,
+    pub served_exit_status: Option<i32>,
     pub stderr: String,
 }
 
@@ -2538,8 +2568,10 @@ pub struct NativeServeProgramRun {
 /// deadline here is the instrument refusing to hang, not a budget the service is judged by.
 const NATIVE_SERVE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
 
-fn native_serve_launch_args(release_revision: &str) -> Vec<String> {
+fn native_serve_launch_args(release_revision: &str, request_deadline_ms: &str) -> Vec<String> {
     vec![
+        "--request-deadline-ms".to_string(),
+        request_deadline_ms.to_string(),
         "--host".to_string(),
         "127.0.0.1".to_string(),
         "--port".to_string(),
@@ -2553,10 +2585,14 @@ fn native_serve_launch_args(release_revision: &str) -> Vec<String> {
 fn native_serve_refused_launch(
     binary: &Path,
     refused_revision: &str,
+    request_deadline_ms: &str,
 ) -> Result<(Option<i32>, String), String> {
     use std::io::Read;
     let mut child = Command::new(binary)
-        .args(native_serve_launch_args(refused_revision))
+        .args(native_serve_launch_args(
+            refused_revision,
+            request_deadline_ms,
+        ))
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -2612,6 +2648,7 @@ pub fn run_native_serve_program(
     entry: &str,
     release_revision: &str,
     refused_revision: &str,
+    request_deadline_ms: &str,
     requests: &[String],
 ) -> Result<NativeServeProgramRun, String> {
     use std::io::{BufRead, Read};
@@ -2622,9 +2659,12 @@ pub fn run_native_serve_program(
         prepared.binary_path.display()
     );
     let (refused_status, refused_stderr) =
-        native_serve_refused_launch(&prepared.binary_path, refused_revision)?;
+        native_serve_refused_launch(&prepared.binary_path, refused_revision, request_deadline_ms)?;
     let mut child = Command::new(&prepared.binary_path)
-        .args(native_serve_launch_args(release_revision))
+        .args(native_serve_launch_args(
+            release_revision,
+            request_deadline_ms,
+        ))
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -2659,8 +2699,23 @@ pub fn run_native_serve_program(
             .collect(),
         None => Vec::new(),
     };
-    let _ = child.kill();
-    let _ = child.wait();
+    // The last case drives the service past its stuck-worker ceiling, after which it exits by
+    // itself; wait for that (bounded) and carry the status to the reader unjudged. Only a process
+    // still running at the deadline is killed, and it reports no status.
+    let started = std::time::Instant::now();
+    let served_exit_status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status.code(),
+            Ok(None) if started.elapsed() < NATIVE_SERVE_DEADLINE => {
+                std::thread::sleep(std::time::Duration::from_millis(20))
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break None;
+            }
+        }
+    };
     let stderr = reader.join().unwrap_or_default();
     Ok(NativeServeProgramRun {
         closure_identity: prepared.closure_identity,
@@ -2671,6 +2726,7 @@ pub fn run_native_serve_program(
         responses,
         refused_status,
         refused_stderr,
+        served_exit_status,
         stderr,
     })
 }

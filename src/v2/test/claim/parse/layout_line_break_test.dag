@@ -49,7 +49,7 @@ import v2.std.grammar {
 import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol, content_hash }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import v2.std.parse_refusal_reason {
   FnExpressionBodyMissingAfterEq,
   LayoutUnknownWithoutSource,

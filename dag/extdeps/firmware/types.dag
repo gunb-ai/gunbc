@@ -3,7 +3,7 @@ module extdeps.firmware.types
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size }
 import std.types { Bool, EpochMs, NonEmptyStr, List, list_length }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.crypto.hash { Digest }
 import extdeps.boards.types { BaseboardModel }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -88,9 +88,11 @@ type FirmwareTarget
 // PicmgHpmImage is an image packaged as a PICMG HPM.1 upgrade file (extdeps.standards.picmg_hpm1):
 // uploaded to and activated by the BMC over IPMI with the host powered off, so like OpenBmcWebUiTar it
 // passes through the BMC and unlike InstantFlashRom it needs no host that can POST.
+// ASRock also publishes SCP .slim payloads applied through host Instant Flash.
 type FirmwareImageKind
   = OpenBmcWebUiTar
   | InstantFlashRom
+  | InstantFlashSlim
   | PicmgHpmImage
 
 // A vendor release, cited. image_digest is Optional because a digest this
@@ -325,14 +327,20 @@ fn prerequisite_evidence_verdict(
       PrerequisiteContradictedByAcceptanceBelowMinimum { accepted_at: a }
     PrerequisiteContradictedByRefusalAtOrAboveMinimum { refused_at: r } =>
       PrerequisiteContradictedByRefusalAtOrAboveMinimum { refused_at: r }
+    PrerequisiteConsistentUpperBound { highest_refusal: _, lowest_acceptance: _ } => prerequisite_evidence_uncontradicted(observations: observations)
+    PrerequisiteEvidenceAbsent => prerequisite_evidence_uncontradicted(observations: observations)
+  }
+}
+
+fn prerequisite_evidence_uncontradicted(
+  observations: List<FirmwarePrerequisiteObservation>,
+) -> PrerequisiteEvidenceVerdict {
+  match list_length(observations) {
+    0 => PrerequisiteEvidenceAbsent
     _ =>
-      match list_length(observations) {
-        0 => PrerequisiteEvidenceAbsent
-        _ =>
-          PrerequisiteConsistentUpperBound {
-            highest_refusal: highest_refused_version(observations: observations),
-            lowest_acceptance: lowest_accepted_version(observations: observations),
-          }
+      PrerequisiteConsistentUpperBound {
+        highest_refusal: highest_refused_version(observations: observations),
+        lowest_acceptance: lowest_accepted_version(observations: observations),
       }
   }
 }

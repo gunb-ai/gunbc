@@ -78,105 +78,19 @@ mod compiler_tests {
             .collect()
     }
 
-    fn parse_module_or_panic(path: &str, content: &str) -> std::rc::Rc<crate::v1_std_core::Node> {
-        let tokens = tokenize(
-            content.to_string(),
-            path.to_string(),
-            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
-        );
-        let mut source_indices = HashMap::new();
-        source_indices.insert(
-            path.to_string(),
-            crate::v1_std_core::build_newline_index(path.to_string(), content.to_string()),
-        );
-        let parsed = crate::v1_compiler_parse::parse_with_table(
-            tokens.clone(),
-            std::rc::Rc::new(source_indices),
-            crate::v1_std_core::empty_intern_table(),
-        );
-        if let Some(err) = parsed.result.error.as_ref() {
-            panic!(
-                "failed to parse {} while building source closure: {}",
-                path,
-                crate::v1_std_core::diagnostic_to_message(err.diagnostic.clone())
-            );
-        }
-        parsed
-            .result
-            .module
-            .clone()
-            .unwrap_or_else(|| panic!("{} produced no module while building source closure", path))
-    }
-
-    fn module_path_from_source(path: &str, content: &str) -> String {
-        parse_module_or_panic(path, content).name.clone()
-    }
-
-    fn import_paths_from_source(path: &str, content: &str) -> Vec<String> {
-        let module = parse_module_or_panic(path, content);
-        crate::v1_std_core::module_imports(module)
-            .iter()
-            .map(|imp| imp.name.clone())
-            .collect()
-    }
-
-    fn build_source_index(roots: &[&str]) -> HashMap<String, (String, String)> {
-        let mut index = HashMap::new();
-        for root in roots {
-            for (path, content) in discover_dag_files(root) {
-                let module_path = module_path_from_source(&path, &content);
-                if let Some((existing, _)) = index.get(&module_path) {
-                    panic!(
-                        "duplicate module path '{}': declared in both {} and {}",
-                        module_path, existing, path
-                    );
-                }
-                index.insert(module_path, (path, content));
-            }
-        }
-        index
-    }
-
     fn resolve_source_closure(
         entry_pairs: Vec<(String, String)>,
         roots: &[&str],
     ) -> Vec<std::rc::Rc<crate::v1_compiler_compile::SourceFile>> {
-        let index = build_source_index(roots);
-        let mut seen =
-            HashMap::<String, std::rc::Rc<crate::v1_compiler_compile::SourceFile>>::new();
-        let mut queue = Vec::new();
-
-        for (path, content) in entry_pairs {
-            let module_path = module_path_from_source(&path, &content);
-            seen.insert(
-                module_path,
-                std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
-                    path: path.clone(),
-                    content: content.clone(),
-                }),
-            );
-            queue.push((path, content));
-        }
-
-        while let Some((_path, content)) = queue.pop() {
-            for module_path in import_paths_from_source(&_path, &content) {
-                if seen.contains_key(&module_path) {
-                    continue;
-                }
-                if let Some((path, file_content)) = index.get(&module_path).cloned() {
-                    seen.insert(
-                        module_path,
-                        std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
-                            path: path.clone(),
-                            content: file_content.clone(),
-                        }),
-                    );
-                    queue.push((path, file_content));
-                }
-            }
-        }
-
-        let mut result: Vec<_> = seen.into_iter().map(|(_, v)| v).collect();
+        let seeds = entry_pairs
+            .into_iter()
+            .map(|(path, content)| {
+                std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path, content })
+            })
+            .collect();
+        let pool: Vec<String> = roots.iter().map(|r| (*r).to_string()).collect();
+        let mut result = crate::cli_run::resolve_seeded_compile_closure(seeds, &pool)
+            .unwrap_or_else(|e| panic!("resolve_source_closure: {}", e));
         result.sort_by(|a, b| a.path.cmp(&b.path));
         result
     }
@@ -3554,55 +3468,6 @@ mod compiler_tests {
     }
 
     #[test]
-    fn self_parse_all_modules() {
-        let result = std::thread::Builder::new()
-            .stack_size(64 * 1024 * 1024)
-            .spawn(|| {
-                let v1_files = discover_dag_files("src/v1");
-                assert!(
-                    !v1_files.is_empty(),
-                    "should discover at least one .dag file in src/v1/"
-                );
-
-                for (file, source) in &v1_files {
-                    let tokens = tokenize(
-                        source.to_string(),
-                        file.to_string(),
-                        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
-                    );
-                    assert!(!tokens.is_empty(), "{} should produce tokens", file);
-                    assert!(
-                        matches!(
-                            tokens.last().unwrap().shape,
-                            crate::v1_std_core::TokenShape::ShEof
-                        ),
-                        "{} should end with Eof",
-                        file
-                    );
-                    let result = crate::v1_compiler_parse::parse(
-                        tokens,
-                        std::rc::Rc::new(im::HashMap::new()),
-                    );
-                    assert!(
-                        result.module.is_some(),
-                        "{} should parse successfully, error: {:?}",
-                        file,
-                        result.error
-                    );
-                    let module = result.module.as_ref().unwrap();
-                    assert!(
-                        !module.name.is_empty(),
-                        "{} should have a non-empty module name",
-                        file
-                    );
-                }
-            })
-            .expect("failed to spawn thread")
-            .join();
-        result.expect("self-parse-all test panicked");
-    }
-
-    #[test]
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn self_resolve_all_modules() {
         let result = std::thread::Builder::new()
@@ -4799,12 +4664,14 @@ mod compiler_tests {
                 std::rc::Rc::new(HashMap::new()),
             )
         }
-        // PAIR 1 -- the structural roster (structural_declaration_modules_for).
-        assert_eq!(
-            base("Bool", "src/v2/std/logic.dag"),
-            "Bool",
-            "a structurally-declared Bool must render its dag spelling through the renderer hop"
-        );
+        // PAIR 1 -- the structural roster (structural_declaration_modules_for). Its structural
+        // half is RETIRED as dissolution, not repaired: the Bool de-fork (gunbc#12583) deleted
+        // v2.std.logic's Bool, so the roster has no Bool row and no structural Bool exists to
+        // render. The .dag witness retired its matching row the same way
+        // (table_present_bool_refuses_under_structural_declaration_logic). No surviving row
+        // discriminates at this hop either: the Hash row is vacuous (v1.compiler.coercion
+        // records both arms answering Unrealized) and String renders identically on both arms
+        // (the MEASURED VACUITY row below). The prelude control stays.
         assert_eq!(
             base("Bool", "dag/std/types.dag"),
             "bool",

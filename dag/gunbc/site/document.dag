@@ -10,6 +10,7 @@ import gunbc.site.markup { txt, el, el_attrs, el_class }
 import gunbc.site.controls { site_client_path, sound_toggle_class, theme_toggle_class, theme_toggle_label_prefix, theme_toggle_auto_value }
 import gunbc.design.material { BuildRule, CssDecl, serialize_rules, reduced_motion_block }
 import gunbc.design.scale { scale_root_css }
+import gunbc.site.web_fonts { web_font_stylesheet_path }
 import gunbc.design.theme { day_theme, night_theme, theme_root_css, theme_scoped_blocks }
 
 type SiteShell = ApplicationShell | ApprovalShell
@@ -38,10 +39,21 @@ fn site_document_over(title: String, heading: String, styles: SiteStyles, conten
     el("head", concat([
       el_attrs("meta", [attr(name: "charset", value: "utf-8")], []),
       el_attrs("meta", [attr(name: "name", value: "viewport"), attr(name: "content", value: "width=device-width, initial-scale=1")], []),
-      el("title", [txt(title)]), el("style", [txt(site_styles_css(styles: styles))]),
-    ], site_favicon_nodes())),
+      el("title", [txt(title)]),
+    ], concat(site_font_stylesheet_nodes(shell: shell), concat([el("style", [txt(site_styles_css(styles: styles))])], site_favicon_nodes())))),
     el("body", concat([site_header_over(page: heading, navigation: navigation, shell: shell)], concat(match shell { ApplicationShell => [el_attrs("script", [attr(name: "src", value: site_client_path), attr(name: "defer", value: "")], [])] ApprovalShell => [] }, content))),
   ])
+}
+
+// The self-hosted faces (gunbc.site.web_fonts) are linked once, ahead of the page's own styles, by
+// their content-addressed path. Only the application shell links them: it is the shell the
+// roadmap server answers, and that server serves the stylesheet route; the approval shell is
+// answered by the approval broker, which does not, so linking there would be a dangling request.
+fn site_font_stylesheet_nodes(shell: SiteShell) -> List<Fragment> {
+  match shell {
+    ApplicationShell => [el_attrs("link", [attr(name: "rel", value: "stylesheet"), attr(name: "href", value: web_font_stylesheet_path())], [])]
+    ApprovalShell => []
+  }
 }
 
 fn sound_toggle_control() -> Fragment {

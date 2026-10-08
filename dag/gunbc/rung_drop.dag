@@ -71,28 +71,26 @@ import gunbc.guarantee_rung {
 // reason both shapes fail; it is not restated here. What is carrier-specific is the answer: a row is
 // a FILE under `dag/gunbc/rung_drop/`, so two lanes amending two rows share no line and a lane
 // declaring a NEW drop adds a file git resolves with no merge at all. What text remains shared is
-// enumerations only, `gunbc.rung_drop.roster` first among them at one bare identifier per row: two
-// lanes appending there still conflict -- measured, two regions -- but each region is a whole line on
-// both sides with no shared suffix, so the additive resolution is correct and total, which is the one
-// property the one-line row bought and this shape keeps. The next paragraph counts the rest of them,
+// enumerations only. `gunbc.rung_drop.roster` is no longer among them: it is DERIVED from the files
+// that declare a RungDrop under their own stem (v1_compiler.cli_run.derived_row_roster, the same fold
+// as the failure-mode ledger) and is gitignored, so an append touches no roster line at all. The next paragraph counts the rest of them,
 // because "the only text left shared" is the sentence a reader would cite as though it were four
 // fewer lists than it is.
 //
 // THE SHARED APPEND POINTS THAT REMAIN, COUNTED RATHER THAN CLAIMED AWAY, because a split that
 // reports "no shared text" while three shared lists survive is the rung inflation this carrier is
-// about. A NEW PROSE drop touches four places: its own new file (no merge), one roster line in
-// `gunbc.rung_drop.roster`, one arm in `LegacyProseIdentity`, and one line in
-// `legacy_prose_identity_roster` -- plus one arm in `legacy_prose_identity`, which is a match block
-// and therefore a fifth. A NEW TYPED drop touches two: its file and the roster line. So the split
+// about. A NEW PROSE drop touches four places: its own new file (no merge), one arm in
+// `LegacyProseIdentity`, and one line in `legacy_prose_identity_roster` -- plus one arm in
+// `legacy_prose_identity`, which is a match block. A NEW TYPED drop touches one: its file. So the split
 // removes the row bodies from the conflict surface and leaves the ENUMERATIONS on it, and what makes
 // those tolerable is not that they are absent but that every one of them is a WHOLE LINE with no
 // shared suffix -- the additive resolution is correct at each. That is a strictly weaker claim than
 // "disjoint edits no longer conflict", and it is the true one: two lanes declaring two new prose
-// drops still conflict in four regions. They just resolve by keeping both sides.
+// drops still conflict in three regions. They just resolve by keeping both sides.
 //
 // AND THE TYPED ARM IS THE ONE WITH NO SHARED APPEND POINT AT ALL, which is worth saying because it
 // is the direction the debt is supposed to move. `RungDropDeclaration`'s prose arm is enumerated on
-// purpose -- the note below records why -- so the four lists above are the visible cost of the arm,
+// purpose -- the note below records why -- so the three lists above are the visible cost of the arm,
 // and they go away with it rather than needing their own repair. A per-row split that fills the five
 // 4b(3) fields deletes one arm from each of the three lists as it lands.
 //
@@ -198,9 +196,20 @@ import gunbc.guarantee_rung {
 // therefore real and named: a row whose paragraph announces retirement while its field still
 // says Standing would drift exactly as the list did. What this change removes is the SECOND
 // authority for the standing list, not the gap between a paragraph and its field.
+//
+// SUPERSEDED IS THE THIRD STANDING, AND IT IS NOT A KIND OF RETIRED. 4b(3) retires a drop by its
+// trigger and by nothing else, so a ruling that ends a drop WITHOUT its trigger firing cannot be
+// written as Retired: every consumer reads Retired as "the trigger fired", and the projection says
+// so. gunbc.rung_drop_amendment reserved this arm for the first real superseding ruling; that is
+// gunbc.rung_drop rust_unit_tests_over_their_cap (2026-10-06). The arm carries what makes a
+// supersession honest rather than a quiet retirement: the RULING that removed the population from
+// the subject, the DECISION RECORD that admitted it, and the LOSS HOLDER -- the standing drop that
+// now carries whatever the superseded row's trigger would have restored, so the loss is not
+// dropped with the row.
 type RungDropStanding
   = Standing
   | Retired { trigger_fired: NonEmptyStr }
+  | Superseded { ruling: NonEmptyStr, decision_record: NonEmptyStr, loss_holder: NonEmptyStr }
 
 // THE REASON A RUNG FELL, A CLOSED COPRODUCT BECAUSE THE REASONS ARE A SMALL NAMED SET AND NAMING
 // THEM IS WHAT LETS THE SAME CLASS BE RECOGNISED TWICE.

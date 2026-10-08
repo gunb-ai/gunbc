@@ -198,10 +198,13 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut source_roots: Vec<String> = Vec::new();
     let mut verify_artifacts: Vec<String> = Vec::new();
     let mut verify_artifacts_mode = false;
+    let mut write_checker_inputs: Option<String> = None;
     let mut required_floor_mode = false;
     let mut required_ci_mode = false;
     let mut required_ci_measurement_receipt: Option<String> = None;
     let mut required_ci_adjudicate_receipt: Option<String> = None;
+    let mut reach_base_standings_file: Option<String> = None;
+    let mut claim_wall_limit_ms: Option<u64> = None;
     let mut required_ci_unreached_receipt: Option<String> = None;
     let mut required_ci_unreached_cause: Option<String> = None;
     let mut required_ci_lane: Option<RequiredCiLane> = None;
@@ -230,6 +233,13 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
                 break;
             }
+            // THE PRODUCER OF A RESTORED PAIR'S CHECKER-INPUT RECORD, run by the job that built the
+            // pair (see `write_checker_inputs_record`). Takes no roots.
+            "--write-checker-inputs" => {
+                i += 1;
+                // An OUTPUT path: it does not exist yet, so it is not resolved-and-required.
+                write_checker_inputs = Some(require_value(&args, i, "--write-checker-inputs")?);
+            }
             "--source-root" => {
                 i += 1;
                 source_roots.push(require_path_value(&args, i, "--source-root")?);
@@ -249,6 +259,27 @@ fn run() -> Result<ExitCode, ExitCode> {
                 i += 1;
                 required_ci_adjudicate_receipt =
                     Some(require_value(&args, i, "--adjudicate-measurement-receipt")?);
+            }
+            // THE BASE SIDE OF THE PER-PR v2 CLAIM DIFFERENTIAL. Only the required floor passes
+            // this, as a separate process whose working directory is a worktree at the diff base
+            // (`v1_compiler::cli_run::reach_base_standings`). It names the reached identities and
+            // the floor's own per-claim wall limit, read once by the floor from
+            // `v2.workflow.required_floor` `required_floor_claim_wall_safety_limit_ms`.
+            "--reach-base-standings" => {
+                i += 1;
+                reach_base_standings_file =
+                    Some(require_value(&args, i, "--reach-base-standings")?);
+            }
+            "--claim-wall-limit-ms" => {
+                i += 1;
+                let value = require_value(&args, i, "--claim-wall-limit-ms")?;
+                match value.parse::<u64>() {
+                    Ok(ms) => claim_wall_limit_ms = Some(ms),
+                    Err(e) => {
+                        eprintln!("--claim-wall-limit-ms {value:?}: {e}");
+                        return Err(ExitCode::from(2));
+                    }
+                }
             }
             "--measurement-unreached-receipt" => {
                 i += 1;
@@ -352,6 +383,27 @@ fn run() -> Result<ExitCode, ExitCode> {
         return verify_build_artifacts(&verify_artifacts);
     }
 
+    if let Some(path) = write_checker_inputs {
+        return match v1_compiler::cli_run::write_checker_inputs_record(std::path::Path::new(&path))
+        {
+            Ok(n) => {
+                eprintln!("claim_executor: wrote {n} checker inputs to {path}");
+                Ok(ExitCode::SUCCESS)
+            }
+            Err(e) => {
+                eprintln!("::error::write-checker-inputs refused: {e}");
+                Err(ExitCode::from(1))
+            }
+        };
+    }
+
+    if let Some(path) = reach_base_standings_file {
+        let Some(wall_ms) = claim_wall_limit_ms else {
+            eprintln!("--reach-base-standings requires --claim-wall-limit-ms");
+            return Err(ExitCode::from(2));
+        };
+        return run_reach_base_standings(&source_roots, &path, wall_ms);
+    }
     if let Some(path) = required_ci_adjudicate_receipt {
         return adjudicate_required_ci_measurement_receipt(&path);
     }
@@ -2093,6 +2145,16 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     for over_cost in &outcome.completed_over_cost_requirement {
         eprintln!("required-floor: COMPLETED-OVER-COST-REQUIREMENT {over_cost}");
     }
+    for blocker in &outcome.cost_debt_verdict_refused {
+        eprintln!(
+            "required-floor: COST-DEBT-ROW-REFUSED {} cause={} — this change admits or restores a \
+             floor_cost_debt row, and its claim did not pass when run for its verdict without the \
+             eval-step budget. A cost row withholds a witness for COST; standing over a failing or \
+             verdict-less claim it hides a semantic red. Repair the claim, or keep the row out of \
+             the roster and name the red where reds are carried.",
+            blocker.identity, blocker.cause
+        );
+    }
     for blocker in &outcome.enrolment_margin_blocking {
         eprintln!(
             "required-floor: ENROLMENT-MARGIN-REFUSED {} cause={} — this change ENROLS this \
@@ -2178,69 +2240,9 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     );
 }
 
-/// Whether the floor outcome permits a green run.
-///
-/// TEN CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
-/// caller, because a mode that forgot one of them would green a run the other refused. (The
-/// count is stated because a reader checks it; it was five before main added `route_gap` and
-/// `stale_route_gap`, and the sentence went on saying five through the merge that added them.
-/// It briefly said nine while `known_red_runtime_errored` and `known_red_observation_unreadable`
-/// were wired in here directly; that was reverted and the count returned to seven.)
-///
-/// THE EIGHTH IS `non_verdict_unenrolled`, AND IT IS NOT THOSE TWO ARMS MADE GATING. The
-/// distinction is the whole design. Those arms are HONEST OBSERVATIONS — they say correctly that
-/// an enrolled claim produced no verdict — and gating on them directly would red every lane
-/// holding a row of a population nobody has repaired. What was below floor is the COMPOSITION:
-/// this function returned CLEAN while an enrolled expected-red assertion had ceased to assert
-/// anything, so a true diagnostic sat beside a false conclusion drawn from it. The conjunct
-/// therefore gates on GROWTH at identity grain — an identity producing no verdict that
-/// `v2.workflow.floor_non_verdict` does not carry — which admits 142 → 0 in any order and
-/// refuses 142 → 143, and refuses a swap that leaves the count untouched.
-///
-/// THE NINTH IS `stale_non_verdict`, AND IT GATES FOR THE REASON THE EIGHTH DOES. A row whose
-/// identity has been repaired is a LIVE EXEMPTION until it is deleted: the witness is fixed
-/// today and, should it stop producing a verdict again, it is already rostered and the eighth
-/// conjunct admits it. Repayment and deletion are therefore one act, which is what
-/// `stale_route_gap` and the expected-red staleness join already require. This shipped as
-/// report-only for one commit under the argument that refusing "punishes the fix"; it does not
-/// — it requires the fix to be complete, and the diagnostic names every row to delete.
-fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloorOutcome) -> bool {
-    outcome.failures.is_empty()
-        && outcome.non_verdict_unenrolled.is_empty()
-        && outcome.stale_non_verdict.is_empty()
-        && outcome.stale_quarantine.is_empty()
-        && outcome.interrupted_before_verdict.is_empty()
-        && outcome.completed_over_cost_requirement.is_empty()
-        && outcome.host_tool_unresolved.is_empty()
-        && outcome.route_gap.is_empty()
-        && outcome.stale_route_gap.is_empty()
-        // WITHHELD ROWS DO NOT BLOCK; A STALE WITHHOLD DOES. `withheld_cost_debt` is the frozen
-        // population the 2026-08-27 ceiling restoration declared, and blocking on it would red
-        // main for precisely the debt the contract exists to carry down. `stale_cost_debt` is a
-        // roster that has stopped describing the tree, which voids the contract's monotone
-        // claim, so it blocks exactly as `stale_quarantine` and `stale_route_gap` do.
-        && outcome.stale_cost_debt.is_empty()
-        // A CHANGED witness identity that did not execute to a passing verdict — declined,
-        // absent from the disposition receipt, or without a terminal Passed verdict — reds the
-        // required context. The classification authority is
-        // `v2.workflow.floor_changed_witness.changed_witness_standing_blocks`; the population
-        // is only the identities this change's diff touched, never the standing declined
-        // corpus, so this conjunct cannot red a PR for debt it did not author.
-        && outcome.changed_witness_blocking.is_empty()
-        // THE TENTH IS `enrolment_margin_blocking`, AND IT IS A GATE REQUIRING EVIDENCE RATHER
-        // THAN A WALL. A witness this change NEWLY ENROLS must have been measured, and measured
-        // inside the margin the runner envelope implies — not merely inside the ceiling, which is
-        // the line every one of the fifteen incident rows cleared on the run that measured them
-        // and crossed on the run that did not. Three refusing states, deliberately distinct:
-        // measured over the margin, censored at the ceiling, and NOT MEASURED AT ALL. The last is
-        // the one that must not be folded into the others — absence of a measurement is not
-        // evidence of fitness, and gunbc#10946's cancelled lane is the specimen.
-        //
-        // The population is only what this change enrols, so this conjunct cannot red a PR for
-        // debt it did not author. Authority:
-        // `v2.workflow.floor_enrolment_margin.enrolment_margin_standing_blocks`.
-        && outcome.enrolment_margin_blocking.is_empty()
-}
+// Moved to `v1_compiler::cli_run::required_floor_outcome_is_clean` so the floor's integration
+// controls drive the same predicate this binary gates on.
+use v1_compiler::cli_run::required_floor_outcome_is_clean;
 
 fn required_floor_measurement_blockers(
     outcome: &v1_compiler::cli_run::RequiredFloorOutcome,
@@ -2255,6 +2257,9 @@ fn required_floor_measurement_blockers(
     };
     for identity in &outcome.failures {
         add(identity, "claim_failed");
+    }
+    for (identity, differential) in &outcome.reach_differential_blocking {
+        add(identity, &format!("reach_differential_{differential}"));
     }
     for identity in &outcome.non_verdict_unenrolled {
         add(identity, "non_verdict_unenrolled");
@@ -2293,6 +2298,9 @@ fn required_floor_measurement_blockers(
     for blocker in &outcome.changed_witness_blocking {
         add(&blocker.identity, &blocker.cause);
     }
+    for blocker in &outcome.cost_debt_verdict_refused {
+        add(&blocker.identity, &blocker.cause);
+    }
     // SAME DISCIPLINE, SAME REASON: the cause comes from the row. The enrolment gate distinguishes
     // measured-over-margin, censored-at-ceiling and not-measured-at-all, and those have three
     // different remedies — collapsing them into one population name here would rebuild exactly the
@@ -2301,6 +2309,47 @@ fn required_floor_measurement_blockers(
         add(&blocker.identity, &blocker.cause);
     }
     blockers
+}
+
+/// One line per reached identity on stdout, `reach-base identity=<id> standing=<name>`, then exit
+/// 0. Exit 3 with `reach-base-refused identity=<id> cause=<cause>` when an outcome is not a
+/// verdict, and exit 2 when the arm could not run at all. The floor parses these lines and
+/// nothing else.
+fn run_reach_base_standings(
+    source_roots: &[String],
+    identities_file: &str,
+    wall_ms: u64,
+) -> Result<ExitCode, ExitCode> {
+    use v1_compiler::cli_run::reach_base_standings::{reach_base_standings, ReachBaseArm};
+    let text = std::fs::read_to_string(identities_file).map_err(|e| {
+        eprintln!("reach-base: {identities_file}: {e}");
+        ExitCode::from(2)
+    })?;
+    let identities: Vec<String> = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(str::to_string)
+        .collect();
+    match reach_base_standings(source_roots, &identities, wall_ms) {
+        Ok(ReachBaseArm::Completed(standings)) => {
+            for (identity, standing) in standings {
+                println!(
+                    "reach-base identity={identity} standing={}",
+                    standing.name()
+                );
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        Ok(ReachBaseArm::Refused { identity, cause }) => {
+            println!("reach-base-refused identity={identity} cause={cause}");
+            Ok(ExitCode::from(3))
+        }
+        Err(e) => {
+            eprintln!("reach-base: arm did not run: {e}");
+            Err(ExitCode::from(2))
+        }
+    }
 }
 
 fn main() -> ExitCode {

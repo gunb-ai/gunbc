@@ -72,7 +72,7 @@ fn lens_registry_completeness_under_nested_prefix(module_name: String) -> Bool {
 fn lens_registry_completeness_excluded(module_name: String) -> Bool {
   string_member(xs: frontier_units(rows: lens_registry_completeness_known_infra_roster), x: module_name)
     || string_member(xs: frontier_units(rows: lens_registry_completeness_consolidated_roster), x: module_name)
-    || ends_with(s: module_name, suffix: "_test")
+    || module_name.ends_with(suffix: "_test")
     || lens_registry_completeness_under_nested_prefix(module_name)
 }
 

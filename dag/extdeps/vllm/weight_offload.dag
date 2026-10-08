@@ -1,7 +1,7 @@
 module extdeps.vllm.weight_offload
 
 import std.types { String, NonEmptyStr, Bool, List }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }

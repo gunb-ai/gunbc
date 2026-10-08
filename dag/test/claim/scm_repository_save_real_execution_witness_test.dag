@@ -1,8 +1,10 @@
 module test.claim.scm_repository_save_real_execution_witness
 
-import std.types { Bool, String }
-import v2.std.optional { Present, Absent }
+import std.types { Bool, String, FilePath }
+import std.optional { Present, Absent }
+import std.content_hash { content_hash_eq_structural }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.emit { serialize_json }
 import gunbc.scm.repository_envelope {
@@ -10,6 +12,7 @@ import gunbc.scm.repository_envelope {
   RepositoryEncodeRefused,
   encode_repository_sharded_checked,
   repository_generation_of_content,
+  empty_repository,
 }
 import gunbc.scm.repository_save {
   RepositorySaved,
@@ -17,12 +20,14 @@ import gunbc.scm.repository_save {
   RepositoryFileUnwritable,
   RepositoryWriteByteCountUnrepresentable,
   GenerationExpected,
+  GenerationExpectedAbsent,
   save_repository_sharded_guarded,
   RepositoryGuardedSaveOutcome,
   RepositoryStaleGenerationRefused,
   RepositoryGuardedSaveUnobservable,
+  repository_generation_expected_after_save,
 }
-import test.claim.scm_repository_save_witness { scm_sv_v8_fixture_path, scm_sv_fixture_envelope }
+import test.claim.scm_repository_save_witness { scm_sv_v9_fixture_path, scm_sv_fixture_envelope }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -30,7 +35,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // file's hermetic claims stay on the hermetic floor. The hermetic route has no arm for
 // Filesystem.Write (no mock_response), so this claim ends in a route gap there; it runs on the
 // local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule), whose terminal
-// joins the route gap (floor_route_gap chunk_31). The write rewrites the committed v8 fixture with
+// joins the route gap (floor_route_gap chunk_31). The write rewrites the committed v9 fixture with
 // the bytes it already holds, so it is idempotent across reruns.
 //
 // THE FRESH ARM, END TO END AND IDEMPOTENT: expecting the generation of the bytes the writer will
@@ -48,9 +53,9 @@ test fn scm_sv_a_fresh_generation_save_applies_and_rewrites_identical_bytes() ->
           let expected = GenerationExpected(
             repository_generation_of_content(content: serialize_json(v: v)),
           )
-          match save_repository_sharded_guarded(path: scm_sv_v8_fixture_path, repo: envelope, expected: expected) {
-            RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _ }) =>
-              Filesystem.Read(path: scm_sv_v8_fixture_path).content == serialize_json(v: v)
+          match save_repository_sharded_guarded(path: scm_sv_v9_fixture_path, repo: envelope, expected: expected) {
+            RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _, generation: _ }) =>
+              Filesystem.Read(path: scm_sv_v9_fixture_path).content == serialize_json(v: v)
             RepositoryGuardedSaveOutcome(RepositorySaveRefusedByCodec { path: _, cause: _ }) => false
             RepositoryGuardedSaveOutcome(RepositoryFileUnwritable { path: _, error: _ }) => false
             RepositoryGuardedSaveOutcome(RepositoryWriteByteCountUnrepresentable { path: _, reported: _ }) => false
@@ -60,4 +65,57 @@ test fn scm_sv_a_fresh_generation_save_applies_and_rewrites_identical_bytes() ->
         }
       }
   }
+}
+
+// FIRST SAVE FROM ABSENCE, THEN THE CAPTURE PERSIST'S EXPECTATION. A throwaway path (not the
+// committed fixture): GenerationExpectedAbsent returns G on RepositorySaved; G equals the hash of
+// the index bytes read back; GenerationExpected(G) admits a later save; ExpectedAbsent then refuses
+// as stale. Recapture's wet inhabitance is the same two-write sequence through seed then candidate.
+test fn scm_sv_a_first_save_from_absence_returns_the_readback_generation_and_admits_the_next_persist() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_scm_sv_first.XXXXXX").path
+  let path = join([dir, "/empty.gunbc-repository.json"], "")
+  let envelope = empty_repository()
+  let held = match save_repository_sharded_guarded(path: path, repo: envelope, expected: GenerationExpectedAbsent) {
+    RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _, generation: g }) => {
+      let read = Filesystem.Read(path: path)
+      let matches = read.success
+        && content_hash_eq_structural(
+          left: g,
+          right: repository_generation_of_content(content: read.content),
+        )
+      let next_ok = match save_repository_sharded_guarded(
+        path: path,
+        repo: envelope,
+        expected: repository_generation_expected_after_save(generation: g),
+      ) {
+        RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _, generation: _ }) => true
+        RepositoryGuardedSaveOutcome(RepositorySaveRefusedByCodec { path: _, cause: _ }) => false
+        RepositoryGuardedSaveOutcome(RepositoryFileUnwritable { path: _, error: _ }) => false
+        RepositoryGuardedSaveOutcome(RepositoryWriteByteCountUnrepresentable { path: _, reported: _ }) => false
+        RepositoryStaleGenerationRefused { path: _, expected: _, found: _ } => false
+        RepositoryGuardedSaveUnobservable { path: _, error: _ } => false
+      }
+      let stale_ok = match save_repository_sharded_guarded(
+        path: path,
+        repo: envelope,
+        expected: GenerationExpectedAbsent,
+      ) {
+        RepositoryStaleGenerationRefused { path: _, expected: e, found: _ } =>
+          match e {
+            GenerationExpectedAbsent => true
+            GenerationExpected(_) => false
+          }
+        RepositoryGuardedSaveOutcome(_) => false
+        RepositoryGuardedSaveUnobservable { path: _, error: _ } => false
+      }
+      matches && next_ok && stale_ok
+    }
+    RepositoryGuardedSaveOutcome(RepositorySaveRefusedByCodec { path: _, cause: _ }) => false
+    RepositoryGuardedSaveOutcome(RepositoryFileUnwritable { path: _, error: _ }) => false
+    RepositoryGuardedSaveOutcome(RepositoryWriteByteCountUnrepresentable { path: _, reported: _ }) => false
+    RepositoryStaleGenerationRefused { path: _, expected: _, found: _ } => false
+    RepositoryGuardedSaveUnobservable { path: _, error: _ } => false
+  }
+  let cleaned = shell.Remove.RecursiveForce(path: dir as FilePath)
+  held && cleaned.success
 }

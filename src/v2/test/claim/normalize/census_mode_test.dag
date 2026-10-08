@@ -27,7 +27,7 @@ import v2.std.namespace_alias { ModuleBindingSource }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_lookup }
 import v2.std.node_query { find_arrow_body_child }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
 import v2.std.node { Node, Symbol, Authored }
 import v2.std.text { String }

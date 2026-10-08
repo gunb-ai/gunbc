@@ -130,6 +130,8 @@ import gunbc.roadmap_status {
   signoff_is_present,
 }
 import std.graph { GraphEdge, CallGraph, graph_has_multi_node_scc }
+import gunbc.roadmap_spawner { readiness_graph, node_readiness_in_graph }
+import gunbc.roadmap.roadmap_readiness { NodeReadiness, ReadyToDispatch, NotReady, ReadinessGap, GapDependencies }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.filesystem.filesystem_io
 
@@ -1137,4 +1139,28 @@ test fn witness_authority_document_carries_every_active_declared_row() -> Bool {
         && all(fx_subtree_fixture_ids(), id => any(active, n => (n.node as String) == id))
     }
   }
+}
+
+// A PREREQUISITE IS A DECLARED EDGE, NOT A SENTENCE IN A BOUNDARY. serve-held-open-response streams
+// an attempt's events from the fabric event log, so it waits on fabric-worker-event-log publishing
+// them there. Readiness fires only from declared edges, so the claim reads the ONE readiness the
+// page and the dispatcher read (node_readiness_in_graph over the declared graph): the dependent row
+// names the prerequisite among its dependency blockers, and the prerequisite, which depends on
+// nothing, names no dependency gap -- so the blocker is the edge's, not a gap every row carries.
+fn declared_dependency_blockers(id: String) -> List<String> {
+  let graph = readiness_graph(nodes: nodes(), edges: edges())
+  fold(declared_node(id: id), init: [], f: (acc, n) => match node_readiness_in_graph(node: n, graph: graph, merged: []) {
+    ReadyToDispatch => acc
+    NotReady { missing } => fold(missing, init: acc, f: (inner, g) => match g {
+      GapDependencies { blockers } => concat(inner, blockers)
+      _ => inner
+    })
+  })
+}
+
+test fn witness_serve_held_open_response_waits_on_the_fabric_worker_event_log() -> Bool {
+  count(declared_node(id: "serve-held-open-response")) == 1
+    && count(declared_node(id: "fabric-worker-event-log")) == 1
+    && (declared_dependency_blockers(id: "serve-held-open-response") |> any(b => b == "fabric-worker-event-log"))
+    && count(declared_dependency_blockers(id: "fabric-worker-event-log")) == 0
 }

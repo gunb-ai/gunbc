@@ -2,7 +2,7 @@ module test.claim.managed_host_boot_federation_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
 import gunbc.managed_host { managed_host_fixture, managed_hosts }
 import gunbc.auth.oidc_claim_pins { OidcClaimPin }

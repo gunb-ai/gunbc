@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, String }
 import std.nat { Nat }
 import std.measure { hardware_thread_count, hardware_thread_count_value, kibibyte, byte_size }
 import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalIndeterminate, ObservationEstablished, ObservationRefused }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import v2.std.algebra { non_empty_to_list }
 import extdeps.toolchain.types { Aarch64 }
 import product.fabric.envelope { cpu_memory_envelope }
