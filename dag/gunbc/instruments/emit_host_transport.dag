@@ -43,6 +43,7 @@ import tools.emit_host_fixtures {
   ts_signed_i32_le_byte_count
 }
 import gunbc.node_http_server_emit { gunbhub_node_http_server_source }
+import v2.std.orchestration { EnvSet }
 import extdeps.posix.process
 import extdeps.posix.signal
 import extdeps.http.client
@@ -272,15 +273,14 @@ fn run_node_http_serve_smoke() -> Bool {
     Absent => false
     Present { value: port } => {
       let server_js = Filesystem.Write(path: concat(dir.path, "/server.js"), content: gunbhub_node_http_server_source())
-      let env_cmd = env_path_resolved_program()
       let spawn = posix.Process.StartDetached(
-        program: env_cmd,
+        program: env_path_resolved_program().invocation,
         arguments: concat(
           [env_chdir_flag as String, dir.path],
           env_prefixed_args(
             bindings: [
-              { name: "HOST", value: "127.0.0.1" },
-              { name: "PORT", value: to_string(port) }
+              EnvSet { name: "HOST", value: "127.0.0.1" },
+              EnvSet { name: "PORT", value: to_string(port) }
             ],
             command_argv: ["node", concat(dir.path, "/server.js")]
           )
