@@ -247,9 +247,9 @@ type VfpReading {
   construct_read_carrier: Symbol
 }
 
-// THE COMBINED FIXTURE'S READING: one module exercising every shape the enrolled claims measure
-// (positional + named payload binders, a formal-typed payload field, a compound payload, an arrow
-// payload, a monomorphic projection). ONE nullary producer so every planned claim reaches one
+// THE COMBINED FIXTURE'S READING: one module exercising the shapes the enrolled claims measure
+// (a named payload binder, a nullary arm, a variant construction, a monomorphic record
+// projection). ONE nullary producer so every planned claim reaches one
 // closed computation identity and the derived producer-share admits it -- per-claim re-runs of
 // this fill refused the enrolment margin (~609k eval steps each).
 type VfpFixtureReading {
