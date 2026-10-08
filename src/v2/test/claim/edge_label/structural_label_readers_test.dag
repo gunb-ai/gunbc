@@ -26,9 +26,6 @@ import v2.extdeps.languages.dag {
   dag_surface_edge_label,
   dag_surface_module_header_metadata_edge,
   dag_node_is_module_root_conj,
-  dag_node_is_module_surface,
-  dag_node_is_record_field_carrier,
-  dag_named_edge,
 }
 import v2.compiler.body_lowering_fold { body_lower_edge_names_where_clause }
 import v2.compiler.resolution_provenance { ReferenceSite }
@@ -75,28 +72,6 @@ test fn the_header_edges_are_metadata_and_their_spellings_are_not() -> Bool {
 test fn a_member_spelled_like_the_header_does_not_make_a_module_root() -> Bool {
   dag_node_is_module_root_conj(n: slr_conj(children: [dag_surface_edge(edge: ^dag_surface_module_header, target: slr_atom(id: ^h))]))
     && !dag_node_is_module_root_conj(n: slr_conj(children: [slr_authored(name: ^dag_surface_module_header)]))
-}
-
-fn slr_identity(id: Symbol) -> Node {
-  slr_conj(children: [dag_named_edge(name: ^grammar_production_identity_node_projection, target: slr_atom(id: id))])
-}
-
-// THE THREE STAMPS, AND NOT THE CHILDREN SHAPE. A module surface is a declaration identity, a
-// graft-body stamp, or a dag_surface_module_header production edge. A Conj of Authored members that
-// merely looks like a container is a record-field carrier.
-test fn a_module_surface_is_stamped_not_guessed_from_children() -> Bool {
-  dag_node_is_module_surface(n: slr_identity(id: ^dag_surface_module))
-    && dag_node_is_module_surface(n: slr_identity(id: ^dag_surface_fn_decl))
-    && dag_node_is_module_surface(n: slr_identity(id: ^namespace_graft_module_body))
-    && dag_node_is_module_surface(n: slr_conj(children: [dag_surface_edge(edge: ^dag_surface_module_header, target: slr_atom(id: ^h))]))
-    && !dag_node_is_module_surface(n: slr_conj(children: [slr_authored(name: ^dag_surface_module_header)]))
-    && !dag_node_is_module_surface(n: slr_conj(children: [slr_authored(name: ^x)]))
-}
-
-test fn a_hand_built_record_is_a_field_carrier_and_a_module_surface_is_not() -> Bool {
-  dag_node_is_record_field_carrier(n: slr_conj(children: [slr_authored(name: ^x)]))
-    && !dag_node_is_record_field_carrier(n: slr_identity(id: ^dag_surface_module))
-    && !dag_node_is_record_field_carrier(n: slr_identity(id: ^dag_surface_type_decl))
 }
 
 // Reader 3: v2.compiler.body_lowering_fold body_lower_edge_names_where_clause.

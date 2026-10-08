@@ -20,10 +20,7 @@ import std.decl_ref { DeclarationRef }
 import v2.std.algebra { length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.extdeps.languages.dag {
-  dag_node_is_module_surface,
-  dag_node_is_record_field_carrier,
-}
+import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }
 import v2.std.node_query { member_edge_type_node }
 import v2.std.node {
   Arrow,
@@ -171,37 +168,48 @@ fn decl_first_unrecognised_atom(decl: Node) -> Optional<Symbol> {
   }
 }
 
+// Parse-identity skip for a MEMBER TARGET, not for the enclosing Conj (DESIGN §5: refuse the
+// member, never widen to the container). Shared languages.dag predicates wait on #13560 landing
+// constructionally; this list is the same identities that skip names: module surface, graft-body
+// stamp, dag_surface_fn_decl, dag_surface_test_fn_decl. A missing identity is not guessed from
+// children shape.
+fn residency_target_is_module_or_fn_identity(target: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: target) {
+    Present { value: id } =>
+      (id == ^dag_surface_module)
+        || (id == ^namespace_graft_module_body)
+        || (id == ^dag_surface_fn_decl)
+        || (id == ^dag_surface_test_fn_decl)
+    Absent => false
+  }
+}
+
 // A Named member that is not a binder is read first: the carrier declares no type for it, and that
-// refuses the whole reading rather than letting the remaining fields decide it. A module surface
-// (declaration identity, graft-body stamp, or dag_surface_module_header production edge) is not a
-// record payload, so its Authored members are skipped rather than judged as fields.
+// refuses the whole reading rather than letting the remaining fields decide it. Identity-stamped
+// module or fn members are skipped; a hand-built field on the same Conj is still refused.
 fn decl_first_member_not_a_binder(decl: Node) -> Optional<Symbol> {
-  if !dag_node_is_record_field_carrier(n: decl) {
-    optional_absent()
-  } else {
-    match decl.kind {
-      TypeNode { connective: _ } =>
-        fold(decl.children, init: optional_absent(), f: fn(acc, edge) {
-          match acc {
-            Present { value: _ } => acc
-            Absent =>
-              match edge.label {
-                Positional => acc
-                StructuralLabel { label: _ } => acc
-                Authored { name: nm } =>
-                  if dag_node_is_module_surface(n: edge.target) {
-                    acc
-                  } else {
-                    match member_edge_type_node(e: edge) {
-                      Present { value: _ } => acc
-                      Absent => optional_present(value: nm)
-                    }
+  match decl.kind {
+    TypeNode { connective: _ } =>
+      fold(decl.children, init: optional_absent(), f: fn(acc, edge) {
+        match acc {
+          Present { value: _ } => acc
+          Absent =>
+            match edge.label {
+              Positional => acc
+              StructuralLabel { label: _ } => acc
+              Authored { name: nm } =>
+                if residency_target_is_module_or_fn_identity(target: edge.target) {
+                  acc
+                } else {
+                  match member_edge_type_node(e: edge) {
+                    Present { value: _ } => acc
+                    Absent => optional_present(value: nm)
                   }
-              }
-          }
-        })
-      ComputationNode { behavior: _ } => optional_absent()
-    }
+                }
+            }
+        }
+      })
+    ComputationNode { behavior: _ } => optional_absent()
   }
 }
 

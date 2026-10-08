@@ -262,6 +262,17 @@ fn module_container_with_surface_members() -> Node {
   }
 }
 
+fn conj_with_header_edge_and_hand_built_field() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_surface_edge(edge: ^dag_surface_module_header, target: atom(identity: ^dag_surface_module_header)),
+      Edge { label: Authored { name: ^trees }, target: atom(identity: ^Node) },
+    ],
+    occurrence_id: OccurrenceSynthetic,
+  }
+}
+
 fn hand_built_record_field_declaration() -> Node {
   record_of(fields: [Edge { label: Authored { name: ^trees }, target: atom(identity: ^Node) }])
 }
@@ -285,6 +296,16 @@ test fn a_module_container_is_not_read_as_a_non_binder_record() -> Bool {
 test fn a_hand_built_record_field_still_reports_member_not_a_binder() -> Bool {
   readability_is_member_not_a_binder(
     r: reading_of(decl_name: "HandBuiltCarrier", decl: hand_built_record_field_declaration()),
+    expected: ^trees,
+  )
+}
+
+// A HEADER EDGE ON THE CONJ IS NOT A CONTAINER-WIDE SKIP. The member that is not identity-stamped
+// is still CarrierMemberNotABinder; skipping the whole Conj because it carries a header is the
+// widen the door-lens ruling forbids.
+test fn a_header_edge_on_a_conj_does_not_skip_a_hand_built_field() -> Bool {
+  readability_is_member_not_a_binder(
+    r: reading_of(decl_name: "HeaderAndField", decl: conj_with_header_edge_and_hand_built_field()),
     expected: ^trees,
   )
 }
