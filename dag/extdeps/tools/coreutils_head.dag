@@ -1,0 +1,52 @@
+module extdeps.tools.coreutils_head
+
+import std.types { Bool, NonEmptyStr, String, Unit }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/coreutils/manual/html_node/head-invocation.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.coreutils_head",
+      decl_name: "coreutils.Head",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// A BOUNDED READ OF A FILE'S LEADING BYTES, as a modeled operation. `head -c N` prints at most N bytes
+// of the file and exits 0, so a consumer that must not take an unbounded read of a path it does not
+// control (a record another process writes) names its ceiling in the request rather than trusting the
+// file's size. The bound is GNU coreutils' -c/--bytes; `--` ends option parsing so a path beginning
+// with a dash is read as a path. A missing or unreadable path exits non-zero with head's own
+// diagnostic on stderr; this operation does not decide what that means, its consumer does.
+service coreutils.Head {
+  operation Bytes {
+    requires none
+    input { path: NonEmptyStr, count: NonEmptyStr }
+    output {
+      text: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["head", "-c", "{count}", "--", "{path}"] }
+    exit {
+      0 => Unit "At most count bytes of the file were printed"
+      nonzero => String "head could not read the file"
+    }
+    mock_response {
+      0 => { text: "", success: true, stderr: "" } "hermetic coreutils head -c: an empty file"
+    }
+  }
+}
