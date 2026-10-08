@@ -18,7 +18,7 @@ import gunbc.machine_intake_arrival_subject {
   ArrivalSubjectUnknown, ArrivalSubjectIsManagedHostExecutorConfusion, ArrivalSubjectOutsideGrant,
 }
 import gunbc.machine_intake_arrival_interlock {
-  arrival_archive_slot_acquire, arrival_after_acquire,
+  arrival_archive_slot_acquire, arrival_archive_slot_release, arrival_after_acquire,
 }
 
 // THE ARRIVAL JOB'S WET DOOR (review 77263, review 77435, review 77746). Re-runs credential-free
@@ -81,6 +81,7 @@ fn arrival_converge_under_archive_interlock(subject: ArrivalSubjectAdmitted) -> 
         body: fn() {
           arrival_wet_prefix_from_unobserved_world()
         },
+        release_fn: fn(h) { arrival_archive_slot_release(held: h) },
       )
   }
 }
