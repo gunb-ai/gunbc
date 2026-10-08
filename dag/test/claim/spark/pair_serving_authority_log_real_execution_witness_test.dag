@@ -13,7 +13,6 @@ import gunbc.spark.released_baseline { QuiescentReservedBaseline }
 import product.capacity.event_chain { EventId, HeadAbsent, HeadAt, head_expectation_eq }
 import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
 import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
-import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, ReleasedToFleet, PairRealizationKeyed, PairRealizationUnestablished, pair_serving_authority_for, pair_serving_successor_may_launch }
 import gunbc.spark.host_commitment {
   SparkHostAdmitted, SparkHostRefused, HostEffectHandle, admit_unplaced_host_over, release_host_effect_over,
