@@ -90,43 +90,57 @@ fn xl2_unstripped(sources: List<FixtureSource>) -> Xl2Strip {
   }
 }
 
-type Xl2ControlRuns {
-  cut: Xl2RehearsalRun
-  two: Xl2RehearsalRun
-  pre_cut: Xl2RehearsalRun
-  duplicated: Xl2RehearsalRun
-  nesting: Xl2RehearsalRun
+// ONE NULLARY PRODUCER PER RUN, each a front end plus its resolves. They were one record whose
+// claims each read a different field, which the derived share now declines as a bundle
+// (v2.workflow.floor_pure_producer_share BundleOfDisjointProjections): sharing it netted every
+// claim's own run out of that claim's budget. Now `xl2_cut_run` is the one value four claims
+// demand, shared by demand; each other run is its one claim's own fixture, carried as that claim's
+// floor_single_claim_fill_debt membership rather than hidden inside a shared record.
+fn xl2_provider_fixture() -> FixtureSource {
+  xl2_control_source(path: "dag/xl2_control_provider.dag", content: xl2_provider_control_source)
 }
 
-// ONE NULLARY PRODUCER, WARM, FOR ALL FIVE RUNS (v2.workflow.floor_pure_producer_share carries its
-// row): each run is a front end plus its resolves, more than one claim's budget, and the first cut
-// of this file paid two of them inside claims and was refused over budget on the floor.
-fn xl2_control_runs() -> Xl2ControlRuns {
-  let provider = xl2_control_source(path: "dag/xl2_control_provider.dag", content: xl2_provider_control_source)
-  let residual = xl2_control_source(path: "dag/xl2_control_residual.dag", content: xl2_residual_control_source)
-  let clean = xl2_control_source(path: "dag/xl2_control_clean.dag", content: xl2_clean_control_source)
-  Xl2ControlRuns {
-    cut: xl2_control_rehearse(strip: xl2_strip_members(sources: [provider, residual, clean])),
-    two: xl2_control_rehearse(strip: xl2_strip_members(sources: [
-      provider,
-      xl2_control_source(path: "dag/xl2_control_two.dag", content: xl2_two_failure_control_source)
-    ])),
-    pre_cut: xl2_control_rehearse(strip: xl2_unstripped(sources: [provider, residual])),
-    duplicated: xl2_control_rehearse(strip: xl2_strip_members(sources: [
-      xl2_control_source(path: "dag/xl2_control_shared.dag", content: xl2_residual_control_source),
-      xl2_control_source(path: "dag/xl2_control_shared.dag", content: xl2_clean_control_source),
-      clean
-    ])),
-    nesting: xl2_control_rehearse(strip: xl2_strip_members(sources: [
-      provider,
-      xl2_control_source(path: "dag/xl2_control_nested.dag", content: xl2_nested_control_source)
-    ]))
-  }
+fn xl2_residual_fixture() -> FixtureSource {
+  xl2_control_source(path: "dag/xl2_control_residual.dag", content: xl2_residual_control_source)
+}
+
+fn xl2_clean_fixture() -> FixtureSource {
+  xl2_control_source(path: "dag/xl2_control_clean.dag", content: xl2_clean_control_source)
+}
+
+fn xl2_cut_run() -> Xl2RehearsalRun {
+  xl2_control_rehearse(strip: xl2_strip_members(sources: [xl2_provider_fixture(), xl2_residual_fixture(), xl2_clean_fixture()]))
+}
+
+fn xl2_two_run() -> Xl2RehearsalRun {
+  xl2_control_rehearse(strip: xl2_strip_members(sources: [
+    xl2_provider_fixture(),
+    xl2_control_source(path: "dag/xl2_control_two.dag", content: xl2_two_failure_control_source)
+  ]))
+}
+
+fn xl2_pre_cut_run() -> Xl2RehearsalRun {
+  xl2_control_rehearse(strip: xl2_unstripped(sources: [xl2_provider_fixture(), xl2_residual_fixture()]))
+}
+
+fn xl2_duplicated_run() -> Xl2RehearsalRun {
+  xl2_control_rehearse(strip: xl2_strip_members(sources: [
+    xl2_control_source(path: "dag/xl2_control_shared.dag", content: xl2_residual_control_source),
+    xl2_control_source(path: "dag/xl2_control_shared.dag", content: xl2_clean_control_source),
+    xl2_clean_fixture()
+  ]))
+}
+
+fn xl2_nesting_run() -> Xl2RehearsalRun {
+  xl2_control_rehearse(strip: xl2_strip_members(sources: [
+    xl2_provider_fixture(),
+    xl2_control_source(path: "dag/xl2_control_nested.dag", content: xl2_nested_control_source)
+  ]))
 }
 
 // RED CONTROL: the residual module yields exactly one failure chain, and it is that module's.
 test fn xl2_residual_control_is_reported_holds() -> Bool {
-  match xl2_control_runs().cut {
+  match xl2_cut_run() {
     Xl2RehearsalObserved { residual: residual } =>
       count(residual) == 1 && all(residual, r => r.module == "v2.xl2_control_residual")
     _ => false
@@ -135,7 +149,7 @@ test fn xl2_residual_control_is_reported_holds() -> Bool {
 
 // GREEN CONTROL: the provider and the clean module both resolved, and neither contributed a row.
 test fn xl2_clean_control_resolves_holds() -> Bool {
-  match xl2_control_runs().cut {
+  match xl2_cut_run() {
     Xl2RehearsalObserved { residual: residual, resolved_module_count: n } =>
       n == 2 && !any(residual, r => r.module == "v2.xl2_control_clean" || r.module == "v2.xl2_control_provider")
     _ => false
@@ -145,7 +159,7 @@ test fn xl2_clean_control_resolves_holds() -> Bool {
 // THE CUT IS WHAT MADE THE RED: the residual module unstripped, beside its provider, resolves on the
 // same route, so the row above is the strip's residual and not a defect in the specimen.
 test fn xl2_residual_control_resolves_before_the_cut_holds() -> Bool {
-  match xl2_control_runs().pre_cut {
+  match xl2_pre_cut_run() {
     Xl2RehearsalObserved { residual: residual, resolved_module_count: n } => count(residual) == 0 && n == 2
     _ => false
   }
@@ -156,7 +170,7 @@ test fn xl2_residual_control_resolves_before_the_cut_holds() -> Bool {
 // it. The previous cut raised an abandonment scope for every refused module, which would have kept
 // the rehearsal incomplete for a reason P4 has since discharged.
 test fn xl2_control_completeness_is_refused_holds() -> Bool {
-  match xl2_control_runs().cut {
+  match xl2_cut_run() {
     Xl2RehearsalObserved { completeness: Xl2CensusCompletenessRefused { first: Xl2PrerequisiteOutstanding { prerequisite: _ }, rest: rest } } =>
       count(rest) + 1 == count(xl2_prerequisites_outstanding())
         && all(rest, r => match r {
@@ -184,7 +198,7 @@ fn xl2_first_and_last_chains_differ(residual: List<Xl2ResidualChain>) -> Bool {
 // TWO INDEPENDENT FAILURES IN ONE MODULE: exactly two rows, both that module's, carrying DIFFERENT
 // chains, and the module's complete observation raises no scope.
 test fn xl2_two_failures_in_one_module_are_two_rows_holds() -> Bool {
-  match xl2_control_runs().two {
+  match xl2_two_run() {
     Xl2RehearsalObserved { residual: residual, completeness: Xl2CensusCompletenessRefused { first: _, rest: rest } } =>
       count(residual) == 2
         && all(residual, r => r.module == "v2.xl2_control_two")
@@ -201,7 +215,7 @@ test fn xl2_two_failures_in_one_module_are_two_rows_holds() -> Bool {
 // native requalification walls and the uncounted kernel-canonical class, and neither is among its
 // completeness refusals (the refusal type cannot carry them).
 test fn xl2_control_names_the_native_requalification_walls_holds() -> Bool {
-  match xl2_control_runs().cut {
+  match xl2_cut_run() {
     Xl2RehearsalObserved { native_requalification: walls, excluded: excluded } =>
       count(walls) == 2 && count(excluded) == 2
         && any(excluded, e => e == Xl2KernelCanonicalReferencesUncounted)
@@ -214,7 +228,7 @@ test fn xl2_control_names_the_native_requalification_walls_holds() -> Bool {
 // beside the clean specimen at its own path. Neither shared member enters the ingest, so no row is
 // emitted, only the uniquely-pathed module resolves, and the path is reported once as unobserved.
 test fn xl2_duplicated_path_is_withheld_not_chosen_holds() -> Bool {
-  match xl2_control_runs().duplicated {
+  match xl2_duplicated_run() {
     Xl2RehearsalObserved { residual: residual, resolved_module_count: n, completeness: Xl2CensusCompletenessRefused { first: _, rest: rest } } =>
       count(residual) == 0 && n == 1
         && count(filter(rest, c => match c {
@@ -230,7 +244,7 @@ test fn xl2_duplicated_path_is_withheld_not_chosen_holds() -> Bool {
 // and only the provider resolves. Before the 2026-10-04 ruling this specimen resolved and was
 // carried as an uncounted excluded population; that arm dissolved by its own stated condition.
 test fn xl2_nested_reference_is_residual_after_the_strip_holds() -> Bool {
-  match xl2_control_runs().nesting {
+  match xl2_nesting_run() {
     Xl2RehearsalObserved { residual: residual, resolved_module_count: n } =>
       count(residual) == 1 && n == 1 && all(residual, r => r.module == "v2.xl2_control_provider.nested")
     _ => false

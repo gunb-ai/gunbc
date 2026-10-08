@@ -9,7 +9,7 @@
 #![allow(
     clippy::disallowed_macros,  // 10
     clippy::doc_lazy_continuation,  // 2
-    clippy::items_after_test_module,  // 2
+    clippy::items_after_test_module,  // 1
     clippy::redundant_closure,  // 1
     clippy::type_complexity,  // 8
     dead_code,  // 9
@@ -255,16 +255,42 @@ pub(crate) fn import_closure_dag_files(
 ///
 /// `compiler_tests` `resolve_source_closure` used to BFS `import` lines from the seed
 /// pairs. Same class as #13437 / #13464: a provider reached only by reference was omitted.
-/// This is not a second walker — it calls `extend_sources_to_both_closure_fixpoint`.
+/// This is not a second walker — it calls `extend_sources_to_both_closure_fixpoint`, and
+/// `resolve_virtual_entry_compile_closure` is this function over one seed.
 ///
 /// SEED DELTA: production `resolve_source_closure` lost its import-line BFS. Net production
-/// seed is this wrapper. `seeded_compile_closure_controls` is `#[cfg(test)]` only.
+/// seed is this wrapper; its controls are `virtual_entry_compile_closure_controls`, which
+/// reach it through the one-seed form.
 pub fn resolve_seeded_compile_closure(
     seeds: Vec<Rc<v1_compiler_compile::SourceFile>>,
     pool_roots: &[String],
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
     let mei = try_index_for_run_or_owned_pool(pool_roots)?;
     extend_sources_to_both_closure_fixpoint(seeds, &mei)
+}
+
+/// Compile-subject closure of an in-memory (or on-disk) entry over an explicit pool:
+/// the entry plus every module the one closure authority reaches from it.
+///
+/// The tests helper `resolve_imports_transitively_with_source_roots` used to stop at
+/// authored `import` lines. That is the same class as #13437 / #13464: a provider
+/// reached only by qualified or bare reference was omitted. This function is not a
+/// second walker — it seeds the entry and calls `extend_sources_to_both_closure_fixpoint`.
+///
+/// SEED DELTA (ctrl hand-Rust receipt): production `resolve_imports_transitively_with_source_roots`
+/// lost its own import-line BFS (that body is gone). Net production seed is this wrapper.
+/// `virtual_entry_compile_closure_controls` is `#[cfg(test)]` only, including the import-only
+/// mutant `import_only_virtual_entry_closure` — not a second production walker.
+pub fn resolve_virtual_entry_compile_closure(
+    entry_path: &str,
+    entry_content: &str,
+    pool_roots: &[String],
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let seed = Rc::new(v1_compiler_compile::SourceFile {
+        path: entry_path.to_string(),
+        content: entry_content.to_string(),
+    });
+    resolve_seeded_compile_closure(vec![seed], pool_roots)
 }
 
 #[cfg(test)]
@@ -419,7 +445,7 @@ fn broken() -> Int { no_such_function_anywhere() }\n";
 }
 
 #[cfg(test)]
-mod seeded_compile_closure_controls {
+mod virtual_entry_compile_closure_controls {
     use super::*;
 
     const ENTRY: &str = "entry.dag";
@@ -427,28 +453,28 @@ mod seeded_compile_closure_controls {
     const PROVIDER: &str = "provider.dag";
     const BROKEN: &str = "broken.dag";
 
-    const ENTRY_SRC: &str = "module compiler.tests.closure.entry\n\
-import compiler.tests.closure.mid { mid_ok }\n\
+    const ENTRY_SRC: &str = "module virtual.entry.closure.entry\n\
+import virtual.entry.closure.mid { mid_ok }\n\
 fn use_mid() -> Int { mid_ok() }\n";
 
-    const MID_SRC: &str = "module compiler.tests.closure.mid\n\
+    const MID_SRC: &str = "module virtual.entry.closure.mid\n\
 fn mid_ok() -> Int { 1 }\n\
-fn uses_provider() -> compiler.tests.closure.provider.ProviderToken {\n\
-  compiler.tests.closure.provider.ProviderToken { n: 1 }\n\
+fn uses_provider() -> virtual.entry.closure.provider.ProviderToken {\n\
+  virtual.entry.closure.provider.ProviderToken { n: 1 }\n\
 }\n";
 
-    const PROVIDER_SRC: &str = "module compiler.tests.closure.provider\n\
+    const PROVIDER_SRC: &str = "module virtual.entry.closure.provider\n\
 type ProviderToken {\n\
   n: Int\n\
 }\n";
 
-    const BROKEN_SRC: &str = "module compiler.tests.closure.broken\n\
-import compiler.tests.closure.mid { mid_ok }\n\
+    const BROKEN_SRC: &str = "module virtual.entry.closure.broken\n\
+import virtual.entry.closure.mid { mid_ok }\n\
 fn broken() -> Int { no_such_function_anywhere() }\n";
 
     fn fixture_tree() -> PathBuf {
         let dir = process_workspace_root().join("target").join(format!(
-            "seeded_compile_closure_{}_{}",
+            "virtual_entry_compile_closure_{}_{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -465,33 +491,31 @@ fn broken() -> Int { no_such_function_anywhere() }\n";
 
     fn provider_in(sources: &[Rc<v1_compiler_compile::SourceFile>]) -> bool {
         sources.iter().any(|s| {
-            s.content.contains("module compiler.tests.closure.provider")
+            s.content.contains("module virtual.entry.closure.provider")
                 || Path::new(&s.path)
                     .file_name()
                     .is_some_and(|n| n == PROVIDER)
         })
     }
 
-    fn seed(path: &str, content: &str) -> Rc<v1_compiler_compile::SourceFile> {
-        Rc::new(v1_compiler_compile::SourceFile {
-            path: path.to_string(),
-            content: content.to_string(),
-        })
-    }
-
-    /// Import-line BFS from the seed pairs only. THE MUTANT.
-    fn import_only_seeded_closure(
+    /// Import-line BFS only. THE MUTANT: a provider reached only by reference is
+    /// not a member. Not compiled into production (§3 / §3c).
+    fn import_only_virtual_entry_closure(
+        workspace: &Path,
         source_roots: &[PathBuf],
-        entry_pairs: Vec<(String, String)>,
+        entry_rel: &str,
+        entry_content: &str,
     ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
         let index = dag_module_index(source_roots)?;
-        let mut seen: std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>> =
-            std::collections::HashMap::new();
-        let mut queue: Vec<String> = Vec::new();
-        for (path, content) in entry_pairs {
-            seen.insert(path.clone(), seed(&path, &content));
-            queue.push(content);
-        }
+        let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
+        let mut queue: Vec<String> = vec![entry_content.to_string()];
+        seen.insert(
+            entry_rel.to_string(),
+            Rc::new(v1_compiler_compile::SourceFile {
+                path: file_key_in_workspace(workspace, entry_rel),
+                content: entry_content.to_string(),
+            }),
+        );
         while let Some(content) = queue.pop() {
             for module_path in extract_import_paths(&content) {
                 let Some(candidates) = index.get(&module_path) else {
@@ -504,12 +528,18 @@ fn broken() -> Int { no_such_function_anywhere() }\n";
                     }
                     let file_content = std::fs::read_to_string(path)
                         .map_err(|e| format!("read imported module {}: {e}", path.display()))?;
-                    seen.insert(rel.clone(), seed(&rel, &file_content));
+                    seen.insert(
+                        rel.clone(),
+                        Rc::new(v1_compiler_compile::SourceFile {
+                            path: rel,
+                            content: file_content.clone(),
+                        }),
+                    );
                     queue.push(file_content);
                 }
             }
         }
-        Ok(seen.into_values().collect())
+        Ok(seen.into_iter().map(|(_, v)| v).collect())
     }
 
     #[test]
@@ -517,7 +547,7 @@ fn broken() -> Int { no_such_function_anywhere() }\n";
         let dir = fixture_tree();
         let roots = [dir.to_string_lossy().into_owned()];
         let closed =
-            resolve_seeded_compile_closure(vec![seed(ENTRY, ENTRY_SRC)], &roots).expect("closure");
+            resolve_virtual_entry_compile_closure(ENTRY, ENTRY_SRC, &roots).expect("closure");
         assert!(
             provider_in(&closed),
             "provider missing from closed set {:?}",
@@ -529,11 +559,9 @@ fn broken() -> Int { no_such_function_anywhere() }\n";
     #[test]
     fn import_only_mutant_omits_the_reference_only_provider() {
         let dir = fixture_tree();
-        let mutant = import_only_seeded_closure(
-            std::slice::from_ref(&dir),
-            vec![(ENTRY.into(), ENTRY_SRC.into())],
-        )
-        .expect("mutant");
+        let roots = [dir.clone()];
+        let mutant =
+            import_only_virtual_entry_closure(&dir, &roots, ENTRY, ENTRY_SRC).expect("mutant");
         assert!(
             !provider_in(&mutant),
             "the import-only mutant must omit the provider; got {:?}",
@@ -546,8 +574,8 @@ fn broken() -> Int { no_such_function_anywhere() }\n";
     fn a_real_error_in_the_entry_closure_still_refuses() {
         let dir = fixture_tree();
         let roots = [dir.to_string_lossy().into_owned()];
-        let closed = resolve_seeded_compile_closure(vec![seed(BROKEN, BROKEN_SRC)], &roots)
-            .expect("closure");
+        let closed =
+            resolve_virtual_entry_compile_closure(BROKEN, BROKEN_SRC, &roots).expect("closure");
         assert!(
             provider_in(&closed),
             "the broken entry must still close the reference-only provider"
@@ -683,8 +711,10 @@ pub(crate) fn build_module_graph_facts_live_uncached(
     // modules), while for SELECTION it is precisely the thing that destroys the answer. The loader
     // (`extend_with_bare_reference_closure`) is deliberately left alone.
     //
-    // Import-bearing files emit no reference edges at all (see `reference_resolution_facts` pass 2),
-    // so on an un-stripped file the union is a no-op and the graph is byte-identical to before.
+    // (SUPERSEDED: this measurement predates the all-importer producer. Import-bearing files now
+    // also emit strict-tier reference edges for modules they reach without importing, so the union
+    // is no longer a no-op on an un-stripped file. The selection-tier effect of that widening is
+    // measured by the floor, not asserted here.)
     // FIVE ROWS, EACH NET OF THE OTHERS. The import-edge facts are the module path index's first
     // demander, and that index is the first demander of every pool file's lexing, newline index
     // and heads parse (`pool_acquire`, which records those three as `pool_source_tokenize`,
@@ -3317,9 +3347,6 @@ impl ReferenceSelectionTier {
 
 /// One file's answer from the reference-edge producer.
 pub(crate) enum FileReferenceEdges {
-    /// The file carries `import` lines: its edges are owned EXACTLY by `import_resolution_facts`,
-    /// and emitting reference edges for it would only over-connect.
-    ImportBearing,
     /// The file's reference edges, every tier (`reference_edges_as_import_facts` filters).
     Edges(Vec<ReferenceEdgeRaw>),
     /// An import-less file the producer could not answer for, with the located cause.
@@ -3500,9 +3527,10 @@ pub(crate) fn reference_edges_for_file(
 }
 
 /// The same per-file answer with the pool name index DEMANDED rather than supplied. An unreadable
-/// or import-bearing file is decided from its own bytes, so a caller asking about one such file
-/// never builds the whole-pool heads index; only an import-less file, whose references must be
-/// resolved against pool names, forces it.
+/// file is decided from its own bytes and never builds the whole-pool heads index. EVERY readable
+/// file, import-bearing or not, answers its reference edges: an `import` line declares some of a
+/// module's dependencies, not all of them (`v2.std.artifact` imports three modules and reaches
+/// `v2.std.refinement` only by qualified reference), so imports never own a file's edge set.
 pub(crate) fn reference_edges_for_file_on_demand<
     R: std::ops::Deref<Target = ReferencePoolNames>,
 >(
@@ -3513,9 +3541,6 @@ pub(crate) fn reference_edges_for_file_on_demand<
     let Some(content) = content else {
         return FileReferenceEdges::Unaccounted("unreadable");
     };
-    if !extract_import_paths(content).is_empty() {
-        return FileReferenceEdges::ImportBearing;
-    }
     let names = names();
     let names: &ReferencePoolNames = &names;
     let Some(self_module) = extract_module_path(content) else {
@@ -3525,7 +3550,12 @@ pub(crate) fn reference_edges_for_file_on_demand<
         Ok(refs) => refs,
         Err(cause) => return FileReferenceEdges::Unaccounted(cause),
     };
-    let ParsedFileReferences { bare, chains, .. } = refs;
+    let ParsedFileReferences {
+        bare,
+        chains,
+        imports,
+        ..
+    } = refs;
     // Resolve to per-file (target_module → strongest confidence).
     let mut file_edges: std::collections::BTreeMap<String, RefEdgeResolution> =
         std::collections::BTreeMap::new();
@@ -3547,6 +3577,15 @@ pub(crate) fn reference_edges_for_file_on_demand<
         // it is never an edge: `String` in `std.primitives` once resolved UniqueBare to
         // std.string_type, a module the resolver never loads for that spelling.
         if super::is_substrate_vocabulary(name) {
+            continue;
+        }
+        // LEXICAL BINDING, NOT PROXIMITY, IN A FILE THAT IMPORTS: a bare name there is a local
+        // declaration or a name the file imports (the import edge already carries that), so
+        // guessing a pool declarer for it is a heuristic the closed substrate never needs. It
+        // manufactured a phantom edge from `std.optional { Present }` importers to a fixture that
+        // merely declares the same spelling. The proximity tier below stays for import-less files,
+        // where it already applied.
+        if !imports.is_empty() {
             continue;
         }
         if let Some(mods) = names.decl_index.get(name) {
@@ -3652,7 +3691,6 @@ pub fn reference_resolution_facts(
             }
             let content = std::fs::read_to_string(&file).ok();
             match reference_edges_for_file(&rel, content.as_deref(), &names) {
-                FileReferenceEdges::ImportBearing => {}
                 FileReferenceEdges::Edges(file_edges) => edges.extend(file_edges),
                 FileReferenceEdges::Unaccounted(cause) => {
                     unaccounted.push(ReferenceAccountingRefusal {

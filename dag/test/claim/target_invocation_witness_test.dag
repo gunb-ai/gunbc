@@ -36,6 +36,8 @@ import gunbc.target_binding {
   SelfHostBehavioralEquivalenceProducer,
   DependencyDemandCensusProducer,
   GenericIdentityCensusProducer,
+  InterpolationHoleCensusProducer,
+  RegenRoundCostProducer,
   BareChannelEligibility, BareChannelRuns, BareChannelDisabledByImportLine,
   BareReferenceChannelEntryReading,
   BareReferenceChannelStanding, BareReferenceChannelRead,
@@ -85,6 +87,8 @@ import gunbc.instrument_targets {
   self_host_behavioral_equivalence_label,
   dependency_demand_census_label,
   generic_identity_census_label,
+  interpolation_hole_census_label,
+  regen_round_cost_label,
   compile_clean_diagnostic_census_termination,
   compile_clean_diagnostic_census_standing_rendered,
   instrument_targets, instrument_bindings,
@@ -917,6 +921,28 @@ test fn the_generic_identity_census_operand_routes_to_its_own_producer() -> Bool
       label_eq(a: b.target, b: generic_identity_census_label())
         && (b.producer == GenericIdentityCensusProducer {})
         && !(b.producer == DependencyDemandCensusProducer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+// The interpolation hole-type census is a label bound to its own producer, never a mode of another census.
+test fn the_interpolation_hole_census_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:interpolation-hole-census") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: interpolation_hole_census_label())
+        && (b.producer == InterpolationHoleCensusProducer {})
+        && !(b.producer == GenericIdentityCensusProducer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+// The regen round's price is its own label and producer, never a flag on claim_executor.
+test fn the_regen_round_cost_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:regen-round-cost") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: regen_round_cost_label())
+        && (b.producer == RegenRoundCostProducer {})
+        && !(b.producer == GenericIdentityCensusProducer {})
     TargetInvocationRouteRefused { cause: _ } => false
   }
 }
