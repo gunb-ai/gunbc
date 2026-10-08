@@ -42,7 +42,7 @@ import gunbc.fleet_posix_accounts {
   fleet_posix_ci_runner_user,
   fleet_ci_runner_reported_contradiction,
 }
-import extdeps.external_authority { TranscribedUncited, CitedToAuthority, ExternalAuthority }
+import extdeps.external_authority { TranscribedUncited, CitedToAuthority, ObservedByReceipt, ExternalAuthority }
 import extdeps.uri { Uri, File }
 import extdeps.docker.endpoint { docker_rootless_unix_endpoint }
 import gunbc.compile_permit_scope {
@@ -295,6 +295,7 @@ test fn the_job_user_uid_is_transcribed_uncited_not_the_modeled_posix_row() -> B
         && (runner_job_user_xdg_runtime_uid().uid != fleet_posix_ci_runner_user.uid)
         && string_contains(s: o as String, pattern: "id -u")
     CitedToAuthority { authority: _ } => false
+    ObservedByReceipt { observed: _ } => false
   }
 }
 

@@ -25,7 +25,7 @@ import extdeps.ampere.mt_collins_firmware_release {
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.types { RedfishAccountRole }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
-import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ObservedByReceipt, TranscribedUncited }
 import extdeps.bmc.ipmitool_hpm_check {
   HpmCheckTable, HpmCheckRead, HpmCheckUpgradeVariant, HpmCheckUnreadable, HpmVersionHeld, HpmVersionAbsent,
   HpmComponentSelected, HpmComponentNotListed, HpmComponentListedTwice, hpm_component_named,
@@ -1201,6 +1201,7 @@ fn uncited_readbacks(records: List<FlashStepRecord>) -> List<UncitedReadback> {
       Present { value: rb } =>
         match rb.decode {
           CitedToAuthority { authority: _ } => acc
+          ObservedByReceipt { observed: _ } => acc
           TranscribedUncited { read_obligation: o } => concat(acc, [UncitedReadback { target: r.target, read_obligation: o }])
         }
     })
