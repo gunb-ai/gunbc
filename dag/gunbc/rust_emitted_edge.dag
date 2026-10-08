@@ -52,6 +52,14 @@ fn rust_module_emit_filename(module_name: String) -> String {
 // the same value.
 data rust_runtime_prelude_module: String = "v1_rt"
 
+// Files the emitter writes with no .dag module behind them, beside the runtime prelude:
+// v1.compiler.emit_rust emit_dry_run_module writes dry_run.rs (the DryRunMode wrapper) whenever the
+// closure declares services. The emitter still spells that path itself, so the two are not one
+// value; the pairing is the workspace closure check, which refuses an emitted basename that is in
+// neither the DAG nor this list, so an emitter that renames or adds such a file is a located
+// refusal rather than a silent drift.
+data rust_emit_only_basenames: List<String> = ["dry_run"]
+
 fn rust_prelude_emitted_edges(module: String) -> List<EmittedEdge> {
   if module == rust_runtime_prelude_module {
     [

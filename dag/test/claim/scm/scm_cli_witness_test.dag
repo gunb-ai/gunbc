@@ -55,6 +55,7 @@ import gunbc.scm.repository_envelope {
   RepositoryEncoded,
   RepositoryEncodeRefused,
   encode_repository_checked,
+  repository_generation_of_content,
 }
 import extdeps.languages.json.emit { serialize_json }
 import std.measure { byte_size }
@@ -409,7 +410,7 @@ fn init_outcome_claims_success(save: RepositorySave) -> Bool {
 
 test fn a_saved_repository_is_the_only_initialized_outcome() -> Bool {
   init_outcome_claims_success(
-    save: RepositorySaved { path: "/d/repo.json", written: byte_size(count: 12) }
+    save: RepositorySaved { path: "/d/repo.json", written: byte_size(count: 12), generation: repository_generation_of_content(content: "fixture") }
   )
 }
 

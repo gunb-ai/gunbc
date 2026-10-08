@@ -2,8 +2,11 @@ module test.claim.compute.work_class_grant_witness_test
 
 import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
 import std.measure { Kibibyte, kibibyte, kibibyte_count, byte_size_count }
+import extdeps.exec.command { argv_words }
 import extdeps.systemd.systemd_run {
-  SystemdRunWaitSummary, systemd_run_wait_summary, systemd_run_user_wait_arguments, systemd_run_transient_wait_unit_argv,
+  SystemdRunWaitSummary, systemd_run_wait_summary,
+  SystemdRunCommandReady, SystemdRunCommandRefused,
+  systemd_run_user_wait_command, systemd_run_transient_wait_unit_command,
   SystemdServiceResultReading, ServiceResultRead, ServiceResultUnrecognized, ServiceResultNotReported,
   SystemdServiceResult, ServiceResultOomKill, ServiceResultSuccess, ServiceResultExitCode,
   SystemdMemoryPeakReading, MemoryPeakRead, MemoryPeakUnparseable, MemoryPeakNotReported,
@@ -41,7 +44,29 @@ import gunbc.compute.work_provider_local {
 // regression control. Supplying the launcher here is DESIGN 3's supplied input at one interface;
 // the real builder is exercised by the provider's own route (gunbc.compute.work_provider_local
 // compute_run_unit).
-data fixture_launcher: SystemdSummaryPrintingWait = systemd_run_user_wait_arguments(unit: "gunbc-fixture", properties: [], setenv_bindings: [], command_argv: ["true"])
+// THE FIXTURE GOES THROUGH THE TYPED BUILDER, and its refused arm -- uninhabited for these inputs --
+// carries the summary a never-ran invocation legitimately has: NotReported, not a minted token.
+// (The admit list on argv_command refuses test callers, so there is no direct mint to fall back on;
+// the fold is the only route from the reading to a summary.)
+fn fixture_summary(standing: SummaryFormatStanding, stderr: String) -> SystemdRunWaitSummary {
+  match systemd_run_user_wait_command(unit: "gunbc-fixture", properties: [], setenv_bindings: [], command_argv: ["true"]) {
+    SystemdSummaryPrintingWaitRefused { cause: _ } =>
+      SystemdRunWaitSummary { result: ServiceResultNotReported { absence: SummaryNoInvocation }, memory_peak: MemoryPeakNotReported { absence: SummaryNoInvocation } }
+    SystemdSummaryPrintingWaitReady { wait: launcher } =>
+      systemd_run_wait_summary(launcher: launcher, standing: standing, stderr: stderr)
+  }
+}
+
+// POSITIVE CONTROL FOR THE USER-WAIT CUTOVER: the typed builder's projected words are the words the
+// string-built form this replaces rendered for the same arguments -- wait flags first, then the
+// user-manager start, then the command after --.
+test fn the_user_wait_builder_projects_the_words_the_string_form_rendered() -> Bool {
+  match systemd_run_user_wait_command(unit: "gunbc-fixture", properties: [], setenv_bindings: [], command_argv: ["true"]) {
+    SystemdSummaryPrintingWaitRefused { cause: _ } => false
+    SystemdSummaryPrintingWaitReady { wait: launcher } =>
+      argv_words(command: launcher.command) == ["systemd-run", "--wait", "--pipe", "--collect", "--user", "--unit=gunbc-fixture", "--", "true"]
+  }
+}
 
 // THE FIXTURES ALSO NAME THE MANAGER THEY ARE PRETENDING CAME FROM, because the summary format is
 // version-keyed and the reader refuses a major it has not read. Grounded here so the claims below
@@ -59,7 +84,7 @@ data nine_point_seven_gib_upper_bytes: Int = 10630044058
 data nine_point_seven_gib_lower_bytes: Int = 10415295692
 
 test fn the_units_peak_and_result_are_the_summarys_last_lines_not_the_commands() -> Bool {
-  let s = systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: summary_oom_after_spoof)
+  let s = fixture_summary(standing: grounded_standing, stderr: summary_oom_after_spoof)
   compute_summary_is_oom_kill(summary: s)
     && match s.memory_peak {
       MemoryPeakRead { peak: b } =>
@@ -80,9 +105,9 @@ test fn the_units_peak_and_result_are_the_summarys_last_lines_not_the_commands()
 // with --quiet. Either must read NotReported, because a recorded zero would size a class at its
 // headroom alone. An exact small figure keeps its exact reading.
 test fn an_absent_peak_is_not_reported_and_a_byte_figure_is_exact() -> Bool {
-  let absent = systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: "Finished with result: exit-code\nMain processes terminated with: code=exited/status=1\n")
-  let small = systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: "Finished with result: success\nMemory peak: 512B\n")
-  let garbled = systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: "Finished with result: frobnicated\nMemory peak: lots\n")
+  let absent = fixture_summary(standing: grounded_standing, stderr: "Finished with result: exit-code\nMain processes terminated with: code=exited/status=1\n")
+  let small = fixture_summary(standing: grounded_standing, stderr: "Finished with result: success\nMemory peak: 512B\n")
+  let garbled = fixture_summary(standing: grounded_standing, stderr: "Finished with result: frobnicated\nMemory peak: lots\n")
   !compute_summary_is_oom_kill(summary: absent)
     && match small.memory_peak {
       MemoryPeakRead { peak: b } => match b { FormattedBytesExact { bytes } => byte_size_count(b: bytes) == 512  _ => false }
@@ -152,8 +177,8 @@ test fn with_the_shipped_rows_every_class_reserves_the_ceiling() -> Bool {
 test fn only_an_oom_kill_below_the_ceiling_retries_at_the_ceiling() -> Bool {
   let below = GrantSized { class: WorkClassCompile, amount: kibibyte(count: 11 * gib), samples: 3, peak_upper: kibibyte(count: 9 * gib), headroom: kibibyte(count: 2 * gib), headroom_authority: "fixture" as NonEmptyStr }
   let at = GrantAtCeiling { class: WorkClassCompile, amount: ceiling(), reason: ClassUnmeasured }
-  let oom = ComputeAttempt { outcome: WorkFailed { identity: "i", exit_code: 1, log_path: "" }, summary: systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: summary_oom_after_spoof), gate: AttemptGateRefused { detail: "fixture: no attempt slot" } }
-  let clean = ComputeAttempt { outcome: WorkFailed { identity: "i", exit_code: 1, log_path: "" }, summary: systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: "Finished with result: exit-code\nMemory peak: 3.1G\n"), gate: AttemptGateRefused { detail: "fixture: no attempt slot" } }
+  let oom = ComputeAttempt { outcome: WorkFailed { identity: "i", exit_code: 1, log_path: "" }, summary: fixture_summary(standing: grounded_standing, stderr: summary_oom_after_spoof), gate: AttemptGateRefused { detail: "fixture: no attempt slot" } }
+  let clean = ComputeAttempt { outcome: WorkFailed { identity: "i", exit_code: 1, log_path: "" }, summary: fixture_summary(standing: grounded_standing, stderr: "Finished with result: exit-code\nMemory peak: 3.1G\n"), gate: AttemptGateRefused { detail: "fixture: no attempt slot" } }
   compute_attempt_retries_at_ceiling(grant: below, attempt: oom)
     && !compute_attempt_retries_at_ceiling(grant: at, attempt: oom)
     && !compute_attempt_retries_at_ceiling(grant: below, attempt: clean)
@@ -166,9 +191,9 @@ test fn only_an_oom_kill_below_the_ceiling_retries_at_the_ceiling() -> Bool {
 // No peak line, or no clock, takes no sample.
 test fn a_summary_becomes_a_typed_sample_at_its_upper_bound_or_no_sample() -> Bool {
   let op = CompileEntry { entry: "src/v2/compiler/compile.dag" }
-  let s = systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: summary_oom_after_spoof)
+  let s = fixture_summary(standing: grounded_standing, stderr: summary_oom_after_spoof)
   let taken = work_class_peak_sample(summary: s, work_identity: "abc", op: op, host: "srv1", observed_at: Present { value: 1790000000 })
-  let no_peak = work_class_peak_sample(summary: systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: "Finished with result: success\n"), work_identity: "abc", op: op, host: "srv1", observed_at: Present { value: 1790000000 })
+  let no_peak = work_class_peak_sample(summary: fixture_summary(standing: grounded_standing, stderr: "Finished with result: success\n"), work_identity: "abc", op: op, host: "srv1", observed_at: Present { value: 1790000000 })
   let no_clock = work_class_peak_sample(summary: s, work_identity: "abc", op: op, host: "srv1", observed_at: none)
   match taken {
     PeakSampleTaken { class, sample } =>
@@ -233,9 +258,9 @@ data four_gib_lower_bytes: Int = 4294967296
 data four_gib_upper_bytes: Int = 4509715661
 
 test fn the_peak_is_unreported_by_absence_and_an_untrimmed_summary_still_reads() -> Bool {
-  let no_peak_line = systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: "Finished with result: exit-code\nMain processes terminated with: code=exited/status=1\n")
-  let unit_output_only = systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: "error: linking with `cc` failed\nrustc exited 1\n")
-  let trimmed = systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: "Finished with result: success\nMemory peak: 4.0G")
+  let no_peak_line = fixture_summary(standing: grounded_standing, stderr: "Finished with result: exit-code\nMain processes terminated with: code=exited/status=1\n")
+  let unit_output_only = fixture_summary(standing: grounded_standing, stderr: "error: linking with `cc` failed\nrustc exited 1\n")
+  let trimmed = fixture_summary(standing: grounded_standing, stderr: "Finished with result: success\nMemory peak: 4.0G")
   match no_peak_line.memory_peak { MemoryPeakNotReported { absence } => match absence { SummaryLineAbsent => true  _ => false }  _ => false }
     && match unit_output_only.memory_peak { MemoryPeakNotReported { absence } => match absence { SummaryLineAbsent => true  _ => false }  _ => false }
     && match unit_output_only.result { ServiceResultNotReported { absence } => match absence { SummaryLineAbsent => true  _ => false }  _ => false }
@@ -267,10 +292,20 @@ test fn the_peak_is_unreported_by_absence_and_an_untrimmed_summary_still_reads()
 // fact a Bool claim can carry. What a claim CAN carry is the fold: a token whose argv does contain
 // --quiet, constructed here directly because no builder will mint one, reports NotReported rather
 // than the peak sitting in the fixture. Deleting the check in systemd_run_wait_summary reds this.
-data quiet_launcher: SystemdSummaryPrintingWait = SystemdSummaryPrintingWait { argv: systemd_run_transient_wait_unit_argv(unit: "gunbc-quiet", properties: [], command_argv: ["true"]) }
+// THE QUIET LAUNCHER'S READING GOES THROUGH THE TYPED BUILDER that carries --quiet; the claim's
+// refused arm is uninhabited for these inputs and carries NotReported, never a minted token (the
+// admit list on argv_command refuses test callers, so there is no direct mint to fall back on).
+fn quiet_summary(stderr: String) -> SystemdRunWaitSummary {
+  match systemd_run_transient_wait_unit_command(unit: "gunbc-quiet", properties: [], command_argv: ["true"]) {
+    SystemdRunCommandRefused { cause: _ } =>
+      SystemdRunWaitSummary { result: ServiceResultNotReported { absence: SummaryNoInvocation }, memory_peak: MemoryPeakNotReported { absence: SummaryNoInvocation } }
+    SystemdRunCommandReady { command: command } =>
+      systemd_run_wait_summary(launcher: SystemdSummaryPrintingWait { command: command }, standing: grounded_standing, stderr: stderr)
+  }
+}
 
 test fn a_quiet_launcher_reports_no_peak_rather_than_the_one_in_the_text() -> Bool {
-  let s = systemd_run_wait_summary(launcher: quiet_launcher, standing: grounded_standing, stderr: summary_oom_after_spoof)
+  let s = quiet_summary(stderr: summary_oom_after_spoof)
   match s.memory_peak { MemoryPeakNotReported { absence } => match absence { SummarySuppressedByQuietLauncher => true  _ => false }  _ => false }
     && match s.result { ServiceResultNotReported { absence } => match absence { SummarySuppressedByQuietLauncher => true  _ => false }  _ => false }
     && !compute_summary_is_oom_kill(summary: s)
@@ -294,7 +329,7 @@ test fn a_quiet_launcher_reports_no_peak_rather_than_the_one_in_the_text() -> Bo
 // SuppressedByQuietLauncher below. A collapse to any one cause now reds exactly the claims for the
 // OTHER causes, which is what makes the red legible.
 test fn an_empty_capture_is_reported_as_capture_empty_not_as_a_missing_line() -> Bool {
-  let empty = systemd_run_wait_summary(launcher: fixture_launcher, standing: grounded_standing, stderr: "")
+  let empty = fixture_summary(standing: grounded_standing, stderr: "")
   match empty.memory_peak { MemoryPeakNotReported { absence } => match absence { SummaryCaptureEmpty => true  _ => false }  _ => false }
     && match empty.result { ServiceResultNotReported { absence } => match absence { SummaryCaptureEmpty => true  _ => false }  _ => false }
     && !compute_summary_is_oom_kill(summary: empty)
@@ -331,7 +366,7 @@ test fn a_grounded_major_is_the_only_one_that_parses() -> Bool {
 // consumer actually reads goes red, because the join is.
 test fn an_unread_major_refuses_instead_of_reading_its_figures() -> Bool {
   let newer = summary_format_standing(version_line: "systemd 257 (257.1-1)")
-  let s = systemd_run_wait_summary(launcher: fixture_launcher, standing: newer, stderr: summary_oom_after_spoof)
+  let s = fixture_summary(standing: newer, stderr: summary_oom_after_spoof)
   match newer { SummaryFormatUngroundedMajor { major } => major == 257  _ => false }
     && match s.memory_peak { MemoryPeakFormatNotGrounded { standing: _ } => true  _ => false }
     && match s.result { ServiceResultFormatNotGrounded { standing: _ } => true  _ => false }
@@ -356,7 +391,7 @@ test fn an_unread_major_refuses_instead_of_reading_its_figures() -> Bool {
 // annotation cannot fully repair, because the annotation is read AFTER the decision to touch it.
 test fn the_grounding_recursion_terminates_because_an_unreadable_version_refuses() -> Bool {
   let unknown = summary_format_standing(version_line: "")
-  let s = systemd_run_wait_summary(launcher: fixture_launcher, standing: unknown, stderr: summary_oom_after_spoof)
+  let s = fixture_summary(standing: unknown, stderr: summary_oom_after_spoof)
   match unknown { SummaryFormatVersionUnreadable { line } => line == ""  _ => false }
     && match s.memory_peak { MemoryPeakFormatNotGrounded { standing: _ } => true  _ => false }
     && !compute_summary_is_oom_kill(summary: s)
@@ -377,7 +412,7 @@ data ending_op: WorkOperation = CompileEntry { entry: "e" }
 
 fn outcome_for(stderr: String, standing: SummaryFormatStanding) -> WorkOutcome {
   compute_failed_unit_outcome(
-    summary: systemd_run_wait_summary(launcher: fixture_launcher, standing: standing, stderr: stderr),
+    summary: fixture_summary(standing: standing, stderr: stderr),
     identity: "abc", exit_code: 1, op: ending_op, granted: kibibyte(count: 1024), grant_was_ceiling: false, log_path: "/l",
   )
 }

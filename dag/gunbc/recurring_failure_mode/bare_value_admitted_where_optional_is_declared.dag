@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.bare_value_admitted_where_optional_is_declared
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data bare_value_admitted_where_optional_is_declared: RecurringFailureMode = RecurringFailureMode {
+  identity: "bare_value_admitted_where_optional_is_declared" as NonEmptyStr,
+
+  receipts: [
+    "bare value where an optional is declared: a fn declared `-> T?` whose body produces a bare T, a `data r: T? = <bare T>` row, or a match whose arms mix a bare T with an optional (gunbc.running_release_identity running_release_member_string returned the bare member under `-> String?`). No declared coercion route lifts T into T? (DESIGN section 4, operator ruling 2026-09-26), yet the checker accepted each with zero diagnostics. It is the reverse of optional_admitted_where_a_required_value_is_declared, and a different class from optional_compared_with_required_value, which is the binary-operator seam.",
+
+    "HARM: the Rust emission refused the declared-return and data-row forms downstream as rustc E0308 (`expected Option<T>, found T`), which DESIGN section 5 does not count as a typed refusal; the match form was order-dependent, because the join keeps ONE arm's type, so with `none` listed first the bare arm was never judged against the declared return (join_answers_with_one_arm_others_unjudged).",
+
+    "WALL: v1.compiler.infer optional_at_required_obligation_diags refuses a bare concrete T at PositionDeclaredReturn and PositionDataInitializer (position_forbids_bare_lift) as DeclaredTypeNotInhabited, and match_arm_join_diagnostics refuses a match whose arms mix a bare concrete type with an optional in either arm order, as DeclaredTypeNotInhabited located at the offending arm. Optionality is decided by declared_type_carries_optional, which still decides partly by leaf name: that is the bare-name identity debt routed to the identity-keying lane, carried there and not re-spelled.",
+
+    "EVIDENCE: test.claim.self_host_equality_admission_witness. Reds: a bare return, a bare match arm before a none arm, a bare match arm after a none arm, and a bare data initializer, each refused as blocking DeclaredTypeNotInhabited. Controls: an explicit Present return, an absent return, and a Present-spelled data row, all admitted.",
+
+    "CLAIMED SCOPE (not a rung drop): the match-arm wall does not judge an arm whose whole body is the payload binding of a Present { value: x } pattern, because infer collapses nested optionality (see nested_optional_collapsed_by_infer_carried_by_emission). The exclusion is pinned by an admitted control and a narrowness red in test.claim.self_host_equality_admission_witness.",
+
+    "RUNG FOUND AT: 1 on the Rust emission path (rustc refusal); the interpretation path accepted silently.",
+
+    "RUNG NOW: 3 at three paths only -- the declared return, the data initializer, and the match-arm join -- each with an enrolled red and positive control. A bare T bound to a T? let annotation, record field, call argument or parameter is a different position whose population this change did not measure, and no rung is claimed there; the class's rung is the minimum across its in-scope paths, so it is not claimed beyond those three.",
+
+    "CEILING: 4 is not attainable while the surface can spell a bare value beside an optional declaration. NEXT-RUNG TRIGGER for the unclaimed positions: measuring the corpus population at let, field, argument and parameter positions and enrolling their reds, which is possible now and unbuilt; and for the leaf-name optionality decision, declaration-decided optionality in the checker.",
+  ],
+
+  evidence: [],
+}

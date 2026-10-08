@@ -633,10 +633,8 @@ fn show_healthz_read_fixture_healthy(
   ReadObserved {
     value: HealthzBodyRead {
       body: healthz_body_with_release_identity(
-        roadmap: bundle.roadmap_md,
         dispatch: bundle.dispatch_json,
         daily: bundle.daily_html,
-        full: bundle.full_html,
         dispatch_js: bundle.dispatch_js,
         release_revision: release_revision,
         surface_bundle_identity: bundle.bundle_identity,

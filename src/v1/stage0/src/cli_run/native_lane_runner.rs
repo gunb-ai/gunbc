@@ -46,6 +46,12 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// THE FAULT-EXPERIMENT INPUT, joined to `gunbc.emitted_subject_build_gate`
+/// `native_fault_experiment_env_name` / `native_fault_experiment_skip_value` by
+/// `test.claim.compiler_gate_emit_build_lane_witness_test` `the_seed_fault_experiment_input_is_the_dag_rows`.
+const FAULT_EXPERIMENT_ENV: &str = "GUNBC_NATIVE_FAULT_EXPERIMENT";
+const FAULT_EXPERIMENT_SKIP_VALUE: &str = "skip_pull_request";
+
 /// The compiler entry whose closure becomes the lane's emitted-native compiler. Its
 /// `compiler_pipeline_entry` is `SourceRootEvalDriver`, so the emitted crate's `main.rs` is the
 /// whole-source-root Eval driver this lane exists to route through — and, since the admission
@@ -517,30 +523,44 @@ fn prepare_emitted_compiler_for_entry(
     // to the entrypoint step as though it were the baseline's.
     let entry_module = super::emitted_closure_compile_host::entry_rust_module(entry, &workspace)
         .map_err(|cause| format!("V2-NATIVE REFUSAL cause=EntryModuleUnreadable — {cause}"))?;
-    eprintln!("v2-native-route: establishing the discriminating red on {entry_module}");
-    let mutation = super::emitted_closure_compile_host::establish_discriminating_red(
-        &crate_dir,
-        &probe_root.target_dir(),
-        &entry_module,
-    );
-    if !super::emitted_closure_compile_host::mutation_verdict_discriminated(&mutation) {
-        return Err(format!(
-            "V2-NATIVE REFUSAL cause=EmittedBuildNotDiscriminating — {}",
+    // THE FAULT EXPERIMENT IS SKIPPED ONLY WHEN THE WORKFLOW SAYS SO, and says so in the log. The
+    // input is `gunbc.emitted_subject_build_gate` `native_fault_experiment_env_name`, set by
+    // `gunbc.compiler_gate_workflow` from the event: pull_request passes `skip_pull_request`,
+    // merge_group and workflow_dispatch pass `run`. Absent or any other value RUNS it. The skip is
+    // the declared drop `gunbc.rung_drop` `native_fault_experiment_off_pull_requests`.
+    if std::env::var(FAULT_EXPERIMENT_ENV).ok().as_deref() == Some(FAULT_EXPERIMENT_SKIP_VALUE) {
+        eprintln!(
+            "v2-native-route: DISCRIMINATING RED SKIPPED — GUNBC_NATIVE_FAULT_EXPERIMENT=skip_pull_request \
+             (pull_request run; declared drop native_fault_experiment_off_pull_requests). The emit, \
+             build, census pair, door, refusal and filesystem controls still run; the fault-and-\
+             restoration rebuild runs on merge_group and workflow_dispatch."
+        );
+    } else {
+        eprintln!("v2-native-route: establishing the discriminating red on {entry_module}");
+        let mutation = super::emitted_closure_compile_host::establish_discriminating_red(
+            &crate_dir,
+            &probe_root.target_dir(),
+            &entry_module,
+        );
+        if !super::emitted_closure_compile_host::mutation_verdict_discriminated(&mutation) {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=EmittedBuildNotDiscriminating — {}",
+                super::emitted_closure_compile_host::mutation_verdict_summary(&mutation)
+            ));
+        }
+        eprintln!(
+            "v2-native-route: discriminating red established — {}",
             super::emitted_closure_compile_host::mutation_verdict_summary(&mutation)
-        ));
-    }
-    eprintln!(
-        "v2-native-route: discriminating red established — {}",
-        super::emitted_closure_compile_host::mutation_verdict_summary(&mutation)
-    );
-    let identity_after_mutation = sha256_file(&binary_path)?;
-    if identity_after_mutation != binary_identity {
-        return Err(format!(
-            "V2-NATIVE REFUSAL cause=EmittedCompilerReplacedByFaultedArm — {} was {binary_identity} \
-             when the clean baseline built it and is {identity_after_mutation} after the fault was \
-             injected and removed; the executable handed on is not the one the green build produced",
-            binary_path.display()
-        ));
+        );
+        let identity_after_mutation = sha256_file(&binary_path)?;
+        if identity_after_mutation != binary_identity {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=EmittedCompilerReplacedByFaultedArm — {} was {binary_identity} \
+                 when the clean baseline built it and is {identity_after_mutation} after the fault was \
+                 injected and removed; the executable handed on is not the one the green build produced",
+                binary_path.display()
+            ));
+        }
     }
 
     Ok(EmittedPreparation {

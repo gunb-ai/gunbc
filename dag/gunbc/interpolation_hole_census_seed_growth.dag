@@ -1,0 +1,23 @@
+module gunbc.interpolation_hole_census_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data interpolation_hole_census_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.target_invocation_host",
+      decl_name: "run_interpolation_hole_census",
+      field: WholeDeclaration
+    }
+  ],
+
+  reason: "The producer arm for the XL-2 step-2 instrument (gunbc.target_binding InterpolationHoleCensusProducer). Its host part is transport only: read every .dag file under the source roots and the fixture from disk, hand them to v1.tests.claim.interpolation_hole_census as SourceFile data, load the closure of each subject that module names, and relay the returned text. The subject population, the standing, every row, every count and every completeness mismatch are decided by that .dag module; the host maps the first line of the returned standing to a termination and adds no verdict. It sits in the host because compile_to_resolved over an authored source vector does not run under the interpreter (the boundary v1.tests.claim.generic_identity_census and carrier_realization_census record for their own drivers).",
+
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+
+  trigger: "Delete this declaration when gunbc test's producer dispatch is emitted rather than hand-mirrored (the capability gunbc.target_invocation_seed_growth names for target_invocation_host as a whole) AND an emitted driver can read source files and hand them to a .dag fold, SUFFICIENT FOR //gunbc/instruments:interpolation-hole-census to run with no hand-authored producer body.",
+
+  current_boundary: "src/v1/stage0/src/target_invocation_host.rs run_interpolation_hole_census, which reads through the existing cli_run collect_dag_files_result and load_sources_for_entry_with_pool_index, behind gunbc test //gunbc/instruments:interpolation-hole-census"
+}
