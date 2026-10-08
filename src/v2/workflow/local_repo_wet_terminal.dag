@@ -1844,6 +1844,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_cas_file_store_wet_witness", function: "a_window_observation_at_generation_1500_terminates_by_real_execution" },
+      entry: "dag/test/claim/durable_cas_file_store_wet_witness_test.dag",
+      function: "a_window_observation_at_generation_1500_terminates_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.filesystem_link_create_new_wet_witness", function: "a_link_publishes_the_source_bytes_and_keeps_the_source_by_real_execution" },
       entry: "dag/test/claim/filesystem_link_create_new_wet_witness_test.dag",
       function: "a_link_publishes_the_source_bytes_and_keeps_the_source_by_real_execution",

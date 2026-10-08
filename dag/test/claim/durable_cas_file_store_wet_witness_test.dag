@@ -9,6 +9,7 @@ import std.durable_compare_and_set {
   CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasReadableAbsent, CasReadablePresent, CasObservedReadable, CasObservedUnreadable,
   CasGenerationPublicationRefused,
+  CasGeneration,
   cas_generation_count,
 }
 import std.checked_arithmetic { int_inclusive_max }
@@ -289,6 +290,36 @@ test fn a_racing_writer_under_a_window_retries_and_loses_no_commit_by_real_execu
     && is_precondition_present(o: lost, payload: "writer-a")
     && is_committed(o: retried, payload: "writer-b", generation: 5)
     && removed.success
+}
+
+fn plant_generation(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration, payload: String) -> Bool {
+  Filesystem.WriteCreateNew(path: cas_file_slot_path(root: root, key: key, generation: generation), content: payload).success
+}
+
+// HIGH HEAD, SUCCESSOR PRESENT ON DISK. The recursive cas_observe_window retry (listed max G,
+// named G+1 present) did not bound its attempts under a TCO lowering that left `attempt` unchanged,
+// so one observation at hold-typed_module.1507/.1508 never returned. A fold over eight attempts
+// must. The fixture is two files at 1500 and 1501: if listing reports both, the head is 1501; if
+// listing omits the true max (the 757-file trace), G+1 still reads present and the fold answers
+// Unsettled rather than looping.
+test fn a_window_observation_at_generation_1500_terminates_by_real_execution() -> Bool {
+  let root_path = fresh_root()
+  let root = root_path as NonEmptyStr
+  let w = window_of(k: 2)
+  let planted = plant_generation(root: root, key: "hold-typed_module", generation: 1500, payload: "g1500")
+    && plant_generation(root: root, key: "hold-typed_module", generation: 1501, payload: "g1501")
+  let observed = match w {
+    Absent => false
+    Present { value: win } => match observe_cas_slot_state_windowed(root: root, key: "hold-typed_module", window: win) {
+      CasObservedReadable { readable: r } => match r {
+        CasReadablePresent { version: v } => v.value == "g1501" && cas_generation_count(g: v.generation) == 1501
+        CasReadableAbsent => false
+      }
+      CasObservedUnreadable { cause: _ } => true
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  planted && observed && removed.success
 }
 
 // The window's floor is construction: k < 2 has no admitted window.
