@@ -66,6 +66,8 @@ data rcf_good_source: String = "module v2.test.rcf_good\n\ntype ArB {\n  n: Int\
 
 data rcf_generic_good_source: String = "module v2.test.rcf_generic_good\n\ntype Bx<T> {\n  v: T\n  w: T\n}\n\ndata bx_good: Bx<Int> = Bx { v: 1, w: 2 }\n"
 
+data rcf_generic_variant_good_source: String = "module v2.test.rcf_generic_variant_good\n\ntype Out<T> = Acc { value: T, n: Int } | Rej\n\ndata out_acc: Out<Int> = Acc { value: 1, n: 0 }\n"
+
 data rcf_nested_good_source: String = "module v2.test.rcf_nested_good\n\ntype ArB {\n  n: Int\n}\n\ntype ArOuter {\n  inner: ArB\n}\n\ndata ar_outer: ArOuter = ArOuter { inner: ArB { n: 1 } }\n"
 
 data rcf_missing_source: String = "module v2.test.rcf_missing\n\ntype ArB {\n  n: Int\n  m: Int\n}\n\ndata ar_missing: ArB = ArB { n: 1 }\n"
@@ -98,6 +100,7 @@ data rcf_ingest: SourceRootIngest = [
   rcf_read(source: rcf_bad_source, id: ^rcf_bad_read, unit: ^rcf_bad_cu, path: "src/v2/test/fixture/record_construct_field/bad.dag"),
   rcf_read(source: rcf_good_source, id: ^rcf_good_read, unit: ^rcf_good_cu, path: "src/v2/test/fixture/record_construct_field/good.dag"),
   rcf_read(source: rcf_generic_good_source, id: ^rcf_generic_good_read, unit: ^rcf_generic_good_cu, path: "src/v2/test/fixture/record_construct_field/generic_good.dag"),
+  rcf_read(source: rcf_generic_variant_good_source, id: ^rcf_generic_variant_good_read, unit: ^rcf_generic_variant_good_cu, path: "src/v2/test/fixture/record_construct_field/generic_variant_good.dag"),
   rcf_read(source: rcf_nested_good_source, id: ^rcf_nested_good_read, unit: ^rcf_nested_good_cu, path: "src/v2/test/fixture/record_construct_field/nested_good.dag"),
   rcf_read(source: rcf_missing_source, id: ^rcf_missing_read, unit: ^rcf_missing_cu, path: "src/v2/test/fixture/record_construct_field/missing.dag"),
   rcf_read(source: rcf_unknown_source, id: ^rcf_unknown_read, unit: ^rcf_unknown_cu, path: "src/v2/test/fixture/record_construct_field/unknown.dag"),
@@ -130,6 +133,7 @@ fn rcf_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
 fn rcf_resolved_bad() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_bad") }
 fn rcf_resolved_good() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_good") }
 fn rcf_resolved_generic_good() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_generic_good") }
+fn rcf_resolved_generic_variant_good() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_generic_variant_good") }
 fn rcf_resolved_nested_good() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_nested_good") }
 fn rcf_resolved_missing() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_missing") }
 fn rcf_resolved_unknown() -> Outcome<ResolvedTree> { rcf_resolve_subject(subject: "v2.test.rcf_unknown") }
@@ -320,6 +324,13 @@ test fn rcf_inhabiting_field_values_are_accepted_and_decided_holds() -> Bool {
 // declared Bx<Int>.
 test fn rcf_a_generic_record_at_its_instantiation_is_accepted_and_decided_holds() -> Bool {
   rcf_member_accepted_and_decided(resolved: rcf_resolved_generic_good(), member: ^bx_good)
+}
+
+// THE GENERIC-VARIANT CONSTRUCT #13511 measured undecided (Acc { value: 1, n: 0 } at Out<Int>,
+// 41afbbbb / BuildBuddy 36e48268). Owner: this PR. Real path: ingest → resolve → infer of the
+// member Arrow via rcf_member_accepted_and_decided.
+test fn rcf_a_generic_variant_construct_at_its_instantiation_is_accepted_and_decided_holds() -> Bool {
+  rcf_member_accepted_and_decided(resolved: rcf_resolved_generic_variant_good(), member: ^out_acc)
 }
 
 // A field declared as a record of the subject module is judged too: `inner: ArB` holding an ArB
