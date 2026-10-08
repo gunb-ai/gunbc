@@ -717,12 +717,11 @@ fn cas_verify_named_window_head(root: NonEmptyStr, key: NonEmptyStr, generation:
   }
 }
 
-fn observe_cas_slot_state_windowed_at(root: NonEmptyStr, key: NonEmptyStr, window: CasGenerationWindow, generation: CasGeneration) -> CasSlotObservation<NonEmptyStr>
+fn observe_cas_slot_state_windowed_at(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration) -> CasSlotObservation<NonEmptyStr>
   admit_callers: [
     decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "observe_file_hold_windowed_at"),
   ]
 {
-  let _window = window
   if !cas_key_is_slot_addressable(key: key) {
     CasObservedUnreadable { cause: CasUnreadableReadRefused { detail: cas_key_not_slot_addressable_detail } }
   } else {

@@ -1369,8 +1369,8 @@ fn session_commit_ok(c: LocalStoreCommit) -> Bool {
 // hold (the sweep), so the discriminator is the DELTA after open: one session acquire+release
 // advances the slot by 2; N per-commit brackets advance it by 2N. If the session were secretly
 // the per-commit path, the two deltas would match and this claim would fail. Lookups run under
-// the same session. Dummy names in the root make a whole-root List grow with store size; they
-// do not change the hold generation.
+// the same session. This measures hold-acquire count, not root-List count: occupancy writes still
+// list the store.
 test fn n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution() -> Bool {
   let n = 6
   let session_root_path = fresh_root_path()
@@ -1381,9 +1381,6 @@ test fn n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution
     Absent => false
     Present { value: store } => {
       let before = hold_slot_head_generation(root_path: session_root_path)
-      let planted = fold([1, 2, 3, 4, 5, 6, 7, 8], init: true, f: (ok, i) =>
-        ok && Filesystem.WriteCreateNew(path: store_path(root_path: session_root_path, name: concat("dummy-", i as String)), content: "x").success
-      )
       match typecheck_module_store_session(capability: store, family: native_module_verdict_bundle_artifact_kind, run: h => {
         let writes = [1, 2, 3, 4, 5, 6] |> map(i => typecheck_module_store_commit_under(held: h, req: bundle_req(module: concat("s", i as String)), payloads: verdicts(text: "s pass"), parts: []))
         let hits = [1, 2, 3, 4, 5, 6] |> map(i => store_lookup_is_hit(l: typecheck_module_store_lookup(capability: store, req: bundle_req(module: concat("s", i as String)))))
@@ -1391,7 +1388,7 @@ test fn n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution
       }) {
         LocalStoreBracketRefused { refusal: _ } => false
         LocalStoreBracketRan { value: body_ok, hold_release: _ } =>
-          planted && body_ok && (hold_slot_head_generation(root_path: session_root_path) - before) == 2
+          body_ok && (hold_slot_head_generation(root_path: session_root_path) - before) == 2
       }
     }
   }

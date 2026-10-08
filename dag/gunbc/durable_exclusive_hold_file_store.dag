@@ -143,7 +143,6 @@ fn hold_observation_of_cas(observed: CasSlotObservation<NonEmptyStr>) -> Durable
 fn observe_file_hold_retained(root: NonEmptyStr, key: NonEmptyStr, retention: CasSlotRetention) -> DurableHoldObservation
   admit_callers: [
     decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "observe_file_hold"),
-    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "observe_file_hold_windowed"),
     decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_acquire_prepare_retained"),
     decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_release_assess_retained"),
     decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_recovery_assess_retained"),
@@ -156,21 +155,13 @@ fn observe_file_hold(root: NonEmptyStr, key: NonEmptyStr) -> DurableHoldObservat
   observe_file_hold_retained(root: root, key: key, retention: KeepAllGenerations)
 }
 
-fn observe_file_hold_windowed(root: NonEmptyStr, key: NonEmptyStr, window: CasGenerationWindow) -> DurableHoldObservation
-  admit_callers: [
-    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_hold_check"),
-  ]
-{
-  observe_file_hold_retained(root: root, key: key, retention: KeepGenerationWindow { window: window })
-}
-
-fn observe_file_hold_windowed_at(root: NonEmptyStr, key: NonEmptyStr, window: CasGenerationWindow, generation: CasGeneration) -> DurableHoldObservation
+fn observe_file_hold_windowed_at(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration) -> DurableHoldObservation
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_hold_check"),
     decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_release_assess_windowed_at"),
   ]
 {
-  hold_observation_of_cas(observed: observe_cas_slot_state_windowed_at(root: root, key: key, window: window, generation: generation))
+  hold_observation_of_cas(observed: observe_cas_slot_state_windowed_at(root: root, key: key, generation: generation))
 }
 
 // EVERY EFFECTFUL HOLD WRITE IS LIVE READ -> SEALED PLAN -> CAS COMMIT, AND NO
@@ -350,7 +341,6 @@ fn file_hold_release_assess_retained(
 ) -> FileHoldReleaseAssessment
   admit_callers: [
     decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_release_assess"),
-    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_release_assess_windowed"),
   ]
 {
   match durable_hold_release_assess(
@@ -377,21 +367,13 @@ fn file_hold_release_assess(root: NonEmptyStr, slot_key: NonEmptyStr, owner: Dur
   file_hold_release_assess_retained(root: root, slot_key: slot_key, owner: owner, acquired_generation: acquired_generation, released_by: released_by, retention: KeepAllGenerations)
 }
 
-fn file_hold_release_assess_windowed(root: NonEmptyStr, slot_key: NonEmptyStr, owner: DurableHoldOwnerRef, acquired_generation: CasGeneration, released_by: DurableHoldReleaseRef, window: CasGenerationWindow) -> FileHoldReleaseAssessment
-  admit_callers: [
-    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_release_family_hold"),
-  ]
-{
-  file_hold_release_assess_retained(root: root, slot_key: slot_key, owner: owner, acquired_generation: acquired_generation, released_by: released_by, retention: KeepGenerationWindow { window: window })
-}
-
 fn file_hold_release_assess_windowed_at(root: NonEmptyStr, slot_key: NonEmptyStr, owner: DurableHoldOwnerRef, acquired_generation: CasGeneration, released_by: DurableHoldReleaseRef, window: CasGenerationWindow) -> FileHoldReleaseAssessment
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_release_family_hold"),
   ]
 {
   match durable_hold_release_assess(
-    observed: observe_file_hold_windowed_at(root: root, key: slot_key, window: window, generation: acquired_generation),
+    observed: observe_file_hold_windowed_at(root: root, key: slot_key, generation: acquired_generation),
     owner: owner,
     acquired_generation: acquired_generation,
   ) {

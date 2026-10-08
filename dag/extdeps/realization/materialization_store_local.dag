@@ -1208,7 +1208,7 @@ fn local_store_hold_check(held: LocalStoreFamilyHeld) -> LocalStoreHoldCheck
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_verified"),
   ]
 {
-  let observed = observe_file_hold_windowed_at(root: materialization_store_root_path(root: held.binding.root) as NonEmptyStr, key: local_store_hold_key(family: held.family), window: held.window, generation: held.generation)
+  let observed = observe_file_hold_windowed_at(root: materialization_store_root_path(root: held.binding.root) as NonEmptyStr, key: local_store_hold_key(family: held.family), generation: held.generation)
   match observed {
     HoldSlotHeld { generation: g, owner: o } =>
       if cas_generation_count(g: g) == cas_generation_count(g: held.generation) && durable_hold_owner_equal(left: o, right: held.owner) { LocalStoreHoldCurrent } else { LocalStoreHoldNotCurrent { observed: observed } }
