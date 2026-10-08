@@ -57,7 +57,43 @@ pub use crate::v1_std_core::{
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
+use std::cell::Cell;
 use std::rc::Rc;
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ReconcileNameProfile {
+    pub lookup_calls: u64,
+    pub overlay_probes: u64,
+    pub walk_entries: u64,
+    pub parent_steps: u64,
+    pub fork_ledger_names: u64,
+}
+
+thread_local! {
+    static LOOKUP_CALLS: Cell<u64> = Cell::new(0);
+    static OVERLAY_PROBES: Cell<u64> = Cell::new(0);
+    static WALK_ENTRIES: Cell<u64> = Cell::new(0);
+    static PARENT_STEPS: Cell<u64> = Cell::new(0);
+    static FORK_LEDGER_NAMES: Cell<u64> = Cell::new(0);
+}
+
+pub fn reset_reconcile_name_profile() {
+    LOOKUP_CALLS.with(|c| c.set(0));
+    OVERLAY_PROBES.with(|c| c.set(0));
+    WALK_ENTRIES.with(|c| c.set(0));
+    PARENT_STEPS.with(|c| c.set(0));
+    FORK_LEDGER_NAMES.with(|c| c.set(0));
+}
+
+pub fn snapshot_reconcile_name_profile() -> ReconcileNameProfile {
+    ReconcileNameProfile {
+        lookup_calls: LOOKUP_CALLS.with(|c| c.get()),
+        overlay_probes: OVERLAY_PROBES.with(|c| c.get()),
+        walk_entries: WALK_ENTRIES.with(|c| c.get()),
+        parent_steps: PARENT_STEPS.with(|c| c.get()),
+        fork_ledger_names: FORK_LEDGER_NAMES.with(|c| c.get()),
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeEnv {
@@ -913,6 +949,7 @@ pub fn str_bindings_from_bindings(
 }
 
 pub fn lookup_binding_on_chain(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
+    LOOKUP_CALLS.with(|c| c.set(c.get() + 1));
     lookup_binding_on_chain_seen(
         env,
         name,
@@ -1091,6 +1128,10 @@ fn lookup_binding_on_chain_seen(
                 },
                 std::option::Option::None => {
                     if walk_locals_only || env.ancestry_str_bindings.is_empty() {
+                        WALK_ENTRIES.with(|c| c.set(c.get() + 1));
+                        PARENT_STEPS.with(|c| {
+                            c.set(c.get() + env.parents.len() as u64)
+                        });
                         let walked = env.parents.iter().cloned().fold(
                             ChainBindingWalk {
                                 binding: std::option::Option::None,
@@ -1132,6 +1173,7 @@ fn lookup_binding_on_chain_seen(
                             std::option::Option::None => walked,
                         }
                     } else {
+                        OVERLAY_PROBES.with(|c| c.set(c.get() + 1));
                         match v1_rt::map_get(&env.ancestry_str_bindings.clone(), name.clone()) {
                             Some(binding) => ChainBindingWalk {
                                 binding: Some(binding.clone()),
@@ -1169,6 +1211,7 @@ pub fn ledger_peer_import_binding_forks(
             },
             |st, env| {
                 let idx = collect_chain_lookup_index_seen(env.clone(), st.memo);
+                FORK_LEDGER_NAMES.with(|c| c.set(c.get() + idx.acc.len() as u64));
                 Rc::new(v1_rt::map_keys(&*idx.acc)).iter().cloned().fold(
                     PeerImportForkLedger {
                         first: st.first,

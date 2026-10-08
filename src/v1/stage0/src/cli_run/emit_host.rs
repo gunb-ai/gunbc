@@ -4533,9 +4533,11 @@ mod fixture_closure_union_tests {
             closed.into_iter().collect();
         let started = std::time::Instant::now();
         let rss_before_kb = vm_hwm_kb();
+        crate::v1_compiler_infer_env::reset_reconcile_name_profile();
         let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(im_sources));
         let wall = started.elapsed();
         let rss_after_kb = vm_hwm_kb();
+        let names = crate::v1_compiler_infer_env::snapshot_reconcile_name_profile();
         let graph = resolved.graph.clone().expect("resolved graph");
         assert!(
             graph
@@ -4545,11 +4547,16 @@ mod fixture_closure_union_tests {
             "resolved graph must include gunbc.commit_workflow"
         );
         eprintln!(
-            "commit_workflow_typecheck producer=compile_to_resolved wall_ms={} rss_before_kb={} rss_after_kb={} peak_delta_kb={}",
+            "commit_workflow_typecheck producer=compile_to_resolved wall_ms={} rss_before_kb={} rss_after_kb={} peak_delta_kb={} lookup_calls={} overlay_probes={} walk_entries={} parent_steps={} fork_ledger_names={}",
             wall.as_millis(),
             rss_before_kb,
             rss_after_kb,
-            rss_after_kb.saturating_sub(rss_before_kb)
+            rss_after_kb.saturating_sub(rss_before_kb),
+            names.lookup_calls,
+            names.overlay_probes,
+            names.walk_entries,
+            names.parent_steps,
+            names.fork_ledger_names
         );
         assert!(
             wall.as_secs() < 2400,
