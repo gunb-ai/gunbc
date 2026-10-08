@@ -278,12 +278,17 @@ type MegaRacObservedShare {
   source_path: String
   share_type: String
   mount_cd: String
+  remote_media_support: String
 }
 
 type ShareBindingStanding
   = ShareBound
   | ShareMismatch { observed: MegaRacObservedShare }
   | ShareUnreadable { detail: String }
+
+type MediaGeneralShareRead
+  = MediaGeneralShareObserved { observed: MegaRacObservedShare }
+  | MediaGeneralShareUnreadable { detail: String }
 
 // THE CD ERROR CODE IS AN OBSERVED NUMBER, AND NO MEANING IS ESTABLISHED FOR ANY VALUE.
 // settings/media/general carries cd_error_code beside mount_cd. Boot run 36721915217 (an executed
@@ -337,35 +342,56 @@ fn cd_error_reading(body: String, firmware: BmcFirmwareReleaseIdentity) -> CdErr
 }
 
 // PURE, over the general-settings document. Every member is required: a document missing one is
-// unreadable, never "matches by default". mount_cd must be 1 because a share that is configured but
-// not mounted offers nothing to attach.
-fn share_binding_standing(body: String, expected: MegaRacShareBinding) -> ShareBindingStanding {
+// unreadable, never "matches by default". Empty server/path/type are valid observations (a factory
+// or cleared share). share_binding_standing consumes this decode; it does not re-read the wire.
+fn observe_media_general_share(body: String) -> MediaGeneralShareRead {
   match parse_json_document(s: body) {
-    JsonDocumentUnreadable { gap: _ } => ShareUnreadable { detail: body }
+    JsonDocumentUnreadable { gap: _ } => MediaGeneralShareUnreadable { detail: body }
     JsonDocumentParsed { value: v } =>
       match json_string_member(doc: v, key: "cd_remote_server_address") {
-        Absent => ShareUnreadable { detail: concat("cd_remote_server_address missing: ", body) }
+        Absent => MediaGeneralShareUnreadable { detail: concat("cd_remote_server_address missing: ", body) }
         Present { value: server } =>
           match json_string_member(doc: v, key: "cd_remote_source_path") {
-            Absent => ShareUnreadable { detail: concat("cd_remote_source_path missing: ", body) }
+            Absent => MediaGeneralShareUnreadable { detail: concat("cd_remote_source_path missing: ", body) }
             Present { value: path } =>
               match json_string_member(doc: v, key: "cd_remote_share_type") {
-                Absent => ShareUnreadable { detail: concat("cd_remote_share_type missing: ", body) }
+                Absent => MediaGeneralShareUnreadable { detail: concat("cd_remote_share_type missing: ", body) }
                 Present { value: kind } =>
                   match json_number_member(doc: v, key: "mount_cd") {
-                    Absent => ShareUnreadable { detail: concat("mount_cd missing: ", body) }
+                    Absent => MediaGeneralShareUnreadable { detail: concat("mount_cd missing: ", body) }
                     Present { value: mount } =>
-                      if server != (expected.server_address as String)
-                        || path != (expected.source_path as String)
-                        || kind != megarac_share_type_wire(t: expected.share_type)
-                        || mount != "1" {
-                        ShareMismatch { observed: MegaRacObservedShare { server_address: server, source_path: path, share_type: kind, mount_cd: mount } }
-                      } else {
-                        ShareBound
+                      match json_number_member(doc: v, key: "remote_media_support") {
+                        Absent => MediaGeneralShareUnreadable { detail: concat("remote_media_support missing: ", body) }
+                        Present { value: remote } =>
+                          MediaGeneralShareObserved {
+                            observed: MegaRacObservedShare {
+                              server_address: server,
+                              source_path: path,
+                              share_type: kind,
+                              mount_cd: mount,
+                              remote_media_support: remote,
+                            },
+                          }
                       }
                   }
               }
           }
+      }
+  }
+}
+
+// mount_cd must be 1 because a share that is configured but not mounted offers nothing to attach.
+fn share_binding_standing(body: String, expected: MegaRacShareBinding) -> ShareBindingStanding {
+  match observe_media_general_share(body: body) {
+    MediaGeneralShareUnreadable { detail: d } => ShareUnreadable { detail: d }
+    MediaGeneralShareObserved { observed: o } =>
+      if o.server_address != (expected.server_address as String)
+        || o.source_path != (expected.source_path as String)
+        || o.share_type != megarac_share_type_wire(t: expected.share_type)
+        || o.mount_cd != "1" {
+        ShareMismatch { observed: o }
+      } else {
+        ShareBound
       }
   }
 }

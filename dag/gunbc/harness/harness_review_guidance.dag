@@ -2,7 +2,7 @@ module gunbc.harness.harness_review_guidance
 
 import std.types { String, Int, List, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.harness.harness_tool { HarnessTool, RunCommandTool, harness_tool_wire_name }
+import gunbc.harness.harness_tool_kind { HarnessTool, RunCommandTool, harness_tool_wire_name }
 
 // THE REVIEWER IS ITS OWN SYLLOGISM, NOT THE WORKER'S PROMPT WITH A SWITCH. Its goal is different --
 // judge one candidate change against one stated goal, having written none of it -- so its premises

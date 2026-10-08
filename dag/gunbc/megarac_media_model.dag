@@ -2,6 +2,7 @@ module gunbc.megarac_media_model
 
 import std.types { Bool, Int, List, String }
 import std.measure { Second, second, second_count }
+import std.algebra { list_snoc_item }
 
 // THE BMC's VIRTUAL-MEDIA SUBSYSTEM (AMI MegaRAC SP-X, firmware 0.32): the same controller as
 // gunbc.bmc_model, held as its own record because its state -- web sessions, the NFS share binding,
@@ -88,7 +89,7 @@ fn megarac_open_session(world: MegaRacMediaWorld, cookie_jar: String) -> MegaRac
   let id = world.next_session
   let token = concat("modeled-csrf-", to_string(id))
   MegaRacOpened {
-    world: megarac_with_sessions(world: world, sessions: list_append(world.sessions, MegaRacSession { cookie_jar: cookie_jar, csrf_token: token, open: true }), next_session: id + 1),
+    world: megarac_with_sessions(world: world, sessions: list_snoc_item(xs: world.sessions, item: MegaRacSession { cookie_jar: cookie_jar, csrf_token: token, open: true }), next_session: id + 1),
     racsession_id: id,
     csrf_token: token,
   }

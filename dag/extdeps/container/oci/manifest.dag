@@ -61,10 +61,7 @@ fn accept_image_manifest(m: ImageManifest) -> ManifestOutcome {
 }
 
 fn layer_at(layers: List<OciDescriptor>, index: Int) -> OciDescriptor? {
-  match layers |> get(index) {
-    null => null
-    other => other
-  }
+  layers |> get(index)
 }
 
 fn accept_image_manifest_layers(m: ImageManifest, index: Int) -> ManifestOutcome {

@@ -3,6 +3,7 @@ module test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test
 import gunbc.build_cache_instance { ProcessIdentity }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { exit_failure }
+import std.algebra { list_snoc_item }
 import std.measure { Second, second }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant { Read, Write, ServiceOpTree, NamespacePosition, ModeledRealization, LifecycleByConstruction, Grant, Envelope }
@@ -707,7 +708,7 @@ test fn a_successor_in_another_pid_namespace_refuses_rather_than_recovering() ->
 fn with_clock_jump(w: MtCollins1BootWorld, at: Second, by: Int) -> MtCollins1BootWorld {
   MtCollins1BootWorld {
     bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts,
-    clock: ModeledWallClock { unix_at_origin: w.clock.unix_at_origin, step: w.clock.step, jumps: list_append(w.clock.jumps, ModeledClockStep { at: at, by: std.measure.second_displacement(count: by) }) },
+    clock: ModeledWallClock { unix_at_origin: w.clock.unix_at_origin, step: w.clock.step, jumps: list_snoc_item(xs: w.clock.jumps, item: ModeledClockStep { at: at, by: std.measure.second_displacement(count: by) }) },
     worker: w.worker, console: w.console, media: w.media,
   }
 }
