@@ -3886,6 +3886,63 @@ mod fixture_closure_union_tests {
         assert!(union.conflicts.contains("dag/a.dag"));
     }
 
+    /// RED: extending a fixture through the process-shared index left that fixture's
+    /// both-closure in the caches the claim fold reads. GREEN: the same walk still
+    /// closes (syllogism reaches its reference provider) and the shared typed cache
+    /// and both-closure edge map do not grow.
+    #[test]
+    fn fixture_closure_extension_does_not_populate_the_process_shared_index() {
+        let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let layers = crate::cli_run::witness_layer_roots();
+        let shared = match super::entry_resolve::try_process_shared_index(&layers) {
+            Ok(idx) => idx,
+            Err(e) => {
+                eprintln!("no process-shared index in this process: {e}");
+                return;
+            }
+        };
+        let typed_before = shared.typed_module_cache.borrow().len();
+        let edges_before = shared
+            .both_closure_edges
+            .borrow()
+            .as_ref()
+            .map(|e| e.ref_out.len())
+            .unwrap_or(0);
+        let admissions_before = shared.bare_reference_admission.borrow().len();
+        let module_index = crate::cli_run::build_module_path_index_from_witness_roots();
+        let sources = crate::cli_run::resolve_virtual_source_with_imports(
+            FIXTURE_SOURCE_PATH,
+            FIXTURE_CLOSURE_REFERENCE_REACH_MEMBER,
+            &module_index,
+        )
+        .unwrap_or_else(|e| panic!("fixture closure must still close: {e}"));
+        assert!(
+            sources.len() > 1,
+            "the syllogism specimen must pull its provider, got {}",
+            sources.len()
+        );
+        let typed_after = shared.typed_module_cache.borrow().len();
+        let edges_after = shared
+            .both_closure_edges
+            .borrow()
+            .as_ref()
+            .map(|e| e.ref_out.len())
+            .unwrap_or(0);
+        let admissions_after = shared.bare_reference_admission.borrow().len();
+        assert_eq!(
+            typed_before, typed_after,
+            "fixture closure must not admit typed-cache rows on the process-shared index"
+        );
+        assert_eq!(
+            edges_before, edges_after,
+            "fixture closure must not grow both_closure_edges on the process-shared index"
+        );
+        assert_eq!(
+            admissions_before, admissions_after,
+            "fixture closure must not grow bare-reference admission on the process-shared index"
+        );
+    }
+
     #[test]
     fn capture_gap_keys_on_shell_channel_not_realized_fact_equality() {
         use crate::v1_compiler_emit::{shell_emission_refusal_fact, ShellEmissionRefusal};

@@ -3605,6 +3605,27 @@ fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBi
     rows
 }
 
+/// Scratch index for one fixture-closure extension: shares the pool's `source_files` when the
+/// process-shared slot exists, mutates only its own caches, and is dropped with the loader.
+/// `try_index_for_run_or_owned_pool` over the layer roots would write those caches onto the
+/// slot the claim fold reads (RFM `fixture_compile_retained_on_the_process_shared_index`).
+fn scratch_index_for_fixture_closure_extension() -> Result<MultiEntryIndex, String> {
+    let layers = witness_layer_roots();
+    match entry_resolve::try_process_shared_index(&layers) {
+        Ok(shared) => Ok(entry_resolve::new_multi_entry_index_shell(
+            shared.source_files.clone(),
+            &shared.source_roots,
+        )),
+        Err(_) => {
+            let roots = entry_resolve::canonical_shared_index_roots(&layers);
+            Ok(entry_resolve::new_multi_entry_index_shell(
+                try_build_module_index(&roots)?,
+                &roots,
+            ))
+        }
+    }
+}
+
 /// The closure an in-memory (not-on-disk) fixture entry compiles against: the corpus modules its
 /// authored `import` lines name, read from the workspace through `module_index`, CLOSED BY THE
 /// ONE CLOSURE AUTHORITY (`extend_sources_to_both_closure_fixpoint`), then the entry itself.
@@ -3623,6 +3644,8 @@ fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBi
 /// authored with an explicit import manifest a witness may be probing (an unlisted use, a
 /// refused import), so its own spelling stays exactly what it declares; every module it reaches
 /// is closed as the corpus closes it. An extension failure is returned, never widened past.
+/// The fixpoint mutates a scratch index (dropped with the loader), never the process-shared
+/// slot the claim fold reads.
 pub(crate) fn resolve_virtual_source_with_imports(
     entry_path: &str,
     entry_content: &str,
@@ -3656,7 +3679,7 @@ pub(crate) fn resolve_virtual_source_with_imports(
     let mut sources = if imported.is_empty() {
         imported
     } else {
-        let index = entry_resolve::try_index_for_run_or_owned_pool(&witness_layer_roots())?;
+        let index = scratch_index_for_fixture_closure_extension()?;
         extend_sources_to_both_closure_fixpoint(imported, &index)?
             .into_iter()
             // One spelling per file: the index may carry a pulled module under its absolute
