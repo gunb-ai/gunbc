@@ -6,11 +6,25 @@
 
 ## Answer
 
-The full rework is XL: about 70 PRs, roughly 11 of which regenerate stage0. That is 9–12 months on two lanes and 12–17 months on one. About 12 operator rulings set the pace more than code volume does.
+The first revision's year-long figure bundled three projects into one estimate:
+- fixing incorrect parsing;
+- removing avoidable retention;
+- building the global materialization system.
 
-The first deliverable is not a cache controller. It is **deleting the parse memo**, which is a correctness bug in production today. "Mandatory" is best read as a mandatory decision per judgment result, which may be "do not retain", not as mandatory caching.
+It also priced them at historical landing times with weeks of ruling latency. The operator ruled on 2026-10-08 (see "Operator rulings"), and the plan below delivers in checkpoints:
+- the parser fix in days;
+- a resource envelope in weeks 2–4;
+- bounded retention, then a first complete governed example, by about weeks 6–8.
 
-Inside one run the demand graph knows each value's last consumer exactly, so within-run retention needs no heuristic. An online hit/miss policy (S3-FIFO class) is only for data-dependent recurrence: cross-run reuse and long-lived processes, after a reuse-distance measurement.
+Each checkpoint is measured and the remainder re-estimated before the next is funded. The full program (Phase 5's tiers and identity, value-grain governance) stays provisional.
+
+"Mandatory" is read as a mandatory decision, which may be "do not retain", not as mandatory caching. Every allocation is charged to one budget regardless.
+
+Exact release and tiering solve different problems:
+- release data when nothing needs it again;
+- spill or recompute data that is still needed but cannot stay resident.
+
+Exact release needs a graph closed over every consumer, which has to be established, not assumed. Tiering can matter within one run as well as across runs.
 
 ## What is broken today
 
@@ -71,37 +85,35 @@ Over all of `dag` + `src/v2` (7,932 files whose parse is accepted), comparing me
 
 ## Plan
 
-Two lanes give about 1.5×, not 2×. There is one seed token (stage0-regenerating PRs serialize), one engine owner, and one queue of rulings.
+| When | Deliverable | Exit evidence |
+|---|---|---|
+| Days 1–3 | The parse demand is priced below the cost floor (`Recompute`) through the ladder's own roster (v2-only, no stage0). The tests that pinned `Memoize` are updated, and a colliding-grammar regression asserts distinct ids and the expected span, independently of any memo | The new claim is red with the old verdict and green with the new; the CLI accepts `src/v2/std/logic.dag` |
+| Week 2 | Delete the memo carrier atomically, with its seed half: driver memo counters and the interpreter arm | Nothing references the deleted symbols; the regression control stays enrolled |
+| Weeks 2–4 | Envelope: one grant per run (cgroup bound, or a declared default ceiling, narrowable only); a counting allocator in both native mains; a wall that allocates nothing, with reserved headroom; typed refusal at per-file and per-demand safe points; a cgroup backstop; pressure tests | Planted tiny grants refuse typed; no OOM kills; overhead measured |
+| Weeks 3–6 | Retention: carry the resolution context; typed fault on an absent payload; driver readers moved into the graph; release at the last consumer where coverage is established; CLI keeps declaration projections and an interval table instead of trees and the merged span index | Per-phase allocator receipts; **re-estimate here** |
+| Weeks 6–8 | The first complete governed example: one native workload with in-run reuse under memory pressure, completing within its grant under the default policy with no module tuning. Plus practical mandatory governance: capacity-checked ladder admission, no capacity literals on the native path, and a census claim that reds when a new private cache appears | The named workload completes at its grant; the census is green |
 
-| Phase | Goal | Size / PRs | Two-lane milestone |
-|---|---|---|---|
-| 0. Line-stop and honesty | Declare #12401's retention as a §4b(3) rung drop; file failure-mode rows for the memo collision class; correct carriers that describe deleted controllers as live; typed engine fault for an absent prerequisite (closes a fail-open read before any release); delete inert `CacheLayerPlan`, `cached_stage` and the compile-stage memo; fix cost shapes in .dag | L / ~10, no stage0 | weeks 1–3 |
-| 1. Delete the parse memo | One atomic change across ~47 files: parser, provider row, frame/replay/adopt machinery, rendered-main counters, interpreter arm. A typed cost-floor warrant naming the comparison instrument; an overlap-recursion census replacing packrat's bound; a span-faithfulness wall. Fallback only if the gate falsifies deletion: a selective memo (`pattern` only) on a monotone allocator | L / 4–5, 1 seed | weeks 3–4 |
-| 2. The contract | One grant per run (narrow-only); a counting allocator rendered only into the native mains, not `v1_rt`; a wall that allocates nothing (write(2) + `_exit`, armed once at the composition root); spawners bound to the same grant; kills classified as accounting defects; typed refusal at safe points; a baseline instrument | L–XL / ~12, 3–4 seed or host | weeks 10–13 |
-| 3. Bounded retention | Carry `ResolutionContext` (provider-program PR2); move post-drain readers into the graph; exact last-consumer release from `dependents_of`; split up `NativeTestContext`; CLI interval table; a total census that keeps projections; emitter moves instead of clone-then-`make_mut`; results stop carrying intermediates | XL / ~21, ~6 seed | weeks 20–26 |
-| 4. Mandatory governance | Ladder law (scope release goes through capacity admission; selection through `std.decision`); derived verdict per judgment kind with seal refusal; closed-inventory census at identity grain; default fold plus argv override; no capacity literals; an emitter wall for process-lifetime statics | XL / ~12 | weeks 28–34 |
-| 5. Tiers and identity, only where the graph runs out | Store on the native route; native hashing; identity split for one family; disk tier and occupancy ledger; reuse-distance measurement, then S3-FIFO. Paging of live graphs only if measured working sets exceed the grant | XL / ~12, gated on M1.c (#12581) | weeks 38–50 |
+Acceptance criteria name three populations separately:
+- workloads that must complete within 1 GiB;
+- workloads permitted to return a typed resource refusal;
+- the guarantee, for both, that nothing silently exceeds the envelope.
 
-The precedents behind this shape:
-- **DuckDB's buffer manager:** one limit over cached data and intermediates, reserve before evicting, evict in order of restoration cost, typed out-of-memory error carrying used and limit.
-- **Spark's unified memory manager:** execution may evict cache down to a floor, never the reverse.
-- **Bazel's action cache plus CAS:** never evict content a live entry names; a dangling entry is a miss.
-- **Becket & Somogyi on packrat parsing:** memoizing every nonterminal "was always the worst possible choice".
+Prompt refusal alone does not pass. Even with the memo gone, the census still refuses 134 files on the real roots (genuine parse and lowering refusals), so a full-roots CLI run is not yet a must-complete workload.
 
-## Rulings required
+Deferred, each with its trigger:
+- an online replacement policy, until a cache with measured reuse distance exists;
+- spill of live data, until a measured workload's live set exceeds its grant;
+- computation and content identity, and handles, until M1.c's identity contract lands;
+- compiler-derived value-grain boundaries, as the follow-on to judgment-grain governance.
 
-- **R1. What "mandatory and global" governs.** Recommended: one derived ladder decision per `DemandIdentity` (judgment-result grain), with values inside a judgment charged to the grant but not individually governed. The plan lives as D15 in the demand-engine program. Reading it at value grain turns Phase 4 into research whose likely result is a heuristic DESIGN forbids.
-- **R2. The parse memo.** Recommended: delete it, with a typed warrant and the overlap-recursion census as the replacement bound. The alternative is the monotone-allocator selective memo.
-- **R3. D11 scope.** Admit live heap bytes as a host fact, and one enforcement seam at the composition root.
-- **R4. PURPOSE admission.** About 11 seed PRs: the counter and wall in native mains only, the observation seam, emitter cost-shape fixes, and deletion of the memo's interpreter arm.
-- **R5. Envelope semantics.** With no observed bound: refuse (today's law) or use a declared default. Confirm that a request narrows and never widens. Decide whether a full-roots run must complete at 1 GiB.
-- **R6. Share restoration under pressure.** May a released, deterministic value (a member's tree) be regenerated as restoration of one production?
-- **R7. Engine ready order.** A release-aware canonical key, as an amendment of the single dispatch policy (#12363 owner).
-- **R8. The `NativeTestContext` derivation for M3a** (#12363 owner).
-- **R9. Store budgets under one envelope.** Amend or confirm royal-moth-86 (2026-10-03): family budgets become `product.budget_tree` children, and the run grant covers RAM and spill.
-- **R10. Native hashing for identity.**
-- **R11. CI placement while the job roster is closed.**
-- **R12. Owners.** Provider-program PR2 (unowned since #12957 closed); #12363's availability; M1.c (#12581, quiet since 2026-09-29).
+## Operator rulings (2026-10-08)
+
+- **R2.** The parse memo is priced `Recompute`, then deleted. Packrat's linear-time worst case is given up; the parser stress tests remain as regression guards, not as a claimed bound.
+- **R5.** With no observable OS limit, a run uses a declared default ceiling that a request can only narrow.
+- **R4/R3, scoped seed exception.** Allowed: the allocator counter and wall rendered only into the native mains (no new public `v1_rt` item, nothing shipped into other seed binaries), a live-heap reading at the composition root, removal of the memo counters, and the driver's reader moves.
+- **R1, practical first.** Every allocation is charged to one budget. A cache exists only through the ladder, enforced by a census claim. The default is release at last use or at end of scope. Compiler-derived boundaries come later, with their own trigger.
+
+Still open: R6 (share restoration), R7 (engine ready order), R8 (`NativeTestContext` derivation), R9 (store budgets under one envelope), R10 (native hashing), R11 (CI placement) and R12 (owners).
 
 ## Do not do
 
@@ -119,7 +131,7 @@ The precedents behind this shape:
 ## Definition of done
 
 1. **One envelope.** Each native run resolves exactly one grant per conserved axis. One allocator counter counts execution and retention, and lease seats are derived.
-2. **Typed adherence.** On the baseline roster, both at 1 GiB and at a planted tiny grant, every run either completes within its grant or ends in a typed, located refusal, with no partial stdout and no OOM kills. The instrument publishes each workload's minimum viable grant.
+2. **Typed adherence and useful execution.** A named must-complete roster finishes within its grant. A named may-refuse roster ends in a typed, located refusal with no partial stdout. Neither silently exceeds the envelope, and there are no OOM kills. The instrument publishes each workload's minimum viable grant.
 3. **Mandatory.** Every judgment identity carries a derived verdict, and the seal refuses a missing one. Nothing outlives its judgment except through four routes:
    - an engine value released at its last consumer;
    - a ladder-discharged provider entry;
