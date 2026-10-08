@@ -15,7 +15,7 @@ import std.repair_input_origin {
 import std.primitive_projection {
   primitive_identity_runtime_name, primitive_projection_row_for_declaration
 }
-import gunbc.rust_emitted_edge { EmittedEdge, rust_module_emit_filename, rust_prelude_emitted_edges, emitted_edge_target_module, semantic_source_reference_edge, RuntimePrelude, ReexportFacade }
+import gunbc.rust_emitted_edge { EmittedEdge, rust_module_emit_filename, rust_prelude_emitted_edges, emitted_edge_target_module, semantic_source_reference_edge, declared_import_edge, RuntimePrelude, ReexportFacade }
 import gunbc.reference_derived_candidate {
   ReferenceDerivedCandidateDisposition,
   CandidateSurvived,
@@ -5692,6 +5692,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     reference_rows: reference_plan.rows,
     emitted_edges: concat(
       rust_prelude_emitted_edges(module: this_mod_filename),
+      declared_import_edges(from: this_mod_filename, imports: module_imports(n: m), source_indices: scope.type_env.source_indices, module_index: module_index),
       rust_use_line_edges_surviving(
         edges: concat(rendered_imports.edges, reference_plan.edges, rust_use_line_edges(from: this_mod_filename, lines: uncovered_svc_use_lines)),
         final_lines: concat(merged_import_lines, uncovered_svc_imports)
@@ -6718,6 +6719,17 @@ fn authored_import_binds_provider_declaration(name: String, import_module: Strin
 // emitted file takes -- measured as EmitterReverseEdge std_content_hash -> v2_std_node over the
 // v2.compiler.compile closure, with no such line in std_content_hash.rs. The edge keeps its typed
 // provenance; this only removes the ones whose target no surviving line names.
+// ONE EDGE PER AUTHORED IMPORT OF AN EMITTED MODULE, NOT FILTERED BY SURVIVING USE-LINES
+// (gunbc.rust_emitted_edge DeclaredImport). An import naming a module outside the emitted closure
+// has no file to path into and returns no edge.
+fn declared_import_edges(from: String, imports: List<Node>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<EmittedEdge> {
+  unique_strings(items: imports |> map(imp => authored_name_at(source_indices: source_indices, node: imp)))
+    |> filter(name => match map_get(module_index.by_name, name) { Present { value: _ } => true  Absent => false })
+    |> map(name => rust_module_emit_filename(module_name: name))
+    |> filter(target => target != from)
+    |> map(target => declared_import_edge(from: from, to_module: target))
+}
+
 fn rust_use_line_edges_surviving(edges: List<EmittedEdge>, final_lines: List<String>) -> List<EmittedEdge> {
   let named = final_lines
     |> map(l => rust_use_after_crate(line: l))

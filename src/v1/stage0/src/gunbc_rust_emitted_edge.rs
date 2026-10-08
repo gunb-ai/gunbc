@@ -19,6 +19,7 @@ pub enum EmittedEdgeProvenance {
     RuntimePrelude,
     ReexportFacade,
     SemanticSourceReference,
+    DeclaredImport,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -108,6 +109,16 @@ pub fn semantic_source_reference_edge(from: String, to_module: String) -> Rc<Emi
     })
 }
 
+pub fn declared_import_edge(from: String, to_module: String) -> Rc<EmittedEdge> {
+    Rc::new(EmittedEdge {
+        from: from.clone(),
+        to: Rc::new(EmittedEdgeTarget::EmittedModuleTarget {
+            module: to_module.clone(),
+        }),
+        provenance: EmittedEdgeProvenance::DeclaredImport,
+    })
+}
+
 pub fn emitted_edge_target_module(edge: Rc<EmittedEdge>) -> Rc<Vec<String>> {
     match (*edge.to.clone()).clone() {
         EmittedEdgeTarget::EmittedModuleTarget { module: target, .. } => {
@@ -123,3 +134,5 @@ pub struct RuntimePrelude;
 pub struct ReexportFacade;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SemanticSourceReference;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DeclaredImport;

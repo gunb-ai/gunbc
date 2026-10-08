@@ -4,7 +4,7 @@
 use self::Stage0EmittedEdgeAdmission::*;
 use self::Stage0EmittedModuleOwner::*;
 use crate::gunbc_rust_emitted_edge::EmittedEdgeProvenance::{
-    ReexportFacade, RuntimePrelude, SemanticSourceReference,
+    DeclaredImport, ReexportFacade, RuntimePrelude, SemanticSourceReference,
 };
 use crate::gunbc_rust_emitted_edge::EmittedEdgeTarget::{
     EmittedCrateRootTarget, EmittedModuleTarget,
@@ -430,6 +430,7 @@ pub fn stage0_emitted_edge_provenance_name(provenance: EmittedEdgeProvenance) ->
         EmittedEdgeProvenance::RuntimePrelude => "runtime-prelude".to_string(),
         EmittedEdgeProvenance::ReexportFacade => "reexport-facade".to_string(),
         EmittedEdgeProvenance::SemanticSourceReference => "semantic-source-reference".to_string(),
+        EmittedEdgeProvenance::DeclaredImport => "declared-import".to_string(),
     }
 }
 

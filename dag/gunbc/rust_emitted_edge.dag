@@ -16,11 +16,17 @@ import std.types { List, String }
 // Only the provenances a producer emits are arms. SemanticSourceReference is a use-line the
 // emitter derives from the source: an authored import (emit_imports), a reference-derived import
 // (reference_derived_use_line_plan), or a service import (emit_module_full). Helper-carrier and
-// service/CLI runtime-surface arms land with their producers, not before them.
+// service/CLI runtime-surface arms land with their producers, not before them. DeclaredImport is
+// an authored import of an emitted module, returned whether or not a use-line for it survives: the
+// emitted body may still path into that module inline (`crate::<module>::`), and those inline
+// paths are not returned as edges (gunbc.guarantee_stall
+// emitted_inline_crate_path_edges_unreturned_stall), so the crate partition reads the import as a
+// structural over-approximation of the body's reach, computed as the answer.
 type EmittedEdgeProvenance
   = RuntimePrelude
   | ReexportFacade
   | SemanticSourceReference
+  | DeclaredImport
 
 type EmittedEdgeTarget
   = EmittedModuleTarget { module: String }
@@ -71,6 +77,10 @@ fn rust_prelude_emitted_edges(module: String) -> List<EmittedEdge> {
 
 fn semantic_source_reference_edge(from: String, to_module: String) -> EmittedEdge {
   EmittedEdge { from: from, to: EmittedModuleTarget { module: to_module }, provenance: SemanticSourceReference }
+}
+
+fn declared_import_edge(from: String, to_module: String) -> EmittedEdge {
+  EmittedEdge { from: from, to: EmittedModuleTarget { module: to_module }, provenance: DeclaredImport }
 }
 
 fn emitted_edge_target_module(edge: EmittedEdge) -> List<String> {

@@ -53,8 +53,8 @@ pub use crate::gunbc_reference_derived_candidate::{
 pub use crate::gunbc_rust_decl_type_overlay::rust_decl_type_container_overlay_is_admitted;
 use crate::gunbc_rust_emitted_edge::EmittedEdgeProvenance::{ReexportFacade, RuntimePrelude};
 pub use crate::gunbc_rust_emitted_edge::{
-    emitted_edge_target_module, rust_module_emit_filename, rust_prelude_emitted_edges,
-    semantic_source_reference_edge,
+    declared_import_edge, emitted_edge_target_module, rust_module_emit_filename,
+    rust_prelude_emitted_edges, semantic_source_reference_edge,
 };
 pub use crate::gunbc_rust_emitted_edge::{EmittedEdge, EmittedEdgeProvenance};
 pub use crate::gunbc_rust_source_type_bindings::rust_host_option_carrier_declarations;
@@ -11335,8 +11335,16 @@ pub fn emit_module_full(
             }),
             reference_rows: reference_plan.rows.clone(),
             emitted_edges: v1_rt::concat(
-                crate::gunbc_rust_emitted_edge::rust_prelude_emitted_edges(
-                    this_mod_filename.clone(),
+                v1_rt::concat(
+                    crate::gunbc_rust_emitted_edge::rust_prelude_emitted_edges(
+                        this_mod_filename.clone(),
+                    ),
+                    declared_import_edges(
+                        this_mod_filename.clone(),
+                        crate::v1_std_core::module_imports(m.clone()),
+                        scope.type_env.clone().source_indices.clone(),
+                        module_index.clone(),
+                    ),
                 ),
                 rust_use_line_edges_surviving(
                     v1_rt::concat(
@@ -13758,6 +13766,72 @@ pub fn authored_import_binds_provider_declaration(
             }
         }
     }
+}
+
+pub fn declared_import_edges(
+    from: String,
+    imports: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_index: Rc<ModuleIndex>,
+) -> Rc<Vec<Rc<EmittedEdge>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for target in Rc::new({
+            let mut __result = Vec::new();
+            for target in Rc::new({
+                let mut __result = Vec::new();
+                for name in Rc::new({
+                    let mut __result = Vec::new();
+                    for name in crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
+                        let mut __result = Vec::new();
+                        for imp in imports.iter().cloned() {
+                            __result.push(crate::v1_std_core::authored_name_at(
+                                source_indices.clone(),
+                                imp.clone(),
+                            ));
+                        }
+                        __result
+                    }))
+                    .iter()
+                    .cloned()
+                    {
+                        if match v1_rt::map_get(&module_index.by_name.clone(), name.clone()) {
+                            Some(_) => true,
+                            std::option::Option::None => false,
+                        } {
+                            __result.push(name);
+                        }
+                    }
+                    __result
+                })
+                .iter()
+                .cloned()
+                {
+                    __result.push(crate::gunbc_rust_emitted_edge::rust_module_emit_filename(
+                        name.clone(),
+                    ));
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                if (target.clone() != from.clone()) {
+                    __result.push(target);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            __result.push(crate::gunbc_rust_emitted_edge::declared_import_edge(
+                from.clone(),
+                target.clone(),
+            ));
+        }
+        __result
+    })
 }
 
 pub fn rust_use_line_edges_surviving(

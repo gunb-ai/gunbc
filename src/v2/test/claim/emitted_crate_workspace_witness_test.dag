@@ -3,6 +3,7 @@ module test.claim.emitted_crate_workspace_witness
 import std.types { Bool, List, String }
 import v2.std.collection { empty_map }
 import v2.std.compilers.compilation_unit { ModuleDag, ModuleDagEdge, ModuleId }
+import v2.workflow.rust_crate_partition { EmitterReverseEdge }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.workflow.emitted_crate_workspace {
   EmittedWorkspacePlanned,
@@ -12,6 +13,8 @@ import v2.workflow.emitted_crate_workspace {
   EmittedWorkspaceRedPlanned,
   EmittedWorkspaceRedRefused,
   emitted_workspace_plan_over,
+  emitted_workspace_plan_from_emission,
+  EmittedWorkspaceEdgeMergeRefused,
   emitted_workspace_red_over,
   emitted_workspace_runtime_package
 }
@@ -157,6 +160,52 @@ test fn an_emitted_module_outside_the_dag_refuses_by_name() -> Bool {
   ) {
     EmittedWorkspaceRefused { cause: EmittedWorkspaceClosuresDisagree { not_emitted: n, outside_dag: o } } =>
       (n |> count) == 0 && o == ["fx_stray"]
+    _ => false
+  }
+}
+
+// ── THE PRODUCTION PLAN, FROM THE EMISSION ALONE ─────────────────────────────────────────────
+//
+// emitted_workspace_plan_from_emission reads no corpus: the DAG's nodes are the emitted basenames
+// and its source edges are the DeclaredImport edges. The chain's imports a -> b and b -> c arrive
+// only as declared imports here (no surviving use-line), which is the inline-path case the
+// declared edge exists for.
+
+fn emission_edge_froms() -> List<String> { ["fx_a", "fx_a", "fx_b", "fx_b", "fx_c", "fx_c", "fx_a", "fx_b"] }
+fn emission_edge_tos() -> List<String> { ["v1_rt", "", "v1_rt", "", "v1_rt", "", "fx_b", "fx_c"] }
+fn emission_edge_provenances() -> List<String> {
+  ["runtime-prelude", "reexport-facade", "runtime-prelude", "reexport-facade", "runtime-prelude", "reexport-facade",
+   "declared-import", "declared-import"]
+}
+
+test fn the_emission_alone_plans_the_chain_by_its_declared_imports() -> Bool {
+  match emitted_workspace_plan_from_emission(
+    emitted_basenames: chain_emitted_basenames(),
+    edge_froms: emission_edge_froms(),
+    edge_tos: emission_edge_tos(),
+    edge_provenances: emission_edge_provenances(),
+    target_crate_count: 3
+  ) {
+    EmittedWorkspacePlanned { plan: plan } =>
+      plan.crate_count == 4
+        && plan.module_count == 3
+        && plan.rows |> any(r => (r.modules |> any(m => m == "fx_a")) && (r.reexport_packages |> count) == 3)
+        && plan.rows |> any(r => (r.modules |> any(m => m == "fx_c")) && (r.reexport_packages |> count) == 1)
+    EmittedWorkspaceRefused { cause: _ } => false
+  }
+}
+
+// The required refusal survives the move off the corpus: a use-line c -> a against the declared
+// a -> b -> c closes a cycle the source never had, and refuses by name rather than merging.
+test fn an_emitter_edge_against_the_declared_imports_refuses_as_a_reverse_edge() -> Bool {
+  match emitted_workspace_plan_from_emission(
+    emitted_basenames: chain_emitted_basenames(),
+    edge_froms: concat(emission_edge_froms(), ["fx_c"]),
+    edge_tos: concat(emission_edge_tos(), ["fx_a"]),
+    edge_provenances: concat(emission_edge_provenances(), ["semantic-source-reference"]),
+    target_crate_count: 3
+  ) {
+    EmittedWorkspaceRefused { cause: EmittedWorkspaceEdgeMergeRefused { cause: EmitterReverseEdge { from: _, to: _, provenance: _ } } } => true
     _ => false
   }
 }

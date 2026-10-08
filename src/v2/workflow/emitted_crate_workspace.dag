@@ -19,6 +19,7 @@ import gunbc.rust_emitted_edge {
   RuntimePrelude,
   ReexportFacade,
   SemanticSourceReference,
+  DeclaredImport,
   rust_module_emit_filename,
   rust_runtime_prelude_module
 }
@@ -155,6 +156,7 @@ fn emitted_workspace_provenance(name: String) -> Optional<EmittedEdgeProvenance>
   if name == "runtime-prelude" { optional_present(value: RuntimePrelude) }
   else if name == "reexport-facade" { optional_present(value: ReexportFacade) }
   else if name == "semantic-source-reference" { optional_present(value: SemanticSourceReference) }
+  else if name == "declared-import" { optional_present(value: DeclaredImport) }
   else { Absent }
 }
 
@@ -383,6 +385,7 @@ fn emitted_workspace_red(
             }
           RuntimePrelude => Absent
           ReexportFacade => Absent
+          DeclaredImport => Absent
         }
     }
   })
@@ -425,37 +428,92 @@ fn emitted_workspace_plan_over(
           match emitted_workspace_basename_dag(module_dag: module_dag, module_by_basename: module_by_basename, emitted_basenames: emitted_basenames) {
             BasenameDagRefused { cause: c } => EmittedWorkspaceRefused { cause: c }
             BasenameDagOk { module_dag: basename_dag } =>
-              match module_dag_with_emitted_edges(module_dag: basename_dag, emitted: edges) {
-                ModuleDagEmittedRefused { cause: c } => EmittedWorkspaceRefused { cause: EmittedWorkspaceEdgeMergeRefused { cause: c } }
-                ModuleDagEmittedMerged { module_dag: merged } => {
-                  let closure_dag = emitted_workspace_without_runtime(module_dag: merged)
-                  match resolve_partition_outcome(
-                    parameter: PolicyPartitionParam { policy: PartitionPolicy { target_crate_count: target_crate_count } },
-                    module_dag: closure_dag
-                  ) {
-                    ResolvePartitionRefused { cause: c } => EmittedWorkspaceRefused { cause: EmittedWorkspacePartitionRefused { cause: c } }
-                    ResolvePartitionOk { assignment: assignment, provenance: _ } => {
-                      let unit_ids = list_unique_sorted_ids(items: assignment |> map_values)
-                      let unit_edges = assignment_unit_dep_edges(module_dag: closure_dag, assignment: assignment)
-                      match emitted_workspace_derived_rows(unit_rows: emitted_workspace_unit_rows(modules: closure_dag.modules, assignment: assignment, unit_ids: unit_ids), unit_edges: unit_edges) {
-                        DerivedRowsRefused { cause: c } => EmittedWorkspaceRefused { cause: c }
-                        DerivedRowsOk { rows: rows } =>
-                          EmittedWorkspacePlanned {
-                            plan: EmittedWorkspacePlan {
-                              rows: rows,
-                              red: emitted_workspace_red(edges: edges, assignment: assignment, unit_edges: unit_edges),
-                              module_count: closure_dag.modules |> count,
-                              crate_count: rows |> count,
-                              facade_is_whole_closure: emitted_workspace_facade_is_whole_closure(rows: rows)
-                            }
-                          }
-                      }
-                    }
-                  }
+              emitted_workspace_plan_over_basename_dag(basename_dag: basename_dag, edges: edges, target_crate_count: target_crate_count)
+          }
+      }
+  }
+}
+
+// THE SOURCE EDGES OF AN EMISSION ARE ITS DECLARED IMPORTS (gunbc.rust_emitted_edge DeclaredImport).
+// They seed the DAG, so every other returned edge merges against them and an emitter edge that
+// closes a cycle against the source still refuses as EmitterReverseEdge.
+fn emitted_workspace_emission_dag(emitted_basenames: List<String>, edges: List<EmittedEdge>) -> ModuleDag {
+  ModuleDag {
+    modules: emitted_basenames |> map(b => b as ModuleId),
+    edges: edges |> fold(init: [], f: fn(acc, edge) {
+      match edge.provenance {
+        DeclaredImport =>
+          match edge.to {
+            EmittedModuleTarget { module: to_module } =>
+              acc |> list_push(ModuleDagEdge { from: edge.from as ModuleId, to: to_module as ModuleId })
+            EmittedCrateRootTarget => acc
+          }
+        RuntimePrelude => acc
+        ReexportFacade => acc
+        SemanticSourceReference => acc
+      }
+    }),
+    exports: empty_map(),
+    type_definitions: empty_map()
+  }
+}
+
+// THE PRODUCTION PLAN: the layout of ANY emission, read from the emission alone -- its module
+// basenames and its returned edges -- with no corpus scan, so a fixture's virtual closure and the
+// emitted compiler partition by one route. The instrument's emitted_workspace_plan_over adds the
+// cross-check that the emission and the corpus-derived closure agree; that check needs a corpus and
+// is the instrument's, not a precondition of every build.
+fn emitted_workspace_plan_from_emission(
+  emitted_basenames: List<String>,
+  edge_froms: List<String>,
+  edge_tos: List<String>,
+  edge_provenances: List<String>,
+  target_crate_count: Int
+) -> EmittedWorkspaceOutcome {
+  match emitted_workspace_edges(froms: edge_froms, tos: edge_tos, provenances: edge_provenances) {
+    EdgeListRefused { cause: c } => EmittedWorkspaceRefused { cause: c }
+    EdgeListOk { edges: edges } =>
+      emitted_workspace_plan_over_basename_dag(
+        basename_dag: emitted_workspace_emission_dag(emitted_basenames: emitted_basenames, edges: edges),
+        edges: edges,
+        target_crate_count: target_crate_count
+      )
+  }
+}
+
+fn emitted_workspace_plan_over_basename_dag(
+  basename_dag: ModuleDag,
+  edges: List<EmittedEdge>,
+  target_crate_count: Int
+) -> EmittedWorkspaceOutcome {
+  match module_dag_with_emitted_edges(module_dag: basename_dag, emitted: edges) {
+    ModuleDagEmittedRefused { cause: c } => EmittedWorkspaceRefused { cause: EmittedWorkspaceEdgeMergeRefused { cause: c } }
+    ModuleDagEmittedMerged { module_dag: merged } => {
+      let closure_dag = emitted_workspace_without_runtime(module_dag: merged)
+      match resolve_partition_outcome(
+        parameter: PolicyPartitionParam { policy: PartitionPolicy { target_crate_count: target_crate_count } },
+        module_dag: closure_dag
+      ) {
+        ResolvePartitionRefused { cause: c } => EmittedWorkspaceRefused { cause: EmittedWorkspacePartitionRefused { cause: c } }
+        ResolvePartitionOk { assignment: assignment, provenance: _ } => {
+          let unit_ids = list_unique_sorted_ids(items: assignment |> map_values)
+          let unit_edges = assignment_unit_dep_edges(module_dag: closure_dag, assignment: assignment)
+          match emitted_workspace_derived_rows(unit_rows: emitted_workspace_unit_rows(modules: closure_dag.modules, assignment: assignment, unit_ids: unit_ids), unit_edges: unit_edges) {
+            DerivedRowsRefused { cause: c } => EmittedWorkspaceRefused { cause: c }
+            DerivedRowsOk { rows: rows } =>
+              EmittedWorkspacePlanned {
+                plan: EmittedWorkspacePlan {
+                  rows: rows,
+                  red: emitted_workspace_red(edges: edges, assignment: assignment, unit_edges: unit_edges),
+                  module_count: closure_dag.modules |> count,
+                  crate_count: rows |> count,
+                  facade_is_whole_closure: emitted_workspace_facade_is_whole_closure(rows: rows)
                 }
               }
           }
+        }
       }
+    }
   }
 }
 
