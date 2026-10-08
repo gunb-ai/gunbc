@@ -2418,6 +2418,11 @@ fn walk_cli_door(
 /// ingest at that fold; these walks are the inhabitance that the discovering --source-root, not
 /// the file spelling, tags the tree — deleting any of the four fixture roots makes this control
 /// fail.
+///
+/// SEED DELTA (ctrl hand-Rust receipt): extend `walk_cli_door`; no new production route and no
+/// deleted scaffold. Accounted on `gunbc.source_root_eval_driver_seed_growth`
+/// `source_root_eval_driver_seed_growth_justification` (lane `v1-hand-queue-drain`). Net seed is
+/// this inhabitance walk over existing `run_cli_door`.
 fn walk_native_ingest_layout_controls(binary: &Path, workspace: &Path) -> Result<(), String> {
     let copied = workspace.join(NATIVE_INGEST_COPIED_SINGLE_ROOT);
     let src_in_dag = workspace.join(NATIVE_INGEST_SRC_IN_DAG_ROOT);
