@@ -850,16 +850,14 @@ fn required_gate_prefixes() -> List<String> {
 // declares SubstrateInputsOnly. The first required run after admission is the priced receipt; read
 // its identity-grained disposition.
 //
-// THE EIGHTH ROW IS THE ADMITTED-IDENTITY-CAST ROUTE'S CLAIMS (gunbc#12443; operator escalation
-// msg_a5787a77). They drive the real source route -- v2.compiler.self_host.closure_emission
-// emit_closure_from_ingest_located under the production Rust model -- and assert that an Int
-// identity cast emits as the closure's only member and that a cast with no witness is refused at the
-// entry member by coercion's own mismatch. Outside the gate they ran only as changed witnesses, so a
-// regression that admitted a witness-less cast, or stopped emitting the admitted one, would stay
-// green. Both producers are WARM in v2.workflow.floor_pure_producer_share and the claims measured
-// 0ms on the floor; the module declares SubstrateInputsOnly. Its native partner,
-// v2.test.execution.emit_host_identity_cast_native, is deliberately NOT a row: every one of its runs
-// spawns the host build tool, so it executes only as a changed witness, as that module states.
+// THE EIGHTH ROW IS THE IDENTITY-CAST ROUTE'S CLAIMS (gunbc#12443; operator escalation
+// msg_a5787a77; gunbc#13489). Two rows judge an Int identity crossing and a witness-less Int-to-Bool
+// refusal at coercion_cast_crossing over supplied atoms. Two inhabitance rows still drive
+// emit_closure_from_ingest_located on every required run. Their billed eval_steps on gunbc#13489
+// required floor run 37522243686 (artifact required-floor-claim-cost, job 112483273531) sit inside
+// the new-witness budget, so identity_cast_route_new_witness_eval_step_cost is retired. The native
+// partner is deliberately NOT a gate row: every one of its runs spawns the host build tool, so it
+// executes only as a changed witness, as that module states. The module declares SubstrateInputsOnly.
 // THE LAST TWO ROWS ARE THE CROSS-LANGUAGE CLAIMS WHOSE REGRESSION SURFACED ONLY ON srv1
 // (adhoc-bdedca0e-5a1, gunbc#12374; parent ruling from neat-boar-16). When #12290's infer change
 // refused declared-inhabitant roster members, six cross-language claims went false and no lane saw
@@ -907,6 +905,11 @@ fn required_gate_prefixes() -> List<String> {
 // duplicate-key and well-formed checks and the addition/staleness join; it matched no family prefix,
 // so those reds executed on no merge lane. Admitted at exact module grain for the same reason as the
 // test-reference wall: a family prefix would silently widen to any future sibling.
+// THE ROUTE-GAP PARTITION WITNESS (same reason, same grain). `test.claim.route_gap_partition_witness`
+// carries the route-gap admission partition's discriminating red -- an enrollment the tree does not
+// declare refuses -- through the modeled relation on `v2.workflow.floor_route_gap`, over substrate
+// inputs only (constructed lists; no host effect, no service). It matched no family prefix, so the
+// wall's red would execute on no merge lane without this row.
 //
 // THE CALIBRATION SPECIMEN (node adhoc-c9504740-637; sharp-raven-357 ruling with the operator's
 // go-ahead, 2026-10-05). The enrolment margin is judged in calibrated CPU ms, and the factor comes
@@ -933,6 +936,7 @@ fn required_gate_authored_modules() -> List<String> {
     "v2.test.claim.effect_demand.effect_demand_floor_join_test",
     "test.claim.test_reference_wall_witness",
     "test.claim.seed_growth_admission_witness",
+    "test.claim.route_gap_partition_witness",
     "test.claim.floor_eval_step_calibration_specimen_test",
   ]
 }

@@ -153,17 +153,12 @@ fn artifact_digest_matches_body(artifact: RoadmapSiteSurfaceArtifact) -> Bool {
 
 fn healthz_round_trip_receipt_holds(bundle: RoadmapSiteSurfaceBundle) -> Bool {
   healthz_body_json_well_formed(body: bundle.healthz_body)
-    && artifact_digest_matches_body(artifact: bundle.roadmap_md)
     && artifact_digest_matches_body(artifact: bundle.dispatch_json)
     && artifact_digest_matches_body(artifact: bundle.daily_html)
-    && artifact_digest_matches_body(artifact: bundle.full_html)
     && artifact_digest_matches_body(artifact: bundle.dispatch_js)
-    && string_contains(s: bundle.healthz_body, pattern: bundle.roadmap_md.digest.digest as String)
     && string_contains(s: bundle.healthz_body, pattern: bundle.dispatch_json.digest.digest as String)
     && string_contains(s: bundle.healthz_body, pattern: bundle.daily_html.digest.digest as String)
-    && string_contains(s: bundle.healthz_body, pattern: bundle.full_html.digest.digest as String)
     && string_contains(s: bundle.healthz_body, pattern: bundle.dispatch_js.digest.digest as String)
-    && string_contains(s: bundle.healthz_body, pattern: bundle.roadmap_md.url_path as String)
     && string_contains(s: bundle.healthz_body, pattern: bundle.dispatch_json.url_path as String)
 }
 

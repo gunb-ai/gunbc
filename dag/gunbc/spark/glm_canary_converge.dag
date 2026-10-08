@@ -1,5 +1,6 @@
 module gunbc.spark.glm_canary_converge
 
+import gunbc.spark.remote_leg_began { remote_stdout_as_one_word }
 import std.types { String, Bool, List, NonEmptyStr, Secret, Port }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value, byte_size_count, basis_point_count }
@@ -592,7 +593,7 @@ fn glm_canary_observe_serve(ctx: SparkMaterializeContext, arm: GlmCanaryArm) -> 
           if e != 0 {
             ServeNotRunning { detail: join(["docker inspect exited ", to_string(e), " for container ", arm.container_name as String, ": ", err], "") }
           } else {
-            glm_canary_compare_serve(rendered: join(argv, " "), running: trim(s: out))
+            glm_canary_compare_serve(rendered: join(argv, " "), running: remote_stdout_as_one_word(stdout: out))
           }
       }
   }
@@ -701,7 +702,7 @@ fn glm_canary_replace_container(ctx: SparkMaterializeContext, arm: GlmCanaryArm,
       if e != 0 {
         CutoverRefusedBeforeActing { cause: join(["the rollback line could not be read, so nothing was touched: ", err], "") }
       } else {
-        glm_canary_stop_and_start(ctx: ctx, arm: arm, run: run, rollback: trim(s: rollback))
+        glm_canary_stop_and_start(ctx: ctx, arm: arm, run: run, rollback: remote_stdout_as_one_word(stdout: rollback))
       }
   }
 }
