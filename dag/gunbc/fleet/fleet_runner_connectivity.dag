@@ -16,7 +16,7 @@ import extdeps.github.effect { GitHubOrganizationRef }
 import gunbc.auth.github_apps { gunbai_ci_declared }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_index_suffix, runner_slot_instance_name_prefix, slot_name_could_belong_to_host }
 import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
-import gunbc.fleet_enrollment { CiRunnerParticipation, hosts_enrolled_for }
+import gunbc.fleet_enrollment { runner_executor_hosts }
 import gunbc.runner_slot_allocation {
   committed_slot_identities,
   CommittedSlotPopulation, CommittedPopulationDerived, CommittedPopulationWidthUnresolved,
@@ -685,11 +685,13 @@ fn count_executing_registrations(registrations: List<GitHubSelfHostedRunnerRegis
   )
 }
 
-// The intended runner population, derived from the enrollment root rather than listed here. A host
-// enrolled for CI whose execution is not admitted still belongs to this population; whether it
-// commits slots is the width's question, not membership's.
+// The runner-executor population, derived from the enrollment root rather than listed here
+// (gunbc.fleet_enrollment runner_executor_hosts): CI-enrolled hosts whose backing does not forbid the
+// execution path. Consumers fold it as the hosts a pinned runner can execute on -- the workflow host
+// choice, the eligible compile set, committed slot identities -- so a provider guest refused that
+// path is not a member, and its refusal is read from the CI enrollment instead.
 fn fleet_hosts() -> List<HostIdentity> {
-  hosts_enrolled_for(wanted: CiRunnerParticipation)
+  runner_executor_hosts()
 }
 
 // THE 2026-08-06 CORPUS IS PINNED ON EVERY HOST, NOT JUST srv4, AND THAT IS THE WHOLE POINT. This

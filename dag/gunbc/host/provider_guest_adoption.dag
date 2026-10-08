@@ -30,6 +30,7 @@ import gunbc.fleet_host_backing {
   ProviderGuest,
   ProviderResourceAwaited,
   ProviderResourceBound,
+  backing_microvm_forbidding_offer,
 }
 import gunbc.fleet_enrollment { HostEnrollmentIntent }
 
@@ -119,10 +120,9 @@ fn entitlement_divergence(entitlement: GuestEntitlement, observation: GuestObser
 // Absent means the provider does not forbid it (or the host is not a provider guest); the
 // observation, where one is taken, still decides that case.
 fn provider_microvm_refusal(backing: HostBacking) -> MicroVmExecutionRefusal? {
-  match backing {
-    OwnedMachine { provisioning: _ } => none
-    ProviderGuest { route: _, entitlement: e, resource: _ } =>
-      if e.nested_virtualization { none } else { Present { value: ProviderForbidsNestedVirtualization { offer: e.offer } } }
+  match backing_microvm_forbidding_offer(backing: backing) {
+    Present { value: offer } => Present { value: ProviderForbidsNestedVirtualization { offer: offer } }
+    Absent => none
   }
 }
 

@@ -12,6 +12,7 @@ import gunbc.fleet_host_backing {
   ApplianceFirstBoot,
   ProviderGuest,
   ProviderResourceAwaited,
+  backing_microvm_forbidding_offer,
 }
 import gunbc.hetzner_cloud_guest { hetzner_cloud_guest_entitlement }
 import gunbc.fleet_host_identity {
@@ -155,6 +156,24 @@ data fleet_enrollments: List<HostEnrollmentIntent> = [
 fn hosts_enrolled_for(wanted: FleetParticipation) -> List<HostIdentity> {
   map(
     filter(fleet_enrollments, e => participation_list_contains(ps: e.participation, wanted: wanted)),
+    e => e.host,
+  )
+}
+
+// THE RUNNER-EXECUTOR POPULATION: hosts enrolled for CI whose backing does not forbid the microVM
+// execution path. It is narrower than the CI enrollment on purpose -- a CAX guest is enrolled for CI
+// and refused execution by its provider, so it is a member of hosts_enrolled_for(CiRunnerParticipation)
+// (its refusal is visible there) and NOT of this set, which is what a pinned runner, a workflow host
+// choice or a slot census walks. A provider whose offer permits nesting joins it with no edit here.
+fn runner_executor_hosts() -> List<HostIdentity> {
+  map(
+    filter(fleet_enrollments, e =>
+      participation_list_contains(ps: e.participation, wanted: CiRunnerParticipation)
+        && match backing_microvm_forbidding_offer(backing: e.backing) {
+          Present { value: _ } => false
+          Absent => true
+        }
+    ),
     e => e.host,
   )
 }

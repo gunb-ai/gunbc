@@ -3,6 +3,7 @@ module test.claim.workspace_host_supply_refusal_witness
 import std.types { Bool }
 import gunbc.fleet_host_identity { operator_host_183527, operator_host_3dde7f, operator_host_srv1 }
 import gunbc.workspace_allocation_supply { workspace_host_supply_refusal, workspace_local_host_is }
+import gunbc.fleet_enrollment { CiRunnerParticipation, hosts_enrolled_for, runner_executor_hosts }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -38,4 +39,19 @@ test fn local_host_join_reads_the_allocated_hostname() -> Bool {
     && !workspace_local_host_is(host: operator_host_183527, kernel_hostname: "host-183527")
     && !workspace_local_host_is(host: operator_host_183527, kernel_hostname: "ubuntu-32gb-nbg1-1")
     && !workspace_local_host_is(host: operator_host_srv1, kernel_hostname: "")
+}
+
+// ENROLLED FOR CI, NOT A RUNNER EXECUTOR. The CAX guests are members of the CI enrollment -- so their
+// refusal is visible wherever that population is walked -- and are excluded from the executor set a
+// pinned runner, the converge workflow's host choice and the slot census read, while every owned CI
+// host stays in both.
+test fn provider_guests_are_ci_enrolled_but_not_runner_executors() -> Bool {
+  let ci = hosts_enrolled_for(wanted: CiRunnerParticipation)
+  let executors = runner_executor_hosts()
+  let in_ci = fn(h) { any(ci, x => (x as String) == (h as String)) }
+  let in_exec = fn(h) { any(executors, x => (x as String) == (h as String)) }
+  in_ci(operator_host_183527) && !in_exec(operator_host_183527)
+    && in_ci(operator_host_3dde7f) && !in_exec(operator_host_3dde7f)
+    && in_ci(operator_host_srv1) && in_exec(operator_host_srv1)
+    && executors.length() == ci.length() - 2
 }

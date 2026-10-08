@@ -49,3 +49,15 @@ type OwnedProvisioning
 type HostBacking
   = OwnedMachine { provisioning: OwnedProvisioning }
   | ProviderGuest { route: ProviderRoute, entitlement: GuestEntitlement, resource: ProviderResourceBinding }
+
+// THE ONE RULE FOR WHETHER A BACKING CAN HOST THE FLEET'S MICROVM EXECUTION PATH, before anything is
+// observed: an owned machine can (its readiness is then observed), and a provider guest can only when
+// its offer permits nested virtualization. Present names the cited offer that forbids it. Adoption,
+// fabric supply and the runner-executor population all read this, so no consumer restates it.
+fn backing_microvm_forbidding_offer(backing: HostBacking) -> DeclarationRef? {
+  match backing {
+    OwnedMachine { provisioning: _ } => none
+    ProviderGuest { route: _, entitlement: e, resource: _ } =>
+      if e.nested_virtualization { none } else { Present { value: e.offer } }
+  }
+}
