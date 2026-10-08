@@ -15,10 +15,9 @@ import std.content_hash {
 import v2.compiler.source_authority {
   DagSourceReadWitness,
   SourceRef,
-  SourceRootIngest,
-  source_ref_for_storage_path
+  SourceRootIngest
 }
-import v2.std.cross_tree.import_model { DagTree, SourceRootRef }
+import v2.std.cross_tree.import_model { SourceRootRef }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.algebra { fold_list }
 import v2.std.artifact { Artifact, SourceFile }
@@ -79,11 +78,11 @@ data source_ref_read_refused: Symbol = ^source_ref_read_refused
 
 data source_ref_content_hash_mismatch: Symbol = ^source_ref_content_hash_mismatch
 
-fn source_ref_read_failed_diagnostic(ref: SourceRef, error: String) -> NonEmptyDiagnostics {
+fn source_ref_read_failed_diagnostic(path: String, error: String) -> NonEmptyDiagnostics {
   NonEmptyDiagnostics {
     head: Diagnostic {
       reason: source_ref_read_refused,
-      at: textual_whole_file_locus(file: symbol_intern_lexeme(lexeme: ref.path)),
+      at: textual_whole_file_locus(file: symbol_intern_lexeme(lexeme: path)),
       correction: Unavailable { reason: ExternalContractUnknown }
     },
     tail: [
@@ -184,7 +183,7 @@ fn source_ref_read_result_to_outcome(result: SourceRefReadResult) -> Outcome<Dag
       outcome_accepted(value: witness)
     SourceRefFilesystemReadRefused { ref: ref, error: error } =>
       Rejected {
-        diagnostics: source_ref_read_failed_diagnostic(ref: ref, error: error)
+        diagnostics: source_ref_read_failed_diagnostic(path: ref.path, error: error)
       }
     SourceRefReadHashMismatch { ref: ref, expected: _, observed: observed } =>
       Rejected {
@@ -244,7 +243,7 @@ fn source_root_ingest_from_source_refs(refs: List<SourceRef>) -> Outcome<SourceR
         Accepted { value: _, diagnostics: _ } =>
           Rejected {
             diagnostics: source_ref_read_failed_diagnostic(
-              ref: source_ref_for_storage_path(path: "source-root-ingest-build-impossible", source_root: DagTree),
+              path: "source-root-ingest-build-impossible",
               error: "internal: read-through accepted without ingest row"
             )
           }
