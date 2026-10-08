@@ -3626,6 +3626,49 @@ fn scratch_index_for_fixture_closure_extension() -> Result<MultiEntryIndex, Stri
     }
 }
 
+/// THE PRE-FIX LOADER, test-only: same import BFS as `resolve_virtual_source_with_imports`,
+/// then `extend_sources_to_both_closure_fixpoint` on `try_index_for_run_or_owned_pool` over
+/// the layer roots. That is the slot the claim fold reads. The green control must stay
+/// unmoved; this route is the discriminating red of RFM
+/// `fixture_compile_retained_on_the_process_shared_index`.
+#[cfg(test)]
+pub(crate) fn extend_fixture_imports_on_process_shared_index(
+    entry_content: &str,
+    module_index: &HashMap<String, String>,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let ws = process_workspace_root();
+    let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
+    let mut queue: Vec<String> = vec![entry_content.to_string()];
+    while let Some(content) = queue.pop() {
+        for module_path in extract_import_paths(&content) {
+            if seen.contains_key(&module_path) {
+                continue;
+            }
+            if let Some(rel_path) = module_index.get(&module_path) {
+                let abs_path = ws.join(rel_path);
+                if let Ok(file_content) = std::fs::read_to_string(&abs_path) {
+                    seen.insert(
+                        module_path,
+                        Rc::new(v1_compiler_compile::SourceFile {
+                            path: rel_path.clone(),
+                            content: file_content.clone(),
+                        }),
+                    );
+                    queue.push(file_content);
+                }
+            }
+        }
+    }
+    let imported: Vec<Rc<v1_compiler_compile::SourceFile>> =
+        seen.into_iter().map(|(_, v)| v).collect();
+    if imported.is_empty() {
+        return Ok(imported);
+    }
+    let layers = witness_layer_roots();
+    let index = entry_resolve::try_index_for_run_or_owned_pool(&layers)?;
+    extend_sources_to_both_closure_fixpoint(imported, &index)
+}
+
 /// The closure an in-memory (not-on-disk) fixture entry compiles against: the corpus modules its
 /// authored `import` lines name, read from the workspace through `module_index`, CLOSED BY THE
 /// ONE CLOSURE AUTHORITY (`extend_sources_to_both_closure_fixpoint`), then the entry itself.

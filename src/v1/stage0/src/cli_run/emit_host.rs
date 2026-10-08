@@ -3943,6 +3943,49 @@ mod fixture_closure_union_tests {
         );
     }
 
+    /// THE DISCRIMINATING RED of the class: the pre-fix loader
+    /// (`try_index_for_run_or_owned_pool` over the layer roots) grows `both_closure_edges`
+    /// on the process-shared index. If this greens, the green control above has no red.
+    #[test]
+    fn fixture_closure_extension_via_shared_index_grows_both_closure_edges() {
+        let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let layers = crate::cli_run::witness_layer_roots();
+        let shared = match super::entry_resolve::try_process_shared_index(&layers) {
+            Ok(idx) => idx,
+            Err(e) => {
+                eprintln!("no process-shared index in this process: {e}");
+                return;
+            }
+        };
+        let edges_before = shared
+            .both_closure_edges
+            .borrow()
+            .as_ref()
+            .map(|e| e.ref_out.len())
+            .unwrap_or(0);
+        let module_index = crate::cli_run::build_module_path_index_from_witness_roots();
+        let sources = crate::cli_run::extend_fixture_imports_on_process_shared_index(
+            FIXTURE_CLOSURE_REFERENCE_REACH_MEMBER,
+            &module_index,
+        )
+        .unwrap_or_else(|e| panic!("pre-fix shared-index extension must still close: {e}"));
+        assert!(
+            sources.len() > 1,
+            "the syllogism specimen must pull its provider, got {}",
+            sources.len()
+        );
+        let edges_after = shared
+            .both_closure_edges
+            .borrow()
+            .as_ref()
+            .map(|e| e.ref_out.len())
+            .unwrap_or(0);
+        assert!(
+            edges_after > edges_before,
+            "the pre-fix route must grow both_closure_edges (before={edges_before} after={edges_after})"
+        );
+    }
+
     #[test]
     fn capture_gap_keys_on_shell_channel_not_realized_fact_equality() {
         use crate::v1_compiler_emit::{shell_emission_refusal_fact, ShellEmissionRefusal};

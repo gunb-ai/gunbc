@@ -17,7 +17,7 @@ data fixture_compile_retained_on_the_process_shared_index: RecurringFailureMode 
 
     "RUNG FOUND AT: silent wrongness on the floor (no typed refusal; the lane timed out). RUNG NOW: mechanically preventable -- resolve_virtual_source_with_imports extends over a scratch MultiEntryIndex and the unit control reds a regression that writes the shared slot. CEILING: structurally guaranteed once a fixture compile cannot name the process-shared index as its extension target. NEXT-RUNG TRIGGER: fixture-closure extension is typed so that the shared MultiEntryIndex is not in the function's reachable parameter set; the unit control remains enrolled.",
 
-    "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster. Production consumer: v1_compiler.cli_run resolve_virtual_source_with_imports. Discriminating control: v1_compiler.cli_run.emit_host fixture_closure_extension_does_not_populate_the_process_shared_index.",
+    "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster. Production consumer: v1_compiler.cli_run resolve_virtual_source_with_imports. GREEN: v1_compiler.cli_run.emit_host fixture_closure_extension_does_not_populate_the_process_shared_index. RED (pre-fix route): v1_compiler.cli_run.emit_host fixture_closure_extension_via_shared_index_grows_both_closure_edges.",
   ],
 
   evidence: [],
