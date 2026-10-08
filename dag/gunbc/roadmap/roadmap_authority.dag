@@ -2774,12 +2774,12 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       line: ticket(t: updated(t: fields(
           headline: "Correct native parsing and delete the parse memo",
           boundary: "D15 / R2. Deliver #13577 (Recompute) then #13582 (atomic parse-memo deletion, including seed hook, counters, carriers and provider row). Preserve backtracking provenance and the permanent colliding-grammar control. Compile-stage memo work is separate.",
-          displaced_cost: "The parse memo reuses abandoned-path occurrence ids, causing false census refusals and incorrect source spans; the supporting analysis records the dated comparison.",
+          displaced_cost: "The parse memo reuses abandoned-path occurrence ids, causing false census refusals and incorrect source spans; gunbc#13557 records the dated comparison.",
           first_slice: "Land #13577; in #13582 bind the expected source span to the selected terminal occurrence, then qualify the child on its final main-based head and land the deletion.",
           red_control: "The selected terminal must resolve through its own occurrence id to its expected bytes; swapped terminal spans must fail while uniqueness and index coverage are retained. Old memo behavior makes the collision control fail.",
           out_of_scope: "Compile-stage memo disposition, a worst-case parsing bound, and the unrelated remaining parse/lowering refusals.",
           handback: "Both PRs landed, no parse-memo runtime/carrier/seed references, permanent regression control retained, and the native CLI logic.dag regression cleared. Stop here with the corrected parser; no envelope implementation is required to close this milestone."
-        ), on: "2026-10-08", note: "Review snapshot 2026-10-08: #13577 f0e5e776 is open, out of draft and CI-green; #13582 be39cab5 is draft and unmerged, with author-reported local checks and no PR CI yet. Review requests the terminal-specific span oracle and final-head CI. The red5 witness refusal also reproduced on the parent; its cause is unresolved.")),
+        ), on: "2026-10-08", note: "2026-10-08: #13577 f0e5e776 CI-green and in the merge queue. #13582 is draft, stacked on it; the review's terminal-specific span oracle is committed (427b080e5d: ordered terminal-to-locus check, swapped spans red). Owed: CI on its final main-based head, which needs a push after the retarget. The red5 witness refusal also reproduced on the parent; its cause is unresolved.")),
       parent: in_project(project: "demand-engine", contribution: "Closes R2 with a corrected parser and deletion, independently of later memory governance."),
     ),
     roadmap_node(
