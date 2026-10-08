@@ -9,9 +9,9 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import extdeps.languages.json.parse {
   parse_json_document, json_field, json_field_string,
-  JsonDocumentParsed, JsonDocumentUnreadable, FieldRead,
+  JsonDocumentParsed, JsonDocumentUnreadable, FieldRead, FieldAbsent, FieldMalformed,
 }
-import extdeps.languages.json.emit { JsonValue, JsonArray }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -160,20 +160,28 @@ fn redfish_message_id_is_password_change_required(id: String) -> Bool {
   starts_with(s: id, prefix: "Base.") && ends_with(s: id, suffix: ".PasswordChangeRequired")
 }
 
+fn redfish_message_requires_password_change(message: JsonValue) -> Bool {
+  match json_field_string(obj: message, key: "MessageId") {
+    FieldRead { value: id } => redfish_message_id_is_password_change_required(id: id)
+    FieldAbsent => false
+    FieldMalformed { cause: _ } => false
+  }
+}
+
 fn redfish_extended_info_requires_password_change(holder: JsonValue) -> Bool {
   match json_field(obj: holder, key: "@Message.ExtendedInfo") {
     FieldRead { value: v } =>
       match v {
         JsonArray { elements: elements } =>
-          fold(elements, init: false, f: fn(acc, m) {
-            acc || (match json_field_string(obj: m, key: "MessageId") {
-              FieldRead { value: id } => redfish_message_id_is_password_change_required(id: id)
-              _ => false
-            })
-          })
-        _ => false
+          fold(elements, init: false, f: fn(acc, m) { acc || redfish_message_requires_password_change(message: m) })
+        JsonNull => false
+        JsonBool { value: _ } => false
+        JsonNumber { lexeme: _ } => false
+        JsonString { value: _ } => false
+        JsonObject { members: _ } => false
       }
-    _ => false
+    FieldAbsent => false
+    FieldMalformed { cause: _ } => false
   }
 }
 
@@ -187,7 +195,8 @@ fn redfish_password_change_verdict(body: String) -> RedfishPasswordChangeVerdict
         match json_field(obj: doc, key: "error") {
           FieldRead { value: err } =>
             if redfish_extended_info_requires_password_change(holder: err) { RedfishPasswordChangeRequired } else { RedfishPasswordChangeNotIndicated }
-          _ => RedfishPasswordChangeNotIndicated
+          FieldAbsent => RedfishPasswordChangeNotIndicated
+          FieldMalformed { cause: _ } => RedfishPasswordChangeNotIndicated
         }
       }
   }
