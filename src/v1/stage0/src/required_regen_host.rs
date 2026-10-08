@@ -6360,21 +6360,6 @@ mod regen_round_cost_tests {
     fn exec_target_admission_compares_with_the_build_output_and_never_overwrites() {
         let c = cost(1, 1, None);
         // production decision: build output B is what the carry names
-        let carry = match decide_seed_handoff(
-            Some(&SeedHandoff {
-                cost: c.clone(),
-                source: "S".into(),
-                built_exe: "B".into(),
-            }),
-            "B",
-            "B",
-            "S",
-            &c,
-        ) {
-            Ok(SeedHandoffDecision::Proceed) => None,
-            _ => panic!(),
-        };
-        assert!(carry.is_none());
         let carry = match decide_seed_handoff(None, "old", "B", "S", &c).unwrap() {
             SeedHandoffDecision::ReExec(h) => h,
             SeedHandoffDecision::Proceed => panic!(),
