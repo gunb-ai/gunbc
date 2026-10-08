@@ -103,6 +103,9 @@ test fn nat_to_decimal_converts_nontrivial_values() -> Bool {
     && nat_to_decimal_string(value: std_seven()) == "7"
     && nat_to_decimal_string(value: Succ { prev: Succ { prev: Succ { prev: std_seven() } } }) == "10"
     && nat_to_decimal_string(value: 23) == "23"
+    && nat_to_decimal_string(value: 9) == "9"
+    && nat_to_decimal_string(value: 19) == "19"
+    && nat_to_decimal_string(value: 100) == "100"
 }
 
 test fn decimal_digit_nat_supplies_the_peano_value() -> Bool {
@@ -134,6 +137,15 @@ test fn int_to_decimal_is_the_machine_integer_formatter() -> Bool {
     && int_to_decimal_string(value: 42) == "42"
     && int_to_decimal_string(value: 0 - 7) == "-7"
     && int_to_decimal_string(value: 1000) == "1000"
+    && int_to_decimal_string(value: 0 - 10) == "-10"
+    && int_to_decimal_string(value: 0 - 19) == "-19"
+    && int_to_decimal_string(value: 99) == "99"
+}
+
+// The minimum host integer has no representable negation, so a renderer that negates before it
+// divides overflows here; this one divides the signed value and never negates it.
+test fn int_to_decimal_renders_the_minimum_machine_integer() -> Bool {
+  int_to_decimal_string(value: 0 - 9223372036854775807 - 1) == "-9223372036854775808"
 }
 
 // ---------------------------------------------------------------------------------------------

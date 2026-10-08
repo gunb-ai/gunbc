@@ -238,13 +238,19 @@ fn uint8_channel_inclusive_max_value_derived() -> Int? {
   }
 }
 
-// THE UNITS DIGIT OF A MACHINE INTEGER, reduced modulo ten for a non-negative value: the
-// arithmetic in v2.std.integer passes a doubled digit plus carry (at most nineteen) or a borrowed
-// difference plus ten, and takes the units digit of either. Selection is by the one value table,
-// std.nat decimal_digit_value, so no second table of digit values exists.
+// THE UNITS DIGIT OF A MACHINE INTEGER'S MAGNITUDE, for EVERY Int. A value of ten or more steps
+// down by ten and a value below minus nine steps up by ten (neither step changes the units digit of
+// the magnitude), a value in minus nine to minus one is negated (no overflow: its magnitude is at
+// most nine), so the selection below receives exactly 0..9 and its final arm is the digit 9, never
+// a default for an out-of-range value. Selection is by the one value table, std.nat
+// decimal_digit_value, so no second table of digit values exists.
 fn decimal_digit_of_units(value: Int) -> DecimalDigit {
   if value >= 10 {
     decimal_digit_of_units(value: value - 10)
+  } else if value < -9 {
+    decimal_digit_of_units(value: value + 10)
+  } else if value < 0 {
+    decimal_digit_of_reduced_units(value: 0 - value)
   } else {
     decimal_digit_of_reduced_units(value: value)
   }
@@ -283,18 +289,21 @@ fn decimal_digit_of_reduced_units(value: Int) -> DecimalDigit {
 // Int names (DESIGN section 4: no implicit stringify).
 fn int_to_decimal_string(value: Int) -> String {
   if value < 0 {
-    concat("-", int_magnitude_to_decimal_string(value: 0 - value))
+    concat("-", int_digits_to_decimal_string(value: value))
   } else {
-    int_magnitude_to_decimal_string(value: value)
+    int_digits_to_decimal_string(value: value)
   }
 }
 
-fn int_magnitude_to_decimal_string(value: Int) -> String {
+// The digits of an Int's magnitude WITHOUT negating it: the minimum host integer has no
+// representable negation, so the recursion divides the signed value by ten and reads each units
+// digit through decimal_digit_of_units, which answers for either sign of remainder.
+fn int_digits_to_decimal_string(value: Int) -> String {
   let rest = value / 10
   let digit = decimal_digit_glyph(d: decimal_digit_of_units(value: value - (rest * 10)))
   if rest == 0 {
     digit
   } else {
-    concat(int_magnitude_to_decimal_string(value: rest), digit)
+    concat(int_digits_to_decimal_string(value: rest), digit)
   }
 }

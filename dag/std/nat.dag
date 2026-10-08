@@ -231,51 +231,62 @@ fn decimal_digit_glyph(d: DecimalDigit) -> String {
   }
 }
 
-// A Peano digit (a Nat below ten) to its DecimalDigit, by STRUCTURAL equality against each
-// digit's Peano value (std.operator_realization StructuralEquality on Nat). A value of ten or more
-// is not a decimal digit and this function is not its authority: its one caller obtains digits
-// from nat_div_rem_by_succ by ten, whose remainder is below ten by construction, so the final D9
-// arm is reached only by D9 itself for an in-domain input.
-fn nat_decimal_digit(digit: Nat) -> DecimalDigit {
-  if decimal_digit_nat(d: D0) == digit {
-    D0
-  } else if decimal_digit_nat(d: D1) == digit {
-    D1
-  } else if decimal_digit_nat(d: D2) == digit {
-    D2
-  } else if decimal_digit_nat(d: D3) == digit {
-    D3
-  } else if decimal_digit_nat(d: D4) == digit {
-    D4
-  } else if decimal_digit_nat(d: D5) == digit {
-    D5
-  } else if decimal_digit_nat(d: D6) == digit {
-    D6
-  } else if decimal_digit_nat(d: D7) == digit {
-    D7
-  } else if decimal_digit_nat(d: D8) == digit {
-    D8
-  } else {
-    D9
+// ONE DECIMAL STEP: the successor of a digit is the next digit, or a carry out of D9. The ten arms
+// are the whole coproduct, so no input exists that this table does not answer.
+type DecimalDigitSuccessor
+  = DecimalDigitNext { digit: DecimalDigit }
+  | DecimalDigitCarry
+
+fn decimal_digit_successor(d: DecimalDigit) -> DecimalDigitSuccessor {
+  match d {
+    D0 => DecimalDigitNext { digit: D1 }
+    D1 => DecimalDigitNext { digit: D2 }
+    D2 => DecimalDigitNext { digit: D3 }
+    D3 => DecimalDigitNext { digit: D4 }
+    D4 => DecimalDigitNext { digit: D5 }
+    D5 => DecimalDigitNext { digit: D6 }
+    D6 => DecimalDigitNext { digit: D7 }
+    D7 => DecimalDigitNext { digit: D8 }
+    D8 => DecimalDigitNext { digit: D9 }
+    D9 => DecimalDigitCarry
   }
 }
 
-// A NATURAL TO ITS DECIMAL TEXT over the declared structural operations: division by ten is
-// nat_div_rem_by_succ with divisor predecessor nine (the divisor Succ { prev: 9 } is nonzero by
-// construction, so no zero-divisor arm exists to be handled), and the recursion descends on the
-// quotient. No host operator is applied to a Nat here: an earlier body spelled `value == 0`,
-// `value < 10`, `value / 10` and `value - (rest * 10)` on Rc<Nat>, which rustc refused (E0308 x10,
-// E0369) and which the operator realization authority now refuses at emission by typed diagnostic.
+// A NATURAL SPLIT INTO ITS QUOTIENT BY TEN AND ITS UNITS DIGIT, by structural descent: Zero is
+// (Zero, D0), and Succ advances the units digit, carrying into the quotient out of D9. The units
+// digit is a DecimalDigit by CONSTRUCTION, so no Nat-to-digit lookup exists to be out of range and
+// no default arm exists to answer it (DESIGN section 5: a failure arm must refuse, never widen).
+type NatDecimalSplit {
+  quotient: Nat
+  units: DecimalDigit
+}
+
+fn nat_decimal_split(value: Nat) -> NatDecimalSplit {
+  match value {
+    Zero => NatDecimalSplit { quotient: Zero, units: D0 }
+    Succ { prev: p } =>
+      nat_decimal_split_advance(s: nat_decimal_split(value: p))
+  }
+}
+
+fn nat_decimal_split_advance(s: NatDecimalSplit) -> NatDecimalSplit {
+  match decimal_digit_successor(d: s.units) {
+    DecimalDigitNext { digit: d } => NatDecimalSplit { quotient: s.quotient, units: d }
+    DecimalDigitCarry => NatDecimalSplit { quotient: Succ { prev: s.quotient }, units: D0 }
+  }
+}
+
+// A NATURAL TO ITS DECIMAL TEXT over structural descent only: nat_decimal_split yields the units
+// digit as a DecimalDigit and the quotient as a Nat, and the recursion descends on the quotient. No
+// host operator is applied to a Nat here: an earlier body spelled `value == 0`, `value < 10`,
+// `value / 10` and `value - (rest * 10)` on Rc<Nat>, which rustc refused (E0308 x10, E0369) and
+// which the operator realization authority now refuses at emission by typed diagnostic.
 // EXACT AND LOSSLESS: the canonical decimal spelling (no leading zeros, no sign) is injective over
 // the naturals, so this is the declared conversion an interpolation hole over a Nat names.
 fn nat_to_decimal_string(value: Nat) -> String {
-  let q = nat_div_rem_by_succ(a: value, divisor_prev: 9)
-  match q.quotient {
-    Zero => decimal_digit_glyph(d: nat_decimal_digit(digit: q.remainder))
-    Succ { prev: _ } =>
-      concat(
-        nat_to_decimal_string(value: q.quotient),
-        decimal_digit_glyph(d: nat_decimal_digit(digit: q.remainder))
-      )
+  let s = nat_decimal_split(value: value)
+  match s.quotient {
+    Zero => decimal_digit_glyph(d: s.units)
+    Succ { prev: _ } => concat(nat_to_decimal_string(value: s.quotient), decimal_digit_glyph(d: s.units))
   }
 }
