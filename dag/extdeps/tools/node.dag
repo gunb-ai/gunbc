@@ -109,8 +109,7 @@ fn node_version_command(node_binary: NonEmptyStr) -> ArgvCommand {
   argv_command(program: cataloged_program(invocation: node_binary), arguments: ["--version"])
 }
 
-// `node -e <script> <args...>`: with -e, process.argv[1] onward are the trailing operands, so a
-// caller passes data as operands rather than splicing it into the program text.
-fn node_eval_command(node_binary: NonEmptyStr, script: String, operands: List<String>) -> ArgvCommand {
-  argv_command(program: cataloged_program(invocation: node_binary), arguments: concat(["-e", script], operands))
+// `node <script> <args...>`: runs a Node script file with arguments.
+fn node_run_file_command(node_binary: NonEmptyStr, script_path: NonEmptyStr, operands: List<String> = []) -> ArgvCommand {
+  argv_command(program: cataloged_program(invocation: node_binary), arguments: concat([script_path], operands))
 }
