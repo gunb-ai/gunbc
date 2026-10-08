@@ -20,11 +20,13 @@ import std.durable_exclusive_hold {
   DurableHoldReleaseAssessment, HoldReleaseEligible, HoldReleaseRefused,
   DurableHoldReleaseRefusal, HoldReleaseSlotAbsent, HoldReleaseAlreadyFree,
   HoldReleaseHeldByAnotherOwner, HoldReleaseAgainstAnotherGeneration,
+  HoldReleaseNamedWindowHeadMoved,
   HoldReleaseSlotUndecodable, HoldReleaseObservationUnavailable,
   durable_hold_acquire_assess, durable_hold_release_assess, durable_hold_owner_equal,
   DurableHoldHolderReport, HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable,
   DurableHoldRecoveryAssessment, HoldRecoveryEligible, HoldRecoveryRefused,
   HoldRecoveryNothingHeld, HoldRecoveryHolderLive, HoldRecoveryHolderUnobservable, HoldRecoverySlotMoved,
+  HoldRecoveryNamedWindowHeadMoved,
   HoldRecoveryReportForAnotherHolder, durable_hold_recovery_assess,
 }
 import gunbc.durable_exclusive_hold_file_store {
@@ -252,6 +254,7 @@ fn eh_release_refusal_label(a: DurableHoldReleaseAssessment) -> String {
         HoldReleaseAlreadyFree { generation: _, released_by: _ } => "already-free"
         HoldReleaseHeldByAnotherOwner { generation: _, holder: _ } => "another-owner"
         HoldReleaseAgainstAnotherGeneration { acquired: _, observed: _ } => "another-generation"
+        HoldReleaseNamedWindowHeadMoved { named: _ } => "named-head-moved"
         HoldReleaseSlotUndecodable { generation: _, detail: _ } => "undecodable"
         HoldReleaseObservationUnavailable { cause: _ } => "unavailable"
       }
@@ -370,4 +373,23 @@ test fn a_dead_verdict_recovers_only_the_hold_it_was_taken_of() -> Bool {
       HoldRecoveryRefused { refusal: HoldRecoveryNothingHeld } => true
       _ => false
     })
+}
+
+test fn named_window_head_moved_release_does_not_claim_an_observed_current_generation() -> Bool {
+  match eh_release_assess(observed: HoldNamedWindowHeadMoved { generation: 3 }, owner: "demand-7|offer-1", acquired: 3) {
+    HoldReleaseRefused { refusal: HoldReleaseNamedWindowHeadMoved { named: n } } =>
+      cas_generation_count(g: n) == 3
+    HoldReleaseRefused { refusal: HoldReleaseAgainstAnotherGeneration { acquired: _, observed: _ } } => false
+    _ => false
+  }
+}
+
+test fn named_window_head_moved_recovery_does_not_claim_an_observed_current_generation() -> Bool {
+  let dead = eh_report(holder: "mtcollins1-boot:4242", generation: 3, dead: 1)
+  match durable_hold_recovery_assess(observed: HoldNamedWindowHeadMoved { generation: 3 }, report: dead) {
+    HoldRecoveryRefused { refusal: HoldRecoveryNamedWindowHeadMoved { named: n } } =>
+      cas_generation_count(g: n) == 3
+    HoldRecoveryRefused { refusal: HoldRecoverySlotMoved { reported: _, observed: _ } } => false
+    _ => false
+  }
 }

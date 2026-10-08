@@ -669,7 +669,7 @@ test fn a_commit_while_the_family_is_held_refuses_and_writes_nothing_by_real_exe
   verdict && removed.success
 }
 
-fn hold_refusal_is_named_window_unsettled(r: LocalStoreHoldRefusal?) -> Bool {
+fn hold_refusal_is_named_window_head_moved(r: LocalStoreHoldRefusal?) -> Bool {
   match r {
     Present { value: x } => match x {
       LocalStoreHoldStale { observed: o } => match o {
@@ -773,7 +773,7 @@ test fn a_leaked_hold_stays_stale_when_reclaim_cannot_remove_its_generation_by_r
           let _unlock = pin_generation_unlink(path: pinned, on: false)
           immutable && advanced
             && commit_tag(c: c.commit) == "occupancy_unavailable"
-            && hold_refusal_is_named_window_unsettled(r: c.hold_refusal)
+            && hold_refusal_is_named_window_head_moved(r: c.hold_refusal)
             && !Filesystem.Read(path: object_path(root_path: root_path, req: rs)).success
             && store_lookup_is_miss(l: local_store_lookup(capability: store, req: rs))
         }

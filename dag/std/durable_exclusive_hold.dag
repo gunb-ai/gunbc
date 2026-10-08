@@ -136,6 +136,7 @@ type DurableHoldReleaseRefusal
   | HoldReleaseAlreadyFree { generation: CasGeneration, released_by: DurableHoldReleaseRef }
   | HoldReleaseHeldByAnotherOwner { generation: CasGeneration, holder: DurableHoldOwnerRef }
   | HoldReleaseAgainstAnotherGeneration { acquired: CasGeneration, observed: CasGeneration }
+  | HoldReleaseNamedWindowHeadMoved { named: CasGeneration }
   | HoldReleaseSlotUndecodable { generation: CasGeneration, detail: NonEmptyStr }
   | HoldReleaseObservationUnavailable { cause: CasUnreadableSlot }
 
@@ -160,9 +161,7 @@ fn durable_hold_release_assess(
     HoldObservationUnavailable { cause: c } =>
       HoldReleaseRefused { refusal: HoldReleaseObservationUnavailable { cause: c } }
     HoldNamedWindowHeadMoved { generation: g } =>
-      HoldReleaseRefused {
-        refusal: HoldReleaseAgainstAnotherGeneration { acquired: acquired_generation, observed: g },
-      }
+      HoldReleaseRefused { refusal: HoldReleaseNamedWindowHeadMoved { named: g } }
     HoldSlotHeld { generation: g, owner: holder } =>
       if !durable_hold_owner_equal(left: holder, right: owner) {
         HoldReleaseRefused { refusal: HoldReleaseHeldByAnotherOwner { generation: g, holder: holder } }
@@ -210,6 +209,7 @@ type DurableHoldRecoveryRefusal
   | HoldRecoveryHolderLive { generation: CasGeneration, holder: DurableHoldOwnerRef, evidence: NonEmptyStr }
   | HoldRecoveryHolderUnobservable { generation: CasGeneration, holder: DurableHoldOwnerRef, cause: NonEmptyStr }
   | HoldRecoverySlotMoved { reported: CasGeneration, observed: CasGeneration }
+  | HoldRecoveryNamedWindowHeadMoved { named: CasGeneration }
   | HoldRecoveryReportForAnotherHolder { holder: DurableHoldOwnerRef, reported: DurableHoldOwnerRef }
   | HoldRecoverySlotUndecodable { generation: CasGeneration, detail: NonEmptyStr }
   | HoldRecoveryObservationUnavailable { cause: CasUnreadableSlot }
@@ -230,7 +230,7 @@ fn durable_hold_recovery_assess(observed: DurableHoldObservation, report: Durabl
     HoldObservationUnavailable { cause: c } =>
       HoldRecoveryRefused { refusal: HoldRecoveryObservationUnavailable { cause: c } }
     HoldNamedWindowHeadMoved { generation: g } =>
-      HoldRecoveryRefused { refusal: HoldRecoverySlotMoved { reported: report.generation, observed: g } }
+      HoldRecoveryRefused { refusal: HoldRecoveryNamedWindowHeadMoved { named: g } }
     HoldSlotHeld { generation: g, owner: holder } =>
       if !durable_hold_owner_equal(left: holder, right: report.holder) {
         HoldRecoveryRefused { refusal: HoldRecoveryReportForAnotherHolder { holder: holder, reported: report.holder } }

@@ -19,6 +19,7 @@ import std.durable_exclusive_hold {
   DurableHoldOwnerRef, DurableHoldReleaseRef,
   DurableHoldReleaseRefusal, HoldReleaseSlotAbsent, HoldReleaseAlreadyFree,
   HoldReleaseHeldByAnotherOwner, HoldReleaseAgainstAnotherGeneration,
+  HoldReleaseNamedWindowHeadMoved,
   HoldReleaseSlotUndecodable, HoldReleaseObservationUnavailable,
 }
 import product.fabric.identity { FabricIdentity, OfferKey, DemandKey, WorkKey, fabric_identity_eq }
@@ -734,6 +735,14 @@ fn end_cell_hold(
                 ", not the generation this release was acquired at: ",
               ),
               to_string(cas_generation_count(g: a)),
+            ) as NonEmptyStr,
+          }
+        HoldReleaseNamedWindowHeadMoved { named: n } =>
+          HoldEndSlotNotHeld {
+            slot_key: slot_key,
+            detail: concat(
+              "named window head moved beyond generation ",
+              to_string(cas_generation_count(g: n)),
             ) as NonEmptyStr,
           }
         HoldReleaseSlotUndecodable { generation: _, detail: d } =>
