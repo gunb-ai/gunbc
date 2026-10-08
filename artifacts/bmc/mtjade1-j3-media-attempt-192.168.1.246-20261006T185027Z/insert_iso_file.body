@@ -1,0 +1,2 @@
+{"@odata.context":"/redfish/v1/$metadata#Task.Task(Description,TaskState,Name,Id)","@odata.id":"/redfish/v1/TaskService/Tasks/1","@odata.type":"#Task.v1_4_2.Task","Description":"Task for InsertMedia Action","Id":"1","Name":"InsertMedia Action","TaskState":"New"}
+HTTP:202
