@@ -15,9 +15,9 @@ data empty_list_evaluates_to_unit: RecurringFailureMode = RecurringFailureMode {
 
     "HARM: fabricated plausible output at eval (DESIGN section 5). The program is Accepted and then the wet/generated lanes refuse on a type the program never had. Neighbouring class unsolved_placeholder_reads_back_as_unit is checker diagnostic fabrication; this class is the evaluator substituting Unit for an empty collection.",
 
-    "PRODUCER: v1_interpreter.eval_expr_inner NoExprData arm; concat via free_monoid_to_vec, which treated Unit as a list element rather than an empty collection.",
+    "PRODUCER: v1_interpreter.eval_expr_inner NoExprData arm returned Unit; concat then pushed that Unit as an element (free_monoid_to_vec had no empty-Unit flatten).",
 
-    "CLIMB, gunbc#13475 b9aaefc: NoExprData whose inferred (or self) node is an element collection evaluates as the empty list; free_monoid_to_vec treats Value::Unit as empty flatten. child_type_node keeps a TypeVariable child so the type node is not collapsed to error_type/Unit before eval. Admitted under gunbc.v1_maintenance_standing v1_seed_standing: seed defect that silently produced a wrong value, serving the v2 corpus the seed compiles.",
+    "CLIMB, gunbc#13475: NoExprData whose inferred (or self) node is an element collection evaluates as the empty list. Concat does not treat a leftover Unit as empty (review 77857: that flatten is an absorbing fallback). child_type_node keeps a TypeVariable child so the type node is not collapsed to error_type/Unit before eval. Admitted under gunbc.v1_maintenance_standing v1_seed_standing: seed defect that silently produced a wrong value, serving the v2 corpus the seed compiles.",
 
     "RUNG FOUND AT: mitigatable (loud TypeError at eval). CLIMBED ON #13475 to mechanically preventable for the empty-collection-as-Unit arm. CEILING: 4 -- an empty list has no constructor that is Unit. NEXT TRIGGER: empty-list literals keep ExprListLit through typing so NoExprData is not the empty-list value path.",
   ],

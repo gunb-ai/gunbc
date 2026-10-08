@@ -8467,8 +8467,6 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
             // A List/Set type node (make_container_type) is NoExprData. Using it as a
             // value — fold init typed as the collection, or an empty literal whose
             // typed node lost ExprListLit — must be the empty collection, never Unit.
-            // Unit here is what made concat push Unit elements and field reads refuse
-            // `path`/`tbuf` on Unit (DESIGN §5; empty_list_element vs unit_type).
             let ty = match node.inferred.as_deref() {
                 Some(InferredNode::Resolved { node: t, .. }) => t.clone(),
                 _ => node.clone(),
@@ -26383,11 +26381,6 @@ pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
         match &cur {
             Value::List(items) => {
                 out.extend(items.iter().cloned());
-                record_flatten(out.len());
-                record_flatten_site(out.len(), site);
-                return Some(out);
-            }
-            Value::Unit => {
                 record_flatten(out.len());
                 record_flatten_site(out.len(), site);
                 return Some(out);
