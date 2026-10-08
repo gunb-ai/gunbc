@@ -626,7 +626,11 @@ test fn the_claim_window_keys_apart_and_binds_the_unit_environment() -> Bool {
   let w1_moved = ClaimDiffWindow { identity: w1.identity, path: "/elsewhere/one.json" as FilePath }
   key(subject: subject, op: windowed(w: w1), rustc: "rustc 1.90.0") != key(subject: subject, op: windowed(w: w2), rustc: "rustc 1.90.0")
     && key(subject: subject, op: windowed(w: w1), rustc: "rustc 1.90.0") == key(subject: subject, op: windowed(w: w1_moved), rustc: "rustc 1.90.0")
-    && compute_operation_env(op: windowed(w: w1)) == ["GUNBC_DIFF_WINDOW_PATH=/v/one.json"]
+    && (match compute_operation_env(op: windowed(w: w1)) |> first() {
+      Present { value: b } => (b.name as String) == "GUNBC_DIFF_WINDOW_PATH" && (b.value as String) == "/v/one.json"
+      Absent => false
+    })
+    && count(compute_operation_env(op: windowed(w: w1))) == 1
     && count(compute_operation_env(op: work_default_build())) == 0
 }
 
