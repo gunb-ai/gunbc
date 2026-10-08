@@ -971,24 +971,18 @@ pub fn union_variant_locals_skip_equal(
 pub fn merge_type_env_cache_guarded(
     base: Rc<TypeEnvCache>,
     overlay: Rc<TypeEnvCache>,
-    _import_path: String,
-    conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
-) -> Rc<GuardedTypeEnvCacheMerge> {
-    // Forks are ledgered by ledger_peer_import_binding_forks, not by flattening str_bindings.
-    Rc::new(GuardedTypeEnvCacheMerge {
-        cache: Rc::new(TypeEnvCache {
-            deps_map: union_deps_map_skip_equal(base.deps_map.clone(), overlay.deps_map.clone()),
-            str_bindings: v1_rt::rc_empty_map(),
-            cycle_set_str: union_bool_set_skip_equal(
-                base.cycle_set_str.clone(),
-                overlay.cycle_set_str.clone(),
-            ),
-            variant_locals: union_variant_locals_skip_equal(
-                base.variant_locals.clone(),
-                overlay.variant_locals.clone(),
-            ),
-        }),
-        conflicts: conflicts.clone(),
+) -> Rc<TypeEnvCache> {
+    Rc::new(TypeEnvCache {
+        deps_map: union_deps_map_skip_equal(base.deps_map.clone(), overlay.deps_map.clone()),
+        str_bindings: v1_rt::rc_empty_map(),
+        cycle_set_str: union_bool_set_skip_equal(
+            base.cycle_set_str.clone(),
+            overlay.cycle_set_str.clone(),
+        ),
+        variant_locals: union_variant_locals_skip_equal(
+            base.variant_locals.clone(),
+            overlay.variant_locals.clone(),
+        ),
     })
 }
 
@@ -1269,24 +1263,6 @@ pub fn ledger_peer_import_binding_forks(
             },
         )
         .conflicts
-}
-
-pub fn ancestry_chain_mismatch_name(flat: Rc<TypeEnv>) -> Option<String> {
-    if flat.ancestry_str_bindings.is_empty() {
-        return std::option::Option::None;
-    }
-    let chain = Rc::new(TypeEnv {
-        ancestry_str_bindings: v1_rt::rc_empty_map(),
-        ..(*flat).clone()
-    });
-    for name in v1_rt::map_keys(&*flat.ancestry_str_bindings) {
-        if lookup_binding_on_chain(flat.clone(), name.clone())
-            != lookup_binding_on_chain(chain.clone(), name.clone())
-        {
-            return Some(name);
-        }
-    }
-    std::option::Option::None
 }
 
 pub fn lookup_binding_by_name_local(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {

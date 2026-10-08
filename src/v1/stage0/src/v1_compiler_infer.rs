@@ -24516,12 +24516,6 @@ pub fn type_env_cache_from_bindings(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ParentCacheRow {
-    pub import_path: String,
-    pub cache: Rc<TypeEnvCache>,
-}
-
 pub fn union_parent_type_env_caches(
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
@@ -24530,17 +24524,9 @@ pub fn union_parent_type_env_caches(
         let parent_caches = Rc::new({
             let mut __result = Vec::new();
             for imp in resolved_imports.iter().cloned() {
-                __result.extend(
-                    (*match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
-                        Some(parent) => Rc::new(vec![Rc::new(ParentCacheRow {
-                            import_path: imp.module_path.clone(),
-                            cache: parent.interface.clone().cache.clone(),
-                        })]),
-                        std::option::Option::None => Rc::new(vec![]),
-                    })
-                    .iter()
-                    .cloned(),
-                );
+                if let Some(parent) = v1_rt::map_get(&parent_index, imp.module_path.clone()) {
+                    __result.push(parent.interface.clone().cache.clone());
+                }
             }
             __result
         });
@@ -24562,8 +24548,8 @@ pub fn union_parent_type_env_caches(
                 cache: crate::v1_compiler_infer_env::empty_type_env_cache(),
                 conflicts,
             }),
-            Some(head) => {
-                let merged = Rc::new(
+            Some(head) => Rc::new(GuardedTypeEnvCacheMerge {
+                cache: Rc::new(
                     parent_caches
                         .clone()
                         .iter()
@@ -24574,24 +24560,16 @@ pub fn union_parent_type_env_caches(
                 .iter()
                 .cloned()
                 .fold(
-                    Rc::new(GuardedTypeEnvCacheMerge {
-                        cache: head.cache.clone(),
-                        conflicts: Rc::new(vec![]),
-                    }),
-                    |acc: Rc<GuardedTypeEnvCacheMerge>, row: Rc<ParentCacheRow>| {
+                    head.clone(),
+                    |acc: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>| {
                         crate::v1_compiler_infer_env::merge_type_env_cache_guarded(
-                            acc.cache.clone(),
-                            row.cache.clone(),
-                            row.import_path.clone(),
-                            acc.conflicts.clone(),
+                            acc.clone(),
+                            overlay.clone(),
                         )
                     },
-                );
-                Rc::new(GuardedTypeEnvCacheMerge {
-                    cache: merged.cache.clone(),
-                    conflicts,
-                })
-            }
+                ),
+                conflicts,
+            }),
         }
     }
 }

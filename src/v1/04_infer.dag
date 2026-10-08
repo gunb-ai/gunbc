@@ -14096,18 +14096,13 @@ fn type_env_cache_from_bindings(
   }
 }
 
-type ParentCacheRow {
-  import_path: String
-  cache: TypeEnvCache
-}
-
 fn union_parent_type_env_caches(
   resolved_imports: List<ResolvedImport>,
   parent_index: Map<String, TypedModule>
 ) -> GuardedTypeEnvCacheMerge {
   let parent_caches = flat_map(resolved_imports, imp =>
     match map_get(parent_index, imp.module_path) {
-      Present { value: parent } => [ParentCacheRow { import_path: imp.module_path, cache: parent.interface.cache }]
+      Present { value: parent } => [parent.interface.cache]
       Absent => []
     }
   )
@@ -14121,10 +14116,12 @@ fn union_parent_type_env_caches(
   match parent_caches |> first {
     Absent => GuardedTypeEnvCacheMerge { cache: empty_type_env_cache(), conflicts: conflicts }
     Present { value: head } =>
-      let merged = fold(parent_caches |> skip(1), init: GuardedTypeEnvCacheMerge { cache: head.cache, conflicts: [] }, f: (acc, row) =>
-        merge_type_env_cache_guarded(base: acc.cache, overlay: row.cache, import_path: row.import_path, conflicts: acc.conflicts)
-      )
-      GuardedTypeEnvCacheMerge { cache: merged.cache, conflicts: conflicts }
+      GuardedTypeEnvCacheMerge {
+        cache: fold(parent_caches |> skip(1), init: head, f: (acc, overlay) =>
+          merge_type_env_cache_guarded(base: acc, overlay: overlay)
+        ),
+        conflicts: conflicts
+      }
   }
 }
 

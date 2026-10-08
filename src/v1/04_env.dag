@@ -596,24 +596,12 @@ fn union_variant_locals_skip_equal(acc: Map<String, TypeBinding>, overlay: Map<S
   }
 }
 
-fn merge_type_env_cache_guarded(
-  base: TypeEnvCache,
-  overlay: TypeEnvCache,
-  import_path: String,
-  conflicts: List<TypeEnvCacheMergeConflict>
-) -> GuardedTypeEnvCacheMerge {
-  // Binding forks are ledgered from each peer import's TypeEnv chain
-  // (`ledger_peer_import_binding_forks` in union_parent_type_env_caches), not by flattening
-  // cache.str_bindings here. `import_path` is unused on this cache-only merge.
-  let _import_path = import_path
-  GuardedTypeEnvCacheMerge {
-    cache: TypeEnvCache {
-      deps_map: union_deps_map_skip_equal(acc: base.deps_map, overlay: overlay.deps_map),
-      str_bindings: empty_map(),
-      cycle_set_str: union_bool_set_skip_equal(acc: base.cycle_set_str, overlay: overlay.cycle_set_str),
-      variant_locals: union_variant_locals_skip_equal(acc: base.variant_locals, overlay: overlay.variant_locals)
-    },
-    conflicts: conflicts
+fn merge_type_env_cache_guarded(base: TypeEnvCache, overlay: TypeEnvCache) -> TypeEnvCache {
+  TypeEnvCache {
+    deps_map: union_deps_map_skip_equal(acc: base.deps_map, overlay: overlay.deps_map),
+    str_bindings: empty_map(),
+    cycle_set_str: union_bool_set_skip_equal(acc: base.cycle_set_str, overlay: overlay.cycle_set_str),
+    variant_locals: union_variant_locals_skip_equal(acc: base.variant_locals, overlay: overlay.variant_locals)
   }
 }
 
@@ -795,41 +783,6 @@ fn ledger_peer_import_binding_forks(envs: List<TypeEnv>, conflicts: List<TypeEnv
       }
     )
   ).conflicts
-}
-
-fn ancestry_chain_mismatch_name(flat: TypeEnv) -> String? {
-  if (flat.ancestry_str_bindings |> map_keys |> count) == 0 {
-    none
-  } else {
-    let chain = TypeEnv {
-      module_path: flat.module_path,
-      bindings: flat.bindings,
-      str_bindings: flat.str_bindings,
-      ancestry_str_bindings: empty_map(),
-      parents: flat.parents,
-      recursive_types: flat.recursive_types,
-      recursive_type_set: flat.recursive_type_set,
-      inductive_fields: flat.inductive_fields,
-      source_indices: flat.source_indices,
-      intern_table: flat.intern_table,
-      source_visible_names: flat.source_visible_names,
-      authored_import_names: flat.authored_import_names,
-      symbol_index: flat.symbol_index,
-      unit_variant_index: flat.unit_variant_index,
-      unit_variant_index_observed: flat.unit_variant_index_observed
-    }
-    fold(map_keys(flat.ancestry_str_bindings), init: none, f: (acc, name) =>
-      match acc {
-        Present { value: n } => Present { value: n }
-        Absent =>
-          if lookup_binding_on_chain(env: flat, name: name) == lookup_binding_on_chain(env: chain, name: name) {
-            none
-          } else {
-            Present { value: name }
-          }
-      }
-    )
-  }
 }
 
 fn lookup_binding_by_name_local(env: TypeEnv, name: String) -> TypeBinding? {
