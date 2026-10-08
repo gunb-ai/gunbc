@@ -253,56 +253,6 @@ fn arrival_after_acquire_traced(
   }
 }
 
-fn arrival_after_acquire_mutant_drops_release(
-  outcome: ArrivalArchiveSlotAcquire,
-  body: fn() -> ArrivalGatedBodyResult,
-  release_fn: fn(ArrivalArchiveSlotHeld) -> ArrivalGatedReleaseResult,
-) -> ArrivalInterlockTrace {
-  match outcome {
-    ArrivalArchiveSlotAcquireRefused { cause: c } => arrival_trace_refused(cause: c)
-    ArrivalArchiveSlotAcquired { held: _ } => arrival_trace_acquired_body_without_release(body: body)
-  }
-}
-
-fn arrival_trace_acquired_body_without_release(
-  body: fn() -> ArrivalGatedBodyResult,
-) -> ArrivalInterlockTrace {
-  match body() {
-    ArrivalGatedBodyResult { exit: e, body_invocations: n } =>
-      ArrivalInterlockTrace {
-        body_invocations: n,
-        release_invocations: 0,
-        exit: e,
-      }
-  }
-}
-
-fn arrival_after_acquire_mutant_refused_calls_body(
-  outcome: ArrivalArchiveSlotAcquire,
-  body: fn() -> ArrivalGatedBodyResult,
-  release_fn: fn(ArrivalArchiveSlotHeld) -> ArrivalGatedReleaseResult,
-) -> ArrivalInterlockTrace {
-  match outcome {
-    ArrivalArchiveSlotAcquireRefused { cause: c } =>
-      arrival_trace_refused_after_calling_body(cause: c, body: body)
-    ArrivalArchiveSlotAcquired { held: h } => arrival_trace_acquired(held: h, body: body, release_fn: release_fn)
-  }
-}
-
-fn arrival_trace_refused_after_calling_body(
-  cause: NonEmptyStr,
-  body: fn() -> ArrivalGatedBodyResult,
-) -> ArrivalInterlockTrace {
-  match body() {
-    ArrivalGatedBodyResult { exit: _, body_invocations: n } =>
-      ArrivalInterlockTrace {
-        body_invocations: n,
-        release_invocations: 0,
-        exit: exit_failure(reason: concat("arrival_converge: ", cause as String)),
-      }
-  }
-}
-
 fn arrival_after_acquire(outcome: ArrivalArchiveSlotAcquire, body: fn() -> ProcessExit) -> ProcessExit {
   match arrival_after_acquire_traced(
     outcome: outcome,

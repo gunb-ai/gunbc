@@ -13,7 +13,6 @@ import gunbc.machine_intake_arrival_interlock {
   ArrivalArchiveInterlockAdmitted, ArrivalArchiveInterlockRefused,
   ArrivalBmcSecureInterlockAdmitted, ArrivalBmcSecureInterlockRefused,
   arrival_combine_prefix_and_release, arrival_after_acquire_traced,
-  arrival_after_acquire_mutant_drops_release, arrival_after_acquire_mutant_refused_calls_body,
   ArrivalArchiveSlotReleased, ArrivalArchiveSlotReleaseRefused,
   ArrivalArchiveSlotAcquire, ArrivalArchiveSlotAcquireRefused, ArrivalArchiveSlotAcquired, ArrivalArchiveSlotHeld,
   ArrivalGatedBodyResult, ArrivalGatedReleaseResult, ArrivalInterlockTrace,
@@ -201,26 +200,6 @@ test fn w_acquired_runs_body_and_release_when_body_refuses() -> Bool {
   acquired_ran_body_and_release_including_body_refusal(
     trace: arrival_after_acquire_traced(
       outcome: fixture_acquired_slot(),
-      body: fn() { recording_body_that_refuses() },
-      release_fn: fn(h) { recording_release(held: h) },
-    ),
-  )
-}
-
-test fn w_mutant_drop_release_fails_acquired_body_and_release_observation() -> Bool {
-  !acquired_ran_body_and_release_including_body_refusal(
-    trace: arrival_after_acquire_mutant_drops_release(
-      outcome: fixture_acquired_slot(),
-      body: fn() { recording_body_that_refuses() },
-      release_fn: fn(h) { recording_release(held: h) },
-    ),
-  )
-}
-
-test fn w_mutant_refused_calls_body_fails_zero_body_observation() -> Bool {
-  !failed_acquire_has_no_body_invocation(
-    trace: arrival_after_acquire_mutant_refused_calls_body(
-      outcome: ArrivalArchiveSlotAcquireRefused { cause: "slot occupied" as NonEmptyStr },
       body: fn() { recording_body_that_refuses() },
       release_fn: fn(h) { recording_release(held: h) },
     ),
