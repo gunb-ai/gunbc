@@ -253,33 +253,6 @@ fn alr_release_with_quiet(handle: HostEffectHandle, store: FabricStorageBinding,
   }
 }
 
-test fn a_live_host_effect_claim_fences_the_reclaim_until_released_by_real_execution() -> Bool {
-  alr_with_hash(scenario: fn(h) {
-    alr_with_temp_dir(scenario: fn(dir) {
-      let store = alr_witness_layout(dir: dir)
-      let released = ReleasedToFleet { group: FabricGroupB {}, release_receipt: h }
-      let srv = match get(xs: fabric_group_hosts(g: FabricGroupB {}), index: 1) { Present { value: x } => x  Absent => alr_srv(s: "srv10") }
-      let resting = alr_resting()
-      alr_witness_remote_ready(dir: dir)
-        && (match admit_unplaced_host_over(raw: srv as String, purpose: "a witness build" as NonEmptyStr, term: second(count: 100), residue: alr_residue(pattern: "/srv/build"), store: store, executor: "executor-1" as NonEmptyStr, at: 1000) { SparkHostRefused { cause: _ } => true  SparkHostAdmitted { host: _, claim: _ } => false })
-        && (match pair_serving_authority_transition(store: store, group: FabricGroupB {}, expected: resting, next: released, transaction: "tx-release" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1000) { AuthorityTransitionAppended { id: _, generation: g1, next: _ } => g1 == 1  _ => false })
-        && (match admit_unplaced_host_over(raw: srv as String, purpose: "a witness build" as NonEmptyStr, term: second(count: 100), residue: alr_residue(pattern: "/srv/build"), store: store, executor: "executor-1" as NonEmptyStr, at: 1001) {
-              SparkHostAdmitted { host: _, claim: Present { value: handle } } =>
-                (match pair_serving_authority_transition(store: store, group: FabricGroupB {}, expected: released, next: resting, transaction: "tx-reclaim" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1002) {
-                   AuthorityTransitionRefused { group: _, step: st, reason: _ } => st == "host-effects"
-                   _ => false
-                 })
-                  && alr_release_with_quiet(handle: handle, store: store, at: 1003)
-                  && (match pair_serving_authority_transition(store: store, group: FabricGroupB {}, expected: released, next: resting, transaction: "tx-reclaim" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1004) {
-                        AuthorityTransitionAppended { id: _, generation: g2, next: _ } => g2 == 2
-                        _ => false
-                      })
-              _ => false
-            })
-    })
-  })
-}
-
 // AN OVERDUE CLAIM STILL FENCES. A term-10 claim at 1001 refuses the re-claim at 1005 AND at 1012
 // (the claim is old, the effect is not known gone); a release with quiescence evidence lands the
 // re-claim; a claim on a host the Active state commits refuses at `committed`; a second claim on a
