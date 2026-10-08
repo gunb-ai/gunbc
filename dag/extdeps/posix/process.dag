@@ -4,6 +4,7 @@ import std.types { NonEmptyStr, String, Bool, Int, List }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
+import v2.std.orchestration { EnvBinding }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -92,6 +93,7 @@ service posix.Process {
       arguments: List<String>
       stdout_file: NonEmptyStr
       stderr_file: NonEmptyStr
+      env: List<EnvBinding> = []
     }
     output { spawn: ProcessSpawnOutcome }
   }

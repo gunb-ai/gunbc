@@ -48,6 +48,7 @@ import extdeps.posix.process
 import extdeps.posix.signal
 import extdeps.http.client
 import extdeps.tools.sleep
+import extdeps.tools.env { env_prefixed_args }
 import extdeps.numeric.base16
 import std.content_hash { content_hash_atom }
 import v2.std.collection { list_at_optional }
@@ -272,17 +273,20 @@ fn run_node_http_serve_smoke() -> Bool {
     Absent => false
     Present { value: port } => {
       let server_js = Filesystem.Write(path: concat(dir.path, "/server.js"), content: gunbhub_node_http_server_source())
-      let spawn = node.Runtime.RunFileWithEnv(
-        workdir: dir.path,
-        script_path: concat(dir.path, "/server.js"),
-        args: [],
-        env: [
-          { name: "HOST", value: "127.0.0.1" },
-          { name: "PORT", value: to_string(port) }
-        ]
+      let spawn = posix.Process.StartDetached(
+        program: "env" as NonEmptyStr,
+        arguments: env_prefixed_args(
+          bindings: [
+            { name: "HOST", value: "127.0.0.1" },
+            { name: "PORT", value: to_string(port) }
+          ],
+          command_argv: ["node", concat(dir.path, "/server.js")]
+        ),
+        stdout_file: concat(dir.path, "/server.stdout.log") as NonEmptyStr,
+        stderr_file: concat(dir.path, "/server.stderr.log") as NonEmptyStr
       )
-      match spawn {
-        success: true, exit_code: 0, stdout: _, stderr: _ => {
+      match spawn.spawn {
+        Spawned { pid: pid } => {
           let readiness = node_http_await_ready(
             url: concat("http://127.0.0.1:", to_string(port), "/") as NonEmptyStr,
             attempts_left: 40,
@@ -290,18 +294,28 @@ fn run_node_http_serve_smoke() -> Bool {
             last_status: "",
             last_exit_code: 0
           )
-          // Note: RunFileWithEnv is synchronous, so we don't have a PID to signal.
-          // The server runs in the foreground and exits when the process exits.
-          // For a smoke test, we just verify it started and responded to readiness.
+          let kill = posix.Signal.TerminateProcess(pid: to_string(pid) as NonEmptyStr)
+          let reaped = node_http_await_reaped(pid: pid, attempts_left: 20)
           let cleanup = shell.Remove.RecursiveForce(path: dir.path)
           let harness_ok = dir.success && server_js.success && cleanup.success
-          harness_ok
+          let lifecycle_ok = kill.success
+            && (match reaped {
+              Absent => false
+              Present { value: outcome } =>
+                match outcome {
+                  Signaled { signal: signal } => signal == 15
+                  StillRunning => false
+                  Exited { code: _ } => false
+                  ReapRefused { cause: _ } => false
+                }
+            })
+          harness_ok && lifecycle_ok
             && (match readiness {
               ServeReady => true
               ServeNotReady { attempts_used: _, last_status: _, last_exit_code: _ } => false
             })
         }
-        _ => false
+        SpawnRefused { program: _, cause: _ } => false
       }
     }
   }

@@ -4,8 +4,6 @@ import std.types { FilePath, String, List }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
-import v2.std.orchestration { EnvBinding }
-import extdeps.tools.env { env_prefixed_args }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -40,22 +38,6 @@ service node.Runtime {
       stderr: String from "stderr"
     }
     transport shell { argv: ["env", "-C", "{workdir}", "node", "{script_path}", args] }
-    exit {
-      0 => Unit
-      nonzero => String "node script exited nonzero"
-    }
-  }
-
-  operation RunFileWithEnv {
-    requires opaque
-    input { workdir: FilePath, script_path: FilePath, args: List<String> = [], env: List<EnvBinding> = [] }
-    output {
-      success: Bool from "exit_success"
-      exit_code: Int from "exit_code"
-      stdout: String from "stdout"
-      stderr: String from "stderr"
-    }
-    transport shell { argv: ["env", "-C", "{workdir}", env_prefixed_args(bindings: env, command_argv: ["node", "{script_path}", args])] }
     exit {
       0 => Unit
       nonzero => String "node script exited nonzero"
