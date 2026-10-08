@@ -198,6 +198,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut source_roots: Vec<String> = Vec::new();
     let mut verify_artifacts: Vec<String> = Vec::new();
     let mut verify_artifacts_mode = false;
+    let mut write_checker_inputs: Option<String> = None;
     let mut required_floor_mode = false;
     let mut required_ci_mode = false;
     let mut required_ci_measurement_receipt: Option<String> = None;
@@ -231,6 +232,13 @@ fn run() -> Result<ExitCode, ExitCode> {
                     i += 1;
                 }
                 break;
+            }
+            // THE PRODUCER OF A RESTORED PAIR'S CHECKER-INPUT RECORD, run by the job that built the
+            // pair (see `write_checker_inputs_record`). Takes no roots.
+            "--write-checker-inputs" => {
+                i += 1;
+                // An OUTPUT path: it does not exist yet, so it is not resolved-and-required.
+                write_checker_inputs = Some(require_value(&args, i, "--write-checker-inputs")?);
             }
             "--source-root" => {
                 i += 1;
@@ -373,6 +381,20 @@ fn run() -> Result<ExitCode, ExitCode> {
     // Short-circuits before the plan-arg requirements so it needs no `--plan-entry`.
     if verify_artifacts_mode {
         return verify_build_artifacts(&verify_artifacts);
+    }
+
+    if let Some(path) = write_checker_inputs {
+        return match v1_compiler::cli_run::write_checker_inputs_record(std::path::Path::new(&path))
+        {
+            Ok(n) => {
+                eprintln!("claim_executor: wrote {n} checker inputs to {path}");
+                Ok(ExitCode::SUCCESS)
+            }
+            Err(e) => {
+                eprintln!("::error::write-checker-inputs refused: {e}");
+                Err(ExitCode::from(1))
+            }
+        };
     }
 
     if let Some(path) = reach_base_standings_file {
