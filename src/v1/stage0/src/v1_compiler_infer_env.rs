@@ -913,20 +913,21 @@ pub fn str_bindings_from_bindings(
 }
 
 pub fn lookup_binding_on_chain(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
-    lookup_binding_on_chain_seen(env, name, v1_rt::rc_empty_map(), v1_rt::rc_empty_map()).binding
+    lookup_binding_on_chain_seen(
+        env,
+        name,
+        v1_rt::rc_empty_map(),
+        v1_rt::rc_empty_map(),
+        false,
+    )
+    .binding
 }
 
 fn last_wins_merge_bindings(
     base: Rc<HashMap<String, Rc<TypeBinding>>>,
     overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    Rc::new(v1_rt::map_keys(&*overlay)).iter().cloned().fold(
-        base,
-        |acc, name| match v1_rt::map_get(&overlay, name.clone()) {
-            Some(binding) => v1_rt::rc_map_insert(acc, name, binding.clone()),
-            std::option::Option::None => acc,
-        },
-    )
+    v1_rt::rc_map_merge(base, overlay)
 }
 
 fn collect_chain_lookup_index_seen(
@@ -936,23 +937,35 @@ fn collect_chain_lookup_index_seen(
     match v1_rt::map_get(&memo, env.module_path.clone()) {
         Some(acc) => ChainIndexMemo { acc, memo },
         std::option::Option::None => {
-            let parent_st = env.parents.iter().cloned().fold(
+            if !env.ancestry_str_bindings.is_empty() {
+                let with_local = last_wins_merge_bindings(
+                    env.ancestry_str_bindings.clone(),
+                    env.str_bindings.clone(),
+                );
                 ChainIndexMemo {
-                    acc: v1_rt::rc_empty_map(),
-                    memo,
-                },
-                |st, parent| {
-                    let nxt = collect_chain_lookup_index_seen(parent, st.memo);
+                    acc: with_local.clone(),
+                    memo: v1_rt::rc_map_insert(memo, env.module_path.clone(), with_local),
+                }
+            } else {
+                let parent_st = env.parents.iter().cloned().fold(
                     ChainIndexMemo {
-                        acc: last_wins_merge_bindings(st.acc, nxt.acc),
-                        memo: nxt.memo,
-                    }
-                },
-            );
-            let with_local = last_wins_merge_bindings(parent_st.acc, env.str_bindings.clone());
-            ChainIndexMemo {
-                acc: with_local.clone(),
-                memo: v1_rt::rc_map_insert(parent_st.memo, env.module_path.clone(), with_local),
+                        acc: v1_rt::rc_empty_map(),
+                        memo,
+                    },
+                    |st, parent| {
+                        let nxt = collect_chain_lookup_index_seen(parent, st.memo);
+                        ChainIndexMemo {
+                            acc: last_wins_merge_bindings(st.acc, nxt.acc),
+                            memo: nxt.memo,
+                        }
+                    },
+                );
+                let with_local =
+                    last_wins_merge_bindings(parent_st.acc, env.str_bindings.clone());
+                ChainIndexMemo {
+                    acc: with_local.clone(),
+                    memo: v1_rt::rc_map_insert(parent_st.memo, env.module_path.clone(), with_local),
+                }
             }
         }
     }
@@ -980,6 +993,32 @@ pub fn scratch_parent_chain_overlay(
         .acc
 }
 
+pub fn drop_scratch_overlays_from_resolved_graph(
+    graph: Rc<crate::v1_compiler_infer_items::ResolvedGraph>,
+) -> Rc<crate::v1_compiler_infer_items::ResolvedGraph> {
+    let modules: Vec<Rc<crate::v1_compiler_infer_items::TypedModule>> = graph
+        .modules
+        .iter()
+        .map(|m| {
+            Rc::new(crate::v1_compiler_infer_items::TypedModule {
+                type_env: type_env_drop_scratch_overlay(m.type_env.clone()),
+                interface: Rc::new(crate::v1_compiler_infer_items::ModuleInterface {
+                    summary: m.interface.summary.clone(),
+                    env: type_env_drop_scratch_overlay(m.interface.env.clone()),
+                    cache: m.interface.cache.clone(),
+                }),
+                ..(**m).clone()
+            })
+        })
+        .collect();
+    Rc::new(crate::v1_compiler_infer_items::ResolvedGraph {
+        modules: Rc::new(modules.into()),
+        item_registry: graph.item_registry.clone(),
+        diagnostics: graph.diagnostics.clone(),
+        item_leaf_owner_modules: graph.item_leaf_owner_modules.clone(),
+    })
+}
+
 pub fn type_env_drop_scratch_overlay(env: Rc<TypeEnv>) -> Rc<TypeEnv> {
     Rc::new(TypeEnv {
         module_path: env.module_path.clone(),
@@ -1005,6 +1044,7 @@ fn lookup_binding_on_chain_seen(
     name: String,
     seen: Rc<HashMap<String, bool>>,
     hits: Rc<HashMap<String, Rc<TypeBinding>>>,
+    walk_locals_only: bool,
 ) -> ChainBindingWalk {
     match v1_rt::map_get(&seen, env.module_path.clone()) {
         Some(_) => ChainBindingWalk {
@@ -1021,7 +1061,7 @@ fn lookup_binding_on_chain_seen(
                     hits: v1_rt::rc_map_insert(hits, env.module_path.clone(), binding.clone()),
                 },
                 std::option::Option::None => {
-                    if env.ancestry_str_bindings.is_empty() {
+                    if walk_locals_only || env.ancestry_str_bindings.is_empty() {
                         let walked = env.parents.iter().cloned().fold(
                             ChainBindingWalk {
                                 binding: std::option::Option::None,
@@ -1034,6 +1074,7 @@ fn lookup_binding_on_chain_seen(
                                     name.clone(),
                                     st.seen,
                                     st.hits,
+                                    true,
                                 );
                                 match nxt.binding {
                                     Some(binding) => ChainBindingWalk {

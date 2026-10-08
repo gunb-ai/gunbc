@@ -139,7 +139,7 @@ import v1.compiler.infer_env {
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, lookup_binding_on_chain, collect_chain_bare_names, scratch_parent_chain_overlay, type_env_drop_scratch_overlay, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref,
+  lookup_binding_by_name, lookup_binding_on_chain, collect_chain_bare_names, scratch_parent_chain_overlay, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref,
   listed_import_required_bare_call_blocked,
   effective_visible_binding, unit_variant_index_shadow_insert,
   build_unit_variant_index, UnitVariantContribution
@@ -17014,7 +17014,6 @@ fn ground_kernel_views(items: List<Node>, env: TypeEnv, module_name: String) -> 
 fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, global_variant_base: Map<String, TypeBinding>) -> TypecheckModuleResult {
   let env_result = build_type_env(module: resolved, parent_index: parent_index, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index)
   let env = env_result.env
-  let retained_env = type_env_drop_scratch_overlay(env: env)
   let env_cache = env_result.cache
   let env_diags = env_result.diagnostics
 
@@ -17026,12 +17025,12 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
         progress: AbandonedBeforeItems,
         module: resolved.module,
         items: [],
-        type_env: retained_env,
+        type_env: env,
         type_env_cache: env_cache,
         interface: build_module_interface(
           module_path: authored_name_at(source_indices: source_indices, node: resolved.module),
           module: resolved.module,
-          env: retained_env,
+          env: env,
           cache: env_cache,
           source_indices: source_indices
         ),
@@ -17121,12 +17120,12 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       progress: ItemsChecked,
       module: typed_module,
       items: grounded.items,
-      type_env: retained_env,
+      type_env: env,
       type_env_cache: module_type_env_cache,
       interface: build_module_interface(
         module_path: resolved_module_name,
         module: typed_module,
-        env: retained_env,
+        env: env,
         cache: module_type_env_cache,
         source_indices: source_indices
       ),

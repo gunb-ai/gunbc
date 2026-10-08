@@ -14422,10 +14422,27 @@ fn index_insert_typed(
     typed_key: String,
     result: Rc<v1_compiler_infer::TypecheckModuleResult>,
 ) -> Result<Rc<v1_compiler_infer::TypecheckModuleResult>, String> {
+    let stripped =
+        crate::v1_compiler_infer_env::type_env_drop_scratch_overlay(result.typed.type_env.clone());
+    let stored = Rc::new(v1_compiler_infer::TypecheckModuleResult {
+        typed: Rc::new(crate::v1_compiler_infer_items::TypedModule {
+            type_env: stripped.clone(),
+            interface: Rc::new(crate::v1_compiler_infer_items::ModuleInterface {
+                summary: result.typed.interface.summary.clone(),
+                env: crate::v1_compiler_infer_env::type_env_drop_scratch_overlay(
+                    result.typed.interface.env.clone(),
+                ),
+                cache: result.typed.interface.cache.clone(),
+            }),
+            ..(*result.typed).clone()
+        }),
+        diagnostics: result.diagnostics.clone(),
+        binding_forks: result.binding_forks.clone(),
+    });
     index
         .typed_module_cache
         .borrow_mut()
-        .insert(typed_key, result.clone());
+        .insert(typed_key, stored);
     enforce_typed_cache_entry_cap(index);
     Ok(result)
 }
@@ -38277,16 +38294,21 @@ fn prepared_graph_without_typecheck_caches(
     graph: &Rc<v1_compiler_compile::ResolvedGraph>,
 ) -> Rc<v1_compiler_compile::ResolvedGraph> {
     let empty = crate::v1_compiler_infer_env::empty_type_env_cache();
-    let empty_ancestry = crate::v1_rt::rc_empty_map();
     let modules: Vec<Rc<crate::v1_compiler_infer_items::TypedModule>> = graph
         .modules
         .iter()
         .map(|m| {
+            let stripped =
+                crate::v1_compiler_infer_env::type_env_drop_scratch_overlay(m.type_env.clone());
             Rc::new(crate::v1_compiler_infer_items::TypedModule {
                 type_env_cache: empty.clone(),
-                type_env: Rc::new(TypeEnv {
-                    ancestry_str_bindings: empty_ancestry.clone(),
-                    ..(*m.type_env).clone()
+                type_env: stripped,
+                interface: Rc::new(crate::v1_compiler_infer_items::ModuleInterface {
+                    summary: m.interface.summary.clone(),
+                    env: crate::v1_compiler_infer_env::type_env_drop_scratch_overlay(
+                        m.interface.env.clone(),
+                    ),
+                    cache: empty.clone(),
                 }),
                 ..(**m).clone()
             })
