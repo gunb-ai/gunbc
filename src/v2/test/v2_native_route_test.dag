@@ -190,7 +190,7 @@ fn receipt_over(
     false_control: Present { value: NativeTestReturnedFalse },
     true_control: Present { value: NativeTestPassed },
     malformed_control: MalformedSpecimenRefused {
-      path: "target/v2-native-lane/malformed-control-root/poison.dag",
+      path: "target/v2-native-lane/malformed-control-root/dag/poison.dag",
       reason: ^tokenize_lex_e1_unterminated_string
     },
     old_route_control: OldRouteWithdrawn { withdrawn_executable: "/seed/gunbc" },

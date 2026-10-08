@@ -80,8 +80,9 @@ const MALFORMED_SPECIMEN_COMMITTED: &str = "fixtures/native_lane_malformed/poiso
 /// workspace-relative like every path this harness hands the binary (its working directory is
 /// the workspace root). The receipt records the observed refusal path; the admission authority
 /// requires it non-empty, and this harness requires it to name the materialized specimen.
-const MALFORMED_CONTROL_ROOT: &str = "target/v2-native-lane/malformed-control-root";
-const MALFORMED_MATERIALIZED_PATH: &str = "target/v2-native-lane/malformed-control-root/poison.dag";
+const MALFORMED_CONTROL_ROOT: &str = "target/v2-native-lane/malformed-control-root/dag";
+const MALFORMED_MATERIALIZED_PATH: &str =
+    "target/v2-native-lane/malformed-control-root/dag/poison.dag";
 
 /// THE TWO DOORS' CONTROL INPUTS, AS THE THREE FACTS THEIR ARGV IS BUILT FROM.
 ///
