@@ -23,7 +23,7 @@ import v1.std.core {
   FieldAccessStyle, OptionalUnwrap,
   FieldValueShape, PlainValue, OptionalValue,
   FieldSummary,
-  with_optional_cardinality, with_required_cardinality, preserve_outer_optional_cardinality, cardinality_is_optional,
+  with_optional_cardinality, with_required_cardinality, without_optional_cardinality, compose_optional_cardinality_onto_node, preserve_outer_optional_cardinality, cardinality_is_optional,
   Connective, Conj, Disj, NoConnective,
   ErrorNode,
 
@@ -786,12 +786,11 @@ fn global_bare_callable_node(type_env: TypeEnv, name: String) -> Node? {
 fn lookup_field_type_node(n: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
   let is_optional = cardinality_is_optional(c: n.return_cardinality)
   if is_optional {
-    let inner = with_required_cardinality(n: n)
     if field_name == "value" {
-      Present { value: inner }
+      Present { value: with_required_cardinality(n: n) }
     } else {
-      match lookup_field_type_node(n: inner, field_name: field_name, source_indices: source_indices) {
-        Present { value: inner_result } => Present { value: with_optional_cardinality(n: inner_result) }
+      match lookup_field_type_node(n: without_optional_cardinality(n: n), field_name: field_name, source_indices: source_indices) {
+        Present { value: inner_result } => Present { value: compose_optional_cardinality_onto_node(outer: n, inner: inner_result) }
         Absent => none
       }
     }
@@ -820,7 +819,12 @@ fn lookup_field_type_node(n: Node, field_name: String, source_indices: Map<Strin
 
       match n.inferred {
         Present { value: Resolved { node: target } } =>
-          lookup_field_type_node(n: target, field_name: field_name, source_indices: source_indices)
+          let core = without_optional_cardinality(n: target)
+          if cardinality_is_optional(c: target.return_cardinality) && n.connective == NoConnective && core.connective == NoConnective && (core.children |> count) == 0 {
+            none
+          } else {
+            lookup_field_type_node(n: core, field_name: field_name, source_indices: source_indices)
+          }
         _ => none
       }
     }
@@ -1035,12 +1039,11 @@ fn lookup_field_in_product(product: Node, method_name: String, source_indices: M
 
 fn lookup_structural_method(receiver_type: Node, method_name: String, source_indices: Map<String, NewlineIndex>) -> StructuralMethodLookup {
   if cardinality_is_optional(c: receiver_type.return_cardinality) {
-    let inner = with_required_cardinality(n: receiver_type)
-    let inner_lookup = lookup_structural_method(receiver_type: inner, method_name: method_name, source_indices: source_indices)
+    let inner_lookup = lookup_structural_method(receiver_type: without_optional_cardinality(n: receiver_type), method_name: method_name, source_indices: source_indices)
     match inner_lookup.resolution {
       Present { value: mfr } =>
         StructuralMethodLookup {
-          resolution: Present { value: MethodFieldResult { field_node: mfr.field_node, result_type: with_optional_cardinality(n: mfr.result_type), size_effect: mfr.size_effect, cost_shape: mfr.cost_shape, algebra_template: mfr.algebra_template } },
+          resolution: Present { value: MethodFieldResult { field_node: mfr.field_node, result_type: compose_optional_cardinality_onto_node(outer: receiver_type, inner: mfr.result_type), size_effect: mfr.size_effect, cost_shape: mfr.cost_shape, algebra_template: mfr.algebra_template } },
           kernel_diagnostics: inner_lookup.kernel_diagnostics
         }
       Absent => inner_lookup

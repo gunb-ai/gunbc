@@ -92,8 +92,9 @@ pub use crate::v1_std_core::ResolvedFormal;
 pub use crate::v1_std_core::{
     authored_name_at, error_type, find_child_named, has_child_named,
     is_interpreter_blocking_diagnostic, param_node_name_at, param_node_type_expr,
-    preserve_outer_optional_cardinality, qualified_last_segment, with_optional_cardinality,
-    with_required_cardinality,
+    compose_optional_cardinality_onto_node, preserve_outer_optional_cardinality,
+    qualified_last_segment, with_optional_cardinality, with_required_cardinality,
+    without_optional_cardinality,
 };
 pub use crate::v1_std_core::{
     CallTargetIdentity, Cardinality, Connective, DeclaredCallableIdentity, ErrorNode,
@@ -965,18 +966,20 @@ pub fn lookup_field_type_node(
         let is_optional = (crate::v1_std_core::cardinality_is_optional(n.return_cardinality.clone()));
         if is_optional.clone() {
             {
-                let inner = crate::v1_std_core::with_required_cardinality(n.clone());
                 if (field_name.clone() == "value".to_string()) {
-                    Some(inner.clone())
+                    Some(crate::v1_std_core::with_required_cardinality(n.clone()))
                 } else {
                     match lookup_field_type_node(
-                        inner.clone(),
+                        crate::v1_std_core::without_optional_cardinality(n.clone()),
                         field_name.clone(),
                         source_indices.clone(),
                     ) {
-                        Some(inner_result) => Some(crate::v1_std_core::with_optional_cardinality(
-                            inner_result.clone(),
-                        )),
+                        Some(inner_result) => Some(
+                            crate::v1_std_core::compose_optional_cardinality_onto_node(
+                                n.clone(),
+                                inner_result.clone(),
+                            ),
+                        ),
                         std::option::Option::None => std::option::Option::None,
                     }
                 }
@@ -1042,11 +1045,23 @@ pub fn lookup_field_type_node(
                 } else {
                     match n.inferred.clone().as_deref().cloned() {
                         Some(InferredNode::Resolved { node: target, .. }) => {
-                            lookup_field_type_node(
+                            let core = crate::v1_std_core::without_optional_cardinality(
                                 target.clone(),
-                                field_name.clone(),
-                                source_indices.clone(),
-                            )
+                            );
+                            if crate::v1_std_core::cardinality_is_optional(
+                                target.return_cardinality.clone(),
+                            ) && n.connective.clone() == Connective::NoConnective
+                                && core.connective.clone() == Connective::NoConnective
+                                && (core.children.clone().len() as i64) == 0
+                            {
+                                std::option::Option::None
+                            } else {
+                                lookup_field_type_node(
+                                    core,
+                                    field_name.clone(),
+                                    source_indices.clone(),
+                                )
+                            }
                         }
                         _ => std::option::Option::None,
                     }
@@ -1490,13 +1505,19 @@ pub fn lookup_structural_method(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<StructuralMethodLookup> {
     if crate::v1_std_core::cardinality_is_optional(receiver_type.return_cardinality.clone()) {
-        let inner = crate::v1_std_core::with_required_cardinality(receiver_type.clone());
-        let inner_lookup = lookup_structural_method(inner, method_name.clone(), source_indices.clone());
+        let inner_lookup = lookup_structural_method(
+            crate::v1_std_core::without_optional_cardinality(receiver_type.clone()),
+            method_name.clone(),
+            source_indices.clone(),
+        );
         match inner_lookup.resolution.clone() {
             Some(mfr) => Rc::new(StructuralMethodLookup {
                 resolution: Some(Rc::new(MethodFieldResult {
                     field_node: mfr.field_node.clone(),
-                    result_type: crate::v1_std_core::with_optional_cardinality(mfr.result_type.clone()),
+                    result_type: crate::v1_std_core::compose_optional_cardinality_onto_node(
+                        receiver_type.clone(),
+                        mfr.result_type.clone(),
+                    ),
                     size_effect: mfr.size_effect.clone(),
                     cost_shape: mfr.cost_shape.clone(),
                     algebra_template: mfr.algebra_template.clone(),

@@ -5338,6 +5338,9 @@ pub fn peel_optional_layer_cardinality(c: Cardinality) -> Cardinality {
 }
 
 pub fn node_with_cardinality(n: Rc<Node>, c: Cardinality) -> Rc<Node> {
+    if n.return_cardinality == c {
+        return n;
+    }
     Rc::new(Node {
         occurrence_identity: n.occurrence_identity.clone(),
         name: n.name.clone(),
@@ -5374,6 +5377,10 @@ pub fn with_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
             n.return_cardinality.clone(),
         ),
     )
+}
+
+pub fn without_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
+    node_with_cardinality(n.clone(), Cardinality::Required)
 }
 
 pub fn with_required_cardinality(n: Rc<Node>) -> Rc<Node> {
