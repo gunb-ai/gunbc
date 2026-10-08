@@ -4,7 +4,8 @@ import std.types { String, Bool, List, NonEmptyStr }
 import std.decl_ref { decl_ref }
 import product.host_identity { HostIdentity }
 import extdeps.cloud.hetzner { cax41_catalog }
-import product.supplier.hetzner { hetzner_nuremberg_route }
+import product.supplier.hetzner { hetzner_nuremberg_route, hetzner_helsinki_route }
+import product.fabric.provider_route { ProviderRoute }
 import gunbc.fleet_host_backing {
   HostBacking,
   OwnedMachine,
@@ -102,15 +103,15 @@ data both_participation_enrollment_participation: List<FleetParticipation> = [
   CiRunnerParticipation,
 ]
 
-// THE TWO HETZNER CLOUD CAX41 GUESTS (ordered by the operator, 2026-10-07, Nuremberg). Their
+// THE TWO HETZNER CLOUD CAX41 GUESTS (ordered by the operator 2026-10-07 and recreated 2026-10-08: one in Nuremberg, one in Helsinki). Their
 // participation is the CI runner role the operator intends for them; whether that role can RUN is
 // not decided here -- the entitlement says nested virtualization is unavailable on Hetzner Cloud, so
 // the Firecracker execution path downstream refuses on it with that cause. The provider's resource
 // identifier has not been read yet: the console display names the operator relayed are recorded only
 // as what to look up, because a display name is not the resource an operation may target.
-fn cax41_nuremberg_guest(server: String) -> HostBacking {
+fn cax41_guest(route: ProviderRoute, server: String) -> HostBacking {
   ProviderGuest {
-    route: hetzner_nuremberg_route(),
+    route: route,
     entitlement: hetzner_cloud_guest_entitlement(
       row: cax41_catalog,
       offer: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "cax41_catalog"),
@@ -142,12 +143,12 @@ data fleet_enrollments: List<HostEnrollmentIntent> = [
   HostEnrollmentIntent {
     host: operator_host_183527,
     participation: ci_runner_enrollment_participation,
-    backing: cax41_nuremberg_guest(server: "ubuntu-32gb-nbg1-1"),
+    backing: cax41_guest(route: hetzner_nuremberg_route(), server: "ubuntu-32gb-nbg1-1"),
   },
   HostEnrollmentIntent {
     host: operator_host_3dde7f,
     participation: ci_runner_enrollment_participation,
-    backing: cax41_nuremberg_guest(server: "ubuntu-32gb-nbg1-2"),
+    backing: cax41_guest(route: hetzner_helsinki_route(), server: "ubuntu-32gb-hel1-1"),
   },
 ]
 

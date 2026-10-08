@@ -50,7 +50,7 @@ fn spark_endpoint_for_binding(binding: DgxSparkRouterBinding) -> String? {
 // A PROVIDER GUEST IS REACHED AT ITS PUBLIC ADDRESS, BOUND EXPLICITLY. Its identity is opaque and its
 // allocated name has no resolver behind it, so neither may stand in for an address -- the probe would
 // otherwise hand ssh a string nothing resolves. The addresses are the provider's assignment, relayed
-// from the Hetzner Cloud console by the operator (2026-10-07) and carried with that provenance; the
+// by the operator (2026-10-07, servers recreated 2026-10-08) and carried with that provenance; the
 // provider API read that binds the resource id (gunbc.provider_guest_adoption) is what grounds them
 // further.
 type ProviderGuestEndpoint {
@@ -62,13 +62,13 @@ type ProviderGuestEndpoint {
 data provider_guest_endpoints: List<ProviderGuestEndpoint> = [
   ProviderGuestEndpoint {
     host: operator_host_183527,
-    ipv4: "178.104.128.203",
-    provenance: "operator relay of the Hetzner Cloud console row 'ubuntu-32gb-nbg1-1', 2026-10-07",
+    ipv4: "178.104.134.135",
+    provenance: "operator relay of the recreated Hetzner Cloud server 'ubuntu-32gb-nbg1-1', logged in as root from srv2, 2026-10-08",
   },
   ProviderGuestEndpoint {
     host: operator_host_3dde7f,
-    ipv4: "178.104.134.135",
-    provenance: "operator relay of the Hetzner Cloud console row 'ubuntu-32gb-nbg1-2', 2026-10-07",
+    ipv4: "62.238.115.145",
+    provenance: "operator relay of the recreated Hetzner Cloud server 'ubuntu-32gb-hel1-1', logged in as root from srv2, 2026-10-08",
   },
 ]
 
