@@ -48,7 +48,7 @@ import extdeps.posix.process
 import extdeps.posix.signal
 import extdeps.http.client
 import extdeps.tools.sleep
-import extdeps.tools.env { env_prefixed_args, env_chdir_flag, env_path_resolved_program }
+import extdeps.exec.command { env_prefixed_command_in, argv_command, argv_words }
 import extdeps.numeric.base16
 import std.content_hash { content_hash_atom }
 import v2.std.collection { list_at_optional }
@@ -273,18 +273,21 @@ fn run_node_http_serve_smoke() -> Bool {
     Absent => false
     Present { value: port } => {
       let server_js = Filesystem.Write(path: concat(dir.path, "/server.js"), content: gunbhub_node_http_server_source())
+      let inner_cmd = argv_command(
+        program: "node" as NonEmptyStr,
+        arguments: [concat(dir.path, "/server.js")]
+      )
+      let prefixed_cmd = env_prefixed_command_in(
+        directory: dir.path,
+        bindings: [
+          EnvSet { name: "HOST", value: "127.0.0.1" },
+          EnvSet { name: "PORT", value: to_string(port) }
+        ],
+        command: inner_cmd
+      )
       let spawn = posix.Process.StartDetached(
-        program: env_path_resolved_program().invocation,
-        arguments: concat(
-          [env_chdir_flag as String, dir.path],
-          env_prefixed_args(
-            bindings: [
-              EnvSet { name: "HOST", value: "127.0.0.1" },
-              EnvSet { name: "PORT", value: to_string(port) }
-            ],
-            command_argv: ["node", concat(dir.path, "/server.js")]
-          )
-        ),
+        program: prefixed_cmd.program.invocation,
+        arguments: argv_words(command: prefixed_cmd),
         stdout_file: concat(dir.path, "/server.stdout.log") as NonEmptyStr,
         stderr_file: concat(dir.path, "/server.stderr.log") as NonEmptyStr
       )
