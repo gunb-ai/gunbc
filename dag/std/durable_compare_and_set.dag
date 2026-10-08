@@ -162,7 +162,7 @@ fn cas_unreadable_slot_detail(cause: CasUnreadableSlot) -> String {
     CasUnreadableMalformed { detail: d } => concat("malformed: ", d as String)
     CasUnreadableContentMissing { referenced: h } => concat("content missing: ", serialize_content_hash(hash: h))
     CasUnreadableReadRefused { detail: d } => concat("read refused: ", d as String)
-    CasUnreadableObservationBoundExceeded { bound: b } => concat("observation bound exceeded after ", concat(to_string(b), " attempts"))
+    CasUnreadableObservationBoundExceeded { bound: b } => concat("observation bound exceeded: ", to_string(b))
   }
 }
 

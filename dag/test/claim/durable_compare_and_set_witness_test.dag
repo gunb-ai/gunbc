@@ -162,7 +162,7 @@ test fn an_unreadable_slot_is_a_store_refusal_not_a_lost_race() -> Bool {
     && is_store_refusal(outcome: refused)
     && is_store_refusal(outcome: beyond)
     && cas_unreadable_slot_detail(cause: CasUnreadableObservationBoundExceeded { bound: 8 })
-      == "observation bound exceeded after 8 attempts"
+      == "observation bound exceeded: 8"
 }
 
 fn is_store_refusal(outcome: CasOutcome<NonEmptyStr>) -> Bool {
