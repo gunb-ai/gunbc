@@ -1,6 +1,6 @@
 module gunbc.instruments.native_emission_controls
 
-import std.types { Bool, Int, List, Set, String }
+import std.types { Bool, Int, List, NonEmptyStr, Set, String }
 import v2.std.algebra { filter }
 import std.list { duplicated_by_key }
 import gunbc.instruments.native_emission_controls_homonym { ControlBoxed, narrow_slot_value, narrow_slots_equal }
@@ -244,6 +244,46 @@ fn filter_in_branch_condition_cases() -> List<NativeEmissionCase> {
     NativeEmissionCase { identity: "filter_guard_receipt_blank_tail_accepts", held: filter_guard_receipt_shape(tag: "x", lines: ["h", "", ""]) == 1 },
     NativeEmissionCase { identity: "filter_guard_receipt_red_nonblank_tail_refuses", held: filter_guard_receipt_shape(tag: "x", lines: ["h", "", "", "y"]) == 0 },
     NativeEmissionCase { identity: "filter_guard_receipt_red_empty_tag_short_circuits", held: filter_guard_receipt_shape(tag: "", lines: ["h", "", ""]) == 0 }
+  ]
+}
+
+// RULE: an effectful function's return type is rendered against the module's type environment
+// (v1.compiler.emit_rust emit_func_inferred through render_rust_fn_sig_type), the same authority a
+// pure function's return uses. It rendered with an empty emit info, so a type argument was judged
+// against an unobserved unit-variant index and became a compile_error! -- gunbc.durable_cas_file_store
+// `-> CasOutcome<NonEmptyStr>`. control_effectful_generic_return is effectful (it reads the
+// filesystem), so this closure does not compile while that rule is broken; the cases then call it
+// for real on a path no host provisions, and decide the same generic carrier answers its arms.
+type ControlReadBox<T>
+  = ControlReadFull { v: T }
+  | ControlReadEmpty
+
+fn control_effectful_generic_return(path: String) -> ControlReadBox<NonEmptyStr> {
+  let read = Filesystem.Read(path: path)
+  if read.success { ControlReadFull { v: read.content as NonEmptyStr } } else { ControlReadEmpty }
+}
+
+fn control_read_box_value(b: ControlReadBox<NonEmptyStr>) -> String {
+  match b {
+    ControlReadFull { v: v } => v
+    ControlReadEmpty => ""
+  }
+}
+
+fn effectful_generic_return_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase {
+      identity: "generic_return_full_arm_answers_its_value",
+      held: control_read_box_value(b: ControlReadFull { v: "x" as NonEmptyStr }) == "x"
+    },
+    NativeEmissionCase {
+      identity: "generic_return_red_empty_arm_answers_empty",
+      held: control_read_box_value(b: ControlReadEmpty) == ""
+    },
+    NativeEmissionCase {
+      identity: "generic_return_effectful_call_answers_empty_on_absent_path",
+      held: control_read_box_value(b: control_effectful_generic_return(path: "/gunbc-native-emission-controls-absent/none")) == ""
+    }
   ]
 }
 
@@ -509,12 +549,15 @@ data native_emission_expected_identities: List<String> = [
   "rc_match_clone_no_refusal_keeps_the_seed",
   "rc_match_clone_red_first_refusal_wins",
   "rc_match_clone_red_refused_is_not_admitted",
+  "generic_return_full_arm_answers_its_value",
+  "generic_return_red_empty_arm_answers_empty",
+  "generic_return_effectful_call_answers_empty_on_absent_path",
   "generic_empty_map_duplicated_by_key_reports_each_repeat_once",
   "generic_empty_map_red_no_repeat_reports_nothing"
 ]
 
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), concat(rc_match_clone_cases(), generic_empty_map_turbofish_cases()))
+  concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), effectful_generic_return_cases()), concat(rc_match_clone_cases(), generic_empty_map_turbofish_cases()))
 }
 
 fn case_row(c: NativeEmissionCase) -> String {
