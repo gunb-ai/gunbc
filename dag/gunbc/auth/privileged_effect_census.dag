@@ -655,6 +655,12 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
+    site: site(module_path: "gunbc.harness.harness_hosted_route", decl_name: "hosted_secret_text"),
+    effect: recurring_credential_read(subject: "read the OpenRouter free-tier key on every hosted harness bind, then write it as a 0600 bearer header file removed at the binding's release" as NonEmptyStr),
+    realized: RealizedRunSelected,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
     site: site(module_path: "gunbc.tools.bmc_health_reader_converge", decl_name: "bmc_health_reader_converge"),
     effect: recurring_credential_read(subject: "BMC health reader credential read" as NonEmptyStr),
     realized: RealizedRunSelected,
@@ -743,7 +749,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.fleet_secret_accessor_roster", decl_name: "fleet_accessor_grants_converge_with_supplied_token"),
-    effect: accessor_grant(subject: "the fleet accessor roster: spark administrator password, mtcollins1 BMC credential, both approval MAC keys" as NonEmptyStr),
+    effect: accessor_grant(subject: "the fleet accessor roster: spark administrator password, mtcollins1 BMC credential, both approval MAC keys, the OpenRouter free-tier key" as NonEmptyStr),
     realized: RealizedOperatorSession { arm: OperatorTokenFile },
     divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
   },

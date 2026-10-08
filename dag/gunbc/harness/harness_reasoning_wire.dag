@@ -3,6 +3,15 @@ module gunbc.harness.harness_reasoning_wire
 import std.types { String, Bool, List, NonEmptyStr }
 import std.measure { TokenCount }
 import extdeps.languages.json.emit { JsonKeyValue, JsonBool, json_kv, json_string, json_object }
+import extdeps.openrouter.openrouter {
+  OpenRouterReasoningEffort, EffortHigh, EffortMedium, OpenRouterEffortAdmission, EffortAdmitted, EffortNotSupported,
+  openrouter_effort_admitted, openrouter_reasoning_effort_wire, openrouter_message_reasoning_field,
+}
+import extdeps.openrouter.nvidia_nemotron_3_ultra_free {
+  nemotron_ultra_free_model_id, nemotron_ultra_free_context_length, nemotron_ultra_free_supported_efforts,
+  nemotron_ultra_free_reasoning_mandatory,
+}
+import extdeps.nvidia.nemotron_3_ultra { nemotron_ultra_thinking_end_token }
 import gunbc.spark.serving_arm {
   ReasoningResponseProjection, ParsedReasoningField, InlineReasoning,
   gitcommit90_sm121_exl3_row, gunbc_sparkrun_ds4_row,
@@ -38,14 +47,38 @@ import extdeps.zhipu.glm_5_3_flash {
 // for that family -- vLLM ships glm45 for GLM and, on this fleet's build, nothing for DeepSeek V4.
 // Attributing that to the model would be authority substitution; attributing it to the unit is
 // exactly right.
+//
+// A HOSTED UNIT IS A MODEL PLUS THE ROUTER IT IS REACHED THROUGH, by the same reasoning: whether reasoning
+// comes back split, under which member, and which efforts are accepted are the router's facts about its
+// listing (extdeps.openrouter.nvidia_nemotron_3_ultra_free), not the model's. How the harness PLACES a turn
+// on each unit -- a fleet seat or a hosted quota lease -- is asked of harness_unit_placement below.
 type HarnessServingUnit
   = DeepseekV4FlashOnVllm
   | Glm53FlashOnVllm
+  | NemotronUltraFreeOnOpenRouter
 
 fn harness_serving_unit_wire(unit: HarnessServingUnit) -> NonEmptyStr {
   match unit {
     DeepseekV4FlashOnVllm => "deepseek-v4-flash on vllm" as NonEmptyStr
     Glm53FlashOnVllm => "glm-5.3-flash on vllm" as NonEmptyStr
+    NemotronUltraFreeOnOpenRouter => "nemotron-3-ultra:free on openrouter" as NonEmptyStr
+  }
+}
+
+// HOW A TURN ON THIS UNIT IS ADMITTED. A fleet unit is served by an engine this repository launches, so a
+// turn takes a seat on a serving group (gunbc.harness.harness_seat harness_bind_seat). A hosted unit has no
+// group, no replica and no loaded state to share: what bounds it is the upstream's per-request quota, so a
+// turn leases that quota (gunbc.fabric_quota) before each request instead. The two are different capacity
+// facts, which is why this is a closed choice and not a flag.
+type HarnessUnitPlacement
+  = PlacedOnFleetSeat
+  | LeasedFromHostedQuota
+
+fn harness_unit_placement(unit: HarnessServingUnit) -> HarnessUnitPlacement {
+  match unit {
+    DeepseekV4FlashOnVllm => PlacedOnFleetSeat
+    Glm53FlashOnVllm => PlacedOnFleetSeat
+    NemotronUltraFreeOnOpenRouter => LeasedFromHostedQuota
   }
 }
 
@@ -133,10 +166,62 @@ fn harness_glm_reasoning_kwargs(level: HarnessReasoningLevel) -> HarnessReasonin
   }
 }
 
+// THE OPENROUTER ARM, AND ITS WIRE IS THE ROUTER'S, NOT THE MODEL'S. The request carries OpenRouter's
+// top-level `reasoning` object, never Nemotron's chat_template_kwargs: the router owns the translation to
+// the provider, and a client spelling the model's template keys past it would be addressing a template
+// it cannot see.
+//
+// EACH LEVEL IS MAPPED TO AN EFFORT AND THE EFFORT IS ADMITTED AGAINST THE LISTING'S PUBLISHED SET, so
+// what this arm may send is decided by the listing's row and never by this function. Standard is medium
+// and maximum is high, because those are the two efforts the listing accepts and that is their order;
+// off is `enabled: false`, which the listing admits because its reasoning is not mandatory. A listing
+// whose set lacks the mapped effort, or whose reasoning is mandatory, refuses the level with both names.
+fn harness_openrouter_level_effort(level: HarnessReasoningLevel) -> OpenRouterReasoningEffort? {
+  match level {
+    ReasoningOff => none
+    ReasoningStandard => Present { value: EffortMedium }
+    ReasoningMaximum => Present { value: EffortHigh }
+  }
+}
+
+fn harness_openrouter_reasoning_kwargs(unit: HarnessServingUnit, level: HarnessReasoningLevel, supported: List<OpenRouterReasoningEffort>, mandatory: Bool) -> HarnessReasoningKwargs {
+  match harness_openrouter_level_effort(level: level) {
+    Absent =>
+      if mandatory {
+        ReasoningLevelUnsupported {
+          unit: harness_serving_unit_wire(unit: unit),
+          level: harness_reasoning_level_wire(level: level),
+          cause: "the listing marks reasoning mandatory, so a request with reasoning disabled is not one it admits" as NonEmptyStr,
+        }
+      } else {
+        ReasoningKwargsAdmitted { kwargs: [json_kv(key: "reasoning", value: json_object([
+          json_kv(key: "enabled", value: JsonBool { value: false }),
+        ]))] }
+      }
+    Present { value: effort } =>
+      match openrouter_effort_admitted(effort: effort, supported: supported) {
+        EffortNotSupported { effort: e, supported: _ } => ReasoningLevelUnsupported {
+          unit: harness_serving_unit_wire(unit: unit),
+          level: harness_reasoning_level_wire(level: level),
+          cause: join([
+            "the level maps to reasoning effort ", openrouter_reasoning_effort_wire(e: e) as String,
+            ", which the listing's supported_efforts do not include; an unsupported effort is translated by the router to a setting the caller never sees, so it is refused rather than sent",
+          ], "") as NonEmptyStr,
+        }
+        EffortAdmitted { effort: e } =>
+          ReasoningKwargsAdmitted { kwargs: [json_kv(key: "reasoning", value: json_object([
+            json_kv(key: "effort", value: json_string(s: openrouter_reasoning_effort_wire(e: e) as String)),
+          ]))] }
+      }
+  }
+}
+
 fn harness_reasoning_kwargs_for(unit: HarnessServingUnit, level: HarnessReasoningLevel) -> HarnessReasoningKwargs {
   match unit {
     DeepseekV4FlashOnVllm => harness_deepseek_reasoning_kwargs(level: level)
     Glm53FlashOnVllm => harness_glm_reasoning_kwargs(level: level)
+    NemotronUltraFreeOnOpenRouter =>
+      harness_openrouter_reasoning_kwargs(unit: unit, level: level, supported: nemotron_ultra_free_supported_efforts, mandatory: nemotron_ultra_free_reasoning_mandatory)
   }
 }
 
@@ -154,6 +239,12 @@ fn harness_unit_thinking_requested(unit: HarnessServingUnit, level: HarnessReaso
         ReasoningStandard => true
         ReasoningMaximum => true
       }
+    NemotronUltraFreeOnOpenRouter =>
+      match level {
+        ReasoningOff => false
+        ReasoningStandard => true
+        ReasoningMaximum => true
+      }
   }
 }
 
@@ -163,16 +254,21 @@ fn harness_unit_model_id(unit: HarnessServingUnit) -> NonEmptyStr {
   match unit {
     DeepseekV4FlashOnVllm => "deepseek-v4-flash:iq3s-split" as NonEmptyStr
     Glm53FlashOnVllm => glm_5_3_flash_model_id
+    NemotronUltraFreeOnOpenRouter => nemotron_ultra_free_model_id
   }
 }
 
 // THE ENGINE'S TOOL-CALL PARSER FOR THIS UNIT, delegated for the same reason. The DeepSeek arm keeps
 // the string because extdeps.deepseek.deepseek_v4 carries no parser row; that asymmetry is the
 // DeepSeek module's gap, named here rather than papered over with a second GLM-shaped row.
-fn harness_unit_tool_call_parser(unit: HarnessServingUnit) -> NonEmptyStr {
+// A HOSTED UNIT HAS NO ENGINE THIS REPOSITORY LAUNCHES, so there is no parser for it to name: the
+// router's provider parses tool calls and returns them already structured. The answer is absent rather
+// than a borrowed name, because a launch reading a name here would launch a parser nobody chose.
+fn harness_unit_tool_call_parser(unit: HarnessServingUnit) -> NonEmptyStr? {
   match unit {
-    DeepseekV4FlashOnVllm => "deepseek_v4" as NonEmptyStr
-    Glm53FlashOnVllm => glm_5_3_flash_vllm_tool_call_parser
+    DeepseekV4FlashOnVllm => Present { value: "deepseek_v4" as NonEmptyStr }
+    Glm53FlashOnVllm => Present { value: glm_5_3_flash_vllm_tool_call_parser }
+    NemotronUltraFreeOnOpenRouter => none
   }
 }
 
@@ -206,6 +302,7 @@ fn harness_unit_reasoning_projection(unit: HarnessServingUnit) -> ReasoningRespo
   match unit {
     DeepseekV4FlashOnVllm => gunbc_sparkrun_ds4_row.reasoning_projection
     Glm53FlashOnVllm => gitcommit90_sm121_exl3_row.reasoning_projection
+    NemotronUltraFreeOnOpenRouter => Present { value: ParsedReasoningField { field: openrouter_message_reasoning_field } }
   }
 }
 
@@ -234,6 +331,7 @@ fn harness_unit_model_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr {
   match unit {
     DeepseekV4FlashOnVllm => deepseek_v4_chat_reasoning_field
     Glm53FlashOnVllm => glm_5_3_flash_chat_reasoning_field
+    NemotronUltraFreeOnOpenRouter => openrouter_message_reasoning_field
   }
 }
 
@@ -308,6 +406,7 @@ fn harness_unit_server_parses_reasoning(unit: HarnessServingUnit) -> Bool {
   match unit {
     DeepseekV4FlashOnVllm => false
     Glm53FlashOnVllm => true
+    NemotronUltraFreeOnOpenRouter => true
   }
 }
 
@@ -318,6 +417,7 @@ fn harness_unit_thinking_end_token(unit: HarnessServingUnit) -> NonEmptyStr {
   match unit {
     DeepseekV4FlashOnVllm => deepseek_v4_thinking_end_token
     Glm53FlashOnVllm => glm_5_3_flash_thinking_end_token
+    NemotronUltraFreeOnOpenRouter => nemotron_ultra_thinking_end_token
   }
 }
 
@@ -327,5 +427,6 @@ fn harness_unit_declared_context_ceiling(unit: HarnessServingUnit) -> TokenCount
   match unit {
     DeepseekV4FlashOnVllm => deepseek_v4_context_length
     Glm53FlashOnVllm => glm_5_3_flash_context_length
+    NemotronUltraFreeOnOpenRouter => nemotron_ultra_free_context_length
   }
 }

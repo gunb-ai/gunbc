@@ -251,6 +251,24 @@ pub(crate) fn import_closure_dag_files(
         .collect())
 }
 
+/// Compile-subject closure of caller-supplied seed sources over an explicit pool.
+///
+/// `compiler_tests` `resolve_source_closure` used to BFS `import` lines from the seed
+/// pairs. Same class as #13437 / #13464: a provider reached only by reference was omitted.
+/// This is not a second walker — it calls `extend_sources_to_both_closure_fixpoint`, and
+/// `resolve_virtual_entry_compile_closure` is this function over one seed.
+///
+/// SEED DELTA: production `resolve_source_closure` lost its import-line BFS. Net production
+/// seed is this wrapper; its controls are `virtual_entry_compile_closure_controls`, which
+/// reach it through the one-seed form.
+pub fn resolve_seeded_compile_closure(
+    seeds: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    pool_roots: &[String],
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let mei = try_index_for_run_or_owned_pool(pool_roots)?;
+    extend_sources_to_both_closure_fixpoint(seeds, &mei)
+}
+
 /// Compile-subject closure of an in-memory (or on-disk) entry over an explicit pool:
 /// the entry plus every module the one closure authority reaches from it.
 ///
@@ -268,12 +286,11 @@ pub fn resolve_virtual_entry_compile_closure(
     entry_content: &str,
     pool_roots: &[String],
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let mei = try_index_for_run_or_owned_pool(pool_roots)?;
     let seed = Rc::new(v1_compiler_compile::SourceFile {
         path: entry_path.to_string(),
         content: entry_content.to_string(),
     });
-    extend_sources_to_both_closure_fixpoint(vec![seed], &mei)
+    resolve_seeded_compile_closure(vec![seed], pool_roots)
 }
 
 #[cfg(test)]
