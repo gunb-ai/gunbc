@@ -6,18 +6,51 @@ import v2.compiler.name_resolve {
   Admission,
   ResolutionSubject
 }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse }
 import v2.compiler.source_authority {
   DagSourceReadWitness,
   SourceRootIngest
 }
-import v2.extdeps.languages.dag { dag_target_model }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  dag_authored_name_is_parse_production_projection,
+  dag_language_model,
+  dag_node_is_fn_decl,
+  dag_node_is_module_surface,
+  dag_node_is_namespace_member_target,
+  dag_node_is_record_field_carrier,
+  dag_target_model,
+  parse_production_emitted_identity_optional
+}
 import std.algebra { Cons, Empty }
+import std.optional { Absent, Present }
 import std.types { List }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
-import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason, outcome_accepted }
+import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.node { Symbol }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Authored,
+  Cardinality,
+  ComputationNode,
+  Conj,
+  Disj,
+  Edge,
+  Instantiation,
+  Node,
+  NodeFold,
+  Positional,
+  StructuralLabel,
+  Symbol,
+  TypeNode,
+  fold_node,
+  symbol_lexeme
+}
+import v2.std.node_query { member_edge_type_node }
 import v2.std.text { String }
 import v2.workflow.compile_door_ledger {
   DoorCompiled,
@@ -80,6 +113,143 @@ fn isolated_probe_fatal_or_admitted() -> Symbol {
 
 fn isolated_probe_is_not_a_roster_lens_refusal(reason: Symbol) -> Bool {
   (reason == ^compile_door_roster_admitted) || (reason == ^find_witness_reason_no_candidate)
+}
+
+fn describe_node_kind(n: Node) -> String {
+  match n.kind {
+    TypeNode { connective: Conj } => "TypeNode/Conj"
+    TypeNode { connective: Arrow } => "TypeNode/Arrow"
+    TypeNode { connective: Atom { identity: id } } => concat("TypeNode/Atom:", symbol_lexeme(sym: id))
+    TypeNode { connective: Disj } => "TypeNode/Disj"
+    TypeNode { connective: Cardinality } => "TypeNode/Cardinality"
+    TypeNode { connective: Instantiation } => "TypeNode/Instantiation"
+    ComputationNode { behavior: _ } => "ComputationNode"
+  }
+}
+
+fn describe_parse_identity(n: Node) -> String {
+  match parse_production_emitted_identity_optional(node: n) {
+    Present { value: id } => symbol_lexeme(sym: id)
+    Absent =>
+      match node_atom_identity_optional(node: n) {
+        Present { value: id } => concat("atom:", symbol_lexeme(sym: id))
+        Absent => "none"
+      }
+  }
+}
+
+fn describe_edge_label(e: Edge) -> String {
+  match e.label {
+    Authored { name: nm } => concat("Authored:", symbol_lexeme(sym: nm))
+    StructuralLabel { label: _ } => "Structural"
+    Positional => "Positional"
+  }
+}
+
+fn describe_child_edges(n: Node) -> String {
+  fold(n.children, init: "", f: fn(acc, e) {
+    let one = concat(concat(describe_edge_label(e: e), "->"), describe_node_kind(n: e.target))
+    if acc == "" { one } else { concat(concat(acc, ";"), one) }
+  })
+}
+
+fn describe_member_for_lens(e: Edge) -> String {
+  let skip_bit = if dag_node_is_namespace_member_target(node: e.target) { "true" } else { "false" }
+  let fn_bit = if dag_node_is_fn_decl(node: e.target) { "true" } else { "false" }
+  let mod_bit = if dag_node_is_module_surface(node: e.target) { "true" } else { "false" }
+  concat(
+    concat(
+      concat("label=", describe_edge_label(e: e)),
+      concat(" kind=", describe_node_kind(n: e.target))
+    ),
+    concat(
+      concat(" parse_id=", describe_parse_identity(n: e.target)),
+      concat(
+        concat(" fn_decl=", fn_bit),
+        concat(
+          concat(" module_surface=", mod_bit),
+          concat(
+            concat(" skip=", skip_bit),
+            concat(" children=[", concat(describe_child_edges(n: e.target), "]"))
+          )
+        )
+      )
+    )
+  )
+}
+
+fn describe_first_member_not_a_binder_on(carrier: Node) -> String {
+  if dag_node_is_record_field_carrier(node: carrier) {
+    fold(carrier.children, init: "", f: fn(acc, e) {
+      if acc != "" {
+        acc
+      } else {
+        match e.label {
+          Authored { name: nm } =>
+            if dag_authored_name_is_parse_production_projection(name: nm) {
+              ""
+            } else {
+              match member_edge_type_node(e: e) {
+                Present { value: _ } => ""
+                Absent =>
+                  if dag_node_is_namespace_member_target(node: e.target) {
+                    ""
+                  } else {
+                    describe_member_for_lens(e: e)
+                  }
+              }
+            }
+          StructuralLabel { label: _ } => ""
+          Positional => ""
+        }
+      }
+    })
+  } else {
+    ""
+  }
+}
+
+fn isolated_probe_normalized() -> Outcome<Node> {
+  let lm = dag_language_model()
+  bind_outcome(
+    o: tokenize(text: isolated_probe_source, file: ^isolated_probe_cu, rules: lm.lex),
+    f: fn(tokens) {
+      bind_outcome(
+        o: parse(tokens: tokens, grammar: lm.grammar),
+        f: fn(parse_tree) {
+          bind_outcome(
+            o: normalize(parse_tree: parse_tree),
+            f: fn(normalized) { outcome_accepted(value: normalized.root) }
+          )
+        }
+      )
+    }
+  )
+}
+
+// Dump of the first Authored member unit_modeling would refuse as member_not_a_binder
+// on the LOWERED (normalized) tree — the grain the compile-door lenses see. Not a test fn.
+fn isolated_fn_member_at_lens() -> String {
+  match isolated_probe_normalized() {
+    Rejected { diagnostics: d } => concat("normalize_refused:", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
+    Accepted { value: root, diagnostics: _ } =>
+      concat(
+        concat("root=", describe_node_kind(n: root)),
+        concat(
+          concat(" parse_id=", describe_parse_identity(n: root)),
+          concat(
+            concat(" children=[", concat(describe_child_edges(n: root), "] first_unskipped=")),
+            fold_node(
+              n: root,
+              algebra: NodeFold {
+                init: fn(n0) { describe_first_member_not_a_binder_on(carrier: n0) },
+                step: fn(acc, _, child) { if acc == "" { child } else { acc } }
+              }
+            )
+          )
+        )
+      )
+  }
 }
 
 // LONG-LANE: interpreted door + LM in-frame (mandatory_tag_gate_witness class, over 72300
