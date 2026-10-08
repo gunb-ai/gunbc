@@ -162,8 +162,13 @@ service http.Client {
       path: "{url}",
       timeout_seconds: max_seconds
     }
+    // A STATUS IS AN ANSWER; ONLY NO STATUS IS SILENCE. The shell realization deliberately
+    // left out -f so that a 401 or 500 means something answered. The refusal arms are for
+    // transport failures (no response arrived).
     response {
       2xx => String
+      4xx => String
+      5xx => String
     }
     mock_response {
       0 => { status: "000" } "hermetic: no live HTTP endpoint; a bounded presence reading refuses rather than fabricate a status"
@@ -207,6 +212,8 @@ service http.Client {
       body: { json: request_body },
       timeout_seconds: max_seconds
     }
+    // The output carries curl transport exit codes (6 resolve, 7 connect, 28 timeout, 35 TLS, etc.)
+    // HTTP status is in the body for non-2xx. 2xx arm: success=true, exit_code=0.
     response {
       2xx => { exit_code: 0, success: true, body: String, stderr: "" }
       4xx => { exit_code: Int, success: false, body: String, stderr: "" }
@@ -325,12 +332,15 @@ service http.Client {
       path: "{url}",
       timeout_seconds: http_client_max_time_flag(max_time: max_time)
     }
+    // PROBE SEMANTICS: 2xx = answered=true (exit_code=0), 4xx/5xx = answered=false with real status.
+    // Transport failures (curl exit 7, 28, etc.) go to RestRefused, not here.
     response {
       2xx => { status: String, answered: true, exit_code: 0 }
-      4xx => { status: String, answered: false, exit_code: Int }
-      5xx => { status: String, answered: false, exit_code: Int }
+      4xx => { status: String, answered: false, exit_code: 0 }
+      5xx => { status: String, answered: false, exit_code: 0 }
     }
     mock_response {
       0 => { status: "000", answered: false, exit_code: 7 } "hermetic: no live endpoint; a probe replay records that nothing answered"
     }
   }
+}
