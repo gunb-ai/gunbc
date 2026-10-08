@@ -15131,15 +15131,47 @@ fn dispatch_env_get_native(
 /// behavior (IEEE 1003.1-2017 section 2.9.1.1, Command Search and Execution) exactly, so the
 /// native realization is byte-identical to the former `sh -c 'command -v "$1"'` transport:
 ///
+/// - builtins and shell reserved words are reported BEFORE any PATH search, by bare name
+///   (verified against dash: `command -v cd` prints `cd` and exits 0 even when no `cd` binary
+///   exists, and with a `cd` binary ON PATH the builtin still wins — a builtin masks a PATH
+///   file). The set is dash's, the shell the former transport invoked as `sh`: the POSIX
+///   special/regular builtins plus the reserved words, NOT bash's (bash reports `history`,
+///   `select`, `coproc`; dash does not).
 /// - a name CONTAINING a `/` is NOT searched on PATH; the shell reports it present whenever the
 ///   path exists, WITHOUT an exec-bit check (verified against dash: a non-executable `/x` and a
 ///   directory both resolve, and the name is echoed verbatim, symlinks included).
 /// - a name WITHOUT a `/` searches the `PATH` directories in order and, per POSIX, skips
 ///   non-executable entries (verified: a non-executable shadow is passed over for the next
-///   executable match).
+///   executable match). When `PATH` is unset, dash falls back to its compile-time default
+///   (`getconf PATH` = `/bin:/usr/bin`) and still resolves — verified — so an unset PATH here
+///   reads the same default rather than reporting absence.
 /// - not found → None (the builtin exits non-zero with empty stdout; the exit code itself is
 ///   never surfaced — `map_shell_outputs` projects only `exit == 0` into `exists`).
+///
+/// Deliberately NOT modeled: functions and aliases defined in the interpreting shell's own
+/// session (the former transport was a fresh non-interactive `sh -c` with none), and functions
+/// found on PATH as files (the dash builtin does not report those; it only names the file).
 fn wet_command_v_resolve(command: &str) -> Option<String> {
+    // Builtins and reserved words answer by bare name before any PATH search. dash's set — the
+    // shell the former transport invoked. (Reserved words tested against dash: `function`,
+    // `select`, `coproc` are NOT reserved there; `!`, `{`, `}` are.)
+    if matches!(
+        command,
+        // POSIX special builtins
+        ":" | "." | "break" | "continue" | "eval" | "exec" | "exit" | "export" | "readonly"
+        | "return" | "set" | "shift" | "times" | "trap" | "unset"
+        // POSIX regular builtins
+        | "alias" | "cd" | "command" | "false" | "getopts" | "jobs"
+        | "kill" | "pwd" | "read" | "true" | "type" | "ulimit" | "umask" | "unalias"
+        | "wait"
+        // POSIX XSI / dash's extra regular builtins (verified reported by dash)
+        | "echo" | "printf" | "test" | "[" | "bg" | "fg" | "hash"
+        // POSIX reserved words (verified: reported by dash; `function`/`select`/`coproc` are not)
+        | "if" | "then" | "else" | "elif" | "fi" | "do" | "done" | "for" | "while" | "until"
+        | "case" | "esac" | "in" | "!" | "{" | "}"
+    ) {
+        return Some(command.to_string());
+    }
     let path = std::path::Path::new(command);
     if command.contains('/') {
         // A slash: existence check only, no PATH walk, no exec-bit check, echoed verbatim.
@@ -15148,7 +15180,13 @@ fn wet_command_v_resolve(command: &str) -> Option<String> {
         }
         return None;
     }
-    let path_var = std::env::var_os("PATH")?;
+    // When PATH is unset, dash falls back to its compile-time default (`getconf PATH`) and still
+    // resolves from it — verified — so an unset PATH reads the same default instead of reporting
+    // absence. A PATH that IS set, even to something useless, is authoritative as given.
+    let path_var = match std::env::var_os("PATH") {
+        Some(v) => v,
+        None => std::ffi::OsString::from("/bin:/usr/bin"),
+    };
     for dir in std::env::split_paths(&path_var) {
         let candidate = dir.join(command);
         // A missing entry in this PATH dir is not a stop: `command -v` continues to the next
@@ -28865,6 +28903,66 @@ mod wet_command_v_resolve_tests {
             Some(good_tool.to_string_lossy().as_ref()),
             "non-executable shadow must be skipped for the next executable match"
         );
+    }
+
+    // POSIX `command -v` answers builtins and reserved words by bare name BEFORE any PATH
+    // search — even when no binary of that name exists anywhere on PATH, and even when a binary
+    // with the same name IS on PATH (the builtin masks the file). Verified against dash.
+    #[test]
+    fn builtins_and_reserved_words_report_bare_name_before_path() {
+        // The no-binary builtins: the old code returned None (the shell returns the bare name).
+        // The builtin-masks-file case: `echo` exists as /usr/bin/echo, but the builtin wins.
+        for word in [
+            "cd", "export", "set", "type", "read", "eval", "trap", "wait", ":",
+        ] {
+            assert_eq!(
+                wet_command_v_resolve(word).as_deref(),
+                Some(word),
+                "builtin/reserved word must answer by bare name: {word}"
+            );
+        }
+        assert_eq!(wet_command_v_resolve("echo").as_deref(), Some("echo"));
+        assert_eq!(wet_command_v_resolve("test").as_deref(), Some("test"));
+        // Reserved words too: dash reports them (but NOT `function`/`select`/`coproc`).
+        assert_eq!(wet_command_v_resolve("if").as_deref(), Some("if"));
+        assert_eq!(wet_command_v_resolve("esac").as_deref(), Some("esac"));
+        assert_eq!(
+            wet_command_v_resolve("function"),
+            None,
+            "dash does not reserve `function`"
+        );
+        // And the PATH would otherwise answer differently for a masked file.
+        let _env = EnvRestore::capture();
+        let root = root("builtin_masks_file");
+        let _ = std::fs::remove_dir_all(&root);
+        let bin = root.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let cd_file = bin.join("cd");
+        std::fs::write(&cd_file, b"").unwrap();
+        #[cfg(unix)]
+        chmod_exec(&cd_file, true);
+        std::env::set_var("PATH", &bin);
+        assert_eq!(
+            wet_command_v_resolve("cd").as_deref(),
+            Some("cd"),
+            "the builtin masks a PATH file of the same name"
+        );
+    }
+
+    // When PATH is unset, dash falls back to its compile-time default (`getconf PATH` =
+    // /bin:/usr/bin) and still resolves — so an unset PATH here reads the same default instead
+    // of reporting absence (the old code returned None).
+    #[test]
+    fn unset_path_falls_back_to_dash_default() {
+        let _env = EnvRestore::capture();
+        std::env::remove_var("PATH");
+        // Any tool that lives in /bin or /usr/bin resolves under the fallback.
+        assert!(
+            wet_command_v_resolve("sh").is_some(),
+            "an unset PATH must read dash's default, not report absence"
+        );
+        // A name in neither default directory is still absent.
+        assert_eq!(wet_command_v_resolve("definitely_not_here"), None);
     }
 
     // A plain name with no executable match anywhere on PATH → None.
