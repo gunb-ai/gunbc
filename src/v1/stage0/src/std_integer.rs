@@ -214,7 +214,19 @@ pub fn decimal_digit_of_units(mut __tco_loop_value: Int) -> DecimalDigit {
                 continue;
             }
         } else {
-            break decimal_digit_of_reduced_units(value.clone());
+            if (value.clone() < v1_rt::int_neg(9)) {
+                {
+                    let __tco_0 = v1_rt::int_add(value, 10);
+                    __tco_loop_value = __tco_0;
+                    continue;
+                }
+            } else {
+                if (value.clone() < 0) {
+                    break decimal_digit_of_reduced_units(v1_rt::int_sub(0, value.clone()));
+                } else {
+                    break decimal_digit_of_reduced_units(value.clone());
+                }
+            }
         }
     }
 }
@@ -268,16 +280,13 @@ pub fn decimal_digit_of_reduced_units(value: Int) -> DecimalDigit {
 
 pub fn int_to_decimal_string(value: Int) -> String {
     if (value.clone() < 0) {
-        v1_rt::concat(
-            "-".to_string(),
-            int_magnitude_to_decimal_string(v1_rt::int_sub(0, value.clone())),
-        )
+        v1_rt::concat("-".to_string(), int_digits_to_decimal_string(value.clone()))
     } else {
-        int_magnitude_to_decimal_string(value.clone())
+        int_digits_to_decimal_string(value.clone())
     }
 }
 
-pub fn int_magnitude_to_decimal_string(value: Int) -> String {
+pub fn int_digits_to_decimal_string(value: Int) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let rest = v1_rt::int_div(value.clone(), 10);
         let digit = crate::std_nat::decimal_digit_glyph(decimal_digit_of_units(v1_rt::int_sub(
@@ -287,7 +296,7 @@ pub fn int_magnitude_to_decimal_string(value: Int) -> String {
         if (rest.clone() == 0) {
             digit.clone()
         } else {
-            v1_rt::concat(int_magnitude_to_decimal_string(rest.clone()), digit.clone())
+            v1_rt::concat(int_digits_to_decimal_string(rest.clone()), digit.clone())
         }
     })
 }

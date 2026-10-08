@@ -2,6 +2,7 @@
 // Source module: std.nat
 
 use self::DecimalDigit::*;
+use self::DecimalDigitSuccessor::*;
 use self::NatDivision::*;
 use self::NatSubtraction::*;
 use crate::std_algebra::Ordering::{Equal, Greater, Less};
@@ -305,57 +306,100 @@ pub fn decimal_digit_glyph(d: DecimalDigit) -> String {
     }
 }
 
-pub fn nat_decimal_digit(digit: Nat) -> DecimalDigit {
-    if (decimal_digit_nat(DecimalDigit::D0) == digit.clone()) {
-        DecimalDigit::D0
-    } else {
-        if (decimal_digit_nat(DecimalDigit::D1) == digit.clone()) {
-            DecimalDigit::D1
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum DecimalDigitSuccessor {
+    DecimalDigitNext { digit: DecimalDigit },
+    DecimalDigitCarry,
+}
+impl DecimalDigitSuccessor {
+    pub fn digit(&self) -> DecimalDigit {
+        match self {
+            DecimalDigitSuccessor::DecimalDigitNext { digit: __val, .. } => __val.clone(),
+            DecimalDigitSuccessor::DecimalDigitCarry => panic!("no digit on unit variant"),
+        }
+    }
+}
+
+pub fn decimal_digit_successor(d: DecimalDigit) -> Rc<DecimalDigitSuccessor> {
+    match d.clone() {
+        DecimalDigit::D0 => Rc::new(DecimalDigitSuccessor::DecimalDigitNext {
+            digit: DecimalDigit::D1,
+        }),
+        DecimalDigit::D1 => Rc::new(DecimalDigitSuccessor::DecimalDigitNext {
+            digit: DecimalDigit::D2,
+        }),
+        DecimalDigit::D2 => Rc::new(DecimalDigitSuccessor::DecimalDigitNext {
+            digit: DecimalDigit::D3,
+        }),
+        DecimalDigit::D3 => Rc::new(DecimalDigitSuccessor::DecimalDigitNext {
+            digit: DecimalDigit::D4,
+        }),
+        DecimalDigit::D4 => Rc::new(DecimalDigitSuccessor::DecimalDigitNext {
+            digit: DecimalDigit::D5,
+        }),
+        DecimalDigit::D5 => Rc::new(DecimalDigitSuccessor::DecimalDigitNext {
+            digit: DecimalDigit::D6,
+        }),
+        DecimalDigit::D6 => Rc::new(DecimalDigitSuccessor::DecimalDigitNext {
+            digit: DecimalDigit::D7,
+        }),
+        DecimalDigit::D7 => Rc::new(DecimalDigitSuccessor::DecimalDigitNext {
+            digit: DecimalDigit::D8,
+        }),
+        DecimalDigit::D8 => Rc::new(DecimalDigitSuccessor::DecimalDigitNext {
+            digit: DecimalDigit::D9,
+        }),
+        DecimalDigit::D9 => Rc::new(DecimalDigitSuccessor::DecimalDigitCarry),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NatDecimalSplit {
+    pub quotient: i64,
+    pub units: DecimalDigit,
+}
+
+pub fn nat_decimal_split(value: Nat) -> Rc<NatDecimalSplit> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if (value.clone() == 0) {
+            Rc::new(NatDecimalSplit {
+                quotient: 0,
+                units: DecimalDigit::D0,
+            })
         } else {
-            if (decimal_digit_nat(DecimalDigit::D2) == digit.clone()) {
-                DecimalDigit::D2
-            } else {
-                if (decimal_digit_nat(DecimalDigit::D3) == digit.clone()) {
-                    DecimalDigit::D3
-                } else {
-                    if (decimal_digit_nat(DecimalDigit::D4) == digit.clone()) {
-                        DecimalDigit::D4
-                    } else {
-                        if (decimal_digit_nat(DecimalDigit::D5) == digit.clone()) {
-                            DecimalDigit::D5
-                        } else {
-                            if (decimal_digit_nat(DecimalDigit::D6) == digit.clone()) {
-                                DecimalDigit::D6
-                            } else {
-                                if (decimal_digit_nat(DecimalDigit::D7) == digit.clone()) {
-                                    DecimalDigit::D7
-                                } else {
-                                    if (decimal_digit_nat(DecimalDigit::D8) == digit.clone()) {
-                                        DecimalDigit::D8
-                                    } else {
-                                        DecimalDigit::D9
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+            {
+                let p = v1_rt::int_sub(value.clone(), 1);
+                nat_decimal_split_advance(nat_decimal_split(p.clone()))
             }
         }
+    })
+}
+
+pub fn nat_decimal_split_advance(s: Rc<NatDecimalSplit>) -> Rc<NatDecimalSplit> {
+    match (*decimal_digit_successor(s.units.clone())).clone() {
+        DecimalDigitSuccessor::DecimalDigitNext { digit: d, .. } => Rc::new(NatDecimalSplit {
+            quotient: s.quotient.clone(),
+            units: d.clone(),
+        }),
+        DecimalDigitSuccessor::DecimalDigitCarry => Rc::new(NatDecimalSplit {
+            quotient: v1_rt::int_add(s.quotient.clone(), 1),
+            units: DecimalDigit::D0,
+        }),
     }
 }
 
 pub fn nat_to_decimal_string(value: Nat) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let q = nat_div_rem_by_succ(value.clone(), 9);
+        let s = nat_decimal_split(value.clone());
         {
-            let __kernel_grounded_subject = q.quotient.clone();
+            let __kernel_grounded_subject = s.quotient.clone();
             if (__kernel_grounded_subject.clone() == 0) {
-                decimal_digit_glyph(nat_decimal_digit(q.remainder.clone()))
+                decimal_digit_glyph(s.units.clone())
             } else {
                 v1_rt::concat(
-                    nat_to_decimal_string(q.quotient.clone()),
-                    decimal_digit_glyph(nat_decimal_digit(q.remainder.clone())),
+                    nat_to_decimal_string(s.quotient.clone()),
+                    decimal_digit_glyph(s.units.clone()),
                 )
             }
         }
