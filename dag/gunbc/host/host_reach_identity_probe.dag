@@ -22,6 +22,8 @@ import gunbc.fleet_reach_endpoint {
   EndpointUnobserved,
 }
 import gunbc.fleet_host_key_enrollment { enrolled_fingerprint_for, fleet_host_key_enroll_apply }
+import extdeps.tools.id { id_user_name_argv }
+import extdeps.tools.hostname { hostname_short_read_argv }
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -330,7 +332,7 @@ type FleetReachProbeRun {
 // identity and `id -un` for the account actually reached — so ProbeReachable carries both
 // dimensions and the receipt carries the requested principal for the identity verdict.
 fn probe_reachable_with_principal(target: String, hostname_stdout: String) -> ReachProbeOutcome {
-  match typed_argv_probe_over_ssh(host: target as NonEmptyStr, argv: ["id", "-un"]) {
+  match typed_argv_probe_over_ssh(host: target as NonEmptyStr, argv: id_user_name_argv()) {
     TypedArgvExecConverged { result: idr } =>
       if idr.success {
         ProbeReachable { observed_short_hostname: trim(hostname_stdout), observed_principal: trim(idr.stdout) }
@@ -343,7 +345,7 @@ fn probe_reachable_with_principal(target: String, hostname_stdout: String) -> Re
 
 fn probe_ready_target_once(host: String, endpoint: String, remote_principal: String) -> ReachProbeOutcome {
   let target = fleet_probe_ready_ssh_target(t_host: host, endpoint: endpoint, remote_principal: remote_principal)
-  match typed_argv_probe_over_ssh(host: target as NonEmptyStr, argv: ["hostname"]) {
+  match typed_argv_probe_over_ssh(host: target as NonEmptyStr, argv: hostname_short_read_argv()) {
     TypedArgvExecConverged { result: r } =>
       if r.success {
         probe_reachable_with_principal(target: target, hostname_stdout: r.stdout)

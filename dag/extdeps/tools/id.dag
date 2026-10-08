@@ -28,6 +28,10 @@ fn id_uid_argv() -> List<String> {
   [id_program().invocation as String, "-u"]
 }
 
+fn id_user_name_argv() -> List<String> {
+  [id_program().invocation as String, "-u", "-n"]
+}
+
 fn id_gid_argv() -> List<String> {
   [id_program().invocation as String, "-g"]
 }
