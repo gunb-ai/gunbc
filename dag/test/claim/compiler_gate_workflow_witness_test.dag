@@ -236,6 +236,8 @@ test fn the_native_cache_root_is_job_private_and_never_the_shared_tool_cache() -
 // only the emit-build job may mint an id-token.
 test fn the_native_store_transfer_is_wired_by_event() -> Bool {
   string_contains(s: compiler_gate_native_read_condition(), pattern: "head.repo.full_name == github.repository")
+    && string_contains(s: compiler_gate_native_read_condition(), pattern: "github.event_name == 'merge_group'")
+    && !string_contains(s: compiler_gate_native_write_condition(), pattern: "pull_request")
     && compiler_gate_native_write_condition() == "github.event_name == 'merge_group'"
     && string_contains(s: compiler_gate_native_save_command(), pattern: "native_product_save_wet")
     && !string_contains(s: compiler_gate_native_save_command(), pattern: "pull_request")
