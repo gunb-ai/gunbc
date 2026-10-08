@@ -1,0 +1,29 @@
+module test.claim.gcp_estate_convergence_binding
+
+import std.types { Bool }
+import gunbc.auth.github_gcp_federation {
+  github_wif_principal_set, github_wif_default_branch_principal_set, github_wif_default_branch_admits,
+}
+import gunbc.gcp_estate_adoption { gcp_estate_desired_convergence_binding }
+
+// The accepting control: a job at the default branch's ref (a dispatch of the landed fleet-converge
+// workflow, the only consumer of this account through the repository provider) is a member.
+test fn a_job_at_the_default_branch_is_a_member() -> Bool {
+  github_wif_default_branch_admits(presented_ref: "refs/heads/main")
+}
+
+// The refusing controls: the refs a pull request, the merge queue and a pushed branch present are not.
+test fn pr_queue_and_branch_refs_are_not_members() -> Bool {
+  !github_wif_default_branch_admits(presented_ref: "refs/pull/13509/merge")
+    && !github_wif_default_branch_admits(presented_ref: "refs/heads/gh-readonly-queue/main/pr-13509-0123abc")
+    && !github_wif_default_branch_admits(presented_ref: "refs/heads/session/tidy-wren-808")
+}
+
+// fleet-cloud-convergence binds the narrowed set and not the repository-wide one, so no
+// PR-reachable principal can impersonate it (it holds the R2 write-token accessor).
+test fn the_convergence_account_binds_the_default_branch_set_not_the_repository_set() -> Bool {
+  let b = gcp_estate_desired_convergence_binding()
+  b.member == github_wif_default_branch_principal_set()
+    && b.member != github_wif_principal_set()
+    && b.member.contains("/attribute.ref/refs/heads/main")
+}

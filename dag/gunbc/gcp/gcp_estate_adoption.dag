@@ -21,7 +21,7 @@ import gunbc.auth.github_gcp_federation {
   github_wif_pool_id,
   github_wif_provider_id,
   github_wif_attribute_condition,
-  github_wif_principal_set,
+  github_wif_default_branch_principal_set,
   github_wif_issuer_uri,
   fleet_secrets_project_number,
 }
@@ -133,11 +133,16 @@ fn gcp_estate_desired_github_oidc_provider() -> DesiredWifProvider {
   }
 }
 
+// fleet-cloud-convergence HOLDS SECRET ACCESS THAT MUST NOT BE REACHABLE FROM PR-CONTROLLED CODE (the
+// R2 write token among it, gunbc.cloudflare.r2_mint_secret_access). It therefore binds the
+// DEFAULT-BRANCH principal set, never the repository one: a pull request, the merge queue and a
+// dispatch from a pushed branch present other refs and are not members. Its legitimate consumers are
+// the fleet-converge jobs dispatched at main (witnessed in test.claim.gcp_estate_convergence_binding).
 fn gcp_estate_desired_convergence_binding() -> DesiredPrincipalSetBinding {
   DesiredPrincipalSetBinding {
     account: fleet_cloud_convergence_sa_email,
     role: role_iam_workload_identity_user,
-    member: github_wif_principal_set(),
+    member: github_wif_default_branch_principal_set(),
   }
 }
 

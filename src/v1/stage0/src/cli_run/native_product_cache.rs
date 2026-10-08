@@ -40,6 +40,11 @@ use std::path::{Path, PathBuf};
 const STORE_DIR: &str = "native-products";
 const MANIFEST: &str = "manifest.json";
 const EXECUTABLE: &str = "executable";
+const RECEIPT: &str = "receipt.jsonl";
+/// Marker written inside an entry this run committed from its own verified build. `save` packs only
+/// marked entries, so a restored or refused entry is never republished. Named in
+/// `gunbc.native_product_shared_transfer` (`native_product_committed_marker_name`).
+pub(super) const COMMITTED_MARKER: &str = "committed-this-run";
 
 /// The axes in declared order, each already a SHA-256 hex digest of its own preimage.
 #[derive(Debug, Clone)]
@@ -268,15 +273,36 @@ pub(super) fn lookup(root: &Path, key: &ProductKey) -> Lookup {
 const SHARED_RESTORE_ENTRY: &str = "dag/gunbc/native_product_shared_transfer.dag";
 const SHARED_RESTORE_FUNCTION: &str = "native_product_restore_wet";
 
+/// What a restore attempt established. Every non-`Restored` arm is a counted MISS with the cause that
+/// made it one; the caller records it once (`record_outcome`) and builds cold.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum RestoreOutcome {
+    Restored,
+    Unavailable { cause: &'static str, detail: String },
+}
+
+impl RestoreOutcome {
+    fn unavailable(cause: &'static str, detail: impl Into<String>) -> Self {
+        RestoreOutcome::Unavailable {
+            cause,
+            detail: detail.into(),
+        }
+    }
+}
+
 /// SHARED-STORE RESTORE on an L1 miss. The key is derived here and nowhere else, so the restore is
 /// asked for exactly this key (`GUNBC_NATIVE_PRODUCT_KEY`); the `.dag` entry only moves bytes into
 /// the job-private store, and the caller's `lookup` then re-verifies them like any local entry. Every
-/// failure is a counted miss named on stderr and the caller builds cold; nothing here fails a lane.
+/// failure is returned as a cause-bearing outcome and the caller builds cold; nothing here fails a lane.
+/// The store directory is created BEFORE the spawn: the entry installs with `mv -T <scratch>/<key>
+/// <store>/<key>`, which is ENOENT when `<store>` does not exist, and a fresh job-private root holds
+/// only the directory the workflow made.
 pub(super) fn restore_from_shared_store(
     source_roots: &[String],
+    store: &Path,
     key: &ProductKey,
     workspace: &Path,
-) {
+) -> RestoreOutcome {
     // Only the cost gate lives here: no credential means no point loading the closure for the entry,
     // whose `native_product_run_standing` and `select_access_token_source` own the event and
     // credential decisions (a fork, an unattributed run and a missing token each refuse there).
@@ -284,21 +310,20 @@ pub(super) fn restore_from_shared_store(
         .map(|t| t.trim().is_empty())
         .unwrap_or(true)
     {
-        eprintln!(
-            "v2-native-route: native product NativeProductRestoreUnavailable cause=auth key={} — no workload identity in this run (fork pull request, failed auth step or federation not provisioned); counted as a MISS, building cold",
-            key.digest
+        return RestoreOutcome::unavailable(
+            "auth",
+            "no workload identity in this run (fork pull request, failed auth step or federation not provisioned)",
         );
-        return;
+    }
+    if let Err(e) = std::fs::create_dir_all(store) {
+        return RestoreOutcome::unavailable(
+            "store_dir",
+            format!("creating {}: {e}", store.display()),
+        );
     }
     let exe = match std::env::current_exe() {
         Ok(e) => e,
-        Err(e) => {
-            eprintln!(
-                "v2-native-route: native product NativeProductRestoreUnavailable cause=current_exe key={} — {e}; counted as a MISS, building cold",
-                key.digest
-            );
-            return;
-        }
+        Err(e) => return RestoreOutcome::unavailable("current_exe", e.to_string()),
     };
     let mut cmd = std::process::Command::new(exe);
     cmd.current_dir(workspace).arg("run");
@@ -312,12 +337,7 @@ pub(super) fn restore_from_shared_store(
         .env("GUNBC_NATIVE_PRODUCT_KEY", &key.digest)
         .stdout(std::process::Stdio::null());
     match cmd.output() {
-        Ok(out) if out.status.success() => {
-            eprintln!(
-                "v2-native-route: native product SHARED-RESTORED key={}",
-                key.digest
-            )
-        }
+        Ok(out) if out.status.success() => RestoreOutcome::Restored,
         Ok(out) => {
             let err = String::from_utf8_lossy(&out.stderr);
             let reason = err
@@ -325,15 +345,38 @@ pub(super) fn restore_from_shared_store(
                 .rev()
                 .find(|l| !l.starts_with("[pre-entry]") && !l.trim().is_empty())
                 .unwrap_or("no reason reported");
-            eprintln!(
-                "v2-native-route: native product NativeProductRestoreUnavailable cause=transfer key={} — {reason}; counted as a MISS, building cold",
-                key.digest
-            )
+            RestoreOutcome::unavailable("transfer", reason)
         }
-        Err(e) => eprintln!(
-            "v2-native-route: native product NativeProductRestoreUnavailable cause=spawn key={} — {e}; counted as a MISS, building cold",
-            key.digest
-        ),
+        Err(e) => RestoreOutcome::unavailable("spawn", e.to_string()),
+    }
+}
+
+/// The structured counter: ONE JSON line per entry preparation, appended to `receipt.jsonl` in the
+/// job-private root's parent-of-store (the root itself), carrying the final outcome and, for a miss,
+/// the cause. It is the record a later reader counts; the eprintln beside it is only the live log.
+pub(super) fn record_outcome(
+    store: &Path,
+    entry: &str,
+    key: &ProductKey,
+    outcome: &str,
+    cause: Option<&str>,
+) {
+    let line = serde_json::json!({
+        "entry": entry,
+        "key": key.digest,
+        "outcome": outcome,
+        "cause": cause,
+    })
+    .to_string();
+    eprintln!("v2-native-route: native product RECEIPT {line}");
+    let Some(root) = store.parent() else { return };
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(root.join(RECEIPT))
+    {
+        let _ = writeln!(f, "{line}");
     }
 }
 
@@ -354,8 +397,11 @@ pub(super) fn publication_admitted(red_completed: bool, event: Option<&str>) -> 
     red_completed && event_may_publish(event)
 }
 
-/// Commit atomically: write a private sibling, rename into place. WriteOnce -- an entry already
-/// present (a peer won the race) is left as it is, since both are the product of one key.
+/// Commit atomically: write a private sibling, rename into place. An existing entry is left as it
+/// is ONLY when it verifies under the key (a peer won the race: both are the product of one key);
+/// an existing entry that fails verification is a known-refused destination, so it is removed and
+/// replaced by this run's verified build, never treated as committed. The committed marker is written
+/// after the rename, so `save` publishes only what this run built and verified.
 pub(super) fn commit(
     root: &Path,
     key: &ProductKey,
@@ -363,6 +409,14 @@ pub(super) fn commit(
     manifest: &Manifest,
 ) -> Result<(), String> {
     std::fs::create_dir_all(root).map_err(|e| format!("creating {}: {e}", root.display()))?;
+    let dest = entry_dir(root, key);
+    if dest.is_dir() {
+        match lookup(root, key) {
+            Lookup::Hit { .. } => return Ok(()),
+            _ => std::fs::remove_dir_all(&dest)
+                .map_err(|e| format!("removing refused entry {}: {e}", dest.display()))?,
+        }
+    }
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
@@ -376,9 +430,12 @@ pub(super) fn commit(
             .map_err(|e| format!("serializing manifest: {e}"))?;
         std::fs::write(staging.join(MANIFEST), text)
             .map_err(|e| format!("writing manifest: {e}"))?;
-        match std::fs::rename(&staging, entry_dir(root, key)) {
+        std::fs::write(staging.join(COMMITTED_MARKER), b"")
+            .map_err(|e| format!("writing marker: {e}"))?;
+        match std::fs::rename(&staging, &dest) {
             Ok(()) => Ok(()),
-            Err(_) if entry_dir(root, key).is_dir() => Ok(()),
+            // A peer committed between the check and the rename: its entry must verify to stand.
+            Err(_) if matches!(lookup(root, key), Lookup::Hit { .. }) => Ok(()),
             Err(e) => Err(format!("renaming into place: {e}")),
         }
     })();
@@ -522,5 +579,100 @@ mod tests {
             assert_ne!(k0, assemble_key(v).digest);
         }
         assert_eq!(assemble_key(base()).axes.len(), 6);
+    }
+
+    // Defect: a restored entry that fails verification stayed in place and the cold commit treated the
+    // existing directory as success, dropping the fresh build. Commit must replace a refused entry.
+    #[test]
+    fn a_refused_entry_is_replaced_by_the_verified_build_and_marked() {
+        let root = scratch("replace");
+        let store = root.join("store");
+        let bin = root.join("bin");
+        std::fs::write(&bin, b"fresh-build").unwrap();
+        let k = key("dddd");
+        std::fs::create_dir_all(store.join("dddd")).unwrap();
+        std::fs::write(store.join("dddd").join(EXECUTABLE), b"planted").unwrap();
+        std::fs::write(store.join("dddd").join(MANIFEST), b"{}").unwrap();
+        assert!(matches!(lookup(&store, &k), Lookup::Refused { .. }));
+        commit(&store, &k, &bin, &manifest_for(&k, b"fresh-build")).unwrap();
+        assert!(matches!(lookup(&store, &k), Lookup::Hit { .. }));
+        assert!(store.join("dddd").join(COMMITTED_MARKER).exists());
+    }
+
+    // A verified existing entry (a peer won, or a verified restore) is left as it is and is NOT
+    // marked, so save does not republish what this run did not build.
+    #[test]
+    fn a_verified_existing_entry_is_kept_and_not_marked() {
+        let root = scratch("keep");
+        let store = root.join("store");
+        let bin = root.join("bin");
+        std::fs::write(&bin, b"peer").unwrap();
+        let k = key("eeee");
+        let mut m = manifest_for(&k, b"peer");
+        m.discriminating_red_held = true;
+        std::fs::create_dir_all(store.join("eeee")).unwrap();
+        std::fs::write(store.join("eeee").join(EXECUTABLE), b"peer").unwrap();
+        std::fs::write(
+            store.join("eeee").join(MANIFEST),
+            serde_json::to_string(&m).unwrap(),
+        )
+        .unwrap();
+        commit(&store, &k, &bin, &m).unwrap();
+        assert!(matches!(lookup(&store, &k), Lookup::Hit { .. }));
+        assert!(!store.join("eeee").join(COMMITTED_MARKER).exists());
+    }
+
+    // Defect: the workflow makes only the job-private root; the restore installs into
+    // `<root>/native-products/<key>`, ENOENT when that directory is missing. The restore prepares the
+    // store directory first, and a no-credential attempt returns a cause-bearing outcome.
+    #[test]
+    fn restore_into_a_fresh_root_has_a_store_directory_to_install_into() {
+        let root = scratch("fresh");
+        let store = root.join(STORE_DIR);
+        assert!(!store.exists());
+        std::env::set_var("WIF_ACCESS_TOKEN", "x");
+        let k = key("ffff");
+        // No spawnable closure here: the attempt fails at transfer, after the directory exists.
+        let out = restore_from_shared_store(&[], &store, &k, &root);
+        std::env::remove_var("WIF_ACCESS_TOKEN");
+        assert!(store.is_dir(), "outcome {out:?}");
+        assert!(matches!(out, RestoreOutcome::Unavailable { .. }));
+        // The install the .dag entry performs, on that store: mv -T of an extracted key directory.
+        let extracted = root.join("scratch").join("ffff");
+        std::fs::create_dir_all(&extracted).unwrap();
+        let status = std::process::Command::new("mv")
+            .arg("-T")
+            .arg(&extracted)
+            .arg(store.join("ffff"))
+            .status()
+            .unwrap();
+        assert!(status.success());
+        // Control: the same mv into a root whose store directory was never made is the ENOENT.
+        let bare = scratch("fresh-bare");
+        std::fs::create_dir_all(root.join("scratch2")).unwrap();
+        let status = std::process::Command::new("mv")
+            .arg("-T")
+            .arg(root.join("scratch2"))
+            .arg(bare.join(STORE_DIR).join("ffff"))
+            .status()
+            .unwrap();
+        assert!(!status.success());
+    }
+
+    #[test]
+    fn a_missing_credential_is_a_cause_bearing_miss_and_the_receipt_counts_it_once() {
+        let root = scratch("receipt");
+        let store = root.join(STORE_DIR);
+        std::env::remove_var("WIF_ACCESS_TOKEN");
+        let k = key("1111");
+        let out = restore_from_shared_store(&[], &store, &k, &root);
+        let RestoreOutcome::Unavailable { cause, .. } = out else {
+            panic!("expected a miss")
+        };
+        assert_eq!(cause, "auth");
+        record_outcome(&store, "e", &k, "miss", Some(cause));
+        let text = std::fs::read_to_string(root.join(RECEIPT)).unwrap();
+        assert_eq!(text.lines().count(), 1);
+        assert!(text.contains("\"cause\":\"auth\"") && text.contains("\"outcome\":\"miss\""));
     }
 }

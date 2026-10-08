@@ -1,10 +1,11 @@
 module gunbc.auth.github_gcp_federation
 
-import std.types { String, NonEmptyStr, Map }
+import std.types { String, NonEmptyStr, Map, Bool }
 import gunbc.repository { gunbc_repository }
+import gunbc.repo_identity { gunbc_default_branch_name }
 import extdeps.cloud.gcp.gcp {
   ServiceAccountEmail, GcpProjectId, WifPool, WifProvider,
-  wif_provider_resource, wif_principal_set_for_repo
+  wif_provider_resource, wif_principal_set_for_repo, wif_pool_resource
 }
 
 // The repository-level GitHub-to-GCP workload identity federation, as one authority consumed by
@@ -81,6 +82,29 @@ fn github_wif_principal_set() -> String {
     pool_id: github_wif_pool.name,
     repository: federated_github_repo
   )
+}
+
+// THE SAME POOL, NARROWED TO THE DEFAULT BRANCH'S REF. The repository principal set admits every job
+// in this repository, and a pull request's job is a job in this repository (ref refs/pull/N/merge),
+// as is the merge queue's (refs/heads/gh-readonly-queue/...) and a dispatch from any pushed branch.
+// A principal set is keyed on ONE mapped attribute (github_wif_attribute_mapping carries
+// attribute.ref), so pinning the ref is the narrowest membership this provider can express: only a job
+// that runs at the default branch's ref -- reviewed, landed code -- is a member. An account whose
+// secrets must not be reachable from PR-controlled code binds THIS set and never the repository set.
+fn github_wif_default_branch_ref() -> String {
+  concat("refs/heads/", gunbc_default_branch_name)
+}
+
+fn github_wif_default_branch_principal_set() -> String {
+  concat(
+    concat("principalSet://iam.googleapis.com/", wif_pool_resource(project_number: fleet_secrets_project_number, pool_id: github_wif_pool.name)),
+    concat("/attribute.ref/", github_wif_default_branch_ref())
+  )
+}
+
+// Whether a presented token's ref is a member of the default-branch principal set.
+fn github_wif_default_branch_admits(presented_ref: String) -> Bool {
+  presented_ref == github_wif_default_branch_ref()
 }
 
 // A federating domain supplies its own service account; the federation does not enumerate them.

@@ -369,9 +369,45 @@ fn prepare_emitted_compiler_for_entry(
     };
     if let (Some(root), Some(key)) = (&store, &product_key) {
         let mut looked = super::native_product_cache::lookup(root, key);
+        let mut restore_miss: Option<&'static str> = None;
         if matches!(looked, super::native_product_cache::Lookup::Miss) {
-            super::native_product_cache::restore_from_shared_store(source_roots, key, &workspace);
+            match super::native_product_cache::restore_from_shared_store(
+                source_roots,
+                root,
+                key,
+                &workspace,
+            ) {
+                super::native_product_cache::RestoreOutcome::Restored => eprintln!(
+                    "v2-native-route: native product SHARED-RESTORED key={}",
+                    key.digest
+                ),
+                super::native_product_cache::RestoreOutcome::Unavailable { cause, detail } => {
+                    eprintln!(
+                        "v2-native-route: native product NativeProductRestoreUnavailable cause={cause} key={} — {detail}; counted as a MISS, building cold",
+                        key.digest
+                    );
+                    restore_miss = Some(cause);
+                }
+            }
             looked = super::native_product_cache::lookup(root, key);
+        }
+        // ONE structured record per preparation: the final outcome and, for a miss, the restore cause.
+        match &looked {
+            super::native_product_cache::Lookup::Hit { .. } => {
+                super::native_product_cache::record_outcome(root, entry, key, "hit", None)
+            }
+            super::native_product_cache::Lookup::Miss => {
+                super::native_product_cache::record_outcome(root, entry, key, "miss", restore_miss)
+            }
+            super::native_product_cache::Lookup::Refused { cause } => {
+                super::native_product_cache::record_outcome(
+                    root,
+                    entry,
+                    key,
+                    "refused",
+                    Some(cause),
+                )
+            }
         }
         match looked {
             super::native_product_cache::Lookup::Hit {

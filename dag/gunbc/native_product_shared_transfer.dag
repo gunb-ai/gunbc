@@ -151,10 +151,16 @@ fn native_product_restore_wet() -> ProcessExit {
 // name is a product key is an entry the seed committed under publication_admitted (completed red,
 // merge_group), because nothing else writes the job-private store; each is packed to a tar of exactly
 // its two files and created-if-absent at its key. An occupied address is a success (a peer won).
+// THE MARKER THE SEED WRITES INSIDE AN ENTRY IT COMMITTED THIS RUN FROM ITS OWN VERIFIED BUILD (the
+// seed's `native_product_cache::COMMITTED_MARKER`). Save publishes only marked entries: a restored
+// entry, a peer's entry or a refused one carries no marker, so nothing this run did not build and verify
+// is republished. The marker is outside the two-member archive, so it is never uploaded.
+data native_product_committed_marker_name: String = "committed-this-run"
+
 fn native_product_save_one(key: String, store: String, token_source: AccessTokenSource) -> String? {
   match native_product_blob_address(key_hex: key) {
     Absent => none
-    Present { value: address } => {
+    Present { value: address } => if shell.Test.IsFile(path: join([store, "/", key, "/", native_product_committed_marker_name], "") as FilePath).is_file == false { none } else {
       let staging = shell.Mktemp.Dir()
       if staging.success == false { Present { value: join([key, ": no private staging directory"], "") } }
       else {
