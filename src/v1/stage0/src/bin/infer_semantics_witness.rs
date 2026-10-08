@@ -29,10 +29,10 @@ use v1_compiler::v1_compiler_parse;
 use v1_compiler::v1_compiler_trait_derive_emit::{v1_type_expr_keyed_map_verdict, KeyedMapVerdict};
 use v1_compiler::v1_std_core::NewlineIndex;
 use v1_compiler::v1_std_core::{
-    authored_container_spelling_verdict, build_newline_index, default_ident_span,
-    leaf_node_with_span, make_arm_node, no_span, with_optional_cardinality, Cardinality,
-    CompilerDiagnostic, Connective, ContainerSpellingVerdict, ExprData, InferredNode, MatchPattern,
-    Node, SourceSpan,
+    authored_container_spelling_verdict, build_newline_index, cardinality_is_optional,
+    default_ident_span, leaf_node_with_span, make_arm_node, no_span, with_optional_cardinality,
+    Cardinality, CompilerDiagnostic, Connective, ContainerSpellingVerdict, ExprData, InferredNode,
+    MatchPattern, Node, OptionalLayers, SourceSpan,
 };
 
 fn fail(msg: impl std::fmt::Display) -> ExitCode {
@@ -751,9 +751,7 @@ fn valid_map_index_preserves_optional_value_type() {
     {
         InferredNode::Resolved { node, .. } => {
             assert_eq!(node.name, "Int");
-            assert!(crate::v1_std_core::cardinality_is_optional(
-                node.return_cardinality.clone()
-            ));
+            assert!(cardinality_is_optional(node.return_cardinality.clone()));
         }
         other => panic!("expected resolved return type, got {:?}", other),
     }
@@ -914,7 +912,7 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::CardOptional {
-            layers: ::std::rc::Rc::new(crate::v1_std_core::OptionalLayers::OneLayer),
+            layers: Rc::new(OptionalLayers::OneLayer),
         },
         uses: Rc::new(vec![]),
         body: None,
@@ -1118,7 +1116,7 @@ fn real_optional_coproduct_preserves_present_absent_pattern_names() {
             leaf_node("Present".to_string()),
         ],
         Cardinality::CardOptional {
-            layers: ::std::rc::Rc::new(crate::v1_std_core::OptionalLayers::OneLayer),
+            layers: Rc::new(OptionalLayers::OneLayer),
         },
     );
     let subject = v1_compiler_infer_patterns::pattern_subject_from_node(optional_sum);
@@ -1481,12 +1479,7 @@ fn structural_method_first_on_list_returns_optional_element() {
         "first on List<Int> should return Int"
     );
     assert!(
-        matches!(
-            result.result_type.return_cardinality,
-            Cardinality::CardOptional {
-                layers: ::std::rc::Rc::new(crate::v1_std_core::OptionalLayers::OneLayer)
-            }
-        ),
+        cardinality_is_optional(result.result_type.return_cardinality.clone()),
         "first should return Optional"
     );
 }
@@ -1596,12 +1589,7 @@ fn structural_method_get_on_map_returns_optional_value() {
         "get on Map<String,Int> should return Int"
     );
     assert!(
-        matches!(
-            result.result_type.return_cardinality,
-            Cardinality::CardOptional {
-                layers: ::std::rc::Rc::new(crate::v1_std_core::OptionalLayers::OneLayer)
-            }
-        ),
+        cardinality_is_optional(result.result_type.return_cardinality.clone()),
         "get should return Optional"
     );
 }
@@ -1925,9 +1913,7 @@ fn map_index_with_correct_key_type_succeeds() {
     match result.inferred.as_ref().map(|i| i.as_ref()) {
         Some(InferredNode::Resolved { node }) => {
             assert_eq!(node.name, "Int");
-            assert!(crate::v1_std_core::cardinality_is_optional(
-                node.return_cardinality.clone()
-            ));
+            assert!(cardinality_is_optional(node.return_cardinality.clone()));
         }
         other => panic!("expected Resolved(Int?), got {:?}", other),
     }
