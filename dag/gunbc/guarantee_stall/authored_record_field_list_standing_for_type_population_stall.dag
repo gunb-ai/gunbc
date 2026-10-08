@@ -1,0 +1,39 @@
+module gunbc.guarantee_stall.authored_record_field_list_standing_for_type_population_stall
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+// WHY THIS IS A STALL AND NOT A SECTION 4b(3) DROP. Nothing was lowered. Before the BmcSecure
+// observation join grew past four fields, the join already bound an authored subset; extending it
+// to the rest of BmcAccountStateObservation except controller_clock did not drop a rung that had
+// been held. DESIGN section 4b(2) requires a class below its ceiling to name its next-rung trigger.
+//
+// HOMES CHECKED BEFORE MINTING, so this is not a nickname of an existing class:
+// gunbc.guarantee_stall.axis_list_re_enumerates_its_variant_type_stall -- authored list mirroring a
+// declared COPRODUCT constructor population; waits on constructor enumeration. Record field
+// identity-and-type is a different primitive.
+// gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall -- authored roster of DATA
+// declarations; waits on declaration VALUE BINDING. A List<GuaranteeStall> is not a record field set.
+// gunbc.recurring_failure_mode.optional_equality_answers_by_representation -- Optional == answering
+// by representation (interpreter `first` vs Present). That is one ARM of this row's OR trigger, not
+// the authored-field-list class.
+// gunbc.recurring_failure_mode.handwritten_population_wrong_by_gain_and_by_loss,
+// gunbc.recurring_failure_mode.roster_is_its_own_denominator -- waiter/report lists, not type fields.
+// gunbc.recurring_failure_mode.kind_carried_but_its_fields_stay_optional -- Node payload optionality.
+// gunbc.recurring_failure_mode.a_pattern_binding_a_subset_of_fields_is_an_implicit_wildcard -- match
+// wildcards, not equality adapters.
+data authored_record_field_list_standing_for_type_population_stall: GuaranteeStall = GuaranteeStall {
+  subject: "an authored field list stands for a record type's declared population, so a new field or a new Optional can fall out of an equality join silently",
+  current: Mitigatable,
+  ceiling: StructurallyImpossible,
+  blocker: AwaitsOneGrounding {
+    grounding: "a value-layer read of a record's declared fields with their types, sufficient to refuse an unhandled field or Optional at a join; or structural == that is value-exact over Optionals (gunbc#13488), after which clock blanking and the hand match delete",
+  },
+  population: BoundedPopulation {
+    members: [
+      "gunbc.machine_intake_bmc_secure bmc_account_state_observation_same",
+      "gunbc.machine_intake_bmc_secure controller_clock_reading_same",
+    ],
+  },
+  next_rung_trigger: climbs_when(capability: "a value-layer read of a record's declared fields with their types, sufficient to refuse an unhandled field or an unhandled Optional at this join, checked by field identity and declared type never by count; OR gunbc#13488 making structural == value-exact over Optionals, after which observation_with_controller_clock blanking and controller_clock_reading_same are deleted. A count of fields, a comment claiming completeness, or a second authored list is not this capability"),
+}

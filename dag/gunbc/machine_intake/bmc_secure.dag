@@ -1372,7 +1372,10 @@ fn managed_reference_same(a: ManagedCredentialReference, b: ManagedCredentialRef
 // optional_equality_answers_by_representation, so that field is matched explicitly and the rest
 // compared by `==` after zeroing it. That match and observation_with_controller_clock are still
 // authored field lists: a new ControllerClockReading field or a new Optional on the observation
-// is not derived from the type declaration (no .dag value-layer reader of declared fields).
+// is not derived from the type declaration (no .dag value-layer reader of declared fields). The
+// class is gunbc.guarantee_stall.authored_record_field_list_standing_for_type_population_stall
+// authored_record_field_list_standing_for_type_population_stall -- a stall below ceiling, not a
+// section 4b(3) drop.
 fn controller_clock_reading_same(left: ControllerClockReading?, right: ControllerClockReading?) -> Bool {
   match left {
     Absent => match right { Absent => true  Present { value: _ } => false }
