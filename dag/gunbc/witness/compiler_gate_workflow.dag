@@ -1039,10 +1039,13 @@ fn compiler_gate_base_compiler_bound_steps() -> List<CompilerGateBoundStep> {
       step_name: "Fetch the base revision's compiler pair candidate",
     },
     CompilerGateBoundStep {
-      step: compiler_gate_candidate_run_step(
+      step: compiler_gate_seed_run_step(
         name: "Verify the base revision's compiler pair and install it beside the head's",
+        id: none,
         script: release_bins_base_compiler_script_for(product: compiler_pair_release_product()),
-        condition: join(["steps.", compiler_gate_base_compiler_fetch_step_id, ".outputs.standing == 'present'"], ""),
+        env: [],
+        condition: Present { value: join(["steps.", compiler_gate_base_compiler_fetch_step_id, ".outputs.standing == 'present'"], "") },
+        timeout: none,
       ),
       role: capability_neutral,
       step_name: "Verify the base revision's compiler pair and install it beside the head's",
