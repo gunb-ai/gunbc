@@ -36,10 +36,8 @@ test fn each_account_holds_exactly_one_pinned_cell_on_its_own_token() -> Bool {
   let r = native_product_read_federation()
   let w = native_product_write_federation()
   r.secret_grants.length() == 1 && w.secret_grants.length() == 1
-    && (r.secret_grants[0].target.secret as String) == "cloudflare-r2-cache-blobs-read-token"
-    && (w.secret_grants[0].target.secret as String) == "cloudflare-r2-cache-blobs-write-token"
-    && (r.secret_grants[0].target.version as String) == "1"
-    && (w.secret_grants[0].target.version as String) == "1"
+    && r.secret_grants.all(g => (g.target.secret as String) == "cloudflare-r2-cache-blobs-read-token" && (g.target.version as String) == "1")
+    && w.secret_grants.all(g => (g.target.secret as String) == "cloudflare-r2-cache-blobs-write-token" && (g.target.version as String) == "1")
     && (native_product_read_service_account as String) != (native_product_write_service_account as String)
 }
 
