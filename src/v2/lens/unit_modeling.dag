@@ -8,7 +8,7 @@ import std.disposition { SingleAuthority }
 import v2.std.witness { Holds }
 import v2.std.node_query { edge_field_type_name, member_edge_type_node, member_not_a_binder_diagnostic }
 import v2.extdeps.languages.dag {
-  dag_authored_name_is_parse_production_projection,
+  dag_edge_is_module_surface_parse_projection,
   dag_node_is_namespace_member_target,
   dag_node_is_record_field_carrier
 }
@@ -100,7 +100,7 @@ fn type_is_flat_scalar(target: Node) -> Bool {
 fn field_unit_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> {
   match edge.label {
     Authored { name: nm } =>
-      if dag_authored_name_is_parse_production_projection(name: nm) {
+      if dag_edge_is_module_surface_parse_projection(carrier: carrier, name: nm) {
         optional_absent()
       } else {
       match member_edge_type_node(e: edge) {

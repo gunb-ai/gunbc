@@ -1,6 +1,6 @@
 module v2.extdeps.languages.dag
 import std.coercion { unicode_scalar_unfold }
-import std.types { List }
+import std.types { List, NonEmptyStr }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 import v2.std.model_core { AlgebraInhabitanceDecl, bool_model_core }
 import v2.std.algebra_structure_signature { boolean_algebra_node, ordered_ring_node }
@@ -214,7 +214,7 @@ import v2.std.diagnostic {
 }
 import std.algebra { Empty, list_append, list_snoc_item }
 import std.decl_ref { decl_ref }
-import std.dissolution { DissolutionCondition, retires_dissolution }
+import std.dissolution { DissolutionCondition, retires_dissolution, unbound_dissolution }
 import v2.std.integer {
   decimal_digits_to_magnitude,
   integer_decimal_magnitude_node,
@@ -7627,6 +7627,17 @@ fn dag_node_is_module_surface(node: Node) -> Bool {
   }
 }
 
+// 🟡 Owner: v2.extdeps.languages.dag (one identity authority for module surface / fn-decl /
+// record Conj). Lane: compile-door lens skip (#13560). Dissolve when every module/fn shell
+// carries parse or graft identity (no namespace_graft_has_module_header fallback) and
+// #13513 member_kinds classifies DeclaredFnMember so skip is the channel, not a Node.kind
+// walk. Until then these matches read declared identity; they do not guess from children.
+data dag_namespace_member_identity_predicate_disposition: String = "🟡 owner=v2.extdeps.languages.dag lane=#13560 trigger=stamped shells + member_kinds DeclaredFnMember"
+
+data dag_namespace_member_identity_predicate_dissolve_on: DissolutionCondition = unbound_dissolution(
+  description: "🟡 dissolve-on: dag_node_is_module_surface / dag_node_is_record_field_carrier / dag_node_is_namespace_member_target — dissolve when every module and fn shell carries parse or graft identity (namespace_graft_has_module_header unused) and ResolvedTree.member_kinds classifies DeclaredFnMember so the skip is that channel, never a connective-shape guess." as NonEmptyStr
+)
+
 // THE RECORD-FIELD CARRIER PREDICATE the unit-modeling and lifecycle-carrier lenses share.
 // A Conj is a record-field carrier unless THIS NODE is a module surface. A sibling that
 // happens to be a module surface does not opt the whole Conj out (DESIGN §5: refuse the
@@ -7643,6 +7654,13 @@ fn dag_node_is_record_field_carrier(node: Node) -> Bool {
 fn dag_authored_name_is_parse_production_projection(name: Symbol) -> Bool {
   (name == ^grammar_production_identity_node_projection) ||
     (name == ^grammar_production_captured_node_projection)
+}
+
+// Stamp edges on a MODULE SURFACE only. Same spelling on an ordinary record is a user field
+// and must still be judged (DESIGN §5: refuse, never widen).
+fn dag_edge_is_module_surface_parse_projection(carrier: Node, name: Symbol) -> Bool {
+  dag_node_is_module_surface(node: carrier) &&
+    dag_authored_name_is_parse_production_projection(name: name)
 }
 
 // Per-edge skip by identity only (DESIGN §5: refuse, never widen). A non-binder record

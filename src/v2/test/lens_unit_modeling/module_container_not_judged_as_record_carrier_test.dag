@@ -115,6 +115,30 @@ test fn a_hand_built_record_field_is_still_member_not_a_binder() -> Bool {
   }
 }
 
+// RED (review 77884): a user field whose name happens to be a parse-projection spelling
+// is still a record field. Skip those names only on a module-surface carrier.
+data projection_named_record_root: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Authored { name: ^grammar_production_identity_node_projection },
+      target: Node {
+        kind: TypeNode { connective: Atom { identity: ^Text } },
+        children: [],
+        occurrence_id: OccurrenceSynthetic
+      }
+    }
+  ],
+  occurrence_id: OccurrenceSynthetic
+}
+
+test fn a_projection_spelled_record_field_is_still_member_not_a_binder() -> Bool {
+  match unit_modeling_gate(node: projection_named_record_root) {
+    Rejected { diagnostics: r } => r.head.reason == ^member_not_a_binder
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
 data record_with_binder: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
