@@ -10066,6 +10066,7 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                                         ),
                                         fallback_concat.clone(),
                                         scope.type_env.clone().source_indices.clone(),
+                                        scope.enclosing_declared_type_param_names.clone(),
                                     ),
                                     std::option::Option::None => Rc::new(ConcatUnify {
                                         result: fallback_concat.clone(),
@@ -14430,9 +14431,10 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
 }),
 }
                                         };
-                                        let bridge_unified =
-                                            if (func_name.clone() == "concat".to_string()) {
-                                                match remaining.clone().first().cloned() {
+                                        let bridge_unified = if (func_name.clone()
+                                            == "concat".to_string())
+                                        {
+                                            match remaining.clone().first().cloned() {
                                                 Some(other) => concat_unify_operands(
                                                     first_arg_type.clone(),
                                                     crate::v1_compiler_infer_types::resolved_type(
@@ -14442,18 +14444,21 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                                     ),
                                                     method_tv.ty.clone(),
                                                     scope.type_env.clone().source_indices.clone(),
+                                                    scope
+                                                        .enclosing_declared_type_param_names
+                                                        .clone(),
                                                 ),
                                                 std::option::Option::None => Rc::new(ConcatUnify {
                                                     result: method_tv.ty.clone(),
                                                     refuse: std::option::Option::None,
                                                 }),
                                             }
-                                            } else {
-                                                Rc::new(ConcatUnify {
-                                                    result: method_tv.ty.clone(),
-                                                    refuse: std::option::Option::None,
-                                                })
-                                            };
+                                        } else {
+                                            Rc::new(ConcatUnify {
+                                                result: method_tv.ty.clone(),
+                                                refuse: std::option::Option::None,
+                                            })
+                                        };
                                         let bridge_result_type = bridge_unified.result.clone();
                                         let concat_refuse_diags = match bridge_unified.refuse.clone() {
     Some(_) => Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(first_arg_type.clone(), scope.type_env.clone().source_indices.clone()), match remaining.clone().first().cloned() {
@@ -15103,6 +15108,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                 ),
                                 method_tv_mc.ty.clone(),
                                 scope.type_env.clone().source_indices.clone(),
+                                scope.enclosing_declared_type_param_names.clone(),
                             ),
                             std::option::Option::None => Rc::new(ConcatUnify {
                                 result: method_tv_mc.ty.clone(),
@@ -16135,6 +16141,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                     right_rt.clone(),
                     binop_info.result_type.clone(),
                     scope.type_env.clone().source_indices.clone(),
+                    scope.enclosing_declared_type_param_names.clone(),
                 )
             } else {
                 Rc::new(ConcatUnify {
@@ -25093,13 +25100,23 @@ pub fn list_concat_elements_agree(
 pub fn concat_operand_is_open_generic(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    open_generic_names: Rc<Vec<String>>,
 ) -> bool {
     {
         let name = type_node_label(n.clone(), source_indices.clone());
-        ((((is_type_variable_name(name.clone())
-            || produced_is_unsolved_generic_at_conformance(n.clone(), source_indices.clone()))
-            || (name.clone() == "A".to_string()))
-            || (name.clone() == "R".to_string()))
+        ((produced_is_unsolved_generic_at_conformance(n.clone(), source_indices.clone())
+            || ({
+                let mut __found = false;
+                for g in open_generic_names.iter().cloned() {
+                    if (g.clone() == name.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+                    && (n.children.clone().len() as i64 == 0)
+                    && n.connective.clone() == NoConnective
+            }))
             || match n.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::TypeVariable { id: _, .. }) => true,
                 _ => false,
@@ -25110,9 +25127,14 @@ pub fn concat_operand_is_open_generic(
 pub fn concat_operand_is_bare_unsolved(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    open_generic_names: Rc<Vec<String>>,
 ) -> bool {
     ((type_node_is_uninformed_accumulator(n.clone(), source_indices.clone())
-        || concat_operand_is_open_generic(n.clone(), source_indices.clone()))
+        || concat_operand_is_open_generic(
+            n.clone(),
+            source_indices.clone(),
+            open_generic_names.clone(),
+        ))
         && !node_is_list_concat_operand(n.clone(), source_indices.clone()))
 }
 
@@ -25121,15 +25143,23 @@ pub fn concat_unify_operands(
     right: Rc<Node>,
     fallback: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    open_generic_names: Rc<Vec<String>>,
 ) -> Rc<ConcatUnify> {
     {
-        let left_unsolved = (concat_operand_is_bare_unsolved(left.clone(), source_indices.clone())
-            || (type_node_is_uninformed_accumulator(left.clone(), source_indices.clone())
+        let left_unsolved =
+            (concat_operand_is_bare_unsolved(
+                left.clone(),
+                source_indices.clone(),
+                open_generic_names.clone(),
+            ) || (type_node_is_uninformed_accumulator(left.clone(), source_indices.clone())
                 && !concat_operand_is_informed_list(left.clone(), source_indices.clone())));
         let right_unsolved =
-            (concat_operand_is_bare_unsolved(right.clone(), source_indices.clone())
-                || (type_node_is_uninformed_accumulator(right.clone(), source_indices.clone())
-                    && !concat_operand_is_informed_list(right.clone(), source_indices.clone())));
+            (concat_operand_is_bare_unsolved(
+                right.clone(),
+                source_indices.clone(),
+                open_generic_names.clone(),
+            ) || (type_node_is_uninformed_accumulator(right.clone(), source_indices.clone())
+                && !concat_operand_is_informed_list(right.clone(), source_indices.clone())));
         let left_list = concat_operand_is_informed_list(left.clone(), source_indices.clone());
         let right_list = concat_operand_is_informed_list(right.clone(), source_indices.clone());
         if (left_unsolved.clone() && right_list.clone()) {
@@ -25190,15 +25220,43 @@ pub fn concat_unify_operands(
                         })
                     }
                 } else {
-                    if (left_unsolved.clone() && right_unsolved.clone()) {
-                        if concat_operand_is_open_generic(left.clone(), source_indices.clone()) {
+                    if (left_list.clone() || right_list.clone()) {
+                        Rc::new(ConcatUnify {
+                            result: error_type(),
+                            refuse: Some(v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        "concat operands have incompatible element types: "
+                                            .to_string(),
+                                        crate::v1_compiler_infer_types::node_type_shape(
+                                            left.clone(),
+                                            source_indices.clone(),
+                                        ),
+                                    ),
+                                    " vs ".to_string(),
+                                ),
+                                crate::v1_compiler_infer_types::node_type_shape(
+                                    right.clone(),
+                                    source_indices.clone(),
+                                ),
+                            )),
+                        })
+                    } else if (left_unsolved.clone() && right_unsolved.clone()) {
+                        if concat_operand_is_open_generic(
+                            left.clone(),
+                            source_indices.clone(),
+                            open_generic_names.clone(),
+                        ) {
                             Rc::new(ConcatUnify {
                                 result: left.clone(),
                                 refuse: std::option::Option::None,
                             })
                         } else {
-                            if concat_operand_is_open_generic(right.clone(), source_indices.clone())
-                            {
+                            if concat_operand_is_open_generic(
+                                right.clone(),
+                                source_indices.clone(),
+                                open_generic_names.clone(),
+                            ) {
                                 Rc::new(ConcatUnify {
                                     result: right.clone(),
                                     refuse: std::option::Option::None,
@@ -25234,12 +25292,14 @@ pub fn list_concat_result_from_other_value(
     left: Rc<Node>,
     fallback: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    open_generic_names: Rc<Vec<String>>,
 ) -> Rc<Node> {
     concat_unify_operands(
         left.clone(),
         crate::v1_compiler_infer_types::resolved_type(other_value.clone()),
         fallback.clone(),
         source_indices.clone(),
+        open_generic_names.clone(),
     )
     .result
     .clone()
@@ -25250,12 +25310,14 @@ pub fn informative_list_concat_result(
     right: Rc<Node>,
     fallback: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    open_generic_names: Rc<Vec<String>>,
 ) -> Rc<Node> {
     concat_unify_operands(
         left.clone(),
         right.clone(),
         fallback.clone(),
         source_indices.clone(),
+        open_generic_names.clone(),
     )
     .result
     .clone()
