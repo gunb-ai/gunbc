@@ -5,7 +5,7 @@ import gunbc.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
 import std.types { Bool, String, NonEmptyStr, List }
 import std.upsert_decision { ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused }
 import product.host_identity { HostIdentity }
-import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv5 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv5, operator_host_183527 }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for, spark_endpoint_for_binding }
 import gunbc.spark.dgx_procurement {
   DgxSparkRouterBinding,
@@ -93,7 +93,7 @@ test fn reach_projection_covers_all_arms() -> Bool {
 // say (Inaccessible); a host-key mismatch is Conflict — the machine answering may not be
 // the enrolled host, so its hostname must never launder into an identity observation.
 test fn identity_projection_discriminates_match_drift_and_wrong_machine() -> Bool {
-  let desired = host_identity_desired_short_hostname(host: operator_host_srv1)
+  let desired = "srv1"
   identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: desired, observed_principal: "gunbc-fleet" }) == Converged
     && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: "altrad8ud-1l2t-1", observed_principal: "gunbc-fleet" }) == std.upsert_decision.Drifted
     && identity_verdict_from_outcome(host: operator_host_srv1, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: desired, observed_principal: "root" }) == std.upsert_decision.Drifted
@@ -172,7 +172,7 @@ test fn one_receipt_feeds_both_cells() -> Bool {
     host: operator_host_srv1,
     probed_at: "witness-fixture" as NonEmptyStr,
     requested_principal: "gunbc-fleet",
-    outcome: ProbeReachable { observed_short_hostname: host_identity_desired_short_hostname(host: operator_host_srv1), observed_principal: "gunbc-fleet" },
+    outcome: ProbeReachable { observed_short_hostname: "srv1", observed_principal: "gunbc-fleet" },
   }
   reach_verdict_from_outcome(o: r.outcome) == Converged
     && identity_verdict_from_outcome(host: r.host, requested_principal: r.requested_principal, o: r.outcome) == Converged
@@ -250,4 +250,20 @@ test fn undecided_spark_slot_projects_no_endpoint() -> Bool {
 test fn probe_endpoint_agrees_with_the_projection_it_consumes() -> Bool {
   fleet_probe_endpoint_for(host: "srv5") == spark_endpoint_or_empty(binding: srv5_router_binding)
     && fleet_probe_endpoint_for(host: "srv6") == spark_endpoint_or_empty(binding: srv6_router_binding)
+}
+
+// IDENTITY, ALLOCATED NAME AND KERNEL HOSTNAME ALL DIFFER, and the verdict reads the allocation.
+// host-183527 was allocated "cheryl"; the guest boots answering to the provider's display name. That
+// observation is Drifted -- the thing hostname convergence corrects -- and "cheryl" is Converged,
+// while the identity's own spelling is NOT what the host is expected to answer to.
+test fn identity_verdict_reads_the_allocated_name_not_the_identity_spelling() -> Bool {
+  let as_provider_named = identity_verdict_from_outcome(host: operator_host_183527, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: "ubuntu-32gb-nbg1-1", observed_principal: "gunbc-fleet" })
+  let as_allocated = identity_verdict_from_outcome(host: operator_host_183527, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: "cheryl", observed_principal: "gunbc-fleet" })
+  let as_identity = identity_verdict_from_outcome(host: operator_host_183527, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: "host-183527", observed_principal: "gunbc-fleet" })
+  as_provider_named == std.upsert_decision.Drifted && as_allocated == Converged && as_identity == std.upsert_decision.Drifted
+}
+
+// A slot with no allocated hostname cannot be judged on a hostname at all.
+test fn unallocated_host_identity_verdict_refuses() -> Bool {
+  identity_verdict_from_outcome(host: "srv9" as HostIdentity, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: "srv9", observed_principal: "gunbc-fleet" }) == UnknownRefused
 }

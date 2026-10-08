@@ -18,6 +18,8 @@ import gunbc.fleet_host_identity {
   operator_host_srv3,
   operator_host_srv4,
   operator_host_mtcollins1,
+  operator_host_srv5,
+  operator_host_srv6,
   operator_host_183527,
   operator_host_3dde7f,
 }
@@ -148,6 +150,11 @@ fn hostname_allocation_admission(
 // have disarmed the instrument it was feeding. The allocation is therefore a decision taken here
 // and consumed there, which is the only ordering in which the check keeps its meaning.
 //
+// srv5 AND srv6 (2026-10-07) record as allocations what gunbc.host_reach_identity_probe already
+// asserted by deriving the desired hostname from the identity string: the reach probe and the
+// converge CLI now read the allocation instead, so the two Sparks' existing expectation becomes a
+// stated row rather than disappearing.
+//
 // THE TWO DRAWN ROWS (2026-10-07) are the Hetzner Cloud CAX41 guests. Their stable identities are
 // opaque (gunbc.fleet_host_identity), so nothing about provider, architecture or role is read off a
 // spelling; their names were DRAWN by draw_human_name over the Census corpus, with the entropy
@@ -172,6 +179,14 @@ data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
   HostnameAllocation {
     fleet_slot: operator_host_mtcollins1,
     name: LegacyHostname { label: "mtcollins1" as DnsLabel },
+  },
+  HostnameAllocation {
+    fleet_slot: operator_host_srv5,
+    name: LegacyHostname { label: "srv5" as DnsLabel },
+  },
+  HostnameAllocation {
+    fleet_slot: operator_host_srv6,
+    name: LegacyHostname { label: "srv6" as DnsLabel },
   },
   HostnameAllocation {
     fleet_slot: operator_host_183527,

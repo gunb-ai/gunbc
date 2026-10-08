@@ -27,6 +27,7 @@ import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.host_identity { HostIdentity }
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 import std.upsert_decision {
   ObservationVerdict,
   Converged,
@@ -268,15 +269,19 @@ fn observe_reach_secrets_network(host: HostIdentity) -> ObservationVerdict? {
   }
 }
 
-// Producer 2 — P0:host-identity-converge. The enrolled slot identity is the desired
-// short hostname (fleet naming convention: the fleet_intent slot label IS the hostname
-// the SetHostnameCas converge drives toward). A reachable probe whose hostname differs
+// Producer 2 — P0:host-identity-converge. The desired short hostname is the one
+// gunbc.hostname_allocation ALLOCATED to the slot -- not the identity's spelling, which coincides
+// with it only for the legacy rows. A slot with no allocation cannot be judged Converged or Drifted
+// and refuses as UnknownRefused. A reachable probe whose hostname differs
 // is Drifted — real divergence, the thing the converge corrects — while an unreachable
 // or unauthenticated host is Inaccessible (cannot say), and a host-key mismatch is
 // Conflict (the machine answering may not be the enrolled host at all; treating its
 // hostname as an identity observation would launder a wrong-machine read into drift).
-fn host_identity_desired_short_hostname(host: HostIdentity) -> String {
-  host as String
+fn host_identity_desired_short_hostname(host: HostIdentity) -> String? {
+  match canonical_hostname_for_fleet_slot(fleet_slot: host) {
+    Present { value: h } => Present { value: h as String }
+    Absent => none
+  }
 }
 
 // Repair #2: identity Converged requires BOTH dimensions — the observed hostname equals
@@ -286,10 +291,14 @@ fn host_identity_desired_short_hostname(host: HostIdentity) -> String {
 fn identity_verdict_from_outcome(host: HostIdentity, requested_principal: String, o: ReachProbeOutcome) -> ObservationVerdict {
   match o {
     ProbeReachable { observed_short_hostname: observed, observed_principal: obs_principal } =>
-      if observed == host_identity_desired_short_hostname(host: host) && obs_principal == requested_principal {
-        Converged
-      } else {
-        Drifted
+      match host_identity_desired_short_hostname(host: host) {
+        Absent => UnknownRefused
+        Present { value: desired } =>
+          if observed == desired && obs_principal == requested_principal {
+            Converged
+          } else {
+            Drifted
+          }
       }
     ProbeTransportUnavailable { cause: _ } => Inaccessible
     ProbeAuthenticationRefused { cause: _ } => Inaccessible

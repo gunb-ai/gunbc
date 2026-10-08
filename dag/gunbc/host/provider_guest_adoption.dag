@@ -14,6 +14,7 @@ import extdeps.virtualization.firecracker { firecracker_requires_kvm_device }
 import product.host_identity { HostIdentity }
 import gunbc.host_command_binding {
   CommandHost,
+  LocalCommandHost,
   HostCommandOutcome,
   HostCommandDone,
   HostCommandFailed,
@@ -215,4 +216,35 @@ fn observe_provider_guest(host: CommandHost) -> GuestObservationRead {
       }
     }
   }
+}
+
+// ── RENDERING AND THE LOCAL ROUTE ─────────────────────────────────────────────────────────────
+
+fn guest_adoption_refusal_text(cause: GuestAdoptionRefusal) -> String {
+  match cause {
+    HostIsNotAProviderGuest => "the host is an owned machine, not a provider guest; it arrives through its own provisioning"
+    ProviderResourceUnread { read_obligation: o } => join(["the provider resource is not bound: ", o as String], "")
+    GuestUnobserved { reading: r, cause: c } => join(["the guest could not be observed at '", r as String, "': ", c], "")
+    GuestArchitectureDiverges { entitled: e, observed: o } =>
+      join(["the guest reports ", architecture_diagnostic_name(arch: o) as String, " but its offer entitles ", architecture_diagnostic_name(arch: e) as String], "")
+    GuestCpusExceedEntitlement { entitled: e, observed: o } =>
+      join(["the guest presents ", to_string(o), " vCPUs, more than the ", to_string(e), " its offer entitles -- a different resource than the one enrolled"], "")
+    GuestMemoryExceedsEntitlement { entitled_bytes: e, observed_bytes: o } =>
+      join(["the guest presents ", to_string(o), " bytes of memory, more than the ", to_string(e), " its offer entitles"], "")
+  }
+}
+
+fn microvm_execution_refusal_text(cause: MicroVmExecutionRefusal) -> String {
+  match cause {
+    ProviderForbidsNestedVirtualization { offer: o } =>
+      join(["microVM execution refused: the provider offer ", o.module_path as String, ".", o.decl_name as String, " forbids nested virtualization, so no KVM device exists inside the guest"], "")
+    KvmDeviceAbsentOnGuest { device: d } => join(["microVM execution refused: ", d, " is absent on the guest"], "")
+  }
+}
+
+// The guest adopting ITSELF: the converge process runs on the guest, so the observation is local and
+// needs no SSH credential or host-key anchor -- the same host-local shape every `gunbc converge
+// --host self` run has.
+fn adopt_local_provider_guest(intent: HostEnrollmentIntent) -> ProviderGuestAdoption {
+  adopt_provider_guest(intent: intent, read: observe_provider_guest(host: LocalCommandHost))
 }

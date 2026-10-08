@@ -1,5 +1,6 @@
 module gunbc.ci_fleet
 
+import gunbc.fleet_enrollment { CiRunnerParticipation, hosts_enrolled_for }
 import gunbc.fleet_intent {
   ComputeHost,
   ExecutionSurface,
@@ -113,7 +114,16 @@ data srv4_offer: ComputeOffer = ComputeOffer {
   cost_quote: none,
 }
 
-data fleet_intent_offers: List<ComputeOffer> = [srv1_offer, srv2_offer, srv3_offer, srv4_offer]
+// The owned machines' offers are per-host facts; WHICH of them the CI fleet offers is the enrolled CI
+// population (gunbc.fleet_enrollment), so a host leaves or joins the offered set by its enrollment and
+// never by an edit here. A provider guest has no offer in this catalog: its supply is its provider's
+// entitlement, admitted through gunbc.provider_guest_adoption rather than authored as an owned offer.
+data fleet_owned_compute_offer_catalog: List<ComputeOffer> = [srv1_offer, srv2_offer, srv3_offer, srv4_offer]
+
+data fleet_intent_offers: List<ComputeOffer> = filter(
+  fleet_owned_compute_offer_catalog,
+  o => any(hosts_enrolled_for(wanted: CiRunnerParticipation), h => (h as String) == (o.supply.physical.identity as String)),
+)
 
 fn fleet_compute_offer_for(host: HostIdentity) -> ComputeOffer? {
   fold(fleet_intent_offers, init: none, f: (acc, o) =>
