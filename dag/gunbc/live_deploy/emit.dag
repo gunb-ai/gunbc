@@ -64,6 +64,7 @@ import extdeps.tailscale.serve {
 }
 import extdeps.systemd.systemctl {
   systemctl_disable_now_argv,
+  systemctl_restart_argv,
   systemctl_show_load_state_argv,
 }
 import extdeps.systemd { systemd_unit_load_state_not_found_wire }
@@ -1293,12 +1294,19 @@ fn repository_convergence_readback_command(
 // failure the tail is appended to stderr and the step still fails (exit 1): a diagnosis, never an
 // escape hatch (DESIGN 5 forbids proceeding as if the refusal had not fired).
 fn tree_sync_restart_step_with_diagnosis(spec: DeploymentSpec) -> PipelineStep {
-  deploy_raw(command: join([
-    deploy_effect_command(inv: systemctl_restart_effect(unit: spec.names.tree_sync_unit_name)),
-    " || { echo '--- gunbc-tree-sync.service control-process diagnosis ---' >&2; ",
-    live_deploy_unit_status_tail_command(unit: spec.names.tree_sync_unit_name),
-    " >&2; exit 1; }",
-  ], ""))
+  let restart_argv = sudo_elevate_argv(command: systemctl_restart_argv(unit: spec.names.tree_sync_unit_name))
+  let restart_cmd = shell_command_text_of_argv(argv: restart_argv)
+  let diagnosis_cmd = live_deploy_unit_status_tail_command(unit: spec.names.tree_sync_unit_name)
+  If {
+    cond: ExitZero { run: Run { command: restart_cmd, env: Empty, redirect: Absent, capture: Absent } },
+    then_: Pipeline { steps: Empty, on_failure: FailFast },
+    else_: Present { value: Pipeline {
+      steps: [
+        Do { run: Run { command: join([diagnosis_cmd, " >&2; exit 1"], ""), env: Empty, redirect: Absent, capture: Absent } }
+      ],
+      on_failure: FailFast,
+    } }
+  }
 }
 
 // THE IDEMPOTENCE GUARD IS DELETED, AND ITS REMOVAL IS THE POINT. The apply used to wrap the serve
@@ -1314,8 +1322,8 @@ fn tree_sync_restart_step_with_diagnosis(spec: DeploymentSpec) -> PipelineStep {
 // and the teardown cannot disagree about the flags — which is the property the upstream `off` form
 // actually requires.
 fn tailscale_serve_apply_step(spec: DeploymentSpec) -> PipelineStep {
-  deploy_raw(command: shell_privileged_command_text_of_argv(
-    argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: spec.names.tailscale_serve_endpoint)),
+  deploy_raw(command: shell_command_text_of_argv(
+    argv: sudo_elevate_argv(command: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: spec.names.tailscale_serve_endpoint))),
   ))
 }
 
@@ -1333,8 +1341,8 @@ fn tailscale_serve_mapping_apply_steps(spec: DeploymentSpec) -> List<PipelineSte
 }
 
 fn tailscale_serve_teardown_step(spec: DeploymentSpec) -> PipelineStep {
-  deploy_raw(command: shell_privileged_command_text_of_argv(
-    argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: spec.names.tailscale_serve_endpoint)),
+  deploy_raw(command: shell_command_text_of_argv(
+    argv: sudo_elevate_argv(command: concat(["tailscale"], tailscale_serve_off_argv(endpoint: spec.names.tailscale_serve_endpoint))),
   ))
 }
 
