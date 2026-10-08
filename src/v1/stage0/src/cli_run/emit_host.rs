@@ -4261,7 +4261,6 @@ mod emit_check_read_tests {
     #[test]
     #[ignore = "bounded remote typecheck of gunbc.commit_workflow; not a unit-lane subject"]
     fn commit_workflow_typecheck_wall_and_peak_rss() {
-        let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let rel = "dag/gunbc/commit_workflow.dag";
         let path = process_workspace_root().join(rel);
         assert!(
