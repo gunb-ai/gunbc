@@ -31272,20 +31272,21 @@ fn collect_node_refs_inner(
     bound.truncate(restore_to);
 }
 
-/// `ancestor` is on `descendant`'s containment chain: equal, or a proper module-path prefix.
-/// Same predicate `global_bare_chain_candidates` uses (LCP == candidate segment count).
-fn module_path_is_containment_ancestor(ancestor: &str, descendant: &str) -> bool {
-    descendant == ancestor || descendant.starts_with(&format!("{ancestor}."))
-}
-
 /// Declarers on the referencing module's ancestor chain, sorted for a stable AmbiguousBare dump.
+/// Containment is `type_ref_module_path_is_containment_prefix` (segment LCP), the same
+/// predicate `global_bare_chain_candidates` applies to each candidate — not a second rule.
 fn on_chain_declarers<'a>(
     referencing_module: &str,
     declarers: impl IntoIterator<Item = &'a String>,
 ) -> Vec<&'a String> {
     let mut out: Vec<&'a String> = declarers
         .into_iter()
-        .filter(|m| module_path_is_containment_ancestor(m, referencing_module))
+        .filter(|m| {
+            crate::v1_compiler_infer_env::type_ref_module_path_is_containment_prefix(
+                (*m).clone(),
+                referencing_module.to_string(),
+            )
+        })
         .collect();
     out.sort();
     out
