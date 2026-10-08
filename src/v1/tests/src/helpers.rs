@@ -177,8 +177,12 @@ pub fn resolve_imports_transitively_with_source_roots(
     entry_content: &str,
     source_roots: &[std::path::PathBuf],
 ) -> Vec<Rc<SourceFile>> {
-    let index = build_module_index_for_roots(source_roots);
-    resolve_imports_transitively_with_index(entry_path, entry_content, &index)
+    let roots: Vec<String> = source_roots
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    v1_compiler::cli_run::resolve_virtual_entry_compile_closure(entry_path, entry_content, &roots)
+        .unwrap_or_else(|e| panic!("compile closure from source roots: {e}"))
 }
 
 fn display_source_path(path: &std::path::Path, ws: &std::path::Path) -> String {
@@ -193,6 +197,13 @@ fn resolve_imports_transitively_with_index(
     entry_content: &str,
     module_index: &std::collections::HashMap<String, std::path::PathBuf>,
 ) -> Vec<Rc<SourceFile>> {
+    // Import-line BFS. Used by compile_dag against the live src/v1+dag index, where
+    // routing through the both-closure authority would compile the reference closure
+    // of every imported std module on every snippet (outside the 100ms unit bound).
+    // Callers that name an explicit pool use resolve_imports_transitively_with_source_roots
+    // (resolve_virtual_entry_compile_closure). The discriminating import-only mutant is
+    // `import_only_virtual_entry_closure` in entry_resolve's cfg(test) module, not this
+    // production helper.
     let ws = workspace_root();
     let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
     let mut queue: Vec<(String, String)> = Vec::new(); // (path, content)

@@ -223,10 +223,10 @@ fn approval_submission_live_probe(root: String) -> ProcessExit {
     let renotified = probe_submit(root: r, signer: probe_submission_key(), request: probe_request())
     let other_bytes = probe_submit(root: r, signer: probe_submission_key(), request: probe_request_other_bytes())
     let report = join(["wrong-key=", probe_submit_word(s: wrong_key), "\nfiled=", probe_submit_word(s: filed), "\nrenotified=", probe_submit_word(s: renotified), "\nother-bytes=", probe_submit_word(s: other_bytes)], "")
-    let ok = match wrong_key { ProbeNotEnrolled => true  _ => false }
-      && match filed { ProbeFiledTokenUnavailable => true  _ => false }
-      && match renotified { ProbeFiledTokenUnavailable => true  _ => false }
-      && match other_bytes { ProbeAlreadyFiled => true  _ => false }
+    let ok = match wrong_key { ProbeNotEnrolled => true  ProbeFiledTokenUnavailable => false  ProbeAlreadyFiled => false  ProbeOther { reason: _ } => false }
+      && match filed { ProbeFiledTokenUnavailable => true  ProbeNotEnrolled => false  ProbeAlreadyFiled => false  ProbeOther { reason: _ } => false }
+      && match renotified { ProbeFiledTokenUnavailable => true  ProbeNotEnrolled => false  ProbeAlreadyFiled => false  ProbeOther { reason: _ } => false }
+      && match other_bytes { ProbeAlreadyFiled => true  ProbeNotEnrolled => false  ProbeFiledTokenUnavailable => false  ProbeOther { reason: _ } => false }
     if ok {
       ExitSuccess
     } else {

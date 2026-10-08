@@ -22,7 +22,7 @@ import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import v2.std.optional { Present }
+import std.optional { Present }
 
 // THE DCS-7050S-52, ARISTA'S 52-PORT 1/10GBE SFP+ SWITCH IN THE 7050 SERIES. Modelled from the
 // Arista 7050S datasheet read 2026-09-03. The canonical authority is the datasheet at

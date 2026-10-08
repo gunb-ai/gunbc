@@ -1,6 +1,6 @@
 module v2.workflow.floor_pure_producer_share
 
-import std.types { List }
+import std.types { List, Map }
 import std.computation_identity { ComputationIdentity, identity_permits_share }
 import std.cache_interface {
   ByteCapacity, CapacityBounded, ExactLimit, ProviderRetention, ReleasedAtProviderScopeExit,
@@ -17,6 +17,9 @@ import std.materialization_ladder {
 import std.measure { Millisecond, Nanosecond, byte_size, millisecond_count, nanosecond, nanosecond_count }
 import v2.workflow.required_floor { required_floor_new_witness_envelope_ms }
 import v2.std.algebra { any, list_flat_map, list_map }
+import v2.std.collection { empty_map, map_get, map_insert }
+import v2.std.diagnostic { Accepted, Rejected, Outcome }
+import std.optional { Absent, Present, Optional }
 
 // THE CROSS-CLAIM PURE-PRODUCER SHARE -- which pure computations the required floor may fill
 // once and serve to every planned claim that demands them.
@@ -100,6 +103,39 @@ type CallSiteDemandCause
   | ArgumentNotClosedConstant
   | CallShapeUnread
 
+// WHAT A DEMANDING CLAIM READS OFF THE VALUE, observed at the call site: the seed reports, for each
+// site of a closed identity, the field projected IMMEDIATELY off the call (`f(x).field`) or, when
+// the call's result is consumed any other way (bound, passed, compared, returned), the WHOLE value.
+// A projected access the observer could not read is its own typed fact, never guessed at a grain.
+//
+// THE GRAIN'S LIMIT, stated so it is not read as more: a result bound by `let` and projected later
+// reads as `WholeValue`, because the observer does not follow binders. That can only admit a share
+// the projection rule would decline at a finer grain -- never one the fold without this rule would
+// have declined -- so it is a missed refusal with a located population, not a widening; its
+// next-rung trigger is the dependency read
+// set of demand-engine M1 (docs/plans/demand-engine-program.md), which carries every projection a
+// consumer reads off a value rather than only the immediate one.
+//   ProjectionFieldNameUnreadable -- the call is a field access's base, and reading the field's
+//                                    name failed: a projection of unknown grain.
+//   ProjectionFieldNameEmpty      -- the call is a field access's base, and the field's name
+//                                    reads empty.
+type ConsumerReadCause
+  = ProjectionFieldNameUnreadable
+  | ProjectionFieldNameEmpty
+  | ProjectionBaseUnreadable
+  | ShareMapLookupUnreadable
+
+type ConsumerRead
+  = WholeValue
+  | ProjectedField { field: String }
+  | ConsumerReadUnobserved { cause: ConsumerReadCause }
+
+// One distinct (claim, read) pair; the seed emits each pair once however many sites repeat it.
+type ClaimConsumerRead {
+  claim: String
+  read: ConsumerRead
+}
+
 // `producer` is the callee's qualified declaration; `argument_preimage` the canonical normalized
 // argument row; `claims` the DISTINCT claims DECLARED in the prepared subject whose reach contains
 // a site of this identity (each becomes one ladder demand at its claim frame); `planned_claims`
@@ -123,6 +159,7 @@ type CallSiteDemandObservation
       claims: List<String>
       planned_claims: Int
       sites: List<String>
+      reads: List<ClaimConsumerRead>
     }
   | UnadmissibleCallSiteDemand {
       cause: CallSiteDemandCause
@@ -231,6 +268,8 @@ type ShareDerivationDecline
   | RefusedByMeasurement
   | CarriedInputProducer
   | LadderOwesNoCarry { verdict: LadderVerdict }
+  | BundleOfDisjointProjections { sole_projections: List<String> }
+  | ConsumerReadUnknown { cause: ConsumerReadCause }
 
 type DeclinedShareRow {
   producer: String
@@ -280,10 +319,14 @@ fn closed_demand_decline(
   planned_claims: Int,
   refused_names: List<String>,
   carried_names: List<String>,
-  debt: List<SingleClaimFillDebtModule>
+  debt: List<SingleClaimFillDebtModule>,
+  reads: List<ClaimConsumerRead>
 ) -> List<ShareDerivationDecline> {
+  let bundle = bundle_decline(claims: claims, reads: reads)
   if identity_permits_share(ci: identity) == false {
     [IdentityGradeNotShareable]
+  } else if length(xs: bundle) > 0 {
+    bundle
   } else if planned_claims == 0 {
     [ReachedByNoPlannedClaim]
   } else if any(xs: refused_names, predicate: fn(r) { r == producer }) {
@@ -297,6 +340,178 @@ fn closed_demand_decline(
       identity: share_ladder_identity(producer: producer, argument_preimage: argument_preimage),
       claims: claims
     ))
+  }
+}
+
+// THE BUNDLE REFUSAL (follow-up to #13043, flag by stern-bear-500). It is judged BEFORE the planned
+// reach because being a bundle is a fact about the identity's declared demand, not about which
+// claims one run plans: every bundle in the declared subject is named on every run, so the floor
+// log is the population. It applies only to identities two or more claims demand -- one claim
+// reading one field of its own fixture is a single recompute (or a named fill debt), not a bundle. Two or more declared claims
+// demanding one closed identity owe a carry only if they demand the SAME computed value. A
+// producer that bundles distinct work into one record, each claim reading its own field, is not
+// one shared value: admitting it nets every claim's own slice out of that claim's budget, which is
+// DESIGN section 5's cost externalization performed by authoring pattern. So a claim demands a
+// projection when it reads that field off the call or reads the whole value (the whole value
+// contains every field), and the identity is admitted only when EVERY projected field is demanded
+// by at least two declared claims. Decided explicitly for the mixed case: a whole-value reader
+// beside a projecting one is admitted, because the projected slice is genuinely demanded twice --
+// once as itself, once inside the whole. A field only one claim demands is that claim's own work,
+// and the row is declined naming each such field. Only one claim per identity reads the fold's
+// sole projections, so the seed's per-(claim, read) dedupe makes the list duplicate-free.
+fn read_unobserved_cause(read: ConsumerRead) -> List<ConsumerReadCause> {
+  match read {
+    WholeValue => []
+    ProjectedField { field: _ } => []
+    ConsumerReadUnobserved { cause: k } => [k]
+  }
+}
+
+// An unreadable consumer stops the decision: a projection the observer could not see might be a
+// bundle slice, so the row is declined with the cause rather than judged at a guessed grain.
+fn unobserved_read_causes(reads: List<ClaimConsumerRead>) -> List<ConsumerReadCause> {
+  list_flat_map(xs: reads, f: fn(r) { read_unobserved_cause(read: r.read) })
+}
+
+// LINEAR IN THE READS (review 75571: DESIGN section 6, a quadratic fold is always fixed). Three
+// passes: the whole-value readers as a set, then per field the projecting claims that are NOT
+// whole-value readers, then each projected field whose demand -- whole readers plus those
+// projecting claims -- is exactly one. The seed emits each (claim, read) once, so a field's
+// projecting rows are distinct claims and a sole field appears once.
+//
+// A refused map lookup is NEVER a count and NEVER a miss (review 77161, DESIGN section 5:
+// a failure arm refuses, never widens). `share_map_lookup_causes` is the one match: Rejected
+// is ShareMapLookupUnreadable, Absent is a miss, Present is a hit. Count arithmetic runs
+// only after every lookup on the pass is Accepted.
+fn whole_value_readers(reads: List<ClaimConsumerRead>) -> Map<String, Bool> {
+  reads |> fold(init: empty_map(), f: fn(acc, r) {
+    match r.read {
+      WholeValue => map_insert(acc, r.claim, true)
+      ProjectedField { field: _ } => acc
+      ConsumerReadUnobserved { cause: _ } => acc
+    }
+  })
+}
+
+fn share_map_lookup_causes<T>(o: Outcome<Optional<T>>) -> List<ConsumerReadCause> {
+  match o {
+    Rejected { diagnostics: _ } => [ShareMapLookupUnreadable]
+    Accepted { value: _, diagnostics: _ } => []
+  }
+}
+
+fn reads_whole_value(wholes: Map<String, Bool>, claim: String) -> Bool {
+  let o = map_get(wholes, claim)
+  if length(xs: share_map_lookup_causes(o: o)) > 0 {
+    false
+  } else {
+    match o {
+      Accepted { value: Present { value: _ }, diagnostics: _ } => true
+      Accepted { value: Absent, diagnostics: _ } => false
+      Rejected { diagnostics: _ } => false
+    }
+  }
+}
+
+fn projection_count(counts: Map<String, Int>, field: String) -> Int {
+  let o = map_get(counts, field)
+  if length(xs: share_map_lookup_causes(o: o)) > 0 {
+    0
+  } else {
+    match o {
+      Accepted { value: Present { value: n }, diagnostics: _ } => n
+      Accepted { value: Absent, diagnostics: _ } => 0
+      Rejected { diagnostics: _ } => 0
+    }
+  }
+}
+
+type ShareCountState {
+  counts: Map<String, Int>
+  unread: List<ConsumerReadCause>
+}
+
+fn add_projection_count(state: ShareCountState, wholes: Map<String, Bool>, claim: String, field: String) -> ShareCountState {
+  let whole_o = map_get(wholes, claim)
+  let whole_unread = share_map_lookup_causes(o: whole_o)
+  if length(xs: whole_unread) > 0 {
+    ShareCountState { counts: state.counts, unread: concat(state.unread, whole_unread) }
+  } else if reads_whole_value(wholes: wholes, claim: claim) {
+    state
+  } else {
+    let count_o = map_get(state.counts, field)
+    let count_unread = share_map_lookup_causes(o: count_o)
+    if length(xs: count_unread) > 0 {
+      ShareCountState { counts: state.counts, unread: concat(state.unread, count_unread) }
+    } else {
+      ShareCountState {
+        counts: map_insert(state.counts, field, projection_count(counts: state.counts, field: field) + 1),
+        unread: state.unread
+      }
+    }
+  }
+}
+
+fn share_count_state(reads: List<ClaimConsumerRead>) -> ShareCountState {
+  let wholes = whole_value_readers(reads: reads)
+  reads |> fold(init: ShareCountState { counts: empty_map(), unread: [] }, f: fn(acc, r) {
+    match r.read {
+      ProjectedField { field: f } =>
+        add_projection_count(state: acc, wholes: wholes, claim: r.claim, field: f)
+      WholeValue => acc
+      ConsumerReadUnobserved { cause: _ } => acc
+    }
+  })
+}
+
+fn sole_projections_from_state(reads: List<ClaimConsumerRead>, counts: Map<String, Int>) -> List<String> {
+  let whole_count = length(xs: filter(xs: reads, predicate: fn(r) {
+    match r.read {
+      WholeValue => true
+      ProjectedField { field: _ } => false
+      ConsumerReadUnobserved { cause: _ } => false
+    }
+  }))
+  list_flat_map(xs: reads, f: fn(r) {
+    match r.read {
+      ProjectedField { field: f } =>
+        let count_o = map_get(counts, f)
+        let unread = share_map_lookup_causes(o: count_o)
+        if length(xs: unread) > 0 {
+          []
+        } else if whole_count + projection_count(counts: counts, field: f) == 1 {
+          [f]
+        } else {
+          []
+        }
+      WholeValue => []
+      ConsumerReadUnobserved { cause: _ } => []
+    }
+  })
+}
+
+// The bundle verdict for one identity, computed ONCE and read by both the guard and the decline
+// row. Empty unless two or more declared claims demand the identity.
+fn bundle_decline(claims: List<String>, reads: List<ClaimConsumerRead>) -> List<ShareDerivationDecline> {
+  if length(xs: claims) < 2 {
+    []
+  } else {
+    let unobserved = unobserved_read_causes(reads: reads)
+    if length(xs: unobserved) > 0 {
+      list_map(xs: unobserved, f: fn(k) { ConsumerReadUnknown { cause: k } })
+    } else {
+      let state = share_count_state(reads: reads)
+      if length(xs: state.unread) > 0 {
+        list_map(xs: state.unread, f: fn(k) { ConsumerReadUnknown { cause: k } })
+      } else {
+        let sole = sole_projections_from_state(reads: reads, counts: state.counts)
+        if length(xs: sole) > 0 {
+          [BundleOfDisjointProjections { sole_projections: sole }]
+        } else {
+          []
+        }
+      }
+    }
   }
 }
 
@@ -326,8 +541,8 @@ fn derived_share_rows_for(
   debt: List<SingleClaimFillDebtModule>
 ) -> List<DerivedShareRow> {
   match observation {
-    ClosedCallSiteDemand { producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, sites: s } =>
-      if length(xs: closed_demand_decline(producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, refused_names: refused_names, carried_names: carried_names, debt: debt)) == 0 {
+    ClosedCallSiteDemand { producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, sites: s, reads: rs } =>
+      if length(xs: closed_demand_decline(producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, refused_names: refused_names, carried_names: carried_names, debt: debt, reads: rs)) == 0 {
         [DerivedShareRow { producer: p, argument_preimage: a, identity: share_ladder_identity(producer: p, argument_preimage: a), basis: share_basis_of(claims: c, debt: debt), claims: length(xs: c), sites: s }]
       } else {
         []
@@ -343,9 +558,9 @@ fn declined_share_rows_for(
   debt: List<SingleClaimFillDebtModule>
 ) -> List<DeclinedShareRow> {
   match observation {
-    ClosedCallSiteDemand { producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, sites: _ } =>
+    ClosedCallSiteDemand { producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, sites: _, reads: rs } =>
       list_map(
-        xs: closed_demand_decline(producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, refused_names: refused_names, carried_names: carried_names, debt: debt),
+        xs: closed_demand_decline(producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, refused_names: refused_names, carried_names: carried_names, debt: debt, reads: rs),
         f: fn(d) { DeclinedShareRow { producer: p, argument_preimage: a, decline: d } }
       )
     UnadmissibleCallSiteDemand { cause: _, claims: _, sites: _ } => []
@@ -354,7 +569,7 @@ fn declined_share_rows_for(
 
 fn unadmissible_counts_for(observation: CallSiteDemandObservation) -> List<UnadmissibleDemandCount> {
   match observation {
-    ClosedCallSiteDemand { producer: _, argument_preimage: _, identity: _, claims: _, planned_claims: _, sites: _ } => []
+    ClosedCallSiteDemand { producer: _, argument_preimage: _, identity: _, claims: _, planned_claims: _, sites: _, reads: _ } => []
     UnadmissibleCallSiteDemand { cause: k, claims: c, sites: n } =>
       [UnadmissibleDemandCount { cause: k, claims: c, sites: n }]
   }
@@ -464,7 +679,7 @@ fn floor_cross_claim_share_derivation(
 fn closed_observation_count(observations: List<CallSiteDemandObservation>) -> Int {
   length(xs: filter(xs: observations, predicate: fn(o) {
     match o {
-      ClosedCallSiteDemand { producer: _, argument_preimage: _, identity: _, claims: _, planned_claims: _, sites: _ } => true
+      ClosedCallSiteDemand { producer: _, argument_preimage: _, identity: _, claims: _, planned_claims: _, sites: _, reads: _ } => true
       UnadmissibleCallSiteDemand { cause: _, claims: _, sites: _ } => false
     }
   }))
@@ -577,12 +792,58 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // only it demands.
 // Nine more were added from the probe pair 37210396855 against 37210398646 (main 44ed81c294), for the
 // nine rows gunbc#13038 added to the hand roster (v2.test.claim.type_application_kind).
-// Those nine are RETIRED as ClaimDeleted: gunbc#13293 reverted #13038 and the module with it. If the
-// change re-lands, its claims are re-probed, not un-retired by hand.
+// Those nine were RETIRED as ClaimDeleted when gunbc#13293 reverted #13038, and are ACTIVE again on
+// the re-land (gunbc#13309), re-probed by its floor run 37268087131 at 27e140c4f3: with no warm row,
+// each refused enrolment as the one claim demanding its own assembly specimen (410642-422505 eval
+// steps each against the 72300 new-witness budget). That run names exactly these nine.
 // Twelve more were added from probe 37238532455, for the sixteen rows gunbc#13187 added to the hand
 // roster (v2.test.claim.compiler.generic_formal_instantiation): all twelve claims of the module.
 // Re-derive with that probe; do not extend by hand.
+//
+// THE xl2 MEMBERS (test.claim.namespace_xl2_rehearsal_census) were the bundle `xl2_control_runs`,
+// declined as BundleOfDisjointProjections on floor run 37194676016: each reads its own rehearsal
+// run, a front end plus resolves that exceeds a new-witness budget, and the rehearsal itself is the
+// claims' subject, so supplying its output would leave them asserting nothing. Un-bundled into one
+// producer per run; the shared `xl2_cut_run` is demanded by four claims and is not debt.
+//
+// THE BUNDLE-DISPOSITION MEMBERS (the fold_operand_structure, body_type_annotation_refusal,
+// infer_fold_member_instance, field_projection_stages and value_base_projection claims named
+// beside this note's floor runs) read one field each of the bundles fos_outcomes,
+// btar_fn_literal_outcomes, fmi_record_fold_reading, fps_match_binder_reading and
+// vbp_call_projection_reading, declined as BundleOfDisjointProjections on floor run 37200031313.
+// Un-bundled, each fixture's assembly or parse is one producer every claim over it reads whole and
+// is SHARED; what remains over the new-witness budget on floor run 37207183924 is each claim's OWN
+// stage (its route, infer or front end), which the bundle had been netting from the claim silently.
+// That transfer is named here per claim instead.
+// gunbc#13207 (XL-2 collection concat): its ONE real-path inhabitance claim, kept per the DESIGN section 3
+// witness rule (every other claim in the module supplies its input; sharp-raven-357 approved this member).
+// Measured on that PR's floor run 37238836376: 902,997 eval steps against the 72,300 new-witness budget -- the
+// pipeline's per-claim fixed cost of assembling and inferring a one-module fixture, not the test's own work.
+// Trigger: assemble plus infer of a one-module fixture runs under the per-claim budget
+// (gunbc.recurring_failure_mode shared_precondition_re_derived_once_per_claim_frame).
 data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.body_lowering.fold_operand_structure",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_call_with_a_fold_argument_lowers_as_the_call_over_the_loop", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "the_body_walker_lowers_a_call_with_a_fold_argument_as_the_call_over_the_loop", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "test.claim.namespace_xl2_rehearsal_census",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "xl2_residual_control_resolves_before_the_cut_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "xl2_two_failures_in_one_module_are_two_rows_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "xl2_duplicated_path_is_withheld_not_chosen_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "xl2_nested_reference_is_residual_after_the_strip_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.compiler.collection_concat_realization",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "cca_route_runs_on_the_real_path", standing: ActiveFillDebt }
+    ]
+  },
   SingleClaimFillDebtModule {
     module: "v2.test.claim.compiler.generic_formal_instantiation",
     claims: [
@@ -603,15 +864,15 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
     module: "v2.test.claim.type_application_kind",
     claims: [
-      SingleClaimFillDebtClaim { claim: "tak_application_of_a_non_generic_declaration_refuses", standing: RetiredFillDebt { disposition: ClaimDeleted } },
-      SingleClaimFillDebtClaim { claim: "tak_application_with_more_arguments_than_binders_refuses", standing: RetiredFillDebt { disposition: ClaimDeleted } },
-      SingleClaimFillDebtClaim { claim: "tak_arguments_pair_with_parameters_in_authored_order", standing: RetiredFillDebt { disposition: ClaimDeleted } },
-      SingleClaimFillDebtClaim { claim: "tak_arguments_swapped_against_authored_order_refuse", standing: RetiredFillDebt { disposition: ClaimDeleted } },
-      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_accepts_a_nat_literal_unjudged", standing: RetiredFillDebt { disposition: ClaimDeleted } },
-      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_accepts_a_variant_of_its_kind", standing: RetiredFillDebt { disposition: ClaimDeleted } },
-      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_refuses_a_kernel_type", standing: RetiredFillDebt { disposition: ClaimDeleted } },
-      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_refuses_a_variant_of_another_coproduct", standing: RetiredFillDebt { disposition: ClaimDeleted } },
-      SingleClaimFillDebtClaim { claim: "tak_unkinded_parameter_is_unchanged", standing: RetiredFillDebt { disposition: ClaimDeleted } }
+      SingleClaimFillDebtClaim { claim: "tak_application_of_a_non_generic_declaration_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_application_with_more_arguments_than_binders_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_arguments_pair_with_parameters_in_authored_order", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_arguments_swapped_against_authored_order_refuse", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_accepts_a_nat_literal_unjudged", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_accepts_a_variant_of_its_kind", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_refuses_a_kernel_type", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_refuses_a_variant_of_another_coproduct", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_unkinded_parameter_is_unchanged", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
@@ -663,7 +924,9 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     claims: [
       SingleClaimFillDebtClaim { claim: "fmi_fold_member_undeclared_field_refuses", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "fmi_fold_over_records_is_accepted", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "fmi_fold_step_body_not_the_carrier_refuses", standing: ActiveFillDebt }
+      SingleClaimFillDebtClaim { claim: "fmi_fold_step_body_not_the_carrier_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "fmi_fold_member_incompatible_formal_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "fmi_fold_member_projects_a_declared_field", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
@@ -839,7 +1102,9 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     claims: [
       SingleClaimFillDebtClaim { claim: "btar_if_arm_fn_literal_is_not_erased", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "btar_let_annotation_refuses", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "btar_unannotated_let_accepts", standing: ActiveFillDebt }
+      SingleClaimFillDebtClaim { claim: "btar_unannotated_let_accepts", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "btar_fn_literal_return_annotation_reaches_resolve", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "btar_unannotated_fn_literal_is_not_erased", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
@@ -951,7 +1216,8 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
       SingleClaimFillDebtClaim { claim: "fps_an_absent_field_does_not_infer_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
       SingleClaimFillDebtClaim { claim: "fps_an_unresolvable_provider_leaves_its_declaration_unavailable_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
       SingleClaimFillDebtClaim { claim: "fps_the_int_field_grounds_as_an_int_parameter_does_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
-      SingleClaimFillDebtClaim { claim: "fps_two_fields_of_different_types_ground_differently_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } }
+      SingleClaimFillDebtClaim { claim: "fps_two_fields_of_different_types_ground_differently_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
+      SingleClaimFillDebtClaim { claim: "fps_a_match_binder_receiver_is_not_yet_typed_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
@@ -1241,7 +1507,8 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     module: "v2.test.claim.value_base_projection",
     claims: [
       SingleClaimFillDebtClaim { claim: "vbp_a_param_spelled_like_the_field_is_not_captured", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "vbp_undeclared_field_off_a_call_result_is_carried_on_the_direct_infer_outcome", standing: ActiveFillDebt }
+      SingleClaimFillDebtClaim { claim: "vbp_undeclared_field_off_a_call_result_is_carried_on_the_direct_infer_outcome", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "vbp_call_result_projection_is_accepted_through_the_frontier", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
@@ -1315,10 +1582,10 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     module: "v2.test.parse.coproduct_leading_pipe_and_positional_payload_parse",
     claims: [
       SingleClaimFillDebtClaim { claim: "braced_pattern_binder_still_normalizes_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "leading_pipe_multiline_coproduct_parses_and_normalizes_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "leading_pipe_normalizes_to_the_same_alternatives_as_without_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "leading_pipe_multiline_coproduct_parses_and_normalizes_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
+      SingleClaimFillDebtClaim { claim: "leading_pipe_normalizes_to_the_same_alternatives_as_without_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
       SingleClaimFillDebtClaim { claim: "positional_pattern_binder_normalizes_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "positional_payload_variants_parse_and_normalize_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "positional_payload_variants_parse_and_normalize_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
       SingleClaimFillDebtClaim { claim: "positional_payload_without_leading_pipe_with_construction_normalizes_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "positional_wildcard_pattern_still_normalizes_holds", standing: ActiveFillDebt }
     ]

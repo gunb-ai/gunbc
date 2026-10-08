@@ -10,8 +10,8 @@ import extdeps.tools.conntrack { conntrack_cli_tool }
 import extdeps.netfilter.iptables_legacy { iptables_legacy_save_cli_tool }
 import extdeps.nftables.ruleset { nft_cli_tool }
 import extdeps.shell
-import std.types { String, NonEmptyStr }
-import v2.std.optional { Optional, Present, Absent, optional_absent, optional_present }
+import std.types { String, NonEmptyStr, List, Int }
+import std.optional { Optional, Present, Absent, optional_absent, optional_present }
 
 // Host CLI placement for wet witnesses: observe whether an executable is on PATH before attempting
 // shell transport. A missing npm on the falsifier runner surfaced as runtime error: failed to
@@ -160,23 +160,25 @@ fn first_absent_gh_cli_operation_host_cli_dependency() -> HostCliDependencyAbsen
   first_absent_host_cli_dependency(tools: gh_cli_operation_host_cli_requirements)
 }
 
+// A DIRECT WALK, not a fold over a step function: the step observes the host, and a function value
+// carries no effect, so the probe is called by name here. It stops at the first absence, so no tool
+// after it is probed. The walk carries a position read by index rather than a shrinking roster, so no step copies
+// the remainder.
 fn first_absent_host_cli_dependency(
   tools: List<CliTool>,
 ) -> HostCliDependencyAbsence? {
-  fold_list(
-    xs: tools,
-    empty: none,
-    cons: fn(acc, tool) {
-      match acc {
-        Present { value: found } => Present { value: found }
-        Absent =>
-          match observe_host_cli_dependency(tool: tool) {
-            HostCliDependencyAbsent { absence } => Present { value: absence }
-            HostCliDependencyPresent => none
-          }
+  first_absent_host_cli_dependency_from(tools: tools, index: 0)
+}
+
+fn first_absent_host_cli_dependency_from(tools: List<CliTool>, index: Int) -> HostCliDependencyAbsence? {
+  match tools.get(index: index) {
+    Absent => none
+    Present { value: tool } =>
+      match observe_host_cli_dependency(tool: tool) {
+        HostCliDependencyAbsent { absence } => Present { value: absence }
+        HostCliDependencyPresent => first_absent_host_cli_dependency_from(tools: tools, index: index + 1)
       }
-    },
-  )
+  }
 }
 
 fn host_dependency_absent_wire(tool: NonEmptyStr, hint: String) -> String {

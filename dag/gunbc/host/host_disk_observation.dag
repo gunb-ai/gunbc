@@ -5,7 +5,7 @@ import std.measure { ByteSize, byte_size, byte_size_count }
 import std.disposition { ConstructionMechanism, Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.host_identity { HostIdentity }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.algebra { trim }
 import std.checked_arithmetic { CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
 import extdeps.tools.gnu_coreutils { df_available_bytes_argv }

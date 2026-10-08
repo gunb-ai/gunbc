@@ -1,7 +1,8 @@
 module v2.workflow.required_floor
 
-import v2.std.algebra { Cons, Empty, contains, list_reverse }
-import v2.std.optional { Optional, Present, Absent }
+import v2.std.algebra { Cons, Empty, contains, any, list_reverse }
+import gunbc.explicit_witness_admission { explicit_witness_admissions, explicit_witness_admission_is_known_red }
+import std.optional { Optional, Present, Absent }
 import v2.std.integer { Int, int_gt, int_add, int_mul }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_non_verdict { floor_non_verdict_roster }
@@ -42,7 +43,7 @@ import std.measure {
   eval_step_count,
   eval_step_count_value,
 }
-import std.types { NonEmptyStr, List }
+import std.types { NonEmptyStr, List, Milliseconds }
 import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml, YamlIngestRejected }
 import extdeps.languages.yaml.types { yaml_entry_count }
 import std.algebra { Cons, Empty }
@@ -118,6 +119,7 @@ import std.algebra { Cons, Empty }
 type RequiredFloorDisposition =
     Planned
   | PlannedAsChangedWitness
+  | PlannedAsReachConsumer
   | DeclinedLongModule { matched_prefix: String }
   | DeclinedFixtureMember { matched_prefix: String }
   | DeclinedOutsideRequiredGate
@@ -138,6 +140,7 @@ fn required_floor_disposition_name(d: RequiredFloorDisposition) -> String {
   match d {
     Planned => "planned",
     PlannedAsChangedWitness => "planned_as_changed_witness",
+    PlannedAsReachConsumer => "planned_as_reach_consumer",
     DeclinedLongModule { matched_prefix } => "declined_long_module",
     DeclinedFixtureMember { matched_prefix } => "declined_fixture_member",
     DeclinedOutsideRequiredGate => "declined_outside_required_gate",
@@ -385,6 +388,7 @@ fn cost_debt_roster_standing(reading: CostDebtDispositionReading) -> CostDebtRos
         DeclinedNoCiWetLane { pattern: _ } => CostDebtOutsideThisRunsUniverse {}
         DeclinedChangedWitnessOutsideDiscovery { module_path: _ } => CostDebtOutsideThisRunsUniverse {}
         Planned => CostDebtDeclaredButNotWithheld {}
+        PlannedAsReachConsumer => CostDebtDeclaredButNotWithheld {}
         DeclinedLongModule { matched_prefix: _ } => CostDebtDeclaredButNotWithheld {}
         DeclinedFixtureMember { matched_prefix: _ } => CostDebtDeclaredButNotWithheld {}
         DeclinedOutsideRequiredGate => CostDebtDeclaredButNotWithheld {}
@@ -903,6 +907,19 @@ fn required_gate_prefixes() -> List<String> {
 // duplicate-key and well-formed checks and the addition/staleness join; it matched no family prefix,
 // so those reds executed on no merge lane. Admitted at exact module grain for the same reason as the
 // test-reference wall: a family prefix would silently widen to any future sibling.
+// THE ROUTE-GAP PARTITION WITNESS (same reason, same grain). `test.claim.route_gap_partition_witness`
+// carries the route-gap admission partition's discriminating red -- an enrollment the tree does not
+// declare refuses -- through the modeled relation on `v2.workflow.floor_route_gap`, over substrate
+// inputs only (constructed lists; no host effect, no service). It matched no family prefix, so the
+// wall's red would execute on no merge lane without this row.
+//
+// THE CALIBRATION SPECIMEN (node adhoc-c9504740-637; sharp-raven-357 ruling with the operator's
+// go-ahead, 2026-10-05). The enrolment margin is judged in calibrated CPU ms, and the factor comes
+// ONLY from `test.claim.floor_eval_step_calibration_specimen_test` measured in the same run on the
+// same runner (`v2.workflow.floor_eval_step_calibration` `HostSpeedCalibration`). Outside the gate it
+// dispositions DeclinedOutsideRequiredGate and every gated run would refuse
+// host_speed_specimen_not_measured, so it is admitted here, at exact module grain. One claim of about
+// 55,011 eval steps with no imports beyond std.types; it adds nothing to preparation.
 fn required_gate_authored_modules() -> List<String> {
   [
     "test.claim.runner_capacity_plan_witness",
@@ -921,6 +938,8 @@ fn required_gate_authored_modules() -> List<String> {
     "v2.test.claim.effect_demand.effect_demand_floor_join_test",
     "test.claim.test_reference_wall_witness",
     "test.claim.seed_growth_admission_witness",
+    "test.claim.route_gap_partition_witness",
+    "test.claim.floor_eval_step_calibration_specimen_test",
   ]
 }
 
@@ -2513,4 +2532,276 @@ fn required_floor_grandfathered_eval_step_budget() -> EvalStepCount {
 
 fn required_floor_new_witness_eval_step_budget() -> EvalStepCount {
   claim_ceiling_eval_step_budget(tier: NewWitnessTier {})
+}
+
+// THE PER-PR v2 CLAIM DIFFERENTIAL (operator ruling 2026-09-27; gunbc.recurring_failure_mode
+// green_floor_executes_no_claim_whose_verdict_a_body_change_can_move). The population is the
+// execution-grain reach selection intersected with the v2 claim set -- never the whole set, which
+// is the absorbing superset DESIGN section 5 forbids. Those claims were never gated, so their
+// absolute verdict is not the question: main may already carry reds a PR did not cause. The
+// question is whether THIS change moved a verdict, so the verdict is over a PAIR of standings.
+type ClaimStanding
+  = StandingPassed
+  | StandingFailed
+  | StandingNotDeclared
+
+// A claim not declared at base is NEW: it has no prior verdict to regress from, so it is judged
+// exactly as today's changed witness is -- it must pass at head. A claim that fails on both sides
+// is main's red, counted and not this change's; a repair is reported and never blocks. Only a
+// claim that passed at base and does not pass at head is a regression the change caused.
+type ClaimDifferential
+  = DifferentialHeld
+  | DifferentialRegressed { head: ClaimStanding }
+  | DifferentialStillRed
+  | DifferentialRepaired
+  | DifferentialNewClaim { head: ClaimStanding }
+  | DifferentialRemoved
+  | DifferentialUndeclaredAtBothSides
+
+fn claim_differential(base: ClaimStanding, head: ClaimStanding) -> ClaimDifferential {
+  match base {
+    StandingNotDeclared =>
+      match head {
+        StandingNotDeclared => DifferentialUndeclaredAtBothSides
+        StandingPassed => DifferentialNewClaim { head: head }
+        StandingFailed => DifferentialNewClaim { head: head }
+      }
+    StandingPassed =>
+      match head {
+        StandingPassed => DifferentialHeld
+        StandingFailed => DifferentialRegressed { head: head }
+        StandingNotDeclared => DifferentialRemoved
+      }
+    StandingFailed =>
+      match head {
+        StandingPassed => DifferentialRepaired
+        StandingFailed => DifferentialStillRed
+        StandingNotDeclared => DifferentialRemoved
+      }
+  }
+}
+
+fn claim_differential_blocks(d: ClaimDifferential) -> Bool {
+  match d {
+    DifferentialRegressed { head } => true
+    DifferentialNewClaim { head } =>
+      match head {
+        StandingPassed => false
+        StandingFailed => true
+        StandingNotDeclared => true
+      }
+    DifferentialHeld => false
+    DifferentialStillRed => false
+    DifferentialRepaired => false
+    DifferentialRemoved => false
+    DifferentialUndeclaredAtBothSides => true
+  }
+}
+
+// WHERE THE BASE STANDING COMES FROM. The baseline is produced once per landing, on the merge
+// group's composed revision, which is the sha main then carries; a PR reads it at its own merge
+// base. Its key is (main sha, claim identity) and that pair is COMPLETE for a hermetic claim: the
+// sha fixes the whole tree -- so every declaration in the claim's reach -- and the seed and
+// interpreter built from it. A wet claim reads the host, so no sha keys it; wet claims are not in
+// the baseline and are not selected for the differential. A missing baseline is not an empty one:
+// it is counted and, where the base side runs, it runs at the merge base, loudly, and is never
+// widened into running every claim. Where it does NOT run (reach_differential_standing is
+// DifferentialReportOnly), the run says BaselineNotMeasured and decides
+// no verdict. It never prints a base that was not measured (review 73484).
+type BaselineStanding
+  = BaselineRead { main_sha: String }
+  | BaselineMissingRanAtMergeBase { main_sha: String, cause: String }
+  | BaselineNotMeasured { cause: String }
+
+// THE BASELINE'S READER. Its only producer today is the merge base: no per-landing baseline store
+// exists yet, so every run reaches the BaselineMissingRanAtMergeBase arm and says so by name. The
+// rendered line is what the floor prints, so a reader of the run sees which arm the base came from
+// and, when it was run, why. `BaselineRead` gains its producer with the store; until then it is
+// the declared frontier this note names, and its trigger is a baseline written per landing on the
+// merge group's composed revision, keyed (main sha, claim identity).
+fn baseline_standing_line(b: BaselineStanding) -> String {
+  match b {
+    BaselineRead { main_sha: s } => concat("baseline=read main_sha=", s)
+    BaselineMissingRanAtMergeBase { main_sha: s, cause: c } =>
+      concat(concat(concat("baseline=missing-ran-at-merge-base main_sha=", s), " cause="), c)
+    BaselineNotMeasured { cause: c } => concat("baseline=not-measured cause=", c)
+  }
+}
+
+fn reach_baseline_not_measured_line(cause: String) -> String {
+  baseline_standing_line(b: BaselineNotMeasured { cause: cause })
+}
+
+fn reach_baseline_ran_at_merge_base_line(main_sha: String, cause: String) -> String {
+  baseline_standing_line(b: BaselineMissingRanAtMergeBase { main_sha: main_sha, cause: cause })
+}
+
+// THE HOST WIRE FOR ONE REACHED CLAIM. The host holds two standing NAMES it observed, never a
+// verdict: the verdict and whether it blocks are claim_differential and claim_differential_blocks,
+// here and nowhere else. A name this module does not know refuses through StandingNotParsed rather
+// than defaulting to a standing that could hide a regression.
+// NOT MEASURED IS A DECLARED ARM OF THE WIRE, NOT A STRING THE PREDICATES EACH TEST FOR (review
+// 76416): a side that produced no verdict (an interruption, a panic, an unresolved host tool) is
+// parsed here, once, into StandingNotMeasured, and every reader matches the arm.
+type ParsedClaimStanding
+  = StandingParsed { standing: ClaimStanding }
+  | StandingNotMeasured
+  | StandingNotParsed { name: String }
+
+fn claim_standing_named(name: String) -> ParsedClaimStanding {
+  if name == "passed" {
+    StandingParsed { standing: StandingPassed }
+  } else if name == "failed" {
+    StandingParsed { standing: StandingFailed }
+  } else if name == "not_declared" {
+    StandingParsed { standing: StandingNotDeclared }
+  } else if name == "not_measured" {
+    StandingNotMeasured
+  } else {
+    StandingNotParsed { name: name }
+  }
+}
+
+fn claim_differential_name(d: ClaimDifferential) -> String {
+  match d {
+    DifferentialHeld => "held"
+    DifferentialRegressed { head: _ } => "regressed"
+    DifferentialStillRed => "still_red"
+    DifferentialRepaired => "repaired"
+    DifferentialNewClaim { head: _ } => "new_claim"
+    DifferentialRemoved => "removed"
+    DifferentialUndeclaredAtBothSides => "undeclared_at_base_and_head"
+  }
+}
+
+type ReachClaimVerdict
+  = ReachVerdict { differential: String, blocks: Bool }
+  | ReachVerdictRefused { reason: String }
+
+// ONE DIFFERENTIAL, BOTH FIELDS (review 76416). The name and blocks are read from the SAME
+// ClaimDifferential value, through this one constructor, so they cannot disagree. The record keeps
+// its two flat fields because they are the host wire the seed's floor runner reads
+// (v1_compiler.cli_run.required_floor_runner, reach_base_standings); the agreement is held here.
+fn reach_verdict_of(d: ClaimDifferential) -> ReachClaimVerdict {
+  ReachVerdict { differential: claim_differential_name(d: d), blocks: claim_differential_blocks(d: d) }
+}
+
+// A BASE OUTCOME THAT WAS NOT A VERDICT (a budget interruption, a panic, an unresolved host tool or
+// effect, a claim not attempted) is reported for THAT claim alone and never read as failed: failed
+// would turn a head failure into still_red and hide the regression. The other reached claims keep
+// their verdicts (srv1, 2026-10-01: one BudgetInterrupted claim of 60 used to void all 60).
+//
+// WHETHER IT BLOCKS IS DERIVED, NOT BLANKET (deep-ferret-305, 2026-10-01). A claim on a DECLARED
+// main-red roster is main's debt, already declared and owned, so it is a counted
+// base_not_measured_rostered finding and does not block. A claim on no roster BLOCKS as
+// base_not_measured_unrostered (BaseNotMeasuredUnrostered): the floor cannot show it is not a
+// regression, and nothing declared says it was already red.
+//
+// THE DECLARED MAIN-RED ROSTERS, BOTH, each joined at its own grain: v2.workflow.floor_expected_red
+// by qualified identity, and gunbc.explicit_witness_admission's known-red rows by (entry, function)
+// through that roster's own explicit_witness_admission_is_known_red. The first cut joined only the
+// first, so three known_red_probe rows of map_literal_test blocked as unrostered on the srv1
+// control rerun (neat-boar-16, 2026-10-01).
+// NAMED RESIDUAL, stated so the unrostered rule is not over-read. The base arm runs each claim under
+// the same per-claim limit the head arm does: no eval-budget deadline, and the 8000 ms wall of
+// required_floor_claim_wall_safety_limit_ms. That wall is a HANG GUARD, not the budget (the
+// floor's budget verdict is deterministic eval steps, claim_eval_step_budget_for_identity), and it
+// is reported as BudgetInterrupted. POPULATION: unrostered reached claims whose base run lands
+// within host-load noise of 8 s (the srv1 control: three map_literal claims at 8010 to 8054 ms).
+// EFFECT: their dequeue is load-dependent, though loud and named (base_not_measured_unrostered),
+// never silent. TRIGGER, NAMING THE CAPABILITY: the hang guard gets its own typed refusal and a
+// declared, much larger value through one plumbing for both arms (jolly-boar-500's cost lane,
+// after gunbc#12861), sufficient that no claim within its eval-step budget is interrupted by it.
+fn claim_on_declared_main_red_roster(identity: String, entry: String, function: String) -> Bool {
+  contains(xs: floor_expected_red_roster(), item: identity, eq: fn(a, b) { a == b })
+    || any(xs: explicit_witness_admissions, predicate: fn(r) {
+      (r.witness.entry as String) == entry
+        && r.witness.function == function
+        && explicit_witness_admission_is_known_red(row: r)
+    })
+}
+
+fn base_not_measured_verdict(identity: String, entry: String, function: String) -> ReachClaimVerdict {
+  if claim_on_declared_main_red_roster(identity: identity, entry: entry, function: function) {
+    ReachVerdict { differential: "base_not_measured_rostered", blocks: false }
+  } else {
+    ReachVerdict { differential: "base_not_measured_unrostered", blocks: true }
+  }
+}
+
+fn reach_claim_verdict(
+  identity: String,
+  entry: String,
+  function: String,
+  base: String,
+  head: String,
+) -> ReachClaimVerdict {
+  match claim_standing_named(name: head) {
+    StandingNotMeasured =>
+      ReachVerdictRefused { reason: concat("head not measured: a reached claim has no verdict at head ", identity) }
+    StandingNotParsed { name: h } => ReachVerdictRefused { reason: concat("unknown head standing ", h) }
+    StandingParsed { standing: hs } =>
+      match claim_standing_named(name: base) {
+        StandingNotMeasured => base_not_measured_verdict(identity: identity, entry: entry, function: function)
+        StandingNotParsed { name: b } => ReachVerdictRefused { reason: concat("unknown base standing ", b) }
+        StandingParsed { standing: bs } => reach_verdict_of(d: claim_differential(base: bs, head: hs))
+      }
+  }
+}
+
+// WHICH REACHED CLAIMS NEED A BASE STANDING AT ALL. A head standing CANNOT BLOCK when no base
+// standing makes claim_differential_blocks true for it, and then its base is irrelevant to the
+// verdict. That is derived from the verdict function over EVERY base arm, not asserted. Today it
+// holds for StandingPassed only: a head NotDeclared blocks when the base is NotDeclared too
+// (DifferentialUndeclaredAtBothSides, review 76405), so a removal runs the base arm to prove it was one,
+// so the base arm runs only the claims that FAIL at head: 60 of 1481 for a one-line v2.std.node body edit and 18 of 240 for gunbc#12582's change
+// (neat-boar-16, srv1, 2026-10-01). An unknown head name answers false, so it still goes to the
+// base arm and refuses there rather than being skipped.
+fn head_cannot_block(head: ClaimStanding) -> Bool {
+  !claim_differential_blocks(d: claim_differential(base: StandingPassed, head: head))
+    && !claim_differential_blocks(d: claim_differential(base: StandingFailed, head: head))
+    && !claim_differential_blocks(d: claim_differential(base: StandingNotDeclared, head: head))
+}
+
+// A HEAD THAT WAS NOT MEASURED (a non-verdict at head: a wall interruption under host load) needs
+// no base, because no base standing can turn ignorance into a verdict: reach_claim_verdict REFUSES it,
+// typed and located (review 76405; DESIGN section 5, a failure arm refuses, never widens), rather than
+// reporting it as a non-blocking answer and leaning on the interruption rule elsewhere to refuse.
+fn reach_head_cannot_block(head: String) -> Bool {
+  match claim_standing_named(name: head) {
+    StandingParsed { standing: h } => head_cannot_block(head: h)
+    StandingNotMeasured => true
+    StandingNotParsed { name: _ } => false
+  }
+}
+
+// WHETHER A BLOCKING VERDICT STOPS THE REQUIRED RUN, AND WHETHER THE BASE SIDE RUNS AT ALL. Under
+// DifferentialBlocking the base side runs and every reached claim gets a verdict. Under
+// DifferentialReportOnly the base side is SKIPPED, no verdict is decided, and the run prints each
+// reached claim's head standing with every head failure as a counted ReachedClaimFailedAtHead
+// finding (review 73484). THE COST RULING IS MADE (operator, 2026-10-01, option B): the
+// differential runs in the merge group only and BLOCKS there; a pull request adds nothing and
+// reports deferred_to_merge_group. So the standing is DifferentialBlocking. An arm over its budget
+// refuses with a typed cause (BaseArmOverBudget) and never truncates. There is no flag that
+// changes this.
+type ReachDifferentialStanding
+  = DifferentialBlocking { base_arm_wall_budget: Milliseconds }
+  | DifferentialReportOnly { pending: String }
+
+// THE BUDGET IS A DECLARED POLICY VALUE, GROUNDED IN ITS RECEIPT: neat-boar-16's base-arm runs on
+// srv1 (2026-10-01, merge_group event, a loaded host) took 226 s for 60 identities, 260.5 s for 18
+// and 312.6 s for 22. The arm's cost follows per-claim eval more than identity count, so the
+// budget is the largest observed arm (312.6 s) times 2 for host-load variance: 625200 ms. A run
+// over it is a typed refusal that names the budget, which is the signal to re-measure, not to widen.
+data reach_differential_standing: ReachDifferentialStanding = DifferentialBlocking {
+  base_arm_wall_budget: 625200
+}
+
+// The host wire: 0 means report-only, and a positive value is the blocking arm's wall budget. Typed
+// Milliseconds (std.types) at birth, so the unit is the type's and not the name's (review 73528).
+fn reach_differential_blocking_budget() -> Milliseconds {
+  match reach_differential_standing {
+    DifferentialBlocking { base_arm_wall_budget: b } => b
+    DifferentialReportOnly { pending: _ } => 0
+  }
 }

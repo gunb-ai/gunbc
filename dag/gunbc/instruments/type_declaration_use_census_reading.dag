@@ -2,7 +2,7 @@ module gunbc.instruments.type_declaration_use_census_reading
 
 import std.types { String, Bool, List, Int }
 import std.algebra { Cons, Empty }
-import v2.std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import v2.workflow.required_floor { required_gate_admits }

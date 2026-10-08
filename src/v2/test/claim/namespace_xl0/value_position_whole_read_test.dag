@@ -43,11 +43,11 @@ import v2.std.compilers.body_lowering {
   application_read
 }
 import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
-import v2.std.node_query { field_projection_optional, node_positional_child_targets }
+import v2.std.node_query { binder_node_parts, field_projection_optional, node_positional_child_targets }
 import v2.std.type_binder { type_param_names }
 import v2.std.collection { list_at_optional }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import std.algebra { Cons, Empty, FreeMonoid, list_append }
 import extdeps.communication.medium { Lossless, Medium }
@@ -472,10 +472,14 @@ fn vpw_domain_binds(arrow: Node, binder: Symbol) -> Optional<Node> {
   match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
     Present { value: domain } =>
       match named_edge_target_lookup(children: domain.children, name: binder) {
-        Found { target: t } =>
-          match node_atom_identity_optional(node: t) {
-            Present { value: tv } =>
-              if vpw_symbol_in(xs: type_param_names(n: arrow), s: tv) { optional_present(value: t) } else { optional_absent() }
+        Found { target: binder_target } =>
+          match binder_node_parts(n: binder_target) {
+            Present { value: parts } =>
+              match node_atom_identity_optional(node: parts.type_node) {
+                Present { value: tv } =>
+                  if vpw_symbol_in(xs: type_param_names(n: arrow), s: tv) { optional_present(value: parts.type_node) } else { optional_absent() }
+                Absent => optional_absent()
+              }
             Absent => optional_absent()
           }
         _ => optional_absent()

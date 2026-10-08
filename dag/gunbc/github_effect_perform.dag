@@ -44,7 +44,7 @@ import gunbc.runner.runner_jit_perform {
   JitMintDispatch, JitMintDispatchAuthorized, JitMintDispatchRefused,
   JitCredentialDelivery, JitCredentialNotDispatched, receive_jit_mint,
 }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 
 // THE HOME OF A PERFORMED GitHubEffect. extdeps.github.effect is the effect SHAPE; the services in
 // extdeps.github.* are REST realizations bound to it (gunbc#10923); this module is the workflow

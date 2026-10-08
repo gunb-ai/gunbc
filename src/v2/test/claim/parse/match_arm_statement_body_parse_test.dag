@@ -6,7 +6,7 @@ import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -48,11 +48,15 @@ fn match_arm_statement_body_parsed() -> Outcome<Node> {
   g_tokenize_parse(text: match_arm_statement_body_source, file: ^probe_match_arm_statement_body)
 }
 
+// TWO body stamps, one per arm. Since #13056 an arm body is ONE production: the expression body is
+// the one-statement case of the statement body (v2.extdeps.languages.dag dag_grammar_match_arm_expr),
+// so `B => v` carries the stamp too. The count expected 1 when the expression body was a second
+// alternative; measured 2 on main after #13056.
 test fn a_match_arm_statement_body_is_stamped_and_stops_at_the_next_arm_holds() -> Bool {
   match match_arm_statement_body_parsed() {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
-      (masb_stamp_count(node: tree, emitted: ^dag_surface_match_arm_stmt_body) == 1)
+      (masb_stamp_count(node: tree, emitted: ^dag_surface_match_arm_stmt_body) == 2)
         && (masb_stamp_count(node: tree, emitted: ^dag_surface_match_arm) == 2)
   }
 }

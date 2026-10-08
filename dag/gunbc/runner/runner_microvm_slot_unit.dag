@@ -17,6 +17,7 @@ import extdeps.systemd.unit_file {
   slice_memory_max, slice_memory_high, slice_memory_swap_max,
   systemd_instance_name_specifier,
   serialize_systemd_unit_file,
+  RemainAfterExit, ExecStartPre, ExecStartPost, ExecStop, ExecStopPost, ExecStopPostIgnoringFailure, ServiceStandardOutput, ServiceStandardError, EnvironmentFile, EnvironmentFileIfPresent, ServiceGroup, ServiceNice, ServiceIoSchedulingClass, TimeoutStartSec, RestartSec, ServiceTasksMax,
 }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import gunbc.runner_slot_allocation { microvm_controller_slice_memory_max }
@@ -305,7 +306,33 @@ fn microvm_slot_unit_execs_controller(file: SystemdUnitFile) -> Bool {
       fold(directives, init: false, f: (acc, d) => acc || match d {
         ExecStart { command: c } =>
           string_contains(s: c as String, pattern: join(["--function ", microvm_slot_controller_entry_function], ""))
-        _ => false
+        RuntimeMaxSec { duration: _ } => false
+        ServiceType { mode: _ } => false
+        RemainAfterExit { active: _ } => false
+        ExecStartPre { command: _ } => false
+        ExecStartPost { command: _ } => false
+        ExecStop { command: _ } => false
+        ExecStopPost { command: _ } => false
+        ExecStopPostIgnoringFailure { command: _ } => false
+        ServiceStandardOutput { stream: _ } => false
+        ServiceStandardError { stream: _ } => false
+        Restart { policy: _ } => false
+        Environment { assignment: _ } => false
+        LoadCredential { identifier: _, source: _ } => false
+        EnvironmentFile { path: _ } => false
+        EnvironmentFileIfPresent { path: _ } => false
+        WorkingDirectory { path: _ } => false
+        ServiceUser { name: _ } => false
+        ServiceGroup { name: _ } => false
+        ServiceSlice { name: _ } => false
+        ServiceNice { priority: _ } => false
+        ServiceIoSchedulingClass { scheduling_class: _ } => false
+        TimeoutStartSec { duration: _ } => false
+        ServiceExitType { exit_type: _ } => false
+        ServiceKillMode { mode: _ } => false
+        RestartSec { duration: _ } => false
+        ServiceTasksMax { count: _ } => false
+        TimeoutStopSec { duration: _ } => false
       })
     TimerUnitFile { unit: _, timer: _, install: _ } => false
     SliceUnitFile { unit: _, slice: _, install: _ } => false

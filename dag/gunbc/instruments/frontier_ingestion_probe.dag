@@ -427,7 +427,10 @@ fn take_census_over(rows: List<FrontierMember>) -> FrontendCensusReceipt {
       match verdict {
         CensusExact =>
           CensusTaken { roster_identity: roster_identity(rows: rows), observations: obs }
-        _ => CensusRefusedAtReconciliation { cause: verdict }
+        CensusRosterInvalid { verdict: _ } => CensusRefusedAtReconciliation { cause: verdict }
+        CensusMissingMember { label: _ } => CensusRefusedAtReconciliation { cause: verdict }
+        CensusDuplicateMember { label: _ } => CensusRefusedAtReconciliation { cause: verdict }
+        CensusUnrosteredObservation { label: _ } => CensusRefusedAtReconciliation { cause: verdict }
       }
     }
   }
@@ -513,7 +516,8 @@ fn verify_roster(rows: List<FrontierMember>) -> FrontierRosterVerdict {
         } else {
           FrontierRosterDuplicateLabel { label: m.label }
         }
-      _ => acc
+      FrontierRosterDuplicateLabel { label: _ } => acc
+      FrontierRosterDuplicatePath { path: _ } => acc
     }
   })
 }
@@ -549,7 +553,8 @@ fn reconcile_census_over(
   let roster = verify_roster(rows: rows)
   match roster {
     FrontierRosterValid => reconcile_against_valid_rows(obs: obs, rows: rows)
-    _ => CensusRosterInvalid { verdict: roster }
+    FrontierRosterDuplicateLabel { label: _ } => CensusRosterInvalid { verdict: roster }
+    FrontierRosterDuplicatePath { path: _ } => CensusRosterInvalid { verdict: roster }
   }
 }
 
@@ -569,7 +574,10 @@ fn reconcile_against_valid_rows(
           CensusDuplicateMember { label: m.label }
         }
       }
-      _ => acc
+      CensusRosterInvalid { verdict: _ } => acc
+      CensusMissingMember { label: _ } => acc
+      CensusDuplicateMember { label: _ } => acc
+      CensusUnrosteredObservation { label: _ } => acc
     }
   })
   match covered {
@@ -582,17 +590,26 @@ fn reconcile_against_valid_rows(
             } else {
               CensusUnrosteredObservation { label: o.label }
             }
-          _ => acc
+          CensusRosterInvalid { verdict: _ } => acc
+          CensusMissingMember { label: _ } => acc
+          CensusDuplicateMember { label: _ } => acc
+          CensusUnrosteredObservation { label: _ } => acc
         }
       })
-    _ => covered
+    CensusRosterInvalid { verdict: _ } => covered
+    CensusMissingMember { label: _ } => covered
+    CensusDuplicateMember { label: _ } => covered
+    CensusUnrosteredObservation { label: _ } => covered
   }
 }
 
 fn census_is_complete(obs: List<MemberObservation>) -> Bool {
   match reconcile_census(obs: obs) {
     CensusExact => true
-    _ => false
+    CensusRosterInvalid { verdict: _ } => false
+    CensusMissingMember { label: _ } => false
+    CensusDuplicateMember { label: _ } => false
+    CensusUnrosteredObservation { label: _ } => false
   }
 }
 

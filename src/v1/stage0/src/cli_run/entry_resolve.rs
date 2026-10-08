@@ -204,39 +204,375 @@ pub(crate) fn build_module_index_primary_precedence(source_roots: &[String]) -> 
     try_build_module_index_primary_precedence(source_roots).unwrap_or_else(|e| panic!("{e}"))
 }
 
+fn file_key_in_workspace(workspace: &Path, rel: &str) -> String {
+    normalize_repo_path(&module_index_path_key(&workspace.join(rel)))
+}
+
+/// The Class B gate skip-set: seed entries plus every module the one closure
+/// authority (`extend_sources_to_both_closure_fixpoint`) reaches from them —
+/// import edges, qualified references, and bare references, to a joint fixpoint.
+///
+/// WHY NOT THE IMPORT EDGES ALONE (DESIGN §3, §6b). This walker used to stop at
+/// `import` lines, a second closure rule beside the one the gate, the witness
+/// loader and regen share. An `import` line, a qualified reference and a bare
+/// reference are the same dependency edge, so the import-only walk was not a
+/// narrower closure but a blind one: a Class B entry whose imports reached a
+/// module that names a provider only by reference would omit that provider from
+/// the skip set, and a change to the provider would skip the gate.
+///
+/// Seeds are the declared entries only. The authority already follows import
+/// lines (via `module_paths_of_references` / `ref_out`); a second BFS here would
+/// be the fork this function exists to delete (review 76991).
 pub(crate) fn import_closure_dag_files(
     workspace: &Path,
     source_roots: &[PathBuf],
     seed_entries: &[&str],
 ) -> Result<HashSet<String>, String> {
-    let index = dag_module_index(source_roots)?;
-    let mut seen: HashSet<String> = HashSet::new();
-    let mut queue: Vec<String> = Vec::new();
+    let mut seeds: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
     for rel in seed_entries {
         let path = workspace.join(rel);
         let content = std::fs::read_to_string(&path)
             .map_err(|e| format!("read declared Class B gate entry {rel}: {e}"))?;
-        seen.insert(normalize_repo_path(rel));
-        queue.push(content);
+        let key = file_key_in_workspace(workspace, rel);
+        seeds.push(Rc::new(v1_compiler_compile::SourceFile {
+            path: key,
+            content,
+        }));
     }
-    while let Some(content) = queue.pop() {
-        for module_path in extract_import_paths(&content) {
-            let Some(candidates) = index.get(&module_path) else {
-                continue;
-            };
-            for path in candidates {
-                let rel =
-                    normalize_repo_path(&workspace_relative_repo_path(&path.to_string_lossy()));
-                if !seen.insert(rel) {
+    let root_strings: Vec<String> = source_roots
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    let mei = try_index_for_run_or_owned_pool(&root_strings)?;
+    let closed = extend_sources_to_both_closure_fixpoint(seeds, &mei)?;
+    Ok(closed
+        .into_iter()
+        .map(|source| normalize_repo_path(&module_index_path_key(Path::new(&source.path))))
+        .collect())
+}
+
+/// Compile-subject closure of an in-memory (or on-disk) entry over an explicit pool:
+/// the entry plus every module the one closure authority reaches from it.
+///
+/// The tests helper `resolve_imports_transitively_with_source_roots` used to stop at
+/// authored `import` lines. That is the same class as #13437 / #13464: a provider
+/// reached only by qualified or bare reference was omitted. This function is not a
+/// second walker — it seeds the entry and calls `extend_sources_to_both_closure_fixpoint`.
+///
+/// SEED DELTA (ctrl hand-Rust receipt): production `resolve_imports_transitively_with_source_roots`
+/// lost its own import-line BFS (that body is gone). Net production seed is this wrapper.
+/// `virtual_entry_compile_closure_controls` is `#[cfg(test)]` only, including the import-only
+/// mutant `import_only_virtual_entry_closure` — not a second production walker.
+pub fn resolve_virtual_entry_compile_closure(
+    entry_path: &str,
+    entry_content: &str,
+    pool_roots: &[String],
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let mei = try_index_for_run_or_owned_pool(pool_roots)?;
+    let seed = Rc::new(v1_compiler_compile::SourceFile {
+        path: entry_path.to_string(),
+        content: entry_content.to_string(),
+    });
+    extend_sources_to_both_closure_fixpoint(vec![seed], &mei)
+}
+
+#[cfg(test)]
+mod import_closure_dag_files_controls {
+    use super::*;
+
+    const ENTRY: &str = "entry.dag";
+    const MID: &str = "mid.dag";
+    const PROVIDER: &str = "provider.dag";
+    const BROKEN: &str = "broken.dag";
+
+    const ENTRY_SRC: &str = "module class.b.closure.entry\n\
+import class.b.closure.mid { mid_ok }\n\
+fn use_mid() -> Int { mid_ok() }\n";
+
+    const MID_SRC: &str = "module class.b.closure.mid\n\
+fn mid_ok() -> Int { 1 }\n\
+fn uses_provider() -> class.b.closure.provider.ProviderToken {\n\
+  class.b.closure.provider.ProviderToken { n: 1 }\n\
+}\n";
+
+    const PROVIDER_SRC: &str = "module class.b.closure.provider\n\
+type ProviderToken {\n\
+  n: Int\n\
+}\n";
+
+    const BROKEN_SRC: &str = "module class.b.closure.broken\n\
+import class.b.closure.mid { mid_ok }\n\
+fn broken() -> Int { no_such_function_anywhere() }\n";
+
+    fn fixture_tree() -> PathBuf {
+        let dir = process_workspace_root().join("target").join(format!(
+            "import_closure_dag_files_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(ENTRY), ENTRY_SRC).unwrap();
+        std::fs::write(dir.join(MID), MID_SRC).unwrap();
+        std::fs::write(dir.join(PROVIDER), PROVIDER_SRC).unwrap();
+        std::fs::write(dir.join(BROKEN), BROKEN_SRC).unwrap();
+        dir
+    }
+
+    fn provider_key(dir: &Path) -> String {
+        file_key_in_workspace(dir, PROVIDER)
+    }
+
+    /// Import-line BFS only. THE MUTANT: a provider reached only by reference is
+    /// not a member of this set. Not compiled into production (§3 / §3c).
+    fn import_only_closure_dag_files(
+        workspace: &Path,
+        source_roots: &[PathBuf],
+        seed_entries: &[&str],
+    ) -> Result<HashSet<String>, String> {
+        let index = dag_module_index(source_roots)?;
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut queue: Vec<String> = Vec::new();
+        for rel in seed_entries {
+            let path = workspace.join(rel);
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("read declared Class B gate entry {rel}: {e}"))?;
+            seen.insert(file_key_in_workspace(workspace, rel));
+            queue.push(content);
+        }
+        while let Some(content) = queue.pop() {
+            for module_path in extract_import_paths(&content) {
+                let Some(candidates) = index.get(&module_path) else {
                     continue;
+                };
+                for path in candidates {
+                    let rel = normalize_repo_path(&module_index_path_key(path));
+                    if !seen.insert(rel) {
+                        continue;
+                    }
+                    let file_content = std::fs::read_to_string(path)
+                        .map_err(|e| format!("read imported module {}: {e}", path.display()))?;
+                    queue.push(file_content);
                 }
-                let file_content = std::fs::read_to_string(path)
-                    .map_err(|e| format!("read imported module {}: {e}", path.display()))?;
-                queue.push(file_content);
             }
         }
+        Ok(seen)
     }
-    Ok(seen)
+
+    /// RED: an entry whose provider is reached only by qualified reference is closed.
+    #[test]
+    fn a_provider_reached_only_by_reference_is_closed() {
+        let dir = fixture_tree();
+        let roots = [dir.clone()];
+        let closed = import_closure_dag_files(&dir, &roots, &[ENTRY]).expect("closure");
+        let provider = provider_key(&dir);
+        assert!(
+            closed.contains(&provider),
+            "provider {provider} missing from closed set {closed:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Mutant: the import-only walk fails that RED.
+    #[test]
+    fn import_only_mutant_omits_the_reference_only_provider() {
+        let dir = fixture_tree();
+        let roots = [dir.clone()];
+        let mutant = import_only_closure_dag_files(&dir, &roots, &[ENTRY]).expect("mutant");
+        let provider = provider_key(&dir);
+        assert!(
+            !mutant.contains(&provider),
+            "the import-only mutant must omit {provider}; got {mutant:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Positive control: a real error in the entry's own closure still refuses.
+    #[test]
+    fn a_real_error_in_the_entry_closure_still_refuses() {
+        let dir = fixture_tree();
+        let roots = [dir.clone()];
+        let closed = import_closure_dag_files(&dir, &roots, &[BROKEN]).expect("closure");
+        let provider = provider_key(&dir);
+        assert!(
+            closed.contains(&provider),
+            "the broken entry must still close the reference-only provider"
+        );
+        let sources: Vec<Rc<v1_compiler_compile::SourceFile>> = closed
+            .iter()
+            .map(|rel| {
+                let path = if Path::new(rel).is_absolute() {
+                    PathBuf::from(rel)
+                } else {
+                    process_workspace_root().join(rel)
+                };
+                Rc::new(v1_compiler_compile::SourceFile {
+                    path: rel.clone(),
+                    content: std::fs::read_to_string(&path)
+                        .unwrap_or_else(|e| panic!("read closed member {}: {e}", path.display())),
+                })
+            })
+            .collect();
+        let refusal = resolved_graph_from_sources(sources)
+            .expect_err("a call to a function nothing declares must refuse");
+        assert!(
+            refusal.contains("no_such_function_anywhere")
+                || refusal.contains("not found")
+                || refusal.contains("blocking_diagnostics"),
+            "refusal must name the real error, got: {refusal}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod virtual_entry_compile_closure_controls {
+    use super::*;
+
+    const ENTRY: &str = "entry.dag";
+    const MID: &str = "mid.dag";
+    const PROVIDER: &str = "provider.dag";
+    const BROKEN: &str = "broken.dag";
+
+    const ENTRY_SRC: &str = "module virtual.entry.closure.entry\n\
+import virtual.entry.closure.mid { mid_ok }\n\
+fn use_mid() -> Int { mid_ok() }\n";
+
+    const MID_SRC: &str = "module virtual.entry.closure.mid\n\
+fn mid_ok() -> Int { 1 }\n\
+fn uses_provider() -> virtual.entry.closure.provider.ProviderToken {\n\
+  virtual.entry.closure.provider.ProviderToken { n: 1 }\n\
+}\n";
+
+    const PROVIDER_SRC: &str = "module virtual.entry.closure.provider\n\
+type ProviderToken {\n\
+  n: Int\n\
+}\n";
+
+    const BROKEN_SRC: &str = "module virtual.entry.closure.broken\n\
+import virtual.entry.closure.mid { mid_ok }\n\
+fn broken() -> Int { no_such_function_anywhere() }\n";
+
+    fn fixture_tree() -> PathBuf {
+        let dir = process_workspace_root().join("target").join(format!(
+            "virtual_entry_compile_closure_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(ENTRY), ENTRY_SRC).unwrap();
+        std::fs::write(dir.join(MID), MID_SRC).unwrap();
+        std::fs::write(dir.join(PROVIDER), PROVIDER_SRC).unwrap();
+        std::fs::write(dir.join(BROKEN), BROKEN_SRC).unwrap();
+        dir
+    }
+
+    fn provider_in(sources: &[Rc<v1_compiler_compile::SourceFile>]) -> bool {
+        sources.iter().any(|s| {
+            s.content.contains("module virtual.entry.closure.provider")
+                || Path::new(&s.path)
+                    .file_name()
+                    .is_some_and(|n| n == PROVIDER)
+        })
+    }
+
+    /// Import-line BFS only. THE MUTANT: a provider reached only by reference is
+    /// not a member. Not compiled into production (§3 / §3c).
+    fn import_only_virtual_entry_closure(
+        workspace: &Path,
+        source_roots: &[PathBuf],
+        entry_rel: &str,
+        entry_content: &str,
+    ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+        let index = dag_module_index(source_roots)?;
+        let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
+        let mut queue: Vec<String> = vec![entry_content.to_string()];
+        seen.insert(
+            entry_rel.to_string(),
+            Rc::new(v1_compiler_compile::SourceFile {
+                path: file_key_in_workspace(workspace, entry_rel),
+                content: entry_content.to_string(),
+            }),
+        );
+        while let Some(content) = queue.pop() {
+            for module_path in extract_import_paths(&content) {
+                let Some(candidates) = index.get(&module_path) else {
+                    continue;
+                };
+                for path in candidates {
+                    let rel = normalize_repo_path(&module_index_path_key(path));
+                    if seen.contains_key(&rel) {
+                        continue;
+                    }
+                    let file_content = std::fs::read_to_string(path)
+                        .map_err(|e| format!("read imported module {}: {e}", path.display()))?;
+                    seen.insert(
+                        rel.clone(),
+                        Rc::new(v1_compiler_compile::SourceFile {
+                            path: rel,
+                            content: file_content.clone(),
+                        }),
+                    );
+                    queue.push(file_content);
+                }
+            }
+        }
+        Ok(seen.into_iter().map(|(_, v)| v).collect())
+    }
+
+    #[test]
+    fn a_provider_reached_only_by_reference_is_closed() {
+        let dir = fixture_tree();
+        let roots = [dir.to_string_lossy().into_owned()];
+        let closed =
+            resolve_virtual_entry_compile_closure(ENTRY, ENTRY_SRC, &roots).expect("closure");
+        assert!(
+            provider_in(&closed),
+            "provider missing from closed set {:?}",
+            closed.iter().map(|s| s.path.clone()).collect::<Vec<_>>()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn import_only_mutant_omits_the_reference_only_provider() {
+        let dir = fixture_tree();
+        let roots = [dir.clone()];
+        let mutant =
+            import_only_virtual_entry_closure(&dir, &roots, ENTRY, ENTRY_SRC).expect("mutant");
+        assert!(
+            !provider_in(&mutant),
+            "the import-only mutant must omit the provider; got {:?}",
+            mutant.iter().map(|s| s.path.clone()).collect::<Vec<_>>()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_real_error_in_the_entry_closure_still_refuses() {
+        let dir = fixture_tree();
+        let roots = [dir.to_string_lossy().into_owned()];
+        let closed =
+            resolve_virtual_entry_compile_closure(BROKEN, BROKEN_SRC, &roots).expect("closure");
+        assert!(
+            provider_in(&closed),
+            "the broken entry must still close the reference-only provider"
+        );
+        let refusal = resolved_graph_from_sources(closed)
+            .expect_err("a call to a function nothing declares must refuse");
+        assert!(
+            refusal.contains("no_such_function_anywhere")
+                || refusal.contains("not found")
+                || refusal.contains("blocking_diagnostics"),
+            "refusal must name the real error, got: {refusal}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 /// Normalize `source_roots` to the workspace-relative form `import_resolution_facts` /
@@ -358,8 +694,10 @@ pub(crate) fn build_module_graph_facts_live_uncached(
     // modules), while for SELECTION it is precisely the thing that destroys the answer. The loader
     // (`extend_with_bare_reference_closure`) is deliberately left alone.
     //
-    // Import-bearing files emit no reference edges at all (see `reference_resolution_facts` pass 2),
-    // so on an un-stripped file the union is a no-op and the graph is byte-identical to before.
+    // (SUPERSEDED: this measurement predates the all-importer producer. Import-bearing files now
+    // also emit strict-tier reference edges for modules they reach without importing, so the union
+    // is no longer a no-op on an un-stripped file. The selection-tier effect of that widening is
+    // measured by the floor, not asserted here.)
     // FIVE ROWS, EACH NET OF THE OTHERS. The import-edge facts are the module path index's first
     // demander, and that index is the first demander of every pool file's lexing, newline index
     // and heads parse (`pool_acquire`, which records those three as `pool_source_tokenize`,
@@ -2992,9 +3330,6 @@ impl ReferenceSelectionTier {
 
 /// One file's answer from the reference-edge producer.
 pub(crate) enum FileReferenceEdges {
-    /// The file carries `import` lines: its edges are owned EXACTLY by `import_resolution_facts`,
-    /// and emitting reference edges for it would only over-connect.
-    ImportBearing,
     /// The file's reference edges, every tier (`reference_edges_as_import_facts` filters).
     Edges(Vec<ReferenceEdgeRaw>),
     /// An import-less file the producer could not answer for, with the located cause.
@@ -3175,9 +3510,10 @@ pub(crate) fn reference_edges_for_file(
 }
 
 /// The same per-file answer with the pool name index DEMANDED rather than supplied. An unreadable
-/// or import-bearing file is decided from its own bytes, so a caller asking about one such file
-/// never builds the whole-pool heads index; only an import-less file, whose references must be
-/// resolved against pool names, forces it.
+/// file is decided from its own bytes and never builds the whole-pool heads index. EVERY readable
+/// file, import-bearing or not, answers its reference edges: an `import` line declares some of a
+/// module's dependencies, not all of them (`v2.std.artifact` imports three modules and reaches
+/// `v2.std.refinement` only by qualified reference), so imports never own a file's edge set.
 pub(crate) fn reference_edges_for_file_on_demand<
     R: std::ops::Deref<Target = ReferencePoolNames>,
 >(
@@ -3188,9 +3524,6 @@ pub(crate) fn reference_edges_for_file_on_demand<
     let Some(content) = content else {
         return FileReferenceEdges::Unaccounted("unreadable");
     };
-    if !extract_import_paths(content).is_empty() {
-        return FileReferenceEdges::ImportBearing;
-    }
     let names = names();
     let names: &ReferencePoolNames = &names;
     let Some(self_module) = extract_module_path(content) else {
@@ -3200,7 +3533,12 @@ pub(crate) fn reference_edges_for_file_on_demand<
         Ok(refs) => refs,
         Err(cause) => return FileReferenceEdges::Unaccounted(cause),
     };
-    let ParsedFileReferences { bare, chains, .. } = refs;
+    let ParsedFileReferences {
+        bare,
+        chains,
+        imports,
+        ..
+    } = refs;
     // Resolve to per-file (target_module → strongest confidence).
     let mut file_edges: std::collections::BTreeMap<String, RefEdgeResolution> =
         std::collections::BTreeMap::new();
@@ -3222,6 +3560,15 @@ pub(crate) fn reference_edges_for_file_on_demand<
         // it is never an edge: `String` in `std.primitives` once resolved UniqueBare to
         // std.string_type, a module the resolver never loads for that spelling.
         if super::is_substrate_vocabulary(name) {
+            continue;
+        }
+        // LEXICAL BINDING, NOT PROXIMITY, IN A FILE THAT IMPORTS: a bare name there is a local
+        // declaration or a name the file imports (the import edge already carries that), so
+        // guessing a pool declarer for it is a heuristic the closed substrate never needs. It
+        // manufactured a phantom edge from `std.optional { Present }` importers to a fixture that
+        // merely declares the same spelling. The proximity tier below stays for import-less files,
+        // where it already applied.
+        if !imports.is_empty() {
             continue;
         }
         if let Some(mods) = names.decl_index.get(name) {
@@ -3327,7 +3674,6 @@ pub fn reference_resolution_facts(
             }
             let content = std::fs::read_to_string(&file).ok();
             match reference_edges_for_file(&rel, content.as_deref(), &names) {
-                FileReferenceEdges::ImportBearing => {}
                 FileReferenceEdges::Edges(file_edges) => edges.extend(file_edges),
                 FileReferenceEdges::Unaccounted(cause) => {
                     unaccounted.push(ReferenceAccountingRefusal {
@@ -3380,6 +3726,10 @@ mod live_pool_thread_tests {
     /// builds a new index with a new generation.
     #[test]
     fn two_claims_on_the_live_pool_thread_share_one_index() {
+        // Start from no live pool: an earlier test may have left the live-pool thread holding
+        // ITS fixture pool, and a second pool on that thread is refused at the build site
+        // (SharedIndexSecondResidentPool, #12831).
+        yield_live_pool_before_building_another();
         let (root, roots) = one_module_pool("route");
         let first = {
             let roots = roots.clone();
@@ -3402,6 +3752,10 @@ mod live_pool_thread_tests {
     /// this discriminates is a thread that holds its pool under every later test's own pool.
     #[test]
     fn another_threads_pool_build_releases_the_live_pool() {
+        // Start from no live pool: an earlier test may have left the live-pool thread holding
+        // ITS fixture pool, and a second pool on that thread is refused at the build site
+        // (SharedIndexSecondResidentPool, #12831).
+        yield_live_pool_before_building_another();
         let (root, roots) = one_module_pool("release");
         let (other_root, other_roots) = one_module_pool("release-other");
         let generation = |roots: Vec<String>| {
@@ -3437,208 +3791,6 @@ mod live_pool_thread_tests {
             Some("planted live-pool failure")
         );
         assert_eq!(on_live_pool_thread(|| 7), 7);
-    }
-}
-
-/// THE INSTRUMENT for a cold entry resolve's per-term cost on the live `[dag, src/v2]` pool: one
-/// fresh process acquires the pool's tokens, builds the module path index (the heads reading
-/// `parse_module_binding` takes), builds the shared index, and resolves two small workflow
-/// entries, printing `PROBE` rows and every `pre_entry_phase` term. The first two terms are split
-/// out so the per-file token acquisition, which later readings reuse through `pool_acquire`, is
-/// not charged to whichever walk happens to run first. It reports; it asserts only that the
-/// entries resolve. Run it with
-/// `cargo test --release -p v1-compiler --lib live_pool_entry_resolve_attribution -- --ignored --nocapture`.
-#[cfg(test)]
-mod live_pool_entry_resolve_attribution {
-    use super::*;
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn live_pool_entry_resolve_attribution() {
-        let t0 = std::time::Instant::now();
-        let root = process_workspace_root();
-        let roots: Vec<String> = ["dag", "src/v2"]
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().into_owned())
-            .collect();
-        let t = std::time::Instant::now();
-        let mut files = 0usize;
-        for r in &roots {
-            let mut dag_files = Vec::new();
-            collect_dag_files_tolerant(Path::new(r), &mut dag_files);
-            for f in dag_files {
-                let content = std::fs::read_to_string(&f).expect("read pool file");
-                // The spelling `parse_module_binding` acquires under (`source_key`).
-                let key = f
-                    .strip_prefix(&root)
-                    .unwrap_or(&f)
-                    .to_string_lossy()
-                    .into_owned();
-                let _ = super::pool_acquire::tokens_for(&key, &content);
-                files += 1;
-            }
-        }
-        eprintln!(
-            "PROBE pool token acquisition {:?} files={files}",
-            t.elapsed()
-        );
-        let t = std::time::Instant::now();
-        let n = build_module_path_index(&pool_roots_for_module_graph_closure(&roots)).len();
-        eprintln!(
-            "PROBE module_path_index (heads parse) {:?} modules={n}",
-            t.elapsed()
-        );
-        let t = std::time::Instant::now();
-        let index = process_shared_index(&roots);
-        eprintln!("PROBE shared_index {:?}", t.elapsed());
-        for e in [
-            "src/v2/workflow/regen_convergence_transaction.dag",
-            "src/v2/workflow/required_regen.dag",
-        ] {
-            let entry = root.join(e);
-            let t = std::time::Instant::now();
-            let r = resolve_entry_with_index(&index, &entry.to_string_lossy());
-            assert!(r.is_ok(), "{e} resolves");
-            eprintln!("PROBE resolve {e} {:?}", t.elapsed());
-            eprintln!("PROBE   stages {:?}", resolve_stage_totals());
-            for line in super::pre_entry_phase::take_lines() {
-                eprintln!("PROBE   phase {line}");
-            }
-        }
-        eprintln!("PROBE total {:?}", t0.elapsed());
-    }
-}
-
-/// THE IDENTITY DIFFERENTIAL for the closure front end reading its lexical artifact from
-/// `pool_acquire` instead of re-lexing: the only input that change alters is the artifact the
-/// closure parser receives, so it is compared at that grain over every file of the live
-/// `[dag, src/v2]` pool, under the spelling the shared index gives it -- tokens AND the annotation
-/// channel, against a fresh `tokenize_artifact` of the same bytes. A divergence names the file.
-#[cfg(test)]
-mod closure_parse_acquisition_differential {
-    use super::*;
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn pooled_closure_artifacts_equal_fresh_lexing_on_the_live_pool() {
-        let root = process_workspace_root();
-        let roots: Vec<String> = ["dag", "src/v2"]
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().into_owned())
-            .collect();
-        let index = process_shared_index(&roots);
-        let mut compared = 0usize;
-        let mut divergent: Vec<String> = Vec::new();
-        for source in index.source_files.values() {
-            let pooled = super::pool_acquire::artifact_for(&source.path, &source.content);
-            let fresh = v1_compiler_tokenize::tokenize_artifact(
-                source.content.clone(),
-                source.path.clone(),
-                crate::extdeps_languages_dag_syntax::dag_parse_environment(),
-            );
-            if *pooled != *fresh {
-                divergent.push(source.path.clone());
-            }
-            let pooled_nl = super::pool_acquire::newline_index_for(&source.path, &source.content);
-            if *pooled_nl != *build_newline_index(source.path.clone(), source.content.clone()) {
-                divergent.push(format!("{} (newline index)", source.path));
-            }
-            compared += 1;
-        }
-        eprintln!("DIFF compared={compared} divergent={}", divergent.len());
-        assert!(compared > 1000, "the live pool was read ({compared} files)");
-        assert!(
-            divergent.is_empty(),
-            "pooled artifacts diverge: {divergent:?}"
-        );
-    }
-}
-
-/// THE LIVE IDENTITY DIFFERENTIAL for the census projecting rather than re-parsing: every file
-/// of the `[dag, src/v2]` shared index, in `pool_parse`'s order, through both readings, compared
-/// by `heads_projection_divergences`.
-#[cfg(test)]
-mod heads_projection_live_differential {
-    use super::*;
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn projected_heads_equal_the_threaded_parse_on_the_live_pool() {
-        let root = process_workspace_root();
-        let roots: Vec<String> = ["dag", "src/v2"]
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().into_owned())
-            .collect();
-        let index = process_shared_index(&roots);
-        let mut keys: Vec<String> = index.source_files.keys().cloned().collect();
-        keys.sort();
-        let files: Vec<(String, String)> = keys
-            .iter()
-            .map(|k| {
-                let sf = &index.source_files[k];
-                (sf.path.clone(), sf.content.clone())
-            })
-            .collect();
-        let (n, divergent) = super::super::census_heads::heads_projection_divergences(&files);
-        eprintln!("DIFF compared={n} divergent={}", divergent.len());
-        assert!(n > 1000, "the live pool was read ({n} files)");
-        assert!(
-            divergent.is_empty(),
-            "divergent: {:?}",
-            &divergent[..divergent.len().min(20)]
-        );
-    }
-}
-
-/// THE IDENTITY DIFFERENTIAL for the tree census upgrading the memoized raw census instead of
-/// rebuilding it: for every source root of the live `[dag, src/v2]` index, the census
-/// `tree_bare_census_for_root` now serves agrees with the direct
-/// `build_symbol_index_census_nodes(tree_census_nodes(root))` on every field its one production
-/// reader, `symbol_index_with_bare_fill`, consumes (bare lookup states and candidates, services,
-/// alias reps, exposures), its `entries` are the raw census, and the composed underlay the
-/// reconcile builds from it is equal whichever census it is composed from.
-#[cfg(test)]
-mod tree_census_from_raw_differential {
-    use super::*;
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn tree_census_from_memoized_raw_equals_the_direct_build_on_the_live_pool() {
-        let root = process_workspace_root();
-        let roots: Vec<String> = ["dag", "src/v2"]
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().into_owned())
-            .collect();
-        let index = process_shared_index(&roots);
-        let pool = super::super::pool_parse(&index).expect("pool parse");
-        let mut compared = 0usize;
-        for r in index.source_roots.iter() {
-            let served = super::super::tree_bare_census_for_root(&index, r).expect("served");
-            let nodes = super::super::tree_census_nodes(&index, r).expect("tree nodes");
-            let direct =
-                v1_compiler_infer::build_symbol_index_census_nodes(nodes, pool.combined_si.clone());
-            // Every field the bare fill reads must equal the direct build; `entries` is the raw
-            // census, which no production reader of this census consumes.
-            let raw = super::super::closure_name_census(&index, Some(r)).expect("raw census");
-            let fill_equal = served.global_bare == direct.global_bare
-                && served.services == direct.services
-                && served.transparent_alias_rep == direct.transparent_alias_rep
-                && served.type_head_exposures == direct.type_head_exposures;
-            let entries_raw = served.entries == raw.entries;
-            let composed_equal =
-                *v1_compiler_infer::symbol_index_with_bare_fill(raw.clone(), served.clone())
-                    == *v1_compiler_infer::symbol_index_with_bare_fill(raw.clone(), direct.clone());
-            eprintln!(
-                "DIFF root={r} entries={} bare={} fill_equal={fill_equal} entries_raw={entries_raw} \
-                 composed_equal={composed_equal}",
-                direct.entries.len(),
-                direct.global_bare.len(),
-            );
-            assert!(fill_equal, "tree census bare fill for {r} diverges");
-            assert!(
-                entries_raw,
-                "tree census entries for {r} are not the raw census"
-            );
-            assert!(composed_equal, "bare-fill composition for {r} diverges");
-            compared += 1;
-        }
-        assert!(compared >= 2, "both live roots compared ({compared})");
     }
 }
 
@@ -3830,102 +3982,6 @@ pub(crate) fn typed_graph_byte_attribution(
     }
 }
 
-/// ONE HEADS PARSE PER (SPELLING, BYTES), asserted: over the live `[dag, src/v2]` pool, building
-/// the module path index (`parse_module_binding`) and the pool census (`pool_parse`) -- the two
-/// consumers of `pool_acquire::heads_reading_for` -- parses each acquisition key's heads exactly
-/// once, and every pool file was read.
-#[cfg(test)]
-mod heads_parse_count {
-    use super::*;
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn each_pool_file_is_heads_parsed_once_on_the_live_pool() {
-        let root = process_workspace_root();
-        let roots: Vec<String> = ["dag", "src/v2"]
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().into_owned())
-            .collect();
-        let _ = build_module_path_index(&pool_roots_for_module_graph_closure(&roots));
-        let index = process_shared_index(&roots);
-        let _ = super::super::pool_parse(&index).expect("pool parse");
-        let (keys, max, over): (usize, usize, Vec<String>) = super::pool_acquire::HEADS_PARSES
-            .with(|p| {
-                let p = p.borrow();
-                (
-                    p.len(),
-                    p.values().copied().max().unwrap_or(0),
-                    p.iter()
-                        .filter(|(_, n)| **n > 1)
-                        .map(|((f, _, _), n)| format!("{f} x{n}"))
-                        .take(20)
-                        .collect(),
-                )
-            });
-        eprintln!("HEADS keys={keys} max_parses_per_key={max}");
-        assert!(keys > 5000, "the live pool was read ({keys} keys)");
-        assert!(over.is_empty(), "heads parsed more than once: {over:?}");
-    }
-}
-
-/// THE CROSS-TREE CENSUS, over the whole live `[dag, src/v2]` pool: every import-less file's bare
-/// references resolved against its own tree census, with no whole-pool census. A name the tree
-/// does not provide but another tree does refuses (`CrossTreeBareReference`) exactly where the
-/// deleted fallback silently pulled a provider; this lists every such refusal, so the pool's
-/// dependence on the deleted fallback is counted, by identity, rather than argued. Before the
-/// change the fallback census found 13 pool-provided rows in 5 files: 12 the import migration in
-/// this change qualifies, and the builtin `get` the builtin arm now keeps from being pulled.
-#[cfg(test)]
-mod cross_tree_bare_census {
-    use super::*;
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn no_import_less_file_reaches_across_trees_on_the_live_pool() {
-        let root = process_workspace_root();
-        let roots: Vec<String> = ["dag", "src/v2"]
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().into_owned())
-            .collect();
-        let index = process_shared_index(&roots);
-        let mut sources: Vec<_> = index.source_files.values().cloned().collect();
-        sources.sort_by(|a, b| a.path.cmp(&b.path));
-        let mut scanned = 0usize;
-        let mut refusals: Vec<String> = Vec::new();
-        for sf in &sources {
-            if super::super::source_declares_import_lines(&sf.content) {
-                continue;
-            }
-            scanned += 1;
-            let r = super::super::visit_bare_reference_providers(
-                sf,
-                &index,
-                |root| super::super::closure_name_census(&index, root),
-                |_, _, _, _| Ok(()),
-            );
-            if let Err(e) = r {
-                refusals.push(e);
-            }
-        }
-        let pool_census_built = index.closure_name_censuses.borrow().contains_key(&None);
-        eprintln!(
-            "CROSSTREE scanned={scanned} refusals={} pool_census_built={pool_census_built}",
-            refusals.len()
-        );
-        for r in &refusals {
-            eprintln!("CROSSTREE refusal {r}");
-        }
-        assert!(scanned > 100, "the live pool was read ({scanned} files)");
-        assert!(
-            !pool_census_built,
-            "a bare resolution still built the whole-pool census"
-        );
-        assert!(
-            refusals.is_empty(),
-            "{} files reach across trees",
-            refusals.len()
-        );
-    }
-}
-
 #[cfg(test)]
 mod cross_tree_bare_reference_tests {
     use super::*;
@@ -4032,91 +4088,6 @@ mod cross_tree_bare_reference_tests {
     }
 }
 
-/// The five files the cross-tree census enumerated resolve as entries over the live pool after
-/// the migration: the four that now reference across trees qualified, and the builtin `get` claim that no
-/// longer pulls another tree's `fn get`.
-#[cfg(test)]
-mod cross_tree_migrated_entries_resolve {
-    use super::*;
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn migrated_entries_resolve_on_the_live_pool() {
-        let root = process_workspace_root();
-        let roots: Vec<String> = ["dag", "src/v2"]
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().into_owned())
-            .collect();
-        let index = process_shared_index(&roots);
-        for e in [
-            "src/v2/test/claim/auth_declared_but_unwired_witness_test.dag",
-            "src/v2/test/claim/bootstrap_test.dag",
-            "src/v2/test/claim/infer_semantics_witness_test.dag",
-            "src/v2/test/claim/manual/path_y_fidelity_successor_test.dag",
-            "dag/test/claim/builtin_get_resolver_test.dag",
-        ] {
-            let entry = root.join(e);
-            let r = resolve_entry_with_index(&index, &entry.to_string_lossy());
-            eprintln!("MIGRATED {e} ok={}", r.is_ok());
-            if let Err(err) = &r {
-                eprintln!("MIGRATED   {}", err.chars().take(600).collect::<String>());
-            }
-            assert!(r.is_ok(), "{e} resolves");
-        }
-    }
-}
-
-/// THE PER-NAME CLAIM, for every name of the live pool: the whole-pool name census's entry for a
-/// name (bare lookup state with candidates, and service entry) equals the entry
-/// `pool_census_for_name` builds over the name's declaring modules alone. This is what licenses
-/// answering the loader's out-of-tree question without building the pool census.
-#[cfg(test)]
-mod pool_census_for_name_differential {
-    use super::*;
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn per_name_census_equals_the_pool_census_for_every_name_on_the_live_pool() {
-        let root = process_workspace_root();
-        let roots: Vec<String> = ["dag", "src/v2"]
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().into_owned())
-            .collect();
-        let index = process_shared_index(&roots);
-        let pool = super::super::closure_name_census(&index, None).expect("pool census");
-        let decl = reference_pool_names_for_index(&index).expect("names");
-        let mut names: BTreeSet<String> = BTreeSet::new();
-        names.extend(v1_rt::sorted_map_keys(&pool.global_bare));
-        names.extend(v1_rt::sorted_map_keys(&pool.services));
-        names.extend(decl.decl_index.keys().cloned());
-        let mut divergent: Vec<String> = Vec::new();
-        {
-            for name in &names {
-                let local =
-                    super::super::pool_census_for_name(&index, name).expect("per-name census");
-                if v1_rt::map_get(&pool.global_bare, name.clone())
-                    != v1_rt::map_get(&local.global_bare, name.clone())
-                {
-                    divergent.push(format!("{name} (bare)"));
-                }
-                if v1_rt::map_get(&pool.services, name.clone())
-                    != v1_rt::map_get(&local.services, name.clone())
-                {
-                    divergent.push(format!("{name} (service)"));
-                }
-            }
-        }
-        eprintln!(
-            "PERNAME names={} divergent={}",
-            names.len(),
-            divergent.len()
-        );
-        for d in divergent.iter().take(30) {
-            eprintln!("PERNAME divergent {d}");
-        }
-        assert!(names.len() > 1000, "the live pool was read");
-        assert!(divergent.is_empty(), "{} names diverge", divergent.len());
-    }
-}
-
 /// THE SPECIMEN of `gunbc.recurring_failure_mode.an_import_turns_an_ambiguous_bare_name_into_a_transitive_pick`,
 /// a v1 semantic defect owned by the resolver lane (routed by neat-boar-16), not by this change.
 /// One source tree declares `bar` in `ta.dep` and `ta.other`. With no imports a bare `bar()`
@@ -4175,47 +4146,6 @@ mod import_transitive_bare_pick_specimen {
         assert!(err.contains("ambiguous reference 'bar'"), "{err}");
         // THE DEFECT, pinned as observed: flip to expect_err when it is fixed.
         imported.expect("observed: one unrelated import makes the same bare name resolve");
-    }
-}
-
-/// THE INSTRUMENT for the floor's whole-pool bare admission (`admit_pool_bare_references`) on the
-/// live `[dag, src/v2]` pool, with what both routes share -- the pool heads parse, both tree name
-/// censuses and the heads name index -- warmed first, so the timed term is the admission alone.
-/// It prints the admission time, the per-name census calls and time (`ResolveStageNanos`) and the
-/// distinct names asked; calls against distinct names is the repetition a shared answer would
-/// remove. It reports; it asserts only that the admission completes.
-#[cfg(test)]
-mod live_pool_bare_admission_attribution {
-    use super::*;
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn live_pool_bare_admission_attribution() {
-        let root = process_workspace_root();
-        let roots: Vec<String> = ["dag", "src/v2"]
-            .iter()
-            .map(|r| root.join(r).to_string_lossy().into_owned())
-            .collect();
-        let index = process_shared_index(&roots);
-        let _ = super::super::pool_parse(&index).expect("pool parse");
-        for r in index.source_roots.iter() {
-            let _ = super::super::closure_name_census(&index, Some(r)).expect("tree census");
-        }
-        let _ = reference_pool_names_for_index(&index).expect("names");
-        let before = resolve_stage_totals();
-        let t = std::time::Instant::now();
-        let verdict = super::super::admit_pool_bare_references(&index);
-        let elapsed = t.elapsed();
-        let after = resolve_stage_totals();
-        let distinct = super::super::PER_NAME_CENSUS_DISTINCT.with(|d| d.borrow().len());
-        eprintln!(
-            "ADMIT whole_pool_admission={elapsed:?} ok={} per_name_calls={} per_name_ms={} \
-             per_name_distinct={distinct} pool_census_built={}",
-            verdict.is_ok(),
-            after.bare_per_name_census_calls - before.bare_per_name_census_calls,
-            (after.bare_per_name_census - before.bare_per_name_census) / 1_000_000,
-            index.closure_name_censuses.borrow().contains_key(&None),
-        );
-        verdict.expect("the live pool admits");
     }
 }
 

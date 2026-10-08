@@ -24,7 +24,7 @@ import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import v2.std.optional { Absent }
+import std.optional { Absent }
 
 // THE CRS812-8DS-2DQ-2DDQ-RM, MIKROTIK'S 400G TOP-OF-RACK / LEAF SWITCH. This is the orderable
 // rack-mount product code (the "RM" suffix); MikroTik markets the family as "CRS812 DDQ".

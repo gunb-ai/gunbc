@@ -2,6 +2,7 @@ module test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test
 
 import gunbc.build_cache_instance { ProcessIdentity }
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { list_snoc_item }
 import std.measure { Second, second }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant { Read, Write, ServiceOpTree, NamespacePosition, ModeledRealization, LifecycleByConstruction, Grant, Envelope }
@@ -31,8 +32,7 @@ import gunbc.machine_intake_mtcollins1_boot_run {
   MtCollins1BootAttempt, mtcollins1_boot_on_srv1_resolving_toolchain, mtcollins1_boot_exit_reason,
   ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded,
 }
-import gunbc.machine_intake_mtcollins1_boot_authorization { mtcollins1_boot_medium, mtcollins1_boot_medium_image_name, MtCollins1CensusMedium }
-import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image, Mtcollins1CensusImageDerived }
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_boot_medium, mtcollins1_census_image, Mtcollins1CensusImageDerived }
 import gunbc.machine_intake_mtcollins1_census_medium_readback { mtcollins1_census_record_path, mtcollins1_census_medium_served_path }
 import gunbc.durable_exclusive_hold_file_store { file_hold_acquire }
 import gunbc.runner_browser_toolchain {
@@ -154,10 +154,7 @@ fn run_attempt(world: MtCollins1BootWorld) -> WitnessEvaluation<MtCollins1BootAt
 
 // ─── THE HEALTHY WORLD, and the facts it is built from ───────────────────────────────────────────
 fn selected_digest() -> String {
-  match mtcollins1_boot_medium {
-    MtCollins1CensusMedium { output_digest: d } => d as String
-    _ => ""
-  }
+  mtcollins1_boot_medium.digest as String
 }
 
 fn healthy_srv2() -> ModeledRemoteHost {
@@ -175,7 +172,7 @@ fn healthy_media() -> MegaRacMediaWorld {
     sessions: [], next_session: 1,
     share: MegaRacShare { server: "192.168.1.188", source_path: "/srv/bmc", share_type: "nfs" },
     mount_cd: 1, cd_error_code: 0,
-    images: [MegaRacImage { image_name: mtcollins1_boot_medium_image_name(medium: mtcollins1_boot_medium) as String, image_index: 5 }],
+    images: [MegaRacImage { image_name: mtcollins1_boot_medium.image_name as String, image_index: 5 }],
     cd: megarac_cleared_cd(),
     ready_after: second(count: 12),
     withdraw_at: none,
@@ -420,7 +417,7 @@ fn no_withdrawal() -> Second? {
 }
 
 fn desired_image() -> String {
-  mtcollins1_boot_medium_image_name(medium: mtcollins1_boot_medium) as String
+  mtcollins1_boot_medium.image_name as String
 }
 
 data real_share: MegaRacShare = MegaRacShare { server: "192.168.1.188", source_path: "/srv/bmc", share_type: "nfs" }
@@ -720,7 +717,7 @@ test fn a_successor_in_another_pid_namespace_refuses_rather_than_recovering() ->
 fn with_clock_jump(w: MtCollins1BootWorld, at: Second, by: Int) -> MtCollins1BootWorld {
   MtCollins1BootWorld {
     bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts,
-    clock: ModeledWallClock { unix_at_origin: w.clock.unix_at_origin, step: w.clock.step, jumps: list_append(w.clock.jumps, ModeledClockStep { at: at, by: std.measure.second_displacement(count: by) }) },
+    clock: ModeledWallClock { unix_at_origin: w.clock.unix_at_origin, step: w.clock.step, jumps: list_snoc_item(xs: w.clock.jumps, item: ModeledClockStep { at: at, by: std.measure.second_displacement(count: by) }) },
     worker: w.worker, console: w.console, media: w.media, screen: w.screen,
   }
 }

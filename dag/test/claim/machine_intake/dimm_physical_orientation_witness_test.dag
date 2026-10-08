@@ -1,0 +1,130 @@
+module test.claim.machine_intake.dimm_physical_orientation_witness
+
+import std.types { Bool, NonEmptyStr, String, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.boards.types { BaseboardModel, AmpereMtCollins, GigabyteMp72Hb0, AsrockRackAltrad8ud1l2t }
+import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved, BmcObservedIdentity }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.managed_host {
+  ManagedHost, ManagedHostBound, ManagedHostAccessUnobserved, ManagedHostNotSecured, ManagedHostEndpointMismatch,
+  managed_hosts, managed_host_binding, managed_host_fixture,
+}
+import gunbc.baseboard_dimm_figure { BaseboardDimmFigureOf, BoardFigureUnmodeled, MtCollinsGettingStartedGuideFigures, baseboard_dimm_figure }
+import gunbc.machine_intake_dimm_physical_orientation { HostDimmOriented, HostDimmBoardUnmodeled, host_dimm_orientation }
+import gunbc.machine_intake_dimm_row_orientation {
+  DimmPlacementAnchor, FullMirror,
+  OrientationResolved, OrientationAmbiguous, OrientationContradicted, OrientationUnevaluable, OrientationAnchorFrameUnreported, OrientationAnchorFramesDisagree,
+}
+import gunbc.machine_intake_mtcollins1_physical_orientation { mtcollins1_placement_anchors }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FIGURE IS SELECTED BY BOARD AND ONLY A CITED BOARD HAS ONE. Mt. Collins resolves to its Getting
+// Started Guide figures; the Gigabyte MP72-HB0 (a candidate reference board, not Mt. Jade) and the ASRock Rack ALTRAD8UD
+// have no figure modeled in this repository, so each refuses on its own name.
+test fn w_only_a_board_with_a_cited_figure_selects_one() -> Bool {
+  let collins = match baseboard_dimm_figure(board: AmpereMtCollins) {
+    BaseboardDimmFigureOf { board: b, figure: f } => b == AmpereMtCollins && match f { MtCollinsGettingStartedGuideFigures { guide: _ } => true }
+    BoardFigureUnmodeled { board: _ } => false
+  }
+  let jade = match baseboard_dimm_figure(board: GigabyteMp72Hb0) {
+    BoardFigureUnmodeled { board: b } => b == GigabyteMp72Hb0
+    BaseboardDimmFigureOf { board: _, figure: _ } => false
+  }
+  let asrock = match baseboard_dimm_figure(board: AsrockRackAltrad8ud1l2t) {
+    BoardFigureUnmodeled { board: b } => b == AsrockRackAltrad8ud1l2t
+    BaseboardDimmFigureOf { board: _, figure: _ } => false
+  }
+  collins && jade && asrock
+}
+
+fn resolves_full_mirror(binding_host: ManagedHost, anchors: List<DimmPlacementAnchor>) -> Bool {
+  match managed_host_binding(host: binding_host) {
+    ManagedHostBound { binding: b } => match host_dimm_orientation(binding: b, anchors: anchors) {
+      HostDimmOriented { oriented: o } => (o.host as String) == (binding_host.host as String) && o.board == AmpereMtCollins && match o.outcome {
+        OrientationResolved { hypothesis: h, order: _ } => h == FullMirror
+        OrientationAmbiguous { surviving: _ } => false
+        OrientationContradicted => false
+        OrientationUnevaluable { hypothesis: _, unresolved_key: _ } => false
+        OrientationAnchorFrameUnreported { run_id: _ } => false
+        OrientationAnchorFramesDisagree { run_ids: _ } => false
+      }
+      HostDimmBoardUnmodeled { host: _, board: _ } => false
+    }
+    ManagedHostAccessUnobserved { endpoint: _ } => false
+    ManagedHostNotSecured { cause: _ } => false
+    ManagedHostEndpointMismatch { observed: _, secured: _ } => false
+  }
+}
+
+fn refused_unmodeled(binding_host: ManagedHost, anchors: List<DimmPlacementAnchor>, board: BaseboardModel) -> Bool {
+  match managed_host_binding(host: binding_host) {
+    ManagedHostBound { binding: b } => match host_dimm_orientation(binding: b, anchors: anchors) {
+      HostDimmBoardUnmodeled { host: h, board: refused } => refused == board && (h as String) == (binding_host.host as String)
+      HostDimmOriented { oriented: _ } => false
+    }
+    ManagedHostAccessUnobserved { endpoint: _ } => false
+    ManagedHostNotSecured { cause: _ } => false
+    ManagedHostEndpointMismatch { observed: _, secured: _ } => false
+  }
+}
+
+fn observed_as(o: BmcAccessObservation, board: BaseboardModel) -> BmcAccessObservation {
+  BmcAccessObservation {
+    endpoint: o.endpoint,
+    identity: BmcObservedIdentity { baseboard: board, chassis_part_number: o.identity.chassis_part_number, firmware: o.identity.firmware },
+    discovered_surfaces: o.discovered_surfaces,
+    boot_control_routes: o.boot_control_routes,
+    redfish_virtual_media_probe: o.redfish_virtual_media_probe,
+    successful_read_surfaces: o.successful_read_surfaces,
+    successful_write_surfaces: o.successful_write_surfaces,
+    raw_response: o.raw_response,
+    observed_at: o.observed_at,
+  }
+}
+
+// THE REAL ROUTE: the mtcollins1 row of gunbc.managed_host, its real binding, the board its controller
+// reported (AmpereMtCollins) and the unit's production anchors resolve the full mirror. This is the
+// inhabitance claim the discriminator below pairs with: the board read off the bound observation, not a
+// supplied figure, is what selects the figure.
+test fn w_the_bound_mtcollins1_host_is_oriented_on_the_board_its_controller_reported() -> Bool {
+  let rows = managed_hosts()
+  count(rows) == 1 && rows |> all(h => (h.host as String) == (operator_host_mtcollins1 as String) && resolves_full_mirror(binding_host: h, anchors: mtcollins1_placement_anchors))
+}
+
+// DISCRIMINATOR: THE BOARD ALONE IS VARIED. The same row, the same secured account, the same controller
+// and the same anchors, with only the observed baseboard changed to the Gigabyte MP72-HB0 or the ASRock
+// Rack ALTRAD8UD: the binding still binds, and the orientation refuses BoardFigureUnmodeled naming that
+// board, before any anchor is read. The unchanged row in the same claim resolves, so the refusal is the
+// board's and nothing else's.
+test fn w_the_same_anchors_on_another_reported_board_are_refused_unmodeled() -> Bool {
+  managed_hosts() |> all(h => match h.access {
+    BmcAccessUnobserved { endpoint: _ } => false
+    BmcAccessObserved { observation: o } => {
+      let jade = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observed_as(o: o, board: GigabyteMp72Hb0) }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+      let asrock = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observed_as(o: o, board: AsrockRackAltrad8ud1l2t) }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+      o.identity.baseboard == AmpereMtCollins
+        && resolves_full_mirror(binding_host: h, anchors: mtcollins1_placement_anchors)
+        && refused_unmodeled(binding_host: jade, anchors: mtcollins1_placement_anchors, board: GigabyteMp72Hb0)
+        && refused_unmodeled(binding_host: asrock, anchors: mtcollins1_placement_anchors, board: AsrockRackAltrad8ud1l2t)
+    }
+  }) && count(managed_hosts()) == 1
+}
+
+// AN UNOBSERVED BASEBOARD REFUSES ON ITS OWN CAUSE. A row whose access was never observed has no
+// baseboard to select a figure from; it is refused at the binding as ManagedHostAccessUnobserved, so no
+// orientation is reachable for it and it never reads as BoardFigureUnmodeled.
+test fn w_an_unobserved_controller_is_refused_at_the_binding_not_as_an_unmodeled_board() -> Bool {
+  managed_hosts() |> all(h => match h.access {
+    BmcAccessUnobserved { endpoint: _ } => false
+    BmcAccessObserved { observation: o } => {
+      let unobserved = managed_host_fixture(host: h.host, access: BmcAccessUnobserved { endpoint: o.endpoint }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+      match managed_host_binding(host: unobserved) {
+        ManagedHostAccessUnobserved { endpoint: e } => (e.host as String) == (o.endpoint.host as String)
+        ManagedHostBound { binding: _ } => false
+        ManagedHostNotSecured { cause: _ } => false
+        ManagedHostEndpointMismatch { observed: _, secured: _ } => false
+      }
+    }
+  }) && count(managed_hosts()) == 1
+}

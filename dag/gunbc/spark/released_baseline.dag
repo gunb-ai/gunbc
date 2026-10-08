@@ -1,7 +1,7 @@
 module gunbc.spark.released_baseline
 
 import std.types { String, NonEmptyStr }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 
 // ── THE STATE A TRANSACTION RETURNS THE HOSTS TO IS DECLARED BEFORE IT STARTS ──────────────────
 //

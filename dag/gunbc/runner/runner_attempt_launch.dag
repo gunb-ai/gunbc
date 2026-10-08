@@ -1,7 +1,7 @@
 module gunbc.runner_attempt_launch
 
 import std.types { String, NonEmptyStr, Bool, Int, List, FilePath }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import std.algebra { trim }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -197,9 +197,13 @@ fn host_mint_admission_is_required() -> Bool {
     AxisRequired { checker: HostMintAdmission } =>
       match jit_admission_axis_standing(axis: ExpiryAxis) {
         AxisRequired { checker: HostMintAdmission } => true
-        _ => false
+        AxisRequired { checker: GitHubMintRequestName } => false
+        AxisDeferred { trigger: _ } => false
+        AxisDissolvedInto { into: _ } => false
       }
-    _ => false
+    AxisRequired { checker: GitHubMintRequestName } => false
+    AxisDeferred { trigger: _ } => false
+    AxisDissolvedInto { into: _ } => false
   }
 }
 
@@ -743,30 +747,34 @@ fn bootstrap_device_readback(
   }
 }
 
+fn write_and_read_back_bootstrap_device(device: BootstrapDeviceStaging) -> BootstrapDeviceStagingOutcome
+{
+  let wrote = Filesystem.Write(path: device.host_path, content: device.content)
+  if wrote.success == false {
+    BootstrapDeviceStagingRefused { step: BootstrapDeviceWriteStep, detail: device.host_path }
+  } else {
+    let uid_outcome = run_shell_command_capture(command: stat_owner_uid_command(path: device.host_path), transport: LocalExec)
+    let mode_outcome = run_shell_command_capture(command: stat_mode_command(path: device.host_path), transport: LocalExec)
+    let size_outcome = run_shell_command_capture(command: stat_size_bytes_command(path: device.host_path), transport: LocalExec)
+    match bootstrap_device_readback(
+      uid: stat_field_reading(outcome: uid_outcome),
+      mode: stat_field_reading(outcome: mode_outcome),
+      size: stat_field_reading(outcome: size_outcome),
+      content: device.content,
+    ) {
+      Present { value: refused } => refused
+      Absent => BootstrapDeviceStaged { host_path: device.host_path }
+    }
+  }
+}
+
 fn stage_bootstrap_device(device: BootstrapDeviceStaging) -> BootstrapDeviceStagingOutcome
 {
   match run_shell_command_capture(command: device.create, transport: LocalExec) {
     ProcessRefused { exit_code: _, stderr: e } =>
       BootstrapDeviceStagingRefused { step: BootstrapDeviceCreateStep, detail: trim(s: e) }
-    _ => {
-      let wrote = Filesystem.Write(path: device.host_path, content: device.content)
-      if wrote.success == false {
-        BootstrapDeviceStagingRefused { step: BootstrapDeviceWriteStep, detail: device.host_path }
-      } else {
-        let uid_outcome = run_shell_command_capture(command: stat_owner_uid_command(path: device.host_path), transport: LocalExec)
-        let mode_outcome = run_shell_command_capture(command: stat_mode_command(path: device.host_path), transport: LocalExec)
-        let size_outcome = run_shell_command_capture(command: stat_size_bytes_command(path: device.host_path), transport: LocalExec)
-        match bootstrap_device_readback(
-          uid: stat_field_reading(outcome: uid_outcome),
-          mode: stat_field_reading(outcome: mode_outcome),
-          size: stat_field_reading(outcome: size_outcome),
-          content: device.content,
-        ) {
-          Present { value: refused } => refused
-          Absent => BootstrapDeviceStaged { host_path: device.host_path }
-        }
-      }
-    }
+    ProcessOutputPresent { text: _ } => write_and_read_back_bootstrap_device(device: device)
+    ProcessOutputAbsent => write_and_read_back_bootstrap_device(device: device)
   }
 }
 

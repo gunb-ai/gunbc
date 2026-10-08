@@ -165,7 +165,12 @@ fn classify_named_edge_usage(parent: Node, sym: Symbol) -> DependencyKind {
   if sym == ^dependency_binds_to_edge {
     match parent.kind {
       ComputationNode { behavior: Bind } => Contains
-      _ => BindsTo
+      TypeNode { connective: _ } => BindsTo
+      ComputationNode { behavior: Value } => BindsTo
+      ComputationNode { behavior: Transform } => BindsTo
+      ComputationNode { behavior: Branch } => BindsTo
+      ComputationNode { behavior: Loop } => BindsTo
+      ComputationNode { behavior: Match } => BindsTo
     }
   } else if sym == ^dependency_module_import_edge {
     ModuleDependsOn
