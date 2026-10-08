@@ -42,6 +42,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // SUPPLIED claims judge the join at its own interface. ONE claim runs the real ingest -> resolve -> infer route
 // (the alias claim), and a Bool-in-an-Int-field control still refuses on that route.
+//
+// DECLARED FRONTIER, NOT CLAIMED HERE: generic-variant constructs undecided. A direct generic-variant construct
+// (Acc { value: 1, n: 0 } at Out<Int>) is not accepted-and-decided on this base, with or without the join (measured
+// at 41afbbbb, BuildBuddy 36e48268). Owner: gunbc#13558 (payload binders over Outcome<T> via #13210's formal-payload
+// obligation), which carries the claim that turns it green.
 
 data gbo_lambda_bad_source: String = "module v2.test.gbo_lambda_bad\n\ntype Box {\n  n: Int\n  m: Int\n}\n\ndata bad: Box = Box { n: true, m: 3 }\n"
 
