@@ -1,7 +1,7 @@
 module gunbc.discovery_census
 
 import extdeps.bazel.label {
-  Label,
+  Label, PackagePath,
   LabelParse, LabelParsed, LabelRefused,
   LabelRefusal,
   parse_label, render_label, label_eq,
@@ -12,13 +12,14 @@ import gunbc.build_target {
 }
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
-  Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember, DeclinedCostDebt,
+  Planned, PlannedAsChangedWitness, PlannedAsReachConsumer, DeclinedLongModule, DeclinedFixtureMember, DeclinedCostDebt,
   DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded, DeclinedNoCiWetLane, DeclinedChangedWitnessOutsideDiscovery,
   required_floor_site_disposition,
 }
 import v2.std.live_tree { LiveTreeDisposition }
-import v2.std.optional { Optional, Absent, Present, optional_absent, optional_present }
-import std.types { String, Bool }
+import std.optional { Optional, Absent, Present, optional_absent, optional_present }
+import std.types { String, Bool, NonEmptyStr }
+import extdeps.bazel.target_pattern { TargetPattern, SubtreeTargets }
 import std.integer { Int }
 
 // EVERY DISCOVERED SITE GETS A ROW, AND THE ROW IS THE JOIN THIS MODULE EXISTS FOR.
@@ -134,6 +135,17 @@ fn site_label(site: DiscoveredSite) -> SiteLabelParse {
         }
     }
   }
+}
+
+// THE SUBTREE THE CLAIM LABELS OCCUPY, AND THE CLAIM ROUTE'S UNIVERSE. Witness claims are authored
+// in the `test.claim` module namespace, so `site_label` maps every one of them under
+// `//test/claim/...`; `gunbc test` admits an operand contained in this pattern to the claim route
+// (`gunbc.target_invocation` `admit_test_operand`), whose executor selects the discovered sites the
+// operand contains. It is a LABEL-SPACE fact derived from the module namespace, not a copy of the
+// discovery roots: which files are walked stays the discovery authority's, and a claim module
+// authored outside `test.claim` is not addressable through this route.
+fn claim_route_universe() -> TargetPattern {
+  SubtreeTargets { package: PackagePath { segments: ["test" as NonEmptyStr, "claim" as NonEmptyStr] } }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -253,6 +265,7 @@ fn census_partition_step(acc: CensusPartition, row: CensusRow) -> CensusPartitio
   match row.disposition {
     Planned => CensusPartition { planned: concat([row], acc.planned), declined: acc.declined }
     PlannedAsChangedWitness => CensusPartition { planned: concat([row], acc.planned), declined: acc.declined }
+    PlannedAsReachConsumer => CensusPartition { planned: concat([row], acc.planned), declined: acc.declined }
     DeclinedLongModule { matched_prefix: _ } =>
       CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
     DeclinedFixtureMember { matched_prefix: _ } =>
@@ -377,6 +390,19 @@ fn census_counts_add(counts: CensusCounts, d: RequiredFloorDisposition) -> Censu
         declined_changed_witness_outside_discovery: counts.declined_changed_witness_outside_discovery
       }
     PlannedAsChangedWitness =>
+      CensusCounts {
+        offered: counts.offered + 1,
+        planned: counts.planned + 1,
+        declined_long_module: counts.declined_long_module,
+        declined_fixture_member: counts.declined_fixture_member,
+        declined_cost_debt: counts.declined_cost_debt,
+        declined_outside_required_gate: counts.declined_outside_required_gate,
+        declined_outside_gate_closure: counts.declined_outside_gate_closure,
+        declined_discovery_excluded: counts.declined_discovery_excluded,
+        declined_no_ci_wet_lane: counts.declined_no_ci_wet_lane,
+        declined_changed_witness_outside_discovery: counts.declined_changed_witness_outside_discovery
+      }
+    PlannedAsReachConsumer =>
       CensusCounts {
         offered: counts.offered + 1,
         planned: counts.planned + 1,

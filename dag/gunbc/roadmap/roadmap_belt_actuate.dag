@@ -30,13 +30,18 @@ import gunbc.roadmap.roadmap_review_criteria { ReviewCriterion }
 import gunbc.roadmap.roadmap_goal_audit_role { goal_audit_criterion_key, goal_audit_approved, goal_audit_reconcile, goal_audit_brief }
 import gunbc.roadmap_dispatch_actuator { dispatch_events_projection_argv_at, dispatch_current_attempt_events_path_for_instance }
 import gunbc.roadmap_dispatch_actuator {
+  DispatchExecutorRequest, ExecutorDefault, dispatch_actuator_selection_for_request,
+  RecordedAttemptFingerprint, dispatch_tmux_session_scope_for_recorded,
+  dispatch_credential_snapshot_path_for_instance, dispatch_credential_snapshot_discard,
+  filter_dispatch_tmux_sessions, dispatch_node_id_from_session_name,
   dispatch_attempt_review_dir_for_instance, dispatch_attempt_review_verdict_path_for_instance, dispatch_attempt_review_verdict_basename,
-  dispatch_review_unit_name, dispatch_review_unit_argv,
+  dispatch_review_unit_name, dispatch_review_unit_command,
   dispatch_attempt_audit_dir_for_instance, dispatch_attempt_audit_verdict_path_for_instance, dispatch_attempt_audit_verdict_basename,
-  dispatch_audit_unit_name, dispatch_audit_unit_argv,
-  dispatch_attempt_supervisor_dir_for_instance, dispatch_supervisor_unit_name, dispatch_supervisor_unit_argv,
-  dispatch_supervisor_attempt_identity,
+  dispatch_audit_unit_name, dispatch_audit_unit_command,
+  dispatch_attempt_supervisor_dir_for_instance, dispatch_supervisor_unit_name, dispatch_supervisor_unit_command,
+  dispatch_supervisor_attempt_identity, dispatch_unit_exec_argv,
 }
+import extdeps.systemd.systemd_run { systemd_run_option_words_refused_cause_detail }
 import extdeps.git { shape_git_merge_base_args }
 import gunbc.roadmap_authority {
   roadmap_acceptance_event_history_load,
@@ -115,7 +120,7 @@ import gunbc.roadmap_dispatch_actuator {
   DispatchLiveSession,
   DispatchSpawnCommands,
   DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer,
-  dispatch_worker_unit_properties_for_plan, dispatch_worker_unit_run,
+  dispatch_worker_unit_properties_for_plan, dispatch_worker_unit_command,
   dispatch_attempt_unit_name,
   attempt_unit_observation,
   worker_process_from_attempt_unit,
@@ -431,7 +436,22 @@ import gunbc.scm.object_store {
   path_unique_of_record, path_unique_with_path_bound, path_unique_with_path_removed,
   store_path_unique_manifest, UniqueManifestStored, UniqueManifestLocatorCollision,
   find_object, store_rostered_lookup, scm_object_identity, authored_source_object, path_unique_manifest_identity,
-  CorpusManifestRecord, authored_source_target_locator, object_id_eq,
+  CorpusManifestRecord, authored_source_target_locator, object_id_eq, CorpusManifestTarget,
+}
+import gunbc.scm.intake { IntakeRevision, GitIntakeRevision, IntakeNone, IntakeBase, IntakeAdvance, IntakeStaleCapture, IntakeUnrecordedByFormat, intake_revision_eq, encode_commit_intake, CaptureWork, CommitWork, NoWork, WorkCapture, WorkUnrecordedByFormat, encode_commit_work }
+import gunbc.scm.repository_envelope {
+  LineIntake, LineIntakeAt, LineIntakeAbsent, LineIntakeUnrecorded, LineIntakeUnreadable, line_intake,
+  intake_commit_at_revision, IntakeAtRevisionFound, IntakeAtRevisionAbsent, IntakeAtRevisionAmbiguous,
+  intake_tip, IntakeTip, IntakeTipFound, IntakeTipNoLine, IntakeTipAmbiguous,
+  mint_intake_base, IntakeBaseMinted, IntakeBaseAllocatorInvalid, IntakeBaseRootRefused, IntakeBaseLineExists,
+  mint_intake_advance, IntakeAdvanceMinted, IntakeAdvanceAllocatorInvalid, IntakeAdvanceParentMissing, IntakeAdvanceRootRefused,
+  IntakeAdvanceDoesNotMove, IntakeAdvanceDiscontinuous, IntakeAdvanceRevisionAlreadyPlaced, IntakeAdvanceLineAlreadyAdvanced,
+  line_integration_of, LineIntegration,
+  SupersessionRefusal, SupersessionNotAnIntegration, SupersessionStaleIntegrationIsARoot, SupersessionNotStale,
+  SupersessionAlreadySuperseded, SupersessionSourceNotFresh, SupersessionSourceNotACapture, SupersessionWorkMismatch, SupersessionMergeBaseRefused,
+  LegacyIntakeRecord, record_legacy_intakes, LegacyIntakesRecorded, LegacyIntakesNothingUnrecorded, LegacyIntakesRefused,
+  LegacyIntakeRefusal, LegacyIntakeUnknownCommit, LegacyIntakeAlreadyRecorded, LegacyIntakeDuplicated, LegacyIntakeUncovered,
+  LegacyIntakeRootNotBase, LegacyIntakeBaseNotRoot, LegacyIntakeNotRecordable, LegacyIntakeCensusRefused,
 }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit, empty_repository, commit_at_reference, merge_base, MergeBaseDerived, MergeBaseNotDerived, RepositoryIndexHasNoObjectRoster, repository_history,
   repository_document_protocol, RepositoryProtocolIndexHasNoObjectRoster, RepositoryProtocolRetiredFormat,
@@ -440,7 +460,7 @@ import std.list { distinct_by_key }
 import gunbc.scm.checkout { recover_corpus, CorpusRecovered, CorpusRecoveryRefused, RecoveredSourceFile }
 import gunbc.scm.ancestry { RepositoryCommitRef, RootCommit, DescendsFrom, repository_commit_ref_eq }
 import gunbc.scm.write_spine {
-  commit_staged,
+  commit_staged, commit_staged_capture, StagedCaptureWithoutBase, StagedCaptureCommitted,
   StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,
   StagedCommitAllocatorInvalid, StagedCommitSourceUnrecoverable,
 }
@@ -452,10 +472,12 @@ import gunbc.scm.repository_save {
   RepositoryGuardedSaveUnobservable,
   RepositorySaved, RepositorySaveRefusedByCodec, RepositoryFileUnwritable, RepositoryWriteByteCountUnrepresentable,
   RepositoryGenerationExpectation, GenerationExpected, GenerationExpectedAbsent,
+  repository_generation_expected_after_save,
 }
 import gunbc.scm.worktree_inventory {
   worktree_inventory_args, worktree_inventory_parse, worktree_base_file_args,
   worktree_base_inventory_args, worktree_changes_since_args, worktree_untracked_args,
+  revision_observable_args, revision_changes_between_args,
   worktree_changes_parse, WorktreeChange, WorktreeBind, WorktreeDelete,
 }
 import std.minted_identity { MintedId, minted_id_ordinal }
@@ -466,6 +488,7 @@ import gunbc.roadmap.roadmap_project {
 import gunbc.roadmap.roadmap_fanin {
   FaninOutcome, FaninIntegrated, FaninAlreadyIntegrated, FaninConflicted, FaninRefused,
   fanin_integrate_candidate,
+  fanin_correct_integration, FaninCorrection, FaninCorrected, FaninSupersessionRefused,
   IntegrationReceipt, IntegrationReceiptState, IntegrationIntegrated, IntegrationBlocked,
   integration_receipt_text, integration_receipt_decode,
   IntegrationReceiptDecoded, IntegrationReceiptNotDecodable,
@@ -500,6 +523,8 @@ import gunbc.roadmap_dispatch_actuator {
   host_exec_argv,
   dispatch_attempt_continuation_turn_path_for_instance, dispatch_attempt_continuation_turn_basename,
   dispatch_attempt_alignment_binding_path_for_instance, dispatch_attempt_alignment_binding_basename,
+  dispatch_attempt_process_fingerprint_path_for_instance, dispatch_current_attempt_process_fingerprint_path_for_instance,
+  dispatch_actuator_selection_process_fingerprint,
   dispatch_worker_attempt_identity,
 }
 import gunbc.roadmap.roadmap_attempt_continuation {
@@ -536,6 +561,8 @@ import gunbc.roadmap_session_placement {
 import gunbc.roadmap_workflow_command {
   WorkflowModeledStateStanding, WorkflowModeledStateObserved, WorkflowModeledStateAbsent, WorkflowModeledStateUnreadable,
 }
+import gunbc.roadmap.roadmap_build_meter { attempt_view_revision }
+import gunbc.site.element.build_meter { build_meter_wire_revision_member }
 import gunbc.roadmap_workflow_progress {
   AttemptWorktreeObservation, AttemptWorktreePresent, AttemptWorktreeAbsent, AttemptWorktreeUnobserved, attempt_worktree_observation_of,
   WorkflowAttemptEvidence,
@@ -757,6 +784,7 @@ fn belt_attempt_state_initialize_for_instance(
   turn: Int,
   binding: AlignmentBinding,
   request: AttemptLaunchRequest,
+  process_fingerprint: NonEmptyStr,
 ) -> AttemptStateInitialization {
   let key_write = Filesystem.Write(
     path: dispatch_attempt_key_path_for_instance(
@@ -796,6 +824,18 @@ fn belt_attempt_state_initialize_for_instance(
     AttemptStateInitializationFailed {
       step: "attempt-alignment-binding-write",
       detail: binding_write.error,
+    }
+  } else if !Filesystem.Write(
+    path: dispatch_attempt_process_fingerprint_path_for_instance(
+      instance: instance,
+      node_id: node.node,
+      attempt_key: attempt_key,
+    ),
+    content: process_fingerprint as String,
+  ).success {
+    AttemptStateInitializationFailed {
+      step: "attempt-process-fingerprint-write",
+      detail: "the spawn's selected process fingerprint could not be recorded in the attempt state",
     }
   } else {
     let admission_write = Filesystem.Write(
@@ -1356,10 +1396,15 @@ fn belt_session_container_create(
               match session_placement_begin_launch(stores: held.stores, grant: held.grant) {
                 SessionLaunchRefused { detail } => ExecStepFailed { step: "session-launch-gate", detail: detail }
                 SessionLaunchAdmitted { grant: launched } =>
-                  belt_exec_steps(
-                    steps: [BeltExecStep { step: "harness-unit-start", command: dispatch_worker_unit_run(instance: instance, plan: plan, granted: launched.amount, process_bounds: session_process_bounds) }],
-                    workdir: workdir,
-                  )
+                  match dispatch_worker_unit_command(instance: instance, plan: plan, granted: launched.amount, process_bounds: session_process_bounds) {
+                    SystemdRunCommandRefused { cause: why } =>
+                      ExecStepFailed { step: "harness-unit-start", detail: systemd_run_option_words_refused_cause_detail(cause: why) }
+                    SystemdRunCommandReady { command: command } =>
+                      belt_exec_steps(
+                        steps: [BeltExecStep { step: "harness-unit-start", command: dispatch_unit_exec_argv(command: command, resolved_program: plan.systemd_run_program) }],
+                        workdir: workdir,
+                      )
+                  }
               }
           }
         }
@@ -2029,12 +2074,58 @@ fn belt_footprint_admission_for_instance(
 // spawned one could disagree with nothing recording it. That is the same class the observe fold
 // closed, sitting on the one route where the model actually reaches a process, and this module's own
 // rule is that the fix is the carrier rather than the call.
+// ONE OWNER FOR THE CREDENTIAL SNAPSHOT'S LIFECYCLE AFTER SELECTION (side-chat finding, 2026-10-05).
+// A vendor selection may take a per-attempt credential snapshot (gunbc.roadmap_dispatch_actuator
+// dispatch_credential_snapshot_path_for_instance). Exactly one path consumes it: the launched child,
+// whose wrapper removes it before exec. Every other way out of the spawn after selection -- a refused
+// provider preflight, no spawn route, a supervisor route, a placement refusal, any SpawnFailed --
+// never launches that child, so the snapshot would outlive the attempt. The decision is a pure fold
+// over the outcome so every arm is witnessed; the discard is applied once, here, around everything
+// that follows selection. rm -f on a path no selection wrote succeeds, so providers that take no
+// snapshot pass through unchanged.
+type BeltSnapshotDisposition
+  = SnapshotConsumedByChild
+  | SnapshotDiscardRequired
+
+fn belt_snapshot_disposition(outcome: BeltSpawnOutcome) -> BeltSnapshotDisposition {
+  match outcome {
+    Spawned { node_id: _, session_name: _, provider: _, launch: _ } => SnapshotConsumedByChild
+    SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => SnapshotDiscardRequired
+    SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => SnapshotDiscardRequired
+    SpawnNotAdmitted { node_id: _, refusal: _ } => SnapshotDiscardRequired
+  }
+}
+
+fn belt_snapshot_owned_outcome(
+  snapshot: NonEmptyStr,
+  provider_wire_label: String,
+  launch: LaunchIdentity,
+  outcome: BeltSpawnOutcome,
+) -> BeltSpawnOutcome {
+  match belt_snapshot_disposition(outcome: outcome) {
+    SnapshotConsumedByChild => outcome
+    SnapshotDiscardRequired =>
+      if dispatch_credential_snapshot_discard(snapshot: snapshot) {
+        outcome
+      } else {
+        SpawnFailed {
+          node_id: launch.node_id as String,
+          step: "credential-snapshot-discard",
+          detail: join(["the attempt did not launch its provider, and its credential snapshot ", snapshot as String, " could not be removed"], ""),
+          provider: provider_wire_label,
+          launch: launch,
+        }
+      }
+  }
+}
+
 fn belt_actuate_spawn_for_instance(
   instance: HostDashboardInstance,
   node: RoadmapNode,
   probed_at: String,
   launch: LaunchIdentity,
   request: AttemptLaunchRequest,
+  executor: DispatchExecutorRequest,
 ) -> BeltSpawnOutcome {
   match belt_footprint_admission_for_instance(instance: instance) {
     FootprintRefused { step: fst, detail: fd } =>
@@ -2065,7 +2156,11 @@ fn belt_actuate_spawn_for_instance(
         launch: launch,
       }
     EnvironmentAdmitted { receipts, validation_summary } => {
-      let selection = dispatch_actuator_selection(
+      let selection = dispatch_actuator_selection_for_request(
+        instance: instance,
+        request: executor,
+        node_id: node.node,
+        attempt_key: dispatch_attempt_key(node_id: node.node, probed_at: probed_at),
         sizing_expectation: sizing_profile_expectation(d: node_sizing_derivation(rn: node)),
       )
       match selection {
@@ -2077,8 +2172,8 @@ fn belt_actuate_spawn_for_instance(
             provider: belt_dispatch_spawn_selection_refused_provider_wire_label(reason: reason),
             launch: launch,
           }
-        DispatchActuatorSelectionOk { provider, effort: _, model: _, process_fingerprint: _ } =>
-          match belt_provider_preflight_for_instance(
+        DispatchActuatorSelectionOk { provider, effort: _, model: _, process_fingerprint: _ } => {
+          let post_selection = match belt_provider_preflight_for_instance(
             instance: instance,
             provider: provider,
           ) {
@@ -2107,6 +2202,18 @@ fn belt_actuate_spawn_for_instance(
                 request: request,
               )
           }
+          belt_snapshot_owned_outcome(
+            snapshot: dispatch_credential_snapshot_path_for_instance(
+              instance: instance,
+              node_id: node.node,
+              attempt_key: dispatch_attempt_key(node_id: node.node, probed_at: probed_at),
+              provider: provider,
+            ),
+            provider_wire_label: belt_dispatch_spawn_provider_wire_label(provider: provider),
+            launch: launch,
+            outcome: post_selection,
+          )
+        }
       }
     }
   }
@@ -2580,9 +2687,7 @@ fn belt_supervisor_convene(
               match metering_roster_admit(instance: instance, node_id: nid, attempt_key: escalation.attempt_key, role: MeteredSupervisor { turn: escalation.turn }) {
                 RosterAdmissionRefused { cause: roster_cause } => SpawnFailed { node_id: node.node as String, step: "supervisor-roster", detail: join(["the supervisor was not launched: ", roster_cause], ""), provider: provider_wire_label, launch: launch }
                 RosterAdmitted =>
-                  match belt_exec(
-                  cmd: dispatch_supervisor_unit_argv(
-                    systemd_run_program: systemd_run,
+                  match dispatch_supervisor_unit_command(
                     instance: instance,
                     node_id: nid,
                     attempt_key: escalation.attempt_key,
@@ -2597,33 +2702,42 @@ fn belt_supervisor_convene(
                         history_line: belt_supervisor_history_line(instance: instance, node_id: nid, attempt_key: escalation.attempt_key, turn: escalation.turn),
                       ),
                     ),
-                  ),
-                  workdir: worktree,
-                ) {
-                  ExecOk { stdout: _ } =>
-                    SupervisorConvened {
-                      node_id: node.node as String,
-                      unit: unit as String,
-                      provider: provider_wire_label,
-                      launch: launch,
-                    }
-                  ExecFailed { program: _, exit_code, stderr } =>
-                    SpawnFailed {
-                      node_id: node.node as String,
-                      step: "supervisor-unit-start",
-                      detail: join(["the supervisor unit could not be started (exit ", to_string(exit_code), "): ", stderr], ""),
-                      provider: provider_wire_label,
-                      launch: launch,
-                    }
-                  ExecRefused { program: _, reason } =>
-                    SpawnFailed {
-                      node_id: node.node as String,
-                      step: "supervisor-unit-start",
-                      detail: reason,
-                      provider: provider_wire_label,
-                      launch: launch,
-                    }
-                }
+                  ) {
+                    SystemdRunCommandRefused { cause: why } =>
+                      SpawnFailed {
+                        node_id: node.node as String,
+                        step: "supervisor-unit-start",
+                        detail: systemd_run_option_words_refused_cause_detail(cause: why),
+                        provider: provider_wire_label,
+                        launch: launch,
+                      }
+                    SystemdRunCommandReady { command: command } =>
+                      match belt_exec(cmd: dispatch_unit_exec_argv(command: command, resolved_program: systemd_run), workdir: worktree) {
+                        ExecOk { stdout: _ } =>
+                          SupervisorConvened {
+                            node_id: node.node as String,
+                            unit: unit as String,
+                            provider: provider_wire_label,
+                            launch: launch,
+                          }
+                        ExecFailed { program: _, exit_code, stderr } =>
+                          SpawnFailed {
+                            node_id: node.node as String,
+                            step: "supervisor-unit-start",
+                            detail: join(["the supervisor unit could not be started (exit ", to_string(exit_code), "): ", stderr], ""),
+                            provider: provider_wire_label,
+                            launch: launch,
+                          }
+                        ExecRefused { program: _, reason } =>
+                          SpawnFailed {
+                            node_id: node.node as String,
+                            step: "supervisor-unit-start",
+                            detail: reason,
+                            provider: provider_wire_label,
+                            launch: launch,
+                          }
+                      }
+                  }
               }
           }
         }
@@ -2839,18 +2953,29 @@ fn belt_actuate_spawn_with_origin(
             attempt_identity: dispatch_worker_attempt_identity(node_id: node.node as String, attempt_key: attempt_key),
             fingerprint: alignment_chain_fingerprint(chain: chain),
           }
+  match dispatch_actuator_selection_process_fingerprint(selection: selection) {
+    Absent =>
+      SpawnFailed {
+        node_id: node.node as String,
+        step: "selection-process-fingerprint",
+        detail: "the spawn reached its host steps under a refused selection, which the selection gate must refuse first; fail-closed",
+        provider: provider_wire_label,
+        launch: launch,
+      }
+    Present { value: process_fingerprint } =>
   match belt_session_placement_for_container(instance: instance, node_id: node.node as String, attempt_key: attempt_key, container: cmds.session_container) {
     BeltPlacementRefused { detail } =>
       SpawnNotAdmitted { node_id: node.node as String, refusal: LaunchNoPlacementGrant { detail: detail } }
     BeltPlacementNotHeld =>
-      belt_spawn_admitted(instance: instance, node: node, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, attempt_key: attempt_key, session_name: session_name, origin: origin, cmds: cmds, binding: binding, placement: none, request: request)
+      belt_spawn_admitted(instance: instance, node: node, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, attempt_key: attempt_key, session_name: session_name, origin: origin, cmds: cmds, binding: binding, placement: none, request: request, process_fingerprint: process_fingerprint)
     BeltPlacementHeld { held } =>
       belt_spawn_release_unless_spawned(
         held: held,
         provider_wire_label: provider_wire_label,
         launch: launch,
-        outcome: belt_spawn_admitted(instance: instance, node: node, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, attempt_key: attempt_key, session_name: session_name, origin: origin, cmds: cmds, binding: binding, placement: Present { value: held }, request: request),
+        outcome: belt_spawn_admitted(instance: instance, node: node, workdir: workdir, admission_receipt: admission_receipt, provider_wire_label: provider_wire_label, launch: launch, attempt_key: attempt_key, session_name: session_name, origin: origin, cmds: cmds, binding: binding, placement: Present { value: held }, request: request, process_fingerprint: process_fingerprint),
       )
+  }
   }
   }
   }
@@ -2874,6 +2999,7 @@ fn belt_spawn_admitted(
   binding: AlignmentBinding,
   placement: BeltHeldPlacement?,
   request: AttemptLaunchRequest,
+  process_fingerprint: NonEmptyStr,
 ) -> BeltSpawnOutcome {
   match belt_exec_steps(
     steps: [
@@ -2921,6 +3047,7 @@ fn belt_spawn_admitted(
         turn: attempt_origin_turn(origin: origin),
         binding: binding,
         request: request,
+        process_fingerprint: process_fingerprint,
       ) {
         AttemptStateInitializationFailed { step, detail } =>
           SpawnFailed {
@@ -4851,6 +4978,80 @@ fn belt_attempt_panes_observe_for_instance(
 // NOT erase known presence — every present session maps to process-unobserved and
 // cleanup-unavailable with the located pane reason. The UI can say `session present · process
 // unknown` instead of fabricating liveness or hiding the container.
+// THE FINGERPRINT EACH LIVE NODE'S CURRENT ATTEMPT RECORDED AT SPAWN. A node with no current-attempt
+// directory, or whose directory has no record, predates the record and contributes nothing, so its
+// session keeps the default-selection scope. Any other unreadable state REFUSES the observation:
+// substituting the default scope for a record that exists but cannot be read would judge a vendor
+// attempt's pane against the harness's fingerprint, which is the misclassification the record exists
+// to prevent.
+type RecordedFingerprintsRead
+  = RecordedFingerprintsOk { recorded: List<RecordedAttemptFingerprint> }
+  | RecordedFingerprintsUnreadable { reason: String }
+
+fn belt_recorded_fingerprint_for_node(
+  instance: HostDashboardInstance,
+  node_id: String,
+) -> RecordedFingerprintsRead {
+  let root = dashboard_instance_dispatch_attempt_state_root(instance: instance) as String
+  let current_name = join([node_id, "-current"], "")
+  let root_listing = Filesystem.List(path: root)
+  match filesystem_entry_presence(
+    listing: filesystem_listing_observation(directory: root, success: root_listing.success, entries: root_listing.entries, error: root_listing.error),
+    name: current_name,
+  ) {
+    FilesystemEntryAbsent(_) => RecordedFingerprintsOk { recorded: [] }
+    FilesystemEntryPresenceIndeterminate { cause } => RecordedFingerprintsUnreadable { reason: cause }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause } => RecordedFingerprintsUnreadable { reason: cause }
+    FilesystemEntryListed { directory: _, name: _ } => {
+      let path = dispatch_current_attempt_process_fingerprint_path_for_instance(instance: instance, node_id: node_id as RoadmapNodeId)
+      let dir = join([root, "/", current_name], "")
+      let listing = Filesystem.List(path: dir)
+      let read = Filesystem.Read(path: path)
+      match filesystem_file_observation(
+        listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
+        name: "process-fingerprint",
+        path: path,
+        read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+      ) {
+        FilesystemFileAbsent(_) => RecordedFingerprintsOk { recorded: [] }
+        FilesystemFileRead { path: _, content } =>
+          if trim(s: content) == "" {
+            RecordedFingerprintsUnreadable { reason: join(["the recorded process fingerprint at ", path, " is empty"], "") }
+          } else {
+            RecordedFingerprintsOk {
+              recorded: [RecordedAttemptFingerprint { node_id: node_id, fingerprint: trim(s: content) as NonEmptyStr }],
+            }
+          }
+        FilesystemFileIndeterminate { cause } => RecordedFingerprintsUnreadable { reason: cause }
+        FilesystemFileObservationsDisagree { path: _, cause } => RecordedFingerprintsUnreadable { reason: cause }
+        FilesystemFileSubjectRefused { directory: _, name: _, cause } => RecordedFingerprintsUnreadable { reason: cause }
+      }
+    }
+  }
+}
+
+fn belt_recorded_fingerprints_for_entries(
+  instance: HostDashboardInstance,
+  entries: List<TmuxLsEntry>,
+) -> RecordedFingerprintsRead {
+  fold(
+    filter_dispatch_tmux_sessions(entries: entries),
+    init: RecordedFingerprintsOk { recorded: [] },
+    f: (acc, e) =>
+      match acc {
+        RecordedFingerprintsUnreadable { reason: _ } => acc
+        RecordedFingerprintsOk { recorded } =>
+          match belt_recorded_fingerprint_for_node(
+            instance: instance,
+            node_id: dispatch_node_id_from_session_name(session_name: e.session_name),
+          ) {
+            RecordedFingerprintsUnreadable { reason } => RecordedFingerprintsUnreadable { reason: reason }
+            RecordedFingerprintsOk { recorded: mine } => RecordedFingerprintsOk { recorded: concat(recorded, mine) }
+          }
+      },
+  )
+}
+
 fn belt_sessions_observe_for_instance(
   instance: HostDashboardInstance,
 ) -> BeltObserve {
@@ -4869,6 +5070,10 @@ fn belt_sessions_observe_for_instance(
         stderr: result.stderr,
       ) {
         TmuxSessionsListed { entries } =>
+          match belt_recorded_fingerprints_for_entries(instance: instance, entries: entries) {
+            RecordedFingerprintsUnreadable { reason } =>
+              ObserveRefused { reason: join(["a live dispatch attempt's recorded process fingerprint is unreadable: ", reason], "") }
+            RecordedFingerprintsOk { recorded } =>
           match belt_attempt_panes_observe_for_instance(instance: instance) {
             BeltAttemptPanesObserved { panes } =>
               BeltSessionsObserved {
@@ -4877,6 +5082,7 @@ fn belt_sessions_observe_for_instance(
                   panes: panes,
                   pane_observation_refusal: "",
                   selection: dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation),
+                  recorded: recorded,
                 ),
               }
             BeltAttemptPanesRefused { reason } =>
@@ -4886,8 +5092,10 @@ fn belt_sessions_observe_for_instance(
                   panes: [],
                   pane_observation_refusal: reason,
                   selection: dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation),
+                  recorded: recorded,
                 ),
               }
+          }
           }
         TmuxListStdoutRefused { line_number, raw, reason } =>
           ObserveRefused {
@@ -6293,6 +6501,20 @@ type BeltScmCapture
   | ScmCaptureRefused { detail: String }
   | ScmCapturePoisoned { detail: String }
 
+// THE MINT WITHOUT THE SAVE. Recapture and the tick share one capture; the tick then creates a git
+// commit, and recapture must not. Splitting persist from the mint lets recapture refuse a capture
+// that would not be fresh before anything is written, and lets the tick keep its existing sequence.
+type BeltScmMint
+  = ScmCandidateMinted {
+      repository: RepositoryEnvelope
+      generation: RepositoryGenerationExpectation
+      path: String
+      commit_ordinal: Int
+      commit_root_locator: String
+    }
+  | ScmCaptureMintRefused { detail: String }
+  | ScmCaptureMintPoisoned { detail: String }
+
 // THE ENVELOPE SOURCE CARRIES THE GENERATION EXPECTATION BESIDE THE ENVELOPE, because the two are
 // one observation: the expectation records what this tick's observe saw at the path (a generation,
 // or absence), and a later guarded save must compare against exactly that, not re-observe --
@@ -6519,8 +6741,11 @@ fn belt_scm_entries_zip(paths: List<NonEmptyStr>, sources: List<AuthoredSourceOb
 // SeedRefused is transient (gather/exec/read/save I/O), SeedPoisoned is durable (store or
 // envelope damage, an unsatisfiable base). The seed is the capture's first half, so the split
 // is born here rather than re-classified where the seed's verdict joins the capture's.
-// SeedReady carries the generation expectation the envelope observation minted: the delta
-// capture's save must compare against what THIS tick observed, whatever the seed did in between.
+// SeedReady carries the generation the capture persist must compare against. When this
+// seed wrote, that is the generation of the index this seed wrote -- not the pre-seed
+// observation, which a first save from absence would make stale on the capture persist.
+// When the envelope already held commits, the seed did not write, and the observation
+// this tick loaded remains the expectation.
 type BeltSeedOutcome
   = SeedReady { envelope: RepositoryEnvelope, generation: RepositoryGenerationExpectation }
   | SeedRefused { detail: String }
@@ -6547,15 +6772,12 @@ fn belt_scm_envelope_seeded(
   generation: RepositoryGenerationExpectation,
   path: String,
   paths: List<NonEmptyStr>,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
+  base_sha: String,
+  revision: IntakeRevision,
 ) -> BeltSeedOutcome {
   if count(envelope.commits) > 0 {
     SeedReady { envelope: envelope, generation: generation }
   } else {
-    match belt_scm_base_sha_observe(instance: instance, node_id: node_id, attempt_key: attempt_key) {
-      BaseShaUnobserved { reason } => SeedPoisoned { detail: reason }
-      BaseShaObserved { base_sha } =>
         match belt_scm_stage_base_tree(
           instance: instance,
           worktree: worktree,
@@ -6572,30 +6794,40 @@ fn belt_scm_envelope_seeded(
               CorpusManifestLocatorCollision { identity: _, existing: _, incoming: _ } =>
                 SeedPoisoned { detail: "the object store refuses the base manifest: a different manifest already holds its identity, which is store damage" }
               CorpusManifestStored { store: with_manifest, manifest } =>
-                match commit_staged(
+                match mint_intake_base(
                   repository: RepositoryEnvelope {
                     store: with_manifest,
                     commits: envelope.commits,
                     commit_allocator: envelope.commit_allocator,
                     checked_out: envelope.checked_out,
-                    staged: Present { value: manifest },
+                    staged: envelope.staged,
                   },
+                  root: CorpusManifestTarget { locator: manifest.locator },
                   message: join(["project base: ", base_sha], ""),
+                  revision: revision,
                 ) {
-                  StagedCommitCandidateRefused { cause: _ } =>
-                    SeedPoisoned { detail: "the base stage could not be compared against its base" }
-                  StagedCommitNothingToFreeze =>
-                    SeedPoisoned { detail: "the intake base froze nothing, so the project has no base to merge against" }
-                  StagedCommitAllocatorInvalid { next_ordinal } =>
+                  IntakeBaseRootRefused { cause: _ } =>
+                    SeedPoisoned { detail: "the base manifest the seed just stored does not resolve as a complete manifest in its own store, which is store damage" }
+                  IntakeBaseLineExists { base: _ } =>
+                    SeedPoisoned { detail: "an envelope with no commits already holds an intake base, which is envelope damage" }
+                  IntakeBaseAllocatorInvalid { next_ordinal } =>
                     SeedPoisoned {
                       detail: join(["the envelope's commit allocator is invalid (next ordinal ", to_string(next_ordinal), ")"], ""),
                     }
-                  StagedCommitSourceUnrecoverable { cause: _ } =>
-                    SeedPoisoned { detail: "a staged base path's source is unrecoverable from the object store" }
-                  StagedCommitMinted { repository: seeded, reference: _ } =>
+                  IntakeBaseMinted { repository: minted, reference: base_ref } => {
+                    let seeded = RepositoryEnvelope {
+                      store: minted.store,
+                      commits: minted.commits,
+                      commit_allocator: minted.commit_allocator,
+                      checked_out: Present { value: base_ref },
+                      staged: minted.staged,
+                    }
                     match save_repository_sharded_guarded(path: path, repo: seeded, expected: generation) {
-                      RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _ }) =>
-                        SeedReady { envelope: seeded, generation: generation }
+                      RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _, generation: written }) =>
+                        SeedReady {
+                          envelope: seeded,
+                          generation: repository_generation_expected_after_save(generation: written),
+                        }
                       RepositoryGuardedSaveOutcome(RepositorySaveRefusedByCodec { path: _, cause: _ }) =>
                         SeedRefused { detail: "the base commit was minted but the envelope could not be encoded for persistence" }
                       RepositoryGuardedSaveOutcome(RepositoryFileUnwritable { path: p, error }) =>
@@ -6614,19 +6846,277 @@ fn belt_scm_envelope_seeded(
   }
 }
 
-// THE ROOT COMMIT IS THE MERGE BASE EVERY CANDIDATE DESCENDS FROM. In a seeded envelope it is the
-// intake-base commit; in a pre-seeding envelope from the first capture design it is the first
-// (root) candidate, and later candidates chain from it -- both are one RootCommit-ancestry commit,
-// and more than one is envelope damage this derivation refuses to choose among.
-fn belt_scm_root_commit_ref(envelope: RepositoryEnvelope) -> RepositoryCommitRef? {
-  (envelope.commits
-    |> filter(c => match c.ancestry {
-      RootCommit => true
-      DescendsFrom { parent: _ } => false
-    })
-    |> map(c => c.reference)).first()
+// THE UNIT OF WORK A CANDIDATE CAPTURES, as the SCM's typed capture identity (gunbc.scm.intake
+// CaptureWork): one roadmap node's one attempt, carried as two members -- never a rendered label,
+// whose delimiter a node or attempt spelling could contain. Empty spellings name no work. Every capture of that attempt -- the original and a
+// recapture after a base advance -- carries this subject, which is what binds a corrective
+// supersession to the exact stale work it replaces. The one producer; the legacy conversion reads the
+// same pair back from a pre-intake candidate's message and spells it through here.
+fn belt_capture_work(node_id: String, attempt_key: String) -> CaptureWork? {
+  if node_id == "" || attempt_key == "" {
+    none
+  } else {
+    Present { value: CaptureWork { unit: node_id as NonEmptyStr, attempt: attempt_key as NonEmptyStr } }
+  }
 }
 
+// THE ATTEMPT'S BASE AS A TYPED REVISION. The spawn origin records the sha as git printed it
+// (untagged hex), so it is read through extdeps.git's one decoder for git's own plumbing text; a
+// value that is not a git object id cannot name a revision and is refused by the caller.
+fn belt_scm_intake_revision(base_sha: String) -> IntakeRevision? {
+  match git_object_id_from_untagged_hex(hex: base_sha) {
+    Absent => none
+    Present { value: id } => Present { value: GitIntakeRevision { id: id } }
+  }
+}
+
+fn belt_scm_intake_revision_sha(revision: IntakeRevision) -> String {
+  match revision {
+    GitIntakeRevision { id } => git_object_id_wire_hex(oid: id) as String
+  }
+}
+
+// THE BASE A CANDIDATE DESCENDS FROM IS THE INTAKE COMMIT FOR ITS ATTEMPT'S BASE (the BaseAdvance
+// follow-up to gunbc#13111). Until then every candidate descended from the repository's one root
+// commit and a string comparison of that commit's message refused attempts on any other base; now
+// the repository holds one intake commit per base revision it has met, and the candidate's parent
+// IS the record of which base its delta assumed. An attempt on a revision the repository has not
+// met advances the intake line's tip to it first (belt_scm_base_advance), in memory, and the
+// candidate's save persists both. A repository whose commits carry no typed intake predates this
+// and is refused by name until the legacy conversion types it in place: which base a candidate
+// there would descend from is underivable from typed facts, and choosing the root by position is
+// the guess this change removes.
+type BeltIntakeBase
+  = BeltIntakeBaseReady { envelope: RepositoryEnvelope, base_ref: RepositoryCommitRef }
+  | BeltIntakeBaseRefused { detail: String }
+  | BeltIntakeBasePoisoned { detail: String }
+
+fn belt_scm_intake_base_for(
+  git_program: String,
+  worktree: String,
+  path: String,
+  envelope: RepositoryEnvelope,
+  revision: IntakeRevision,
+) -> BeltIntakeBase {
+  match intake_commit_at_revision(commits: envelope.commits, revision: revision) {
+    IntakeAtRevisionFound { commit: placed } => BeltIntakeBaseReady { envelope: envelope, base_ref: placed.reference }
+    IntakeAtRevisionAmbiguous { commits } =>
+      BeltIntakeBasePoisoned { detail: join(["the project repository places the attempt's base on ", to_string(count(commits)), " intake commits, which the one-line census forbids: envelope damage"], "") }
+    IntakeAtRevisionAbsent =>
+      match intake_tip(commits: envelope.commits) {
+        IntakeTipAmbiguous { tips } =>
+          BeltIntakeBasePoisoned { detail: join(["the project repository's intake line has ", to_string(count(tips)), " tips, which the one-line census forbids: envelope damage"], "") }
+        IntakeTipNoLine =>
+          BeltIntakeBasePoisoned {
+            detail: "the project repository predates typed base records: no commit carries an intake, so which base a candidate would descend from is underivable until it is converted in place (belt_scm_intake_convert_cli), which types its base and records its stale captures",
+          }
+        IntakeTipFound(tip) =>
+          match tip {
+            IntakeTip { commit: tip_commit, revision: tip_revision } =>
+              match belt_scm_base_advance(git_program: git_program, worktree: worktree, path: path, envelope: envelope, tip_commit: tip_commit, from: tip_revision, to: revision) {
+                BaseAdvanceRefused { detail } => BeltIntakeBaseRefused { detail: detail }
+                BaseAdvancePoisoned { detail } => BeltIntakeBasePoisoned { detail: detail }
+                BaseAdvanced { envelope: advanced, reference } => BeltIntakeBaseReady { envelope: advanced, base_ref: reference }
+              }
+          }
+      }
+  }
+}
+
+// THE BASE ADVANCE: the tip's manifest re-bound over EXACTLY `git diff S_k..S_k+1` -- every path the
+// diff names deleted or re-bound to its bytes at S_k+1, every other entry the tip's own -- minted as
+// an IntakeAdvance { from: S_k, to: S_k+1 } child of the tip, whose admission refuses an advance that
+// does not continue the tip's line. Both revisions are first asked whether the bridge can observe
+// them; a revision it cannot observe POISONS the advance by name (BaseAdvanceRevisionUnobservable:
+// the attempt's object store will not gain it by retrying) rather than diffing against whatever git
+// resolves instead. The content demand on history is the tip's manifest (one shard),
+// plus the shard of any re-bound bytes the repository already holds.
+type BeltBaseAdvance
+  = BaseAdvanced { envelope: RepositoryEnvelope, reference: RepositoryCommitRef }
+  | BaseAdvanceRefused { detail: String }
+  | BaseAdvancePoisoned { detail: String }
+
+fn belt_scm_revision_observable(git_program: String, worktree: String, sha: String, role: String) -> String? {
+  match belt_exec(cmd: host_exec_argv(program: git_program, args: revision_observable_args(sha: sha)), workdir: worktree) {
+    ExecOk { stdout: _ } => none
+    ExecFailed { program: _, exit_code, stderr } =>
+      Present {
+        value: join([
+          "BaseAdvanceRevisionUnobservable: the advance's ", role, " revision ", sha,
+          " is not a commit the worktree's git can observe (exit ", to_string(exit_code), ": ", trim(stderr),
+          "), so the change between the two bases is underivable",
+        ], ""),
+      }
+    ExecRefused { program: _, reason } =>
+      Present { value: join(["BaseAdvanceRevisionUnobservable: the bridge refused to observe the ", role, " revision ", sha, ": ", reason], "") }
+  }
+}
+
+fn belt_scm_base_advance(
+  git_program: String,
+  worktree: String,
+  path: String,
+  envelope: RepositoryEnvelope,
+  tip_commit: RepositoryCommit,
+  from: IntakeRevision,
+  to: IntakeRevision,
+) -> BeltBaseAdvance {
+  let from_sha = belt_scm_intake_revision_sha(revision: from)
+  let to_sha = belt_scm_intake_revision_sha(revision: to)
+  let tip_root = tip_commit.root.locator
+  match belt_scm_revision_observable(git_program: git_program, worktree: worktree, sha: from_sha, role: "from") {
+    Present { value: detail } => BaseAdvancePoisoned { detail: detail }
+    Absent =>
+  match belt_scm_revision_observable(git_program: git_program, worktree: worktree, sha: to_sha, role: "to") {
+    Present { value: detail } => BaseAdvancePoisoned { detail: detail }
+    Absent =>
+  match belt_exec(cmd: host_exec_argv(program: git_program, args: revision_changes_between_args(from: from_sha, to: to_sha)), workdir: worktree) {
+    ExecFailed { program, exit_code, stderr } =>
+      BaseAdvanceRefused { detail: belt_commit_exec_detail(step: "base-advance-diff", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
+    ExecRefused { program, reason } =>
+      BaseAdvanceRefused { detail: belt_commit_exec_detail(step: "base-advance-diff", outcome: ExecRefused { program: program, reason: reason }) }
+    ExecOk { stdout } => {
+      let changes = worktree_changes_parse(stdout_nul: stdout)
+      match belt_scm_advance_texts(git_program: git_program, worktree: worktree, to_sha: to_sha, changes: changes) {
+        AdvanceTextsRefused { detail } => BaseAdvanceRefused { detail: detail }
+        AdvanceTextsRead { texts } =>
+          match materialize_objects(envelope_path: path, store: envelope.store, identities: [tip_root]) {
+            ObjectMaterializationRefused { detail } =>
+              BaseAdvanceRefused { detail: join(["the intake tip's manifest could not be read from its shard: ", detail], "") }
+            ObjectsMaterialized { store: with_tip, read_shards: _ } =>
+              match find_corpus_manifest_record(store: with_tip, identity: tip_root) {
+                CorpusManifestAbsent { identity: _ } => BaseAdvancePoisoned { detail: "the intake tip's manifest is absent from the store" }
+                CorpusManifestIsAuthoredSource { identity: _ } => BaseAdvancePoisoned { detail: "the intake tip's root is an authored source, which is store damage" }
+                CorpusManifestIsSemanticNode { identity: _ } => BaseAdvancePoisoned { detail: "the intake tip's root is a semantic node, which is store damage" }
+                CorpusManifestFound(tip_record) =>
+                  belt_scm_base_advance_mint(
+                    path: path,
+                    envelope: RepositoryEnvelope {
+                      store: with_tip,
+                      commits: envelope.commits,
+                      commit_allocator: envelope.commit_allocator,
+                      checked_out: envelope.checked_out,
+                      staged: envelope.staged,
+                    },
+                    tip_commit: tip_commit,
+                    from: from,
+                    tip_record: tip_record,
+                    to: to,
+                    changes: changes,
+                    texts: texts,
+                  )
+              }
+          }
+      }
+    }
+  }
+  }
+  }
+}
+
+// THE BYTES OF EVERY RE-BOUND PATH AT S_k+1, keyed by path. Read through the same declared bridge
+// verb the seed reads the base with (`git show <sha>:<path>`), so an advance and a seed agree on
+// what a revision's file holds.
+type BeltAdvanceTexts
+  = AdvanceTextsRead { texts: Map<String, String> }
+  | AdvanceTextsRefused { detail: String }
+
+fn belt_scm_advance_texts(git_program: String, worktree: String, to_sha: String, changes: List<WorktreeChange>) -> BeltAdvanceTexts {
+  fold(changes, init: AdvanceTextsRead { texts: empty_map() }, f: (acc, change) =>
+    match acc {
+      AdvanceTextsRefused { detail: _ } => acc
+      AdvanceTextsRead { texts } =>
+        match change {
+          WorktreeDelete { path: _ } => acc
+          WorktreeBind { path } =>
+            match belt_exec(cmd: host_exec_argv(program: git_program, args: worktree_base_file_args(base_sha: to_sha, path: path as String)), workdir: worktree) {
+              ExecOk { stdout } => AdvanceTextsRead { texts: map_insert(texts, path as String, stdout) }
+              ExecFailed { program, exit_code, stderr } =>
+                AdvanceTextsRefused { detail: belt_commit_exec_detail(step: join(["base-advance-file ", path as String], ""), outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
+              ExecRefused { program, reason } =>
+                AdvanceTextsRefused { detail: belt_commit_exec_detail(step: join(["base-advance-file ", path as String], ""), outcome: ExecRefused { program: program, reason: reason }) }
+            }
+        }
+    })
+}
+
+// THE PURE RE-BINDING: the tip's entries with exactly `changes` applied, each bind to its text at
+// S_k+1. A bind whose text was not read is refused rather than skipped -- a skipped bind would leave
+// the tip's bytes at a path the diff says changed, which is the stale-base tree this exists to end.
+fn belt_scm_advance_fold(path: String, store: ObjectStore, tip_record: CorpusManifestRecord, changes: List<WorktreeChange>, texts: Map<String, String>) -> BeltDeltaFold {
+  fold(changes, init: BeltDeltaFold { store: store, unique: path_unique_of_record(base: tip_record), refused: none }, f: (acc, change) =>
+    match acc.refused {
+      Present { value: _ } => acc
+      Absent =>
+        match change {
+          WorktreeDelete { path: p } =>
+            BeltDeltaFold { store: acc.store, unique: path_unique_with_path_removed(unique: acc.unique, path: p), refused: none }
+          WorktreeBind { path: p } =>
+            match map_get(texts, key: p as String) {
+              Absent =>
+                BeltDeltaFold { store: acc.store, unique: acc.unique, refused: Present { value: join(["the advance's diff re-binds ", p as String, " but its bytes at the target revision were not read"], "") } }
+              Present { value: text } => belt_scm_delta_bind_text(path_of_envelope: path, acc: acc, path: p, text: text)
+            }
+        }
+    })
+}
+
+fn belt_scm_base_advance_mint(
+  path: String,
+  envelope: RepositoryEnvelope,
+  tip_commit: RepositoryCommit,
+  from: IntakeRevision,
+  tip_record: CorpusManifestRecord,
+  to: IntakeRevision,
+  changes: List<WorktreeChange>,
+  texts: Map<String, String>,
+) -> BeltBaseAdvance {
+  let folded = belt_scm_advance_fold(path: path, store: envelope.store, tip_record: tip_record, changes: changes, texts: texts)
+  match folded.refused {
+    Present { value: detail } => BaseAdvanceRefused { detail: detail }
+    Absent =>
+      match belt_delta_resident_of(outcome: materialize_if_rostered(envelope_path: path, store: folded.store, identity: path_unique_manifest_identity(unique: folded.unique))) {
+        DeltaResidentRefused { detail } =>
+          BaseAdvanceRefused { detail: join(["the advanced manifest's identity is already persisted and could not be read back: ", detail], "") }
+        DeltaResident { store: manifest_resident } =>
+          match store_path_unique_manifest(store: manifest_resident, unique: folded.unique) {
+            UniqueManifestLocatorCollision { identity: _, existing: _, incoming: _ } =>
+              BaseAdvancePoisoned { detail: "the object store refuses the advanced manifest: a different manifest already holds its identity, which is store damage" }
+            UniqueManifestStored { store: with_manifest, manifest } =>
+              match mint_intake_advance(
+                repository: RepositoryEnvelope {
+                  store: with_manifest,
+                  commits: envelope.commits,
+                  commit_allocator: envelope.commit_allocator,
+                  checked_out: envelope.checked_out,
+                  staged: envelope.staged,
+                },
+                root: CorpusManifestTarget { locator: manifest.locator },
+                message: join(["project base advance: ", belt_scm_intake_revision_sha(revision: from), "..", belt_scm_intake_revision_sha(revision: to)], ""),
+                parent: tip_commit.reference,
+                from: from,
+                to: to,
+              ) {
+                IntakeAdvanceMinted { repository, reference } => BaseAdvanced { envelope: repository, reference: reference }
+                IntakeAdvanceAllocatorInvalid { next_ordinal } =>
+                  BaseAdvancePoisoned { detail: join(["the envelope's commit allocator is invalid (next ordinal ", to_string(next_ordinal), ")"], "") }
+                IntakeAdvanceParentMissing { parent: _ } =>
+                  BaseAdvancePoisoned { detail: "the intake tip is not a commit of its own envelope, which is envelope damage" }
+                IntakeAdvanceRootRefused { cause: _ } =>
+                  BaseAdvancePoisoned { detail: "the advanced manifest does not resolve as a complete manifest in its own store, which is store damage" }
+                IntakeAdvanceDoesNotMove { revision: _ } =>
+                  BaseAdvancePoisoned { detail: "the advance's two revisions are one revision, which the intake tip search cannot produce: envelope damage" }
+                IntakeAdvanceDiscontinuous { parent: _, line: _ } =>
+                  BaseAdvancePoisoned { detail: "the intake tip's line does not stand at the tip's own revision, which is envelope damage" }
+                IntakeAdvanceRevisionAlreadyPlaced { commits: _ } =>
+                  BaseAdvancePoisoned { detail: "the advance's target revision is already placed, which the intake search had just ruled out: envelope damage" }
+                IntakeAdvanceLineAlreadyAdvanced { commit: _ } =>
+                  BaseAdvancePoisoned { detail: "an advance already leaves the intake tip's revision, so the tip search returned a commit that is not the tip: envelope damage" }
+              }
+          }
+      }
+  }
+}
 
 // THE CAPTURE, WHOLE. Seed-once (an envelope holding any commit is already seeded), then the
 // candidate is staged from the worktree and minted DESCENDING FROM THE SHARED BASE: the selection
@@ -6643,10 +7133,11 @@ fn belt_scm_capture_candidate_tree(
   node_id: RoadmapNodeId,
   attempt_key: String,
   message: String,
-) -> BeltScmCapture {
+  committed_revision: String?,
+) -> BeltScmMint {
   match project_key_for_node(node_id: node_id as String, memberships: roadmap_memberships()) {
     Absent =>
-      ScmCapturePoisoned {
+      ScmCaptureMintPoisoned {
         detail: "multiple authored parents name this node; project ownership is ambiguous: the authority must name one owning arc before a candidate can be captured",
       }
     Present { value: project_key } =>
@@ -6662,14 +7153,14 @@ fn belt_scm_capture_candidate_tree(
     workdir: worktree,
   ) {
     ExecFailed { program, exit_code, stderr } =>
-      ScmCaptureRefused {
+      ScmCaptureMintRefused {
         detail: belt_commit_exec_detail(
           step: "projects-directory",
           outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr },
         ),
       }
     ExecRefused { program, reason } =>
-      ScmCaptureRefused {
+      ScmCaptureMintRefused {
         detail: belt_commit_exec_detail(step: "projects-directory", outcome: ExecRefused { program: program, reason: reason }),
       }
     ExecOk { stdout: _ } => {
@@ -6679,31 +7170,37 @@ fn belt_scm_capture_candidate_tree(
         path: path,
         entry_name: belt_scm_project_entry_name(project_key: project_key),
       ) {
-        EnvelopeSourceRefused { detail } => ScmCaptureRefused { detail: detail }
+        EnvelopeSourceRefused { detail } => ScmCaptureMintRefused { detail: detail }
         EnvelopeReady { envelope, generation } =>
           match belt_scm_base_sha_observe(
             instance: instance,
             node_id: node_id,
             attempt_key: attempt_key,
           ) {
-            BaseShaUnobserved { reason } => ScmCapturePoisoned { detail: reason }
+            BaseShaUnobserved { reason } => ScmCaptureMintPoisoned { detail: reason }
             BaseShaObserved { base_sha } =>
+          match belt_scm_intake_revision(base_sha: base_sha) {
+            Absent =>
+              ScmCaptureMintPoisoned {
+                detail: join(["the attempt's recorded base '", base_sha, "' is not a git object id, so no typed base record can name it"], ""),
+              }
+            Present { value: revision } =>
           match belt_commit_git(instance: instance, worktree: worktree, args: worktree_base_inventory_args(base_sha: base_sha)) {
             ExecFailed { program, exit_code, stderr } =>
-              ScmCaptureRefused {
+              ScmCaptureMintRefused {
                 detail: belt_commit_exec_detail(
                   step: "inventory",
                   outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr },
                 ),
               }
             ExecRefused { program, reason } =>
-              ScmCaptureRefused {
+              ScmCaptureMintRefused {
                 detail: belt_commit_exec_detail(step: "inventory", outcome: ExecRefused { program: program, reason: reason }),
               }
             ExecOk { stdout } => {
               let paths = worktree_inventory_parse(stdout_nul: stdout)
               if count(paths) == 0 {
-                ScmCapturePoisoned {
+                ScmCaptureMintPoisoned {
                   detail: "the recorded base names zero files, so capturing against it would mint an empty tree as the worker's deliverable",
                 }
               } else {
@@ -6714,45 +7211,46 @@ fn belt_scm_capture_candidate_tree(
                   generation: generation,
                   path: path,
                   paths: paths,
-                  node_id: node_id,
-                  attempt_key: attempt_key,
+                  base_sha: base_sha,
+                  revision: revision,
                 ) {
-                  SeedRefused { detail } => ScmCaptureRefused { detail: detail }
-                  SeedPoisoned { detail } => ScmCapturePoisoned { detail: detail }
+                  SeedRefused { detail } => ScmCaptureMintRefused { detail: detail }
+                  SeedPoisoned { detail } => ScmCaptureMintPoisoned { detail: detail }
                   SeedReady { envelope: seeded, generation: seeded_generation } =>
-                    match belt_scm_root_commit_ref(envelope: seeded) {
-                      Absent =>
-                        ScmCapturePoisoned {
-                          detail: "the project envelope holds commits but no root commit, so no candidate can descend from a shared base: envelope damage",
-                        }
-                      Present { value: base_ref } => {
-                        let head_ref = seeded.checked_out
-                        match belt_scm_base_sha_observe(
-                          instance: instance,
-                          node_id: node_id,
-                          attempt_key: attempt_key,
-                        ) {
-                          BaseShaUnobserved { reason } => ScmCapturePoisoned { detail: reason }
-                          BaseShaObserved { base_sha } =>
+                    match belt_scm_intake_base_for(
+                      git_program: dispatch_capability_program(environment: instance.execution_environment, cap: GitWorkspaceCapability),
+                      worktree: worktree,
+                      path: path,
+                      envelope: seeded,
+                      revision: revision,
+                    ) {
+                      BeltIntakeBaseRefused { detail } => ScmCaptureMintRefused { detail: detail }
+                      BeltIntakeBasePoisoned { detail } => ScmCaptureMintPoisoned { detail: detail }
+                      BeltIntakeBaseReady { envelope: based, base_ref } =>
+                        match belt_capture_work(node_id: node_id as String, attempt_key: attempt_key) {
+                          Absent => ScmCaptureMintPoisoned { detail: "the attempt key is empty, so no work identity can name this capture" }
+                          Present { value: work } =>
                             belt_scm_delta_capture(
                               instance: instance,
                               worktree: worktree,
-                              seeded: seeded,
+                              work: work,
+                              seeded: based,
                               generation: seeded_generation,
                               base_ref: base_ref,
-                              head_ref: head_ref,
+                              head_ref: seeded.checked_out,
                               base_sha: base_sha,
                               path: path,
                               message: message,
+                              committed_revision: committed_revision,
                             )
                         }
+                    }
                 }
               }
             }
           }
       }
     }
-  }
   }
   }
   }
@@ -6824,42 +7322,105 @@ fn belt_scm_delta_fold_step(
                 },
               }
             FilesystemReadSucceeded { content } =>
-              match belt_scm_delta_resident_for(path: path_of_envelope, store: acc.store, text: content) {
-                DeltaResidentRefused { detail } =>
-                  BeltDeltaFold {
-                    store: acc.store,
-                    unique: acc.unique,
-                    refused: Present {
-                      value: join(["the changed path ", path as String, " re-binds bytes the repository already holds, and they could not be read back: ", detail], ""),
-                    },
-                  }
-                DeltaResident { store: resident } =>
-                  match store_authored_source(store: resident, text: content) {
-              SourceLocatorCollision { identity: _, existing: _, incoming: _ } =>
-                BeltDeltaFold {
-                  store: acc.store,
-                  unique: acc.unique,
-                  refused: Present {
-                    value: join([
-                      "the object store refuses ", path as String,
-                      ": a different source already holds its content identity, which is store damage",
-                    ], ""),
-                  },
-                }
-              SourceStored { store: next, source } =>
-                BeltDeltaFold {
-                  store: next,
-                  unique: path_unique_with_path_bound(
-                    unique: acc.unique,
-                    path: path,
-                    source: authored_source_target_of(reference: source),
-                  ),
-                  refused: none,
-                }
-            }
-            }
+              belt_scm_delta_bind_text(path_of_envelope: path_of_envelope, acc: acc, path: path, text: content)
           }
         }
+      }
+  }
+}
+
+// ONE BIND OF NEW BYTES AT A PATH, shared by the candidate delta (bytes read from the worktree) and
+// the base advance (bytes read from the revision it advances to): the identity-law readback of a
+// re-bound persisted object, the store, and the path-unique re-binding are one rule, so they are one
+// function rather than two copies free to drift.
+fn belt_scm_delta_bind_text(path_of_envelope: String, acc: BeltDeltaFold, path: NonEmptyStr, text: String) -> BeltDeltaFold {
+  match belt_scm_delta_resident_for(path: path_of_envelope, store: acc.store, text: text) {
+    DeltaResidentRefused { detail } =>
+      BeltDeltaFold {
+        store: acc.store,
+        unique: acc.unique,
+        refused: Present {
+          value: join(["the changed path ", path as String, " re-binds bytes the repository already holds, and they could not be read back: ", detail], ""),
+        },
+      }
+    DeltaResident { store: resident } =>
+  match store_authored_source(store: resident, text: text) {
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } =>
+      BeltDeltaFold {
+        store: acc.store,
+        unique: acc.unique,
+        refused: Present {
+          value: join([
+            "the object store refuses ", path as String,
+            ": a different source already holds its content identity, which is store damage",
+          ], ""),
+        },
+      }
+    SourceStored { store: next, source } =>
+      BeltDeltaFold {
+        store: next,
+        unique: path_unique_with_path_bound(
+          unique: acc.unique,
+          path: path,
+          source: authored_source_target_of(reference: source),
+        ),
+        refused: none,
+      }
+  }
+  }
+}
+
+// THE COMMITTED-TREE FOLD, for recapture: the same re-binding as the tick, with bytes read from the
+// committed revision through the declared bridge rather than from a dirty worktree. Deletes need no
+// read. A bind whose show fails is this observation's I/O, refused rather than guessed.
+fn belt_scm_delta_fold_step_at_revision(
+  instance: HostDashboardInstance,
+  worktree: String,
+  path_of_envelope: String,
+  revision: String,
+  acc: BeltDeltaFold,
+  change: WorktreeChange,
+) -> BeltDeltaFold {
+  match acc.refused {
+    Present { value: _ } => acc
+    Absent =>
+      match change {
+        WorktreeDelete { path } =>
+          BeltDeltaFold {
+            store: acc.store,
+            unique: path_unique_with_path_removed(unique: acc.unique, path: path),
+            refused: none,
+          }
+        WorktreeBind { path } =>
+          match belt_commit_git(
+            instance: instance,
+            worktree: worktree,
+            args: worktree_base_file_args(base_sha: revision, path: path as String),
+          ) {
+            ExecOk { stdout } => belt_scm_delta_bind_text(path_of_envelope: path_of_envelope, acc: acc, path: path, text: stdout)
+            ExecFailed { program, exit_code, stderr } =>
+              BeltDeltaFold {
+                store: acc.store,
+                unique: acc.unique,
+                refused: Present {
+                  value: belt_commit_exec_detail(
+                    step: join(["recapture-file ", path as String], ""),
+                    outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr },
+                  ),
+                },
+              }
+            ExecRefused { program, reason } =>
+              BeltDeltaFold {
+                store: acc.store,
+                unique: acc.unique,
+                refused: Present {
+                  value: belt_commit_exec_detail(
+                    step: join(["recapture-file ", path as String], ""),
+                    outcome: ExecRefused { program: program, reason: reason },
+                  ),
+                },
+              }
+          }
       }
   }
 }
@@ -6878,6 +7439,7 @@ fn belt_scm_delta_fold_step(
 fn belt_scm_delta_capture(
   instance: HostDashboardInstance,
   worktree: String,
+  work: CaptureWork,
   seeded: RepositoryEnvelope,
   generation: RepositoryGenerationExpectation,
   base_ref: RepositoryCommitRef,
@@ -6885,27 +7447,20 @@ fn belt_scm_delta_capture(
   base_sha: String,
   path: String,
   message: String,
-) -> BeltScmCapture {
+  committed_revision: String?,
+) -> BeltScmMint {
   match commit_at_reference(commits: seeded.commits, reference: base_ref) {
     Absent =>
-      ScmCapturePoisoned { detail: "the seeded base commit is not a commit of its own envelope, which is envelope damage" }
+      ScmCaptureMintPoisoned { detail: "the seeded base commit is not a commit of its own envelope, which is envelope damage" }
     Present { value: base_commit } =>
-      if base_commit.message != join(["project base: ", base_sha], "") {
-        ScmCaptureRefused {
-          detail: join([
-            "stale base: the attempt branches from ", base_sha,
-            " but the project repository's base commit records '", base_commit.message,
-            "'; applying the worktree's change set against one base onto the other's tree would mint a candidate that is neither, so the capture refuses until the repository's base advances to this attempt's base",
-          ], ""),
-        }
-      } else {
       match materialize_objects(envelope_path: path, store: seeded.store, identities: [base_commit.root.locator]) {
         ObjectMaterializationRefused { detail } =>
-          ScmCaptureRefused { detail: join(["the base commit's manifest could not be read from its shard: ", detail], "") }
+          ScmCaptureMintRefused { detail: join(["the base commit's manifest could not be read from its shard: ", detail], "") }
         ObjectsMaterialized { store: with_base, read_shards: _ } =>
           belt_scm_delta_capture_over(
             instance: instance,
             worktree: worktree,
+            work: work,
             seeded: RepositoryEnvelope {
               store: with_base,
               commits: seeded.commits,
@@ -6920,17 +7475,94 @@ fn belt_scm_delta_capture(
             path: path,
             message: message,
             base_commit: base_commit,
+            committed_revision: committed_revision,
           )
       }
+  }
+}
+
+type BeltDeltaChangeSet
+  = DeltaChangesCollected { changes: List<WorktreeChange> }
+  | DeltaChangesRefused { detail: String }
+
+// THE CHANGE POPULATION. The tick reads the dirty worktree against the spawn base. Recapture reads
+// the committed revision against that same base through a tree-to-tree diff the worktree cannot
+// perturb, and never the untracked list -- a committed tree has no untracked files.
+fn belt_scm_delta_changes(
+  instance: HostDashboardInstance,
+  worktree: String,
+  base_sha: String,
+  committed_revision: String?,
+) -> BeltDeltaChangeSet {
+  match committed_revision {
+    Present { value: head } =>
+      match belt_commit_git(
+        instance: instance,
+        worktree: worktree,
+        args: revision_changes_between_args(from: base_sha, to: head),
+      ) {
+        ExecFailed { program, exit_code, stderr } =>
+          DeltaChangesRefused {
+            detail: belt_commit_exec_detail(
+              step: "recapture-changes",
+              outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr },
+            ),
+          }
+        ExecRefused { program, reason } =>
+          DeltaChangesRefused {
+            detail: belt_commit_exec_detail(step: "recapture-changes", outcome: ExecRefused { program: program, reason: reason }),
+          }
+        ExecOk { stdout } => DeltaChangesCollected { changes: worktree_changes_parse(stdout_nul: stdout) }
+      }
+    Absent =>
+      match belt_commit_git(
+        instance: instance,
+        worktree: worktree,
+        args: worktree_changes_since_args(base_sha: base_sha),
+      ) {
+        ExecFailed { program, exit_code, stderr } =>
+          DeltaChangesRefused {
+            detail: belt_commit_exec_detail(
+              step: "changes",
+              outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr },
+            ),
+          }
+        ExecRefused { program, reason } =>
+          DeltaChangesRefused {
+            detail: belt_commit_exec_detail(step: "changes", outcome: ExecRefused { program: program, reason: reason }),
+          }
+        ExecOk { stdout: changes_out } =>
+          match belt_commit_git(instance: instance, worktree: worktree, args: worktree_untracked_args) {
+            ExecFailed { program, exit_code, stderr } =>
+              DeltaChangesRefused {
+                detail: belt_commit_exec_detail(
+                  step: "untracked",
+                  outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr },
+                ),
+              }
+            ExecRefused { program, reason } =>
+              DeltaChangesRefused {
+                detail: belt_commit_exec_detail(step: "untracked", outcome: ExecRefused { program: program, reason: reason }),
+              }
+            ExecOk { stdout: untracked_out } =>
+              DeltaChangesCollected {
+                changes: concat(
+                  worktree_changes_parse(stdout_nul: changes_out),
+                  map(worktree_inventory_parse(stdout_nul: untracked_out), p => WorktreeBind { path: p }),
+                ),
+              }
+          }
       }
   }
 }
 
 // THE CAPTURE'S ONE CONTENT DEMAND ON HISTORY IS ITS BASE MANIFEST, materialized above from its own
-// shard; everything else the capture reads is the worktree's change set.
+// shard; everything else the capture reads is either the worktree's change set or the committed
+// revision's, selected by the caller.
 fn belt_scm_delta_capture_over(
   instance: HostDashboardInstance,
   worktree: String,
+  work: CaptureWork,
   seeded: RepositoryEnvelope,
   generation: RepositoryGenerationExpectation,
   base_ref: RepositoryCommitRef,
@@ -6939,49 +7571,19 @@ fn belt_scm_delta_capture_over(
   path: String,
   message: String,
   base_commit: RepositoryCommit,
-) -> BeltScmCapture {
+  committed_revision: String?,
+) -> BeltScmMint {
       match find_corpus_manifest_record(store: seeded.store, identity: base_commit.root.locator) {
         CorpusManifestAbsent { identity: _ } =>
-          ScmCapturePoisoned { detail: "the seeded base's manifest is absent from the store" }
+          ScmCaptureMintPoisoned { detail: "the seeded base's manifest is absent from the store" }
         CorpusManifestIsAuthoredSource { identity: _ } =>
-          ScmCapturePoisoned { detail: "the seeded base's root is an authored source, which is store damage" }
+          ScmCaptureMintPoisoned { detail: "the seeded base's root is an authored source, which is store damage" }
         CorpusManifestIsSemanticNode { identity: _ } =>
-          ScmCapturePoisoned { detail: "the seeded base's root is a semantic node, which is store damage" }
+          ScmCaptureMintPoisoned { detail: "the seeded base's root is a semantic node, which is store damage" }
         CorpusManifestFound(base_record) =>
-          match belt_commit_git(
-            instance: instance,
-            worktree: worktree,
-            args: worktree_changes_since_args(base_sha: base_sha),
-          ) {
-            ExecFailed { program, exit_code, stderr } =>
-              ScmCaptureRefused {
-                detail: belt_commit_exec_detail(
-                  step: "changes",
-                  outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr },
-                ),
-              }
-            ExecRefused { program, reason } =>
-              ScmCaptureRefused {
-                detail: belt_commit_exec_detail(step: "changes", outcome: ExecRefused { program: program, reason: reason }),
-              }
-            ExecOk { stdout: changes_out } =>
-              match belt_commit_git(instance: instance, worktree: worktree, args: worktree_untracked_args) {
-                ExecFailed { program, exit_code, stderr } =>
-                  ScmCaptureRefused {
-                    detail: belt_commit_exec_detail(
-                      step: "untracked",
-                      outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr },
-                    ),
-                  }
-                ExecRefused { program, reason } =>
-                  ScmCaptureRefused {
-                    detail: belt_commit_exec_detail(step: "untracked", outcome: ExecRefused { program: program, reason: reason }),
-                  }
-                ExecOk { stdout: untracked_out } => {
-                  let changes = concat(
-                    worktree_changes_parse(stdout_nul: changes_out),
-                    map(worktree_inventory_parse(stdout_nul: untracked_out), p => WorktreeBind { path: p }),
-                  )
+          match belt_scm_delta_changes(instance: instance, worktree: worktree, base_sha: base_sha, committed_revision: committed_revision) {
+            DeltaChangesRefused { detail } => ScmCaptureMintRefused { detail: detail }
+            DeltaChangesCollected { changes } => {
                   let folded = fold(
                     changes,
                     init: BeltDeltaFold {
@@ -6989,22 +7591,34 @@ fn belt_scm_delta_capture_over(
                       unique: path_unique_of_record(base: base_record),
                       refused: none,
                     },
-                    f: (acc, change) => belt_scm_delta_fold_step(instance: instance, worktree: worktree, path_of_envelope: path, acc: acc, change: change),
+                    f: (acc, change) =>
+                      match committed_revision {
+                        Absent => belt_scm_delta_fold_step(instance: instance, worktree: worktree, path_of_envelope: path, acc: acc, change: change)
+                        Present { value: revision } =>
+                          belt_scm_delta_fold_step_at_revision(
+                            instance: instance,
+                            worktree: worktree,
+                            path_of_envelope: path,
+                            revision: revision,
+                            acc: acc,
+                            change: change,
+                          )
+                      },
                   )
                   match folded.refused {
-                    Present { value: detail } => ScmCaptureRefused { detail: detail }
+                    Present { value: detail } => ScmCaptureMintRefused { detail: detail }
                     Absent =>
                       match belt_delta_resident_of(outcome: materialize_if_rostered(envelope_path: path, store: folded.store, identity: path_unique_manifest_identity(unique: folded.unique))) {
                         DeltaResidentRefused { detail } =>
-                          ScmCaptureRefused { detail: join(["the candidate manifest's identity is already persisted and could not be read back: ", detail], "") }
+                          ScmCaptureMintRefused { detail: join(["the candidate manifest's identity is already persisted and could not be read back: ", detail], "") }
                         DeltaResident { store: manifest_resident } =>
                       match store_path_unique_manifest(store: manifest_resident, unique: folded.unique) {
                         UniqueManifestLocatorCollision { identity: _, existing: _, incoming: _ } =>
-                          ScmCapturePoisoned {
+                          ScmCaptureMintPoisoned {
                             detail: "the object store refuses the candidate manifest: a different manifest already holds its identity, which is store damage, not a capture",
                           }
                         UniqueManifestStored { store: with_manifest, manifest } =>
-                          match commit_staged(
+                          match commit_staged_capture(
                             repository: RepositoryEnvelope {
                               store: with_manifest,
                               commits: seeded.commits,
@@ -7013,80 +7627,98 @@ fn belt_scm_delta_capture_over(
                               staged: Present { value: manifest },
                             },
                             message: message,
+                            work: work,
                           ) {
+                            StagedCaptureWithoutBase =>
+                              ScmCaptureMintPoisoned { detail: "the capture's base commit is not selected, so the candidate would be a root, which no capture may be: envelope damage" }
+                            StagedCaptureCommitted(staged) =>
+                          match staged {
                             StagedCommitCandidateRefused { cause: _ } =>
-                              ScmCapturePoisoned {
+                              ScmCaptureMintPoisoned {
                                 detail: "the SCM stage could not be compared against its base, so the capture was not minted",
                               }
                             StagedCommitNothingToFreeze =>
-                              ScmCapturePoisoned {
+                              ScmCaptureMintPoisoned {
                                 detail: "the declared candidate is identical to the intake base: there is no change to deliver, so there is no candidate to bind",
                               }
                             StagedCommitAllocatorInvalid { next_ordinal } =>
-                              ScmCapturePoisoned {
+                              ScmCaptureMintPoisoned {
                                 detail: join([
                                   "the project envelope's commit allocator is invalid (next ordinal ",
                                   to_string(next_ordinal), "), which is envelope damage, not a capture",
                                 ], ""),
                               }
                             StagedCommitSourceUnrecoverable { cause: _ } =>
-                              ScmCapturePoisoned {
+                              ScmCaptureMintPoisoned {
                                 detail: "a staged path's source is unrecoverable from the object store, so the candidate must not be published into history",
                               }
-                            StagedCommitMinted { repository: with_candidate, reference } => {
-                              let restored = RepositoryEnvelope {
-                                store: with_candidate.store,
-                                commits: with_candidate.commits,
-                                commit_allocator: with_candidate.commit_allocator,
-                                checked_out: match head_ref {
-                                  Present { value: h } => Present { value: h }
-                                  Absent => Present { value: base_ref }
+                            StagedCommitMinted { repository: with_candidate, reference } =>
+                              ScmCandidateMinted {
+                                repository: RepositoryEnvelope {
+                                  store: with_candidate.store,
+                                  commits: with_candidate.commits,
+                                  commit_allocator: with_candidate.commit_allocator,
+                                  checked_out: match head_ref {
+                                    Present { value: h } => Present { value: h }
+                                    Absent => Present { value: base_ref }
+                                  },
+                                  staged: with_candidate.staged,
                                 },
-                                staged: with_candidate.staged,
+                                generation: generation,
+                                path: path,
+                                commit_ordinal: minted_id_ordinal(id: reference.identity),
+                                commit_root_locator: object_id_key(identity: manifest.locator),
                               }
-                              match save_repository_sharded_guarded(path: path, repo: restored, expected: generation) {
-                                RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _ }) =>
-                                  ScmCandidateCaptured {
-                                    repository_path: path,
-                                    commit_ordinal: minted_id_ordinal(id: reference.identity),
-                                    commit_root_locator: object_id_key(identity: manifest.locator),
-                                  }
-                                RepositoryGuardedSaveOutcome(RepositorySaveRefusedByCodec { path: _, cause: _ }) =>
-                                  ScmCaptureRefused {
-                                    detail: "the capture was minted but the envelope could not be encoded for persistence; the in-memory commit is lost and the capture must be re-taken",
-                                  }
-                                RepositoryGuardedSaveOutcome(RepositoryFileUnwritable { path: p, error }) =>
-                                  ScmCaptureRefused {
-                                    detail: join([
-                                      "the capture was minted but the envelope could not be written to ", p,
-                                      " (", error, "); the in-memory commit is lost and the capture must be re-taken",
-                                    ], ""),
-                                  }
-                                RepositoryGuardedSaveOutcome(RepositoryWriteByteCountUnrepresentable { path: _, reported }) =>
-                                  ScmCaptureRefused {
-                                    detail: join([
-                                      "the envelope write reported a nonsensical byte count (",
-                                      to_string(reported), "), so whether the capture persisted is unknown",
-                                    ], ""),
-                                  }
-                                RepositoryStaleGenerationRefused { path: _, expected: _, found: _ } =>
-                                  ScmCaptureRefused {
-                                    detail: "the project envelope changed on disk since this tick observed it; the in-memory capture is discarded and re-derived on the next tick rather than clobbering the newer envelope",
-                                  }
-                                RepositoryGuardedSaveUnobservable { path: _, error } =>
-                                  ScmCaptureRefused {
-                                    detail: join(["the on-disk envelope generation could not be observed, so the capture refused to write unguarded: ", error], ""),
-                                  }
-                              }
-                            }
+                          }
                           }
                       }
                       }
                   }
-                }
-              }
+            }
           }
       }
+}
+
+fn belt_scm_persist_capture(mint: BeltScmMint) -> BeltScmCapture {
+  match mint {
+    ScmCaptureMintRefused { detail } => ScmCaptureRefused { detail: detail }
+    ScmCaptureMintPoisoned { detail } => ScmCapturePoisoned { detail: detail }
+    ScmCandidateMinted { repository, generation, path, commit_ordinal, commit_root_locator } =>
+      match save_repository_sharded_guarded(path: path, repo: repository, expected: generation) {
+        RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _, generation: _ }) =>
+          ScmCandidateCaptured {
+            repository_path: path,
+            commit_ordinal: commit_ordinal,
+            commit_root_locator: commit_root_locator,
+          }
+        RepositoryGuardedSaveOutcome(RepositorySaveRefusedByCodec { path: _, cause: _ }) =>
+          ScmCaptureRefused {
+            detail: "the capture was minted but the envelope could not be encoded for persistence; the in-memory commit is lost and the capture must be re-taken",
+          }
+        RepositoryGuardedSaveOutcome(RepositoryFileUnwritable { path: p, error }) =>
+          ScmCaptureRefused {
+            detail: join([
+              "the capture was minted but the envelope could not be written to ", p,
+              " (", error, "); the in-memory commit is lost and the capture must be re-taken",
+            ], ""),
+          }
+        RepositoryGuardedSaveOutcome(RepositoryWriteByteCountUnrepresentable { path: _, reported }) =>
+          ScmCaptureRefused {
+            detail: join([
+              "the envelope write reported a nonsensical byte count (",
+              to_string(reported), "), so whether the capture persisted is unknown",
+            ], ""),
+          }
+        RepositoryStaleGenerationRefused { path: _, expected: _, found: _ } =>
+          ScmCaptureRefused {
+            detail: "the project envelope changed on disk since this tick observed it; the in-memory capture is discarded and re-derived on the next tick rather than clobbering the newer envelope",
+          }
+        RepositoryGuardedSaveUnobservable { path: _, error } =>
+          ScmCaptureRefused {
+            detail: join(["the on-disk envelope generation could not be observed, so the capture refused to write unguarded: ", error], ""),
+          }
+      }
+  }
 }
 
 // THE CANDIDATE CAPTURE SEQUENCE. The SCM capture comes FIRST: the candidate's authoritative
@@ -7107,12 +7739,15 @@ fn belt_commit_capture_candidate(
   submission: WorkerSubmission,
   digest: String,
 ) -> BeltCommitOutcome {
-  match belt_scm_capture_candidate_tree(
-    instance: instance,
-    worktree: worktree,
-    node_id: node_id as RoadmapNodeId,
-    attempt_key: attempt_key,
-    message: message as String,
+  match belt_scm_persist_capture(
+    mint: belt_scm_capture_candidate_tree(
+      instance: instance,
+      worktree: worktree,
+      node_id: node_id as RoadmapNodeId,
+      attempt_key: attempt_key,
+      message: message as String,
+      committed_revision: none,
+    ),
   ) {
     ScmCaptureRefused { detail } => CommitFailed { node_id: node_id, detail: detail }
     ScmCapturePoisoned { detail } => CommitCapturePoisoned { node_id: node_id, detail: detail }
@@ -8823,6 +9458,9 @@ fn belt_workflow_attempts_observe_scoped(
   }
 }
 
+// The 'attempt_view_revision' member names the compact work view that is current for this
+// attempt (gunbc.roadmap.roadmap_build_meter attempt_view_revision), for a page that already shows
+// it. Its staleness is the caller's revision comparison; a caller that made none passes none.
 // The wire join of the two authorities the client must never re-derive: the attempt's progress
 // members (gunbc.roadmap_workflow_progress, unchanged) plus the DECIDED activity view
 // (gunbc.roadmap_presentation) appended as one 'activity' member. The seam reads process and
@@ -8853,12 +9491,14 @@ fn belt_workflow_attempt_presentation_json_for_instance(
 fn belt_workflow_attempt_presentation_json_with_tick_read(
   progress: WorkflowAttemptProgress,
   tick_read: BeltTickReceiptRead,
+  stale_nodes: List<String> = [],
 ) -> JsonValue {
   json_object(members: concat(
     workflow_attempt_progress_json_members(progress: progress),
     [
       json_kv(key: "activity", value: activity_view_json_value(
           view: activity_view_from_progress(progress: progress))),
+      json_kv(key: build_meter_wire_revision_member, value: json_string(s: attempt_view_revision(progress: progress, stale: any(stale_nodes, n => n == progress.node_id)))),
       json_kv(
         key: "verification_presentation",
         value: json_string(
@@ -8904,6 +9544,7 @@ fn belt_tick_receipt_wire_json_for_instance(
 fn belt_workflow_attempts_json_value_for_instance(
   instance: HostDashboardInstance,
   observed: BeltWorkflowAttempts,
+  stale_nodes: List<String> = [],
 ) -> JsonValue {
   let tick_read = belt_tick_receipt_read_for_instance(instance: instance)
   match observed {
@@ -8925,6 +9566,7 @@ fn belt_workflow_attempts_json_value_for_instance(
             progress => belt_workflow_attempt_presentation_json_with_tick_read(
               progress: progress,
               tick_read: tick_read,
+              stale_nodes: stale_nodes,
             ),
           )),
         ),
@@ -8945,10 +9587,12 @@ fn belt_workflow_attempts_json_value(
 fn belt_workflow_attempts_observed_json_for_instance(
   instance: HostDashboardInstance,
   observed: BeltWorkflowAttempts,
+  stale_nodes: List<String> = [],
 ) -> String {
   serialize_json(v: belt_workflow_attempts_json_value_for_instance(
     instance: instance,
     observed: observed,
+    stale_nodes: stale_nodes,
   ))
 }
 
@@ -9000,8 +9644,16 @@ fn belt_stop_node_for_instance(
   match belt_sessions_observe_for_instance(instance: instance) {
     ObserveRefused { reason: r } => StopObserveRefused { node_id: node_id, reason: r }
     BeltSessionsObserved { live } => {
-      match dispatch_tmux_session_scope(
-        node_id: node_id,
+      match belt_recorded_fingerprint_for_node(instance: instance, node_id: node_id) {
+        RecordedFingerprintsUnreadable { reason } =>
+          StopRefusedResult {
+            node_id: node_id,
+            reason: join(["the node's recorded process fingerprint is unreadable before stop scope: ", reason], ""),
+          }
+        RecordedFingerprintsOk { recorded } =>
+      match dispatch_tmux_session_scope_for_recorded(
+        node_id: node_id as RoadmapNodeId,
+        recorded: recorded,
         selection: dispatch_actuator_selection(sizing_expectation: NoDerivedSizingExpectation),
       ) {
         Absent =>
@@ -9061,6 +9713,7 @@ fn belt_stop_node_for_instance(
           }
       }
         }
+      }
       }
     }
   }
@@ -9554,6 +10207,7 @@ fn belt_dispatch_node_for_instance_over(
   plan: RoadmapAuthorityProjection,
   node_id: String,
   request: AttemptLaunchRequest,
+  executor: DispatchExecutorRequest,
 ) -> BeltSpawnOutcome {
   belt_dispatch_node_staged_over(
     instance: instance,
@@ -9562,6 +10216,7 @@ fn belt_dispatch_node_for_instance_over(
     merged: authored_merged_prs(),
     node_id: node_id,
     request: request,
+    executor: executor,
   )
 }
 
@@ -9582,6 +10237,7 @@ fn belt_dispatch_node_staged(
     merged: authored_merged_prs(),
     node_id: node_id,
     request: LaunchAutonomous,
+    executor: ExecutorDefault,
   )
 }
 
@@ -9592,6 +10248,7 @@ fn belt_dispatch_node_staged_over(
   merged: List<Int>,
   node_id: String,
   request: AttemptLaunchRequest,
+  executor: DispatchExecutorRequest,
 ) -> BeltSpawnOutcome {
   match (match launch_admission_staged(cause: Operator, standing: standing, graph: graph, merged: merged, node_id: node_id, reserved: 0) {
     LaunchStageDecided { admission } => admission
@@ -9637,6 +10294,7 @@ fn belt_dispatch_node_staged_over(
                 probed_at: probed_at as String,
                 launch: identity,
                 request: request,
+                executor: executor,
               )
             Absent =>
               SpawnFailed {
@@ -10287,14 +10945,16 @@ fn belt_audit_spawn(instance: HostDashboardInstance, progress: WorkflowAttemptPr
               match metering_roster_admit(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, role: MeteredAuditor { head: head as NonEmptyStr }) {
                 RosterAdmissionRefused { cause: roster_cause } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: join(["the auditor was not launched: ", roster_cause], "") }
                 RosterAdmitted =>
-                  match belt_exec(
-                  cmd: dispatch_audit_unit_argv(systemd_run_program: systemd_run, instance: instance, node_id: node_id, attempt_key: progress.attempt_key, worktree_path: worktree, brief: brief, head_sha: head),
-                  workdir: worktree,
-                ) {
-                  ExecOk { stdout: _ } => ReviewSpawned { node_id: progress.node_id, criterion: goal_audit_criterion_key, unit: unit as String }
-                  ExecFailed { program: _, exit_code, stderr } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: join(["the auditor unit could not be started (exit ", to_string(exit_code), "): ", stderr], "") }
-                  ExecRefused { program: _, reason } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: reason }
-                }
+              match dispatch_audit_unit_command(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, worktree_path: worktree, brief: brief, head_sha: head) {
+                SystemdRunCommandRefused { cause: why } =>
+                  ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: systemd_run_option_words_refused_cause_detail(cause: why) }
+                SystemdRunCommandReady { command: command } =>
+                  match belt_exec(cmd: dispatch_unit_exec_argv(command: command, resolved_program: systemd_run), workdir: worktree) {
+                    ExecOk { stdout: _ } => ReviewSpawned { node_id: progress.node_id, criterion: goal_audit_criterion_key, unit: unit as String }
+                    ExecFailed { program: _, exit_code, stderr } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: join(["the auditor unit could not be started (exit ", to_string(exit_code), "): ", stderr], "") }
+                    ExecRefused { program: _, reason } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: reason }
+                  }
+              }
               }
             }
           }
@@ -10546,14 +11206,16 @@ fn belt_review_spawn(instance: HostDashboardInstance, node_id: String, attempt_k
       match metering_roster_admit(instance: instance, node_id: nid, attempt_key: attempt_key, role: MeteredReviewer { criterion_key: key as NonEmptyStr, head: head as NonEmptyStr }) {
         RosterAdmissionRefused { cause: roster_cause } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer was not launched: ", roster_cause], "") }
         RosterAdmitted =>
-          match belt_exec(
-          cmd: dispatch_review_unit_argv(systemd_run_program: systemd_run, instance: instance, node_id: nid, attempt_key: attempt_key, worktree_path: worktree, brief: brief, head_sha: head, criterion_key: key),
-          workdir: worktree,
-        ) {
-          ExecOk { stdout: _ } => ReviewSpawned { node_id: node_id, criterion: call.id, unit: unit as String }
-          ExecFailed { program: _, exit_code, stderr } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer unit could not be started (exit ", to_string(exit_code), "): ", stderr], "") }
-          ExecRefused { program: _, reason } => ReviewFailed { node_id: node_id, criterion: call.id, detail: reason }
-        }
+      match dispatch_review_unit_command(instance: instance, node_id: nid, attempt_key: attempt_key, worktree_path: worktree, brief: brief, head_sha: head, criterion_key: key) {
+        SystemdRunCommandRefused { cause: why } =>
+          ReviewFailed { node_id: node_id, criterion: call.id, detail: systemd_run_option_words_refused_cause_detail(cause: why) }
+        SystemdRunCommandReady { command: command } =>
+          match belt_exec(cmd: dispatch_unit_exec_argv(command: command, resolved_program: systemd_run), workdir: worktree) {
+            ExecOk { stdout: _ } => ReviewSpawned { node_id: node_id, criterion: call.id, unit: unit as String }
+            ExecFailed { program: _, exit_code, stderr } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer unit could not be started (exit ", to_string(exit_code), "): ", stderr], "") }
+            ExecRefused { program: _, reason } => ReviewFailed { node_id: node_id, criterion: call.id, detail: reason }
+          }
+      }
       }
     }
   }
@@ -10857,33 +11519,78 @@ fn belt_integrate_materialize_sides(
   }
 }
 
-// A CAPTURE TAKEN AGAINST ANOTHER BASE IS NEVER INTEGRATED. Until 2026-10-03 the capture applied a
-// worktree delta computed against the ATTEMPT's base onto the repository's base manifest without
-// comparing the two, so a candidate from an attempt on a different base recorded a tree that is
-// neither base plus work nor anything real (srv2: three such candidates, one integrated). The
-// capture now refuses that state; this gate refuses to integrate one already recorded, durably, as
-// an integration-blocked receipt naming both bases -- the standing is derived from the attempt's
-// recorded spawn base and the repository's base commit, never guessed.
-// A HEAD LINE THAT INTEGRATED A STALE CAPTURE CARRIES ITS TREE (srv2, 2026-10-03: commit 2 of
-// shell-typed-invocation squash-integrated candidate 1, captured from an attempt on b7f9070 into a
-// repository based at d012e00). Until the BaseAdvance follow-up records a commit's capture base as a
-// typed member and lands the corrective merge, the standing is DERIVED on read: walk the head's
-// ancestry, take every squash-integrated source, recover its capturing attempt from the candidate
-// message's one producer (gunbc.roadmap.roadmap_belt_commit belt_candidate_commit_subject), and
-// compare that attempt's recorded spawn base with the repository's base commit. Publish and integrate
-// refuse a line carrying any such source. A source whose attempt cannot be recovered, or whose base
-// cannot be observed, is UNDERIVABLE and refuses too -- the line's standing is then unknown, and an
-// unknown standing is not a clean one.
-type BeltLineStanding
-  = LineClean
-  | LineIntegratesStale { integration: Int, source: Int, captured_against: String, repository_base: String }
-  | LineStandingUnderivable { detail: String }
+// A CAPTURE'S STANDING: WHETHER ITS DELTA WAS APPLIED ONTO THE BASE IT WAS COMPUTED AGAINST. Every
+// input is a typed member of the commit table (gunbc.scm.intake), so the standing is a pure read with
+// no spawn origin observed. A fresh capture descends from the intake commit of the revision it was
+// computed against, so its line stands there by construction: on base. A capture written before the
+// intake record existed carries what the legacy conversion (belt_scm_intake_convert, below) recorded
+// from the evidence of its time -- IntakeStaleCapture when its attempt branched from another revision
+// than its line's base: CaptureBaseStale. A line that still reads unrecorded has not been converted,
+// and its standing is underivable, never clean.
+type BeltCaptureStanding
+  = CaptureOnBase
+  | CaptureBaseStale { commit: Int, captured_against: String, repository_base: String }
+  | CaptureStandingUnderivable { detail: String }
 
-// THE INTEGRATED SOURCES ON A HEAD'S LINE, as (integrating commit, source commit) pairs: the pure half
-// of the derivation, from the commit table the index carries.
+fn belt_line_revision_sha(commits: List<RepositoryCommit>, at: RepositoryCommitRef) -> String {
+  match line_intake(commits: commits, head: at) {
+    LineIntakeAt { commit: _, revision } => belt_scm_intake_revision_sha(revision: revision)
+    LineIntakeAbsent => "no recorded base"
+    LineIntakeUnrecorded { commit: _ } => "an unrecorded base"
+    LineIntakeUnreadable { at: _ } => "an unreadable line"
+  }
+}
+
+fn belt_capture_standing(commits: List<RepositoryCommit>, candidate: RepositoryCommitRef) -> BeltCaptureStanding {
+  let ordinal = minted_id_ordinal(id: candidate.identity)
+  match commit_at_reference(commits: commits, reference: candidate) {
+    Absent => CaptureStandingUnderivable { detail: join(["candidate ", to_string(ordinal), " is not a commit of its own envelope"], "") }
+    Present { value: c } =>
+      match c.intake {
+        IntakeStaleCapture { captured_against } =>
+          CaptureBaseStale {
+            commit: ordinal,
+            captured_against: belt_scm_intake_revision_sha(revision: captured_against),
+            repository_base: belt_line_revision_sha(commits: commits, at: candidate),
+          }
+        IntakeNone => belt_capture_line_standing(commits: commits, candidate: candidate)
+        IntakeBase { revision: _ } => belt_capture_line_standing(commits: commits, candidate: candidate)
+        IntakeAdvance { from: _, to: _ } => belt_capture_line_standing(commits: commits, candidate: candidate)
+        IntakeUnrecordedByFormat => belt_capture_line_standing(commits: commits, candidate: candidate)
+      }
+  }
+}
+
+fn belt_capture_line_standing(commits: List<RepositoryCommit>, candidate: RepositoryCommitRef) -> BeltCaptureStanding {
+  let ordinal = to_string(minted_id_ordinal(id: candidate.identity))
+  match line_intake(commits: commits, head: candidate) {
+    LineIntakeAt { commit: _, revision: _ } => CaptureOnBase
+    LineIntakeUnrecorded { commit: _ } =>
+      CaptureStandingUnderivable { detail: join(["candidate ", ordinal, "'s line predates typed base records and has not been converted (belt_scm_intake_convert_cli)"], "") }
+    LineIntakeAbsent => CaptureStandingUnderivable { detail: join(["no commit on candidate ", ordinal, "'s line records a base"], "") }
+    LineIntakeUnreadable { at } =>
+      CaptureStandingUnderivable { detail: join(["candidate ", ordinal, "'s ancestry cannot be read at commit ", to_string(minted_id_ordinal(id: at.identity))], "") }
+  }
+}
+
+fn belt_capture_underivable_detail(detail: String) -> String {
+  join(["whether the candidate was captured against its repository's base is unknown, so it is not integrated: ", detail], "")
+}
+
+fn belt_capture_base_stale_detail(commit: Int, captured_against: String, repository_base: String) -> String {
+  join([
+    "CaptureBaseStale: candidate ", to_string(commit), " was captured from an attempt on base ", captured_against,
+    " into a line based at ", repository_base,
+    ", so its recorded tree is not that attempt's tree and it is not integrated",
+  ], "")
+}
+
+// THE INTEGRATIONS ON A HEAD'S LINE, as (integrating commit, consumed source, superseded integration)
+// rows: the pure half of the derivation, from the commit table the index carries.
 type BeltLineSource {
   integration: RepositoryCommit
   source: RepositoryCommit
+  supersedes: RepositoryCommitRef?
 }
 
 type BeltLineSources
@@ -10903,12 +11610,12 @@ fn belt_line_integrated_sources(commits: List<RepositoryCommit>, head: Repositor
             match commit_at_reference(commits: commits, reference: at) {
               Absent => LineSourcesUnreadable { detail: "a commit on the head's line is not in the envelope" }
               Present { value: c } =>
-                match c.integration {
-                  NoSquashIntegration => acc
-                  SquashIntegrated { source } =>
-                    match commit_at_reference(commits: commits, reference: source) {
+                match line_integration_of(commit: c) {
+                  Absent => acc
+                  Present { value: i } =>
+                    match commit_at_reference(commits: commits, reference: i.source) {
                       Absent => LineSourcesUnreadable { detail: join(["integration ", to_string(minted_id_ordinal(id: c.reference.identity)), " names a source the envelope does not hold"], "") }
-                      Present { value: s } => LineSourcesRead { sources: concat(sources, [BeltLineSource { integration: c, source: s }]) }
+                      Present { value: s } => LineSourcesRead { sources: concat(sources, [BeltLineSource { integration: c, source: s, supersedes: i.supersedes }]) }
                     }
                 }
             }
@@ -10916,116 +11623,639 @@ fn belt_line_integrated_sources(commits: List<RepositoryCommit>, head: Repositor
   }
 }
 
-// THE PURE VERDICT over sources whose capture bases were observed: the first source captured against
-// a base other than the repository's is the stale standing; an unobserved base is underivable.
-type BeltObservedLineSource {
-  line: BeltLineSource
-  captured: BeltBaseSha
+// THE SOURCES THAT STILL COUNT: an integration a later integration on the same line superseded no
+// longer contributes its standing -- its content was replaced by the corrective squash, whose
+// admission (gunbc.scm.repository_envelope admit_supersession) required it to be exactly that stale
+// integration, on this line, superseded once, by a fresh source.
+fn belt_line_live_sources(sources: List<BeltLineSource>) -> List<BeltLineSource> {
+  let superseded = sources |> flat_map(s => match s.supersedes { Absent => [] Present { value: x } => [x] })
+  sources |> filter(s => !any(superseded, x => repository_commit_ref_eq(left: x, right: s.integration.reference)))
 }
 
-fn belt_line_standing(repository_base_message: String, observed: List<BeltObservedLineSource>) -> BeltLineStanding {
-  fold(observed, init: LineClean, f: (acc, o) =>
-    match acc {
-      LineIntegratesStale { integration: _, source: _, captured_against: _, repository_base: _ } => acc
-      LineStandingUnderivable { detail: _ } => acc
-      LineClean =>
-        match o.captured {
-          BaseShaUnobserved { reason } =>
-            LineStandingUnderivable {
-              detail: join(["the capture base of integrated source ", to_string(minted_id_ordinal(id: o.line.source.reference.identity)), " is unobservable: ", reason], ""),
+// A LINE IS STALE WHEN A LIVE INTEGRATION ON IT CONSUMED A STALE CAPTURE: IntegratesStale names the
+// integrating commit and the source, and carries the source's two bases.
+type BeltLineStanding
+  = LineClean
+  | IntegratesStale { integration: Int, source: Int, captured_against: String, repository_base: String }
+  | LineStandingUnderivable { detail: String }
+
+fn belt_line_standing(commits: List<RepositoryCommit>, head: RepositoryCommitRef) -> BeltLineStanding {
+  match belt_line_integrated_sources(commits: commits, head: head) {
+    LineSourcesUnreadable { detail } => LineStandingUnderivable { detail: detail }
+    LineSourcesRead { sources } =>
+      fold(belt_line_live_sources(sources: sources), init: LineClean, f: (acc, s) =>
+        match acc {
+          IntegratesStale { integration: _, source: _, captured_against: _, repository_base: _ } => acc
+          LineStandingUnderivable { detail: _ } => acc
+          LineClean =>
+            match belt_capture_standing(commits: commits, candidate: s.source.reference) {
+              CaptureOnBase => LineClean
+              CaptureStandingUnderivable { detail } => LineStandingUnderivable { detail: detail }
+              CaptureBaseStale { commit, captured_against, repository_base } =>
+                IntegratesStale {
+                  integration: minted_id_ordinal(id: s.integration.reference.identity),
+                  source: commit,
+                  captured_against: captured_against,
+                  repository_base: repository_base,
+                }
             }
-          BaseShaObserved { base_sha } =>
-            if repository_base_message == join(["project base: ", base_sha], "") {
-              LineClean
-            } else {
-              LineIntegratesStale {
-                integration: minted_id_ordinal(id: o.line.integration.reference.identity),
-                source: minted_id_ordinal(id: o.line.source.reference.identity),
-                captured_against: base_sha,
-                repository_base: repository_base_message,
-              }
-            }
-        }
-    })
+        })
+  }
 }
 
 fn belt_line_standing_detail(standing: BeltLineStanding) -> String? {
   match standing {
     LineClean => none
     LineStandingUnderivable { detail } => Present { value: join(["the project head's line has an underivable standing, so it is neither integrated into nor published: ", detail], "") }
-    LineIntegratesStale { integration, source, captured_against, repository_base } =>
+    IntegratesStale { integration, source, captured_against, repository_base } =>
       Present {
         value: join([
-          "the project head's line integrates a stale capture: commit ", to_string(integration),
+          "IntegratesStale: the project head's line integrates a stale capture: commit ", to_string(integration),
           " squash-integrated candidate ", to_string(source), ", captured from an attempt on ", captured_against,
-          " into a repository whose base commit records '", repository_base,
-          "'; its tree is not that attempt's tree, so nothing on this line is integrated into or published until a corrective integration lands",
+          " into a line based at ", repository_base,
+          "; its tree is not that attempt's tree, so nothing on this line is integrated into or published until a corrective squash supersedes commit ", to_string(integration),
         ], ""),
       }
   }
 }
 
-// THE EFFECTFUL SHELL: observe each source's capturing attempt's spawn base, then decide purely.
-fn belt_head_line_standing(instance: HostDashboardInstance, envelope: RepositoryEnvelope, head: RepositoryCommitRef) -> BeltLineStanding {
-  match belt_scm_root_commit_ref(envelope: envelope) {
-    Absent => LineStandingUnderivable { detail: "the project repository holds no base commit" }
-    Present { value: root_ref } =>
-      match commit_at_reference(commits: envelope.commits, reference: root_ref) {
-        Absent => LineStandingUnderivable { detail: "the base commit is not a commit of its own envelope" }
-        Present { value: root_commit } =>
-          match belt_line_integrated_sources(commits: envelope.commits, head: head) {
-            LineSourcesUnreadable { detail } => LineStandingUnderivable { detail: detail }
-            LineSourcesRead { sources } =>
-              belt_line_standing(
-                repository_base_message: root_commit.message,
-                observed: map(sources, line => BeltObservedLineSource {
-                  line: line,
-                  captured: match belt_candidate_commit_subject(message: line.source.message) {
-                    Absent => BaseShaUnobserved { reason: join(["source ", to_string(minted_id_ordinal(id: line.source.reference.identity)), "'s message '", line.source.message, "' names no capturing attempt"], "") }
-                    Present { value: subject } =>
-                      belt_scm_base_sha_observe(
-                        instance: instance,
-                        node_id: subject.node_id as gunbc.roadmap_model.RoadmapNodeId,
-                        attempt_key: subject.attempt_key,
-                      )
-                  },
-                }),
-              )
-          }
-      }
-  }
-}
-
-fn belt_selected_head_line_standing(instance: HostDashboardInstance, envelope: RepositoryEnvelope) -> BeltLineStanding {
+fn belt_selected_head_line_standing(envelope: RepositoryEnvelope) -> BeltLineStanding {
   match envelope.checked_out {
     Absent => LineClean
-    Present { value: h } => belt_head_line_standing(instance: instance, envelope: envelope, head: h)
+    Present { value: h } => belt_line_standing(commits: envelope.commits, head: h)
   }
 }
 
-fn belt_integrate_stale_base_detail(envelope: RepositoryEnvelope, base: BeltBaseSha) -> String? {
-  match base {
-    BaseShaUnobserved { reason } => Present { value: join(["the capturing attempt's base is unobservable, so whether its candidate was captured against the repository's base is unknown: ", reason], "") }
-    BaseShaObserved { base_sha } =>
-      match belt_scm_root_commit_ref(envelope: envelope) {
-        Absent => Present { value: "the project repository holds no base commit, so no candidate can be admitted against it" }
-        Present { value: root_ref } =>
-          match commit_at_reference(commits: envelope.commits, reference: root_ref) {
-            Absent => Present { value: "the project repository's base commit is not a commit of its own envelope, which is envelope damage" }
-            Present { value: root_commit } =>
-              if root_commit.message == join(["project base: ", base_sha], "") {
-                none
-              } else {
-                Present {
-                  value: join([
-                    "stale capture: the candidate was captured from an attempt on base ", base_sha,
-                    " but the project repository's base commit records '", root_commit.message,
-                    "', so its recorded tree is not that attempt's tree and it is not integrated",
-                  ], ""),
+// ------------------------------------------------------------------------------------------------
+// The legacy intake conversion (v8 -> v9, in place)
+// ------------------------------------------------------------------------------------------------
+
+// THE v8 BASE-MESSAGE CONVENTION, INVERTED ONCE AND READ ONLY HERE: the conversion is the one reader
+// of the message the v8 seed wrote, and it turns it into the typed base record.
+data belt_legacy_base_prefix: String = "project base: "
+
+fn belt_legacy_base_sha(message: String) -> String? {
+  if !starts_with(s: message, prefix: belt_legacy_base_prefix) {
+    none
+  } else {
+    let sha = substring(s: message, start: string_length(s: belt_legacy_base_prefix), end: string_length(s: message))
+    if sha == "" { none } else { Present { value: sha } }
+  }
+}
+
+// THE CAPTURING ATTEMPT'S BASE, AS OBSERVED FOR ONE LEGACY CANDIDATE: the conversion's only effect
+// besides the save. Its message names the attempt (its one producer is
+// gunbc.roadmap.roadmap_belt_commit belt_candidate_commit_message), and the attempt's spawn origin
+// records the base it branched from.
+type BeltLegacyCaptureBase {
+  commit: Int
+  base: BeltBaseSha
+}
+
+fn belt_legacy_capture_base(instance: HostDashboardInstance, source: RepositoryCommit) -> BeltBaseSha {
+  match belt_candidate_commit_subject(message: source.message) {
+    Absent => BaseShaUnobserved { reason: join(["commit ", to_string(minted_id_ordinal(id: source.reference.identity)), "'s message '", source.message, "' names no capturing attempt"], "") }
+    Present { value: subject } =>
+      belt_scm_base_sha_observe(
+        instance: instance,
+        node_id: subject.node_id as gunbc.roadmap_model.RoadmapNodeId,
+        attempt_key: subject.attempt_key,
+      )
+  }
+}
+
+// THE PURE PLAN: which intake each unrecorded commit records, from the evidence observed for it. The
+// unrecorded root records the base its message names; a candidate (a commit whose message its
+// producer wrote) records IntakeNone when its attempt branched from that base and IntakeStaleCapture
+// when it branched from another; every other commit (a squash integration) froze nothing external
+// and records IntakeNone. Evidence that cannot be read refuses the WHOLE plan, by commit: a partial
+// conversion would leave a line half typed, which no reader can stand on.
+type BeltLegacyIntakePlan
+  = LegacyIntakePlanned { records: List<LegacyIntakeRecord> }
+  | LegacyIntakePlanRefused { detail: String }
+
+type BeltLegacyPlanAcc {
+  records: List<LegacyIntakeRecord>
+  refused: String?
+}
+
+fn belt_legacy_intake_plan(commits: List<RepositoryCommit>, observed: List<BeltLegacyCaptureBase>) -> BeltLegacyIntakePlan {
+  let unrecorded = commits |> filter(c => match c.intake {
+    IntakeUnrecordedByFormat => true
+    IntakeNone => false
+    IntakeBase { revision: _ } => false
+    IntakeAdvance { from: _, to: _ } => false
+    IntakeStaleCapture { captured_against: _ } => false
+  })
+  let roots = unrecorded |> filter(c => match c.ancestry { RootCommit => true DescendsFrom { parent: _ } => false })
+  if count(roots) != 1 {
+    LegacyIntakePlanRefused { detail: join(["a pre-intake repository must hold exactly one unrecorded root commit to type as its base; this one holds ", to_string(count(roots))], "") }
+  } else {
+    match roots.first() {
+      Absent => LegacyIntakePlanRefused { detail: "no unrecorded root commit" }
+      Present { value: root } =>
+        match belt_legacy_base_sha(message: root.message) {
+          Absent => LegacyIntakePlanRefused { detail: join(["the root commit's message '", root.message, "' names no base"], "") }
+          Present { value: base_sha } =>
+            match belt_scm_intake_revision(base_sha: base_sha) {
+              Absent => LegacyIntakePlanRefused { detail: join(["the root commit records '", base_sha, "', which is not a git object id"], "") }
+              Present { value: base_revision } => {
+                let acc = fold(unrecorded, init: BeltLegacyPlanAcc { records: [], refused: none }, f: (acc, c) =>
+                  match acc.refused {
+                    Present { value: _ } => acc
+                    Absent =>
+                      match c.ancestry {
+                        RootCommit => BeltLegacyPlanAcc { records: concat([LegacyIntakeRecord { commit: c.reference, intake: IntakeBase { revision: base_revision }, work: NoWork }], acc.records), refused: none }
+                        DescendsFrom { parent: _ } =>
+                          match belt_candidate_commit_subject(message: c.message) {
+                            Absent => BeltLegacyPlanAcc { records: concat([LegacyIntakeRecord { commit: c.reference, intake: IntakeNone, work: NoWork }], acc.records), refused: none }
+                            Present { value: subject } =>
+                              match (observed |> filter(o => o.commit == minted_id_ordinal(id: c.reference.identity))).first() {
+                                Absent => BeltLegacyPlanAcc { records: acc.records, refused: Present { value: join(["candidate ", to_string(minted_id_ordinal(id: c.reference.identity)), "'s capture base was not observed"], "") } }
+                                Present { value: o } =>
+                                  match o.base {
+                                    BaseShaUnobserved { reason } => BeltLegacyPlanAcc { records: acc.records, refused: Present { value: join(["candidate ", to_string(o.commit), "'s capture base is unobservable: ", reason], "") } }
+                                    BaseShaObserved { base_sha: captured } =>
+                                      match belt_scm_intake_revision(base_sha: captured) {
+                                        Absent => BeltLegacyPlanAcc { records: acc.records, refused: Present { value: join(["candidate ", to_string(o.commit), "'s attempt records '", captured, "', which is not a git object id"], "") } }
+                                        Present { value: captured_revision } =>
+                                          BeltLegacyPlanAcc {
+                                            records: concat([LegacyIntakeRecord {
+                                              commit: c.reference,
+                                              intake: if intake_revision_eq(left: captured_revision, right: base_revision) { IntakeNone } else { IntakeStaleCapture { captured_against: captured_revision } },
+                                              work: match belt_capture_work(node_id: subject.node_id, attempt_key: subject.attempt_key) {
+                                                Present { value: w } => WorkCapture { work: w }
+                                                Absent => NoWork
+                                              },
+                                            }], acc.records),
+                                            refused: none,
+                                          }
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                  })
+                match acc.refused {
+                  Present { value: detail } => LegacyIntakePlanRefused { detail: detail }
+                  Absent => LegacyIntakePlanned { records: reverse(acc.records) }
                 }
               }
+            }
+        }
+    }
+  }
+}
+
+// THE CONVERSION, IDEMPOTENT AND OUTSIDE A TICK. A repository with nothing unrecorded is the typed
+// no-op (a re-run writes nothing). Otherwise the plan is derived from the attempts' recorded bases,
+// recorded through the SCM's one admission for it (record_legacy_intakes), and saved under the
+// generation the load observed, so a belt tick that moved the envelope in between refuses the write
+// rather than being clobbered.
+type BeltIntakeConversion
+  = IntakeConverted { path: String, records: List<LegacyIntakeRecord>, head_standing: BeltLineStanding }
+  | IntakeConversionNoOp { path: String }
+  | IntakeConversionRefused { path: String, detail: String }
+
+fn belt_scm_intake_convert(instance: HostDashboardInstance, project_key: String) -> BeltIntakeConversion {
+  let path = belt_scm_project_repository_path(instance: instance, project_key: project_key)
+  match load_repository_indexed(path: path) {
+    RepositoryLoadRefused { cause } => IntakeConversionRefused { path: path, detail: belt_scm_load_refusal_detail(cause: cause) }
+    RepositoryLoaded { path: _, envelope, generation } => {
+      let observed = envelope.commits
+        |> filter(c => match c.intake {
+          IntakeUnrecordedByFormat => match belt_candidate_commit_subject(message: c.message) { Present { value: _ } => true Absent => false }
+          IntakeNone => false
+          IntakeBase { revision: _ } => false
+          IntakeAdvance { from: _, to: _ } => false
+          IntakeStaleCapture { captured_against: _ } => false
+        })
+        |> map(c => BeltLegacyCaptureBase { commit: minted_id_ordinal(id: c.reference.identity), base: belt_legacy_capture_base(instance: instance, source: c) })
+      belt_scm_intake_convert_over(path: path, envelope: envelope, generation: GenerationExpected(generation), observed: observed)
+    }
+  }
+}
+
+fn belt_scm_intake_convert_over(path: String, envelope: RepositoryEnvelope, generation: RepositoryGenerationExpectation, observed: List<BeltLegacyCaptureBase>) -> BeltIntakeConversion {
+  match belt_legacy_intake_plan(commits: envelope.commits, observed: observed) {
+    LegacyIntakePlanRefused { detail } =>
+      match record_legacy_intakes(repository: envelope, records: []) {
+        LegacyIntakesNothingUnrecorded => IntakeConversionNoOp { path: path }
+        LegacyIntakesRecorded { repository: _ } => IntakeConversionRefused { path: path, detail: detail }
+        LegacyIntakesRefused { cause: _ } => IntakeConversionRefused { path: path, detail: detail }
+      }
+    LegacyIntakePlanned { records } =>
+      match record_legacy_intakes(repository: envelope, records: records) {
+        LegacyIntakesNothingUnrecorded => IntakeConversionNoOp { path: path }
+        LegacyIntakesRefused { cause } => IntakeConversionRefused { path: path, detail: belt_legacy_intake_refusal_detail(cause: cause) }
+        LegacyIntakesRecorded { repository: converted } =>
+          match save_repository_sharded_guarded(path: path, repo: converted, expected: generation) {
+            RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _, generation: _ }) =>
+              IntakeConverted { path: path, records: records, head_standing: belt_selected_head_line_standing(envelope: converted) }
+            RepositoryGuardedSaveOutcome(RepositorySaveRefusedByCodec { path: _, cause: _ }) =>
+              IntakeConversionRefused { path: path, detail: "the converted envelope could not be encoded for persistence" }
+            RepositoryGuardedSaveOutcome(RepositoryFileUnwritable { path: p, error }) =>
+              IntakeConversionRefused { path: path, detail: join(["the converted envelope could not be written to ", p, " (", error, ")"], "") }
+            RepositoryGuardedSaveOutcome(RepositoryWriteByteCountUnrepresentable { path: _, reported }) =>
+              IntakeConversionRefused { path: path, detail: join(["the envelope write reported a nonsensical byte count (", to_string(reported), ")"], "") }
+            RepositoryStaleGenerationRefused { path: _, expected: _, found: _ } =>
+              IntakeConversionRefused { path: path, detail: "the envelope changed on disk since the conversion loaded it; nothing was written, re-run the conversion" }
+            RepositoryGuardedSaveUnobservable { path: _, error } =>
+              IntakeConversionRefused { path: path, detail: join(["the on-disk envelope generation could not be observed, so the conversion refused to write unguarded: ", error], "") }
           }
       }
+  }
+}
+
+fn belt_legacy_intake_refusal_detail(cause: LegacyIntakeRefusal) -> String {
+  match cause {
+    LegacyIntakeUnknownCommit { commit } => join(["the plan names commit ", to_string(minted_id_ordinal(id: commit.identity)), ", which the envelope does not hold"], "")
+    LegacyIntakeAlreadyRecorded { commit } => join(["commit ", to_string(minted_id_ordinal(id: commit.identity)), " already records an intake"], "")
+    LegacyIntakeDuplicated { commit } => join(["commit ", to_string(minted_id_ordinal(id: commit.identity)), " is planned twice"], "")
+    LegacyIntakeUncovered { commit } => join(["commit ", to_string(minted_id_ordinal(id: commit.identity)), " is unrecorded and the plan does not cover it"], "")
+    LegacyIntakeRootNotBase { commit } => join(["root commit ", to_string(minted_id_ordinal(id: commit.identity)), " must record a base"], "")
+    LegacyIntakeBaseNotRoot { commit } => join(["commit ", to_string(minted_id_ordinal(id: commit.identity)), " is not a root and cannot record a base"], "")
+    LegacyIntakeNotRecordable { commit } => join(["commit ", to_string(minted_id_ordinal(id: commit.identity)), " is planned an intake a conversion cannot record"], "")
+    LegacyIntakeCensusRefused { cause: _ } => "the recorded population fails the intake census (a stale capture on its own base, a capture naming no work, or a broken line)"
+  }
+}
+
+fn belt_intake_record_json(record: LegacyIntakeRecord) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "commit", value: json_int(n: minted_id_ordinal(id: record.commit.identity))),
+    json_kv(key: "intake", value: encode_commit_intake(intake: record.intake)),
+  ])
+}
+
+fn belt_line_standing_json(standing: BeltLineStanding) -> JsonValue {
+  match standing {
+    LineClean => json_object(members: [json_kv(key: "standing", value: json_string(s: "clean"))])
+    LineStandingUnderivable { detail } => json_object(members: [json_kv(key: "standing", value: json_string(s: "underivable")), json_kv(key: "detail", value: json_string(s: detail))])
+    IntegratesStale { integration, source, captured_against, repository_base } =>
+      json_object(members: [
+        json_kv(key: "standing", value: json_string(s: "IntegratesStale")),
+        json_kv(key: "integration", value: json_int(n: integration)),
+        json_kv(key: "source", value: json_int(n: source)),
+        json_kv(key: "captured_against", value: json_string(s: captured_against)),
+        json_kv(key: "repository_base", value: json_string(s: repository_base)),
+      ])
+  }
+}
+
+data belt_intake_conversion_receipt_schema: String = "gunbc-belt-intake-conversion/v1"
+
+// THE ENTRY: `GUNBC_BELT_INSTANCE_ID=<instance> gunbc run --source-root dag --source-root src/v2
+// --entry dag/gunbc/roadmap/roadmap_belt_actuate.dag --function belt_scm_intake_convert_cli
+// --arg project_key=<project> --arg receipt_path=<receipt>`. The receipt names every recorded intake
+// and the head line's standing after conversion.
+fn belt_scm_intake_convert_cli(project_key: String, receipt_path: String) -> ProcessExit {
+  match belt_dispatch_instance_cli() {
+    Absent => exit_failure(reason: "belt_scm_intake_convert_cli: GUNBC_BELT_INSTANCE_ID names no admitted instance (fail-closed)")
+    Present { value: instance } => {
+      let outcome = belt_scm_intake_convert(instance: instance, project_key: project_key)
+      let document = serialize_json(v: match outcome {
+        IntakeConverted { path, records, head_standing } =>
+          json_object(members: [
+            json_kv(key: "schema", value: json_string(s: belt_intake_conversion_receipt_schema)),
+            json_kv(key: "status", value: json_string(s: "converted")),
+            json_kv(key: "path", value: json_string(s: path)),
+            json_kv(key: "records", value: json_array(elements: map(records, r => belt_intake_record_json(record: r)))),
+            json_kv(key: "head", value: belt_line_standing_json(standing: head_standing)),
+          ])
+        IntakeConversionNoOp { path } =>
+          json_object(members: [
+            json_kv(key: "schema", value: json_string(s: belt_intake_conversion_receipt_schema)),
+            json_kv(key: "status", value: json_string(s: "noop")),
+            json_kv(key: "path", value: json_string(s: path)),
+          ])
+        IntakeConversionRefused { path, detail } =>
+          json_object(members: [
+            json_kv(key: "schema", value: json_string(s: belt_intake_conversion_receipt_schema)),
+            json_kv(key: "status", value: json_string(s: "refused")),
+            json_kv(key: "path", value: json_string(s: path)),
+            json_kv(key: "detail", value: json_string(s: detail)),
+          ])
+      })
+      let w = Filesystem.Write(path: receipt_path, content: document)
+      if !w.success {
+        exit_failure(reason: join(["belt_scm_intake_convert_cli: receipt could not be written: ", w.error, "; result was ", document], ""))
+      } else {
+        match outcome {
+          IntakeConversionRefused { path: _, detail } => exit_failure(reason: join(["belt_scm_intake_convert_cli: refused: ", detail], ""))
+          IntakeConverted { path: _, records: _, head_standing: _ } => ExitSuccess
+          IntakeConversionNoOp { path: _ } => ExitSuccess
+        }
+      }
+    }
+  }
+}
+
+// THE CORRECTIVE INTEGRATION ENTRY (parent ruling on gunbc#13402): squash a fresh recapture into the
+// project's integration head, recording the stale integration it supersedes, outside a tick. The
+// supersession's guards are the SCM's admission (exact stale integration, on the head's line, not yet
+// superseded, fresh source); the merge sides are materialized from their own shards as the integrate
+// pass materializes them; the save is guarded by the generation the load observed. Invocation:
+// `GUNBC_BELT_INSTANCE_ID=<instance> gunbc run --source-root dag --source-root src/v2 --entry
+// dag/gunbc/roadmap/roadmap_belt_actuate.dag --function belt_scm_corrective_integrate_cli
+// --arg project_key=<project> --arg source=<recapture ordinal> --arg supersedes=<stale integration
+// ordinal> --arg receipt_path=<receipt>`.
+type BeltCorrectiveIntegration
+  = CorrectivelyIntegrated { head: Int, head_standing: BeltLineStanding }
+  | CorrectiveIntegrationRefused { detail: String }
+
+fn belt_supersession_refusal_detail(cause: SupersessionRefusal) -> String {
+  match cause {
+    SupersessionNotAnIntegration { named } => join(["commit ", to_string(minted_id_ordinal(id: named.identity)), " integrated nothing, so there is nothing to supersede"], "")
+    SupersessionStaleIntegrationIsARoot { named } => join(["commit ", to_string(minted_id_ordinal(id: named.identity)), " is a root, so there is no line before it to correct onto"], "")
+    SupersessionNotStale { named } => join(["commit ", to_string(minted_id_ordinal(id: named.identity)), " integrated a capture that is not stale"], "")
+    SupersessionAlreadySuperseded { named, by } => join(["commit ", to_string(minted_id_ordinal(id: named.identity)), " is already superseded by commit ", to_string(minted_id_ordinal(id: by.identity))], "")
+    SupersessionSourceNotFresh { source } => join(["source ", to_string(minted_id_ordinal(id: source.identity)), " is not a fresh capture against its own intake"], "")
+    SupersessionSourceNotACapture { source } => join(["commit ", to_string(minted_id_ordinal(id: source.identity)), " is not a capture, so it cannot be a recapture of anything"], "")
+    SupersessionWorkMismatch { stale, source } => join(["source ", to_string(minted_id_ordinal(id: source.identity)), " does not capture the work stale capture ", to_string(minted_id_ordinal(id: stale.identity)), " captured, so it is not its recapture"], "")
+    SupersessionMergeBaseRefused { refusal: _ } => "the recapture and the line before the stale integration share no derivable merge base"
+  }
+}
+
+fn belt_scm_corrective_integrate(path: String, source: Int, supersedes: Int, message: String) -> BeltCorrectiveIntegration {
+  match load_repository_indexed(path: path) {
+    RepositoryLoadRefused { cause } => CorrectiveIntegrationRefused { detail: belt_scm_load_refusal_detail(cause: cause) }
+    RepositoryLoaded { path: _, envelope, generation } =>
+      match envelope.checked_out {
+        Absent => CorrectiveIntegrationRefused { detail: "the project envelope selects no integration head" }
+        Present { value: head } => {
+          let candidate = RepositoryCommitRef { identity: MintedId { ordinal: source } }
+          let stale = RepositoryCommitRef { identity: MintedId { ordinal: supersedes } }
+          if !repository_commit_ref_eq(left: head, right: stale) {
+            CorrectiveIntegrationRefused { detail: join(["the integration head is commit ", to_string(minted_id_ordinal(id: head.identity)), ", not the stale integration ", to_string(supersedes), "; a correction is admitted only while the stale integration is the head"], "") }
+          } else {
+            match commit_at_reference(commits: envelope.commits, reference: stale) {
+              Absent => CorrectiveIntegrationRefused { detail: "the stale integration is not a commit of its own envelope" }
+              Present { value: stale_commit } =>
+                match stale_commit.ancestry {
+                  RootCommit => CorrectiveIntegrationRefused { detail: "the stale integration is a root, so there is no line before it to correct onto" }
+                  DescendsFrom { parent: stale_parent } =>
+          match belt_integrate_materialize_sides(path: path, envelope: envelope, head: stale_parent, candidate: candidate) {
+            DeltaResidentRefused { detail } => CorrectiveIntegrationRefused { detail: join(["a merge side's manifest could not be read from its shard: ", detail], "") }
+            DeltaResident { store: sides } =>
+              match fanin_correct_integration(
+                repository: RepositoryEnvelope { store: sides, commits: envelope.commits, commit_allocator: envelope.commit_allocator, checked_out: envelope.checked_out, staged: envelope.staged },
+                supersedes: stale,
+                candidate: candidate,
+                message: message,
+              ) {
+                FaninSupersessionRefused { cause } => CorrectiveIntegrationRefused { detail: join(["the supersession is refused: ", belt_supersession_refusal_detail(cause: cause)], "") }
+                FaninCorrected(outcome) =>
+                  match outcome {
+                    FaninAlreadyIntegrated { head: _ } => CorrectiveIntegrationRefused { detail: "the source is already integrated on this line" }
+                    FaninConflicted { conflicts } => CorrectiveIntegrationRefused { detail: join(["the corrective squash conflicts on ", to_string(count(conflicts)), " path(s); an owner must resolve them"], "") }
+                    FaninRefused { detail } => CorrectiveIntegrationRefused { detail: detail }
+                    FaninIntegrated { repository: advanced, head: new_head } => {
+                      let moved = RepositoryEnvelope { store: advanced.store, commits: advanced.commits, commit_allocator: advanced.commit_allocator, checked_out: Present { value: new_head }, staged: advanced.staged }
+                      match save_repository_sharded_guarded(path: path, repo: moved, expected: GenerationExpected(generation)) {
+                        RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _, generation: _ }) =>
+                          CorrectivelyIntegrated { head: minted_id_ordinal(id: new_head.identity), head_standing: belt_line_standing(commits: moved.commits, head: new_head) }
+                        RepositoryGuardedSaveOutcome(RepositorySaveRefusedByCodec { path: _, cause: _ }) => CorrectiveIntegrationRefused { detail: "the corrective squash was merged but the envelope could not be encoded" }
+                        RepositoryGuardedSaveOutcome(RepositoryFileUnwritable { path: p, error }) => CorrectiveIntegrationRefused { detail: join(["the envelope could not be written to ", p, " (", error, ")"], "") }
+                        RepositoryGuardedSaveOutcome(RepositoryWriteByteCountUnrepresentable { path: _, reported }) => CorrectiveIntegrationRefused { detail: join(["the envelope write reported a nonsensical byte count (", to_string(reported), ")"], "") }
+                        RepositoryStaleGenerationRefused { path: _, expected: _, found: _ } => CorrectiveIntegrationRefused { detail: "the envelope changed on disk since it was loaded; nothing was written" }
+                        RepositoryGuardedSaveUnobservable { path: _, error } => CorrectiveIntegrationRefused { detail: join(["the on-disk generation could not be observed: ", error], "") }
+                      }
+                    }
+                  }
+              }
+          }
+                }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn belt_scm_corrective_integrate_cli(project_key: String, source: Int, supersedes: Int, receipt_path: String) -> ProcessExit {
+  match belt_dispatch_instance_cli() {
+    Absent => exit_failure(reason: "belt_scm_corrective_integrate_cli: GUNBC_BELT_INSTANCE_ID names no admitted instance (fail-closed)")
+    Present { value: instance } => {
+      let path = belt_scm_project_repository_path(instance: instance, project_key: project_key)
+      let outcome = belt_scm_corrective_integrate(path: path, source: source, supersedes: supersedes, message: join(["corrective integration into ", project_key, ": candidate ", to_string(source), " supersedes commit ", to_string(supersedes)], ""))
+      let document = serialize_json(v: match outcome {
+        CorrectivelyIntegrated { head, head_standing } =>
+          json_object(members: [
+            json_kv(key: "schema", value: json_string(s: "gunbc-belt-corrective-integration/v1")),
+            json_kv(key: "status", value: json_string(s: "integrated")),
+            json_kv(key: "path", value: json_string(s: path)),
+            json_kv(key: "head", value: json_int(n: head)),
+            json_kv(key: "head_standing", value: belt_line_standing_json(standing: head_standing)),
+          ])
+        CorrectiveIntegrationRefused { detail } =>
+          json_object(members: [
+            json_kv(key: "schema", value: json_string(s: "gunbc-belt-corrective-integration/v1")),
+            json_kv(key: "status", value: json_string(s: "refused")),
+            json_kv(key: "path", value: json_string(s: path)),
+            json_kv(key: "detail", value: json_string(s: detail)),
+          ])
+      })
+      let w = Filesystem.Write(path: receipt_path, content: document)
+      if !w.success {
+        exit_failure(reason: join(["belt_scm_corrective_integrate_cli: receipt could not be written: ", w.error, "; result was ", document], ""))
+      } else {
+        match outcome {
+          CorrectiveIntegrationRefused { detail } => exit_failure(reason: join(["belt_scm_corrective_integrate_cli: refused: ", detail], ""))
+          CorrectivelyIntegrated { head: _, head_standing: _ } => ExitSuccess
+        }
+      }
+    }
+  }
+}
+
+// THE RECAPTURE ENTRY. A committed attempt's tree is captured against its recorded spawn base
+// (BaseAdvance) as a fresh CaptureWork of the same unit and attempt, without creating a git commit
+// -- the realization already exists. The tick's capture fires only while the worktree is dirty;
+// once commit-outcome is skipped: worktree clean, this is the only producer a corrective integrate
+// can name as --arg source. THE HEAD MUST BE THE ATTEMPT'S OWN RECORDED SUBMISSION, READ AT THE
+// SAME ADDRESS VERIFICATION AND THE DASHBOARD USE: belt_submission_capture_for_head. CaptureForHead
+// proceeds; CaptureAbsent refuses; CaptureUnreadable poisons and is never read as absence.
+// Invocation:
+// `GUNBC_BELT_INSTANCE_ID=<instance> gunbc run --source-root dag --source-root src/v2 --entry
+// dag/gunbc/roadmap/roadmap_belt_actuate.dag --function belt_scm_recapture_cli
+// --arg project_key=<project> --arg node_id=<node> --arg attempt_key=<key> --arg receipt_path=<receipt>`.
+type BeltRecapturePreconditions
+  = RecaptureAdmitted { head_sha: String, base_sha: String }
+  | RecaptureWorktreeDirty
+  | RecaptureHasNoCommittedRevision { detail: String }
+  | RecaptureBaseUnobservable { detail: String }
+
+fn belt_scm_recapture_preconditions(
+  porcelain_nul: String,
+  head: WorktreeHeadObservation,
+  base: BeltBaseSha,
+) -> BeltRecapturePreconditions {
+  if porcelain_nul != "" {
+    RecaptureWorktreeDirty
+  } else {
+    match head {
+      WorktreeHeadUnobserved { reason } => RecaptureHasNoCommittedRevision { detail: reason }
+      WorktreeHeadObserved { revision } =>
+        match base {
+          BaseShaUnobserved { reason } => RecaptureBaseUnobservable { detail: reason }
+          BaseShaObserved { base_sha } => RecaptureAdmitted { head_sha: revision as String, base_sha: base_sha }
+        }
+    }
+  }
+}
+
+type RecaptureCaptureGate
+  = RecaptureCaptureProceeds { capture: SubmissionCapture }
+  | RecaptureCaptureRefused { detail: String }
+  | RecaptureCapturePoisoned { detail: String }
+
+data recapture_capture_absent_detail: String = "no submission capture binds this HEAD: recapture stamps CaptureWork only onto the attempt's durable capture at this head's own address"
+
+fn belt_scm_recapture_capture_gate(observation: SubmissionCaptureObservation) -> RecaptureCaptureGate {
+  match observation {
+    CaptureForHead { capture } => RecaptureCaptureProceeds { capture: capture }
+    CaptureAbsent => RecaptureCaptureRefused { detail: recapture_capture_absent_detail }
+    CaptureUnreadable { reason } => RecaptureCapturePoisoned { detail: reason }
+  }
+}
+
+type BeltRecapture
+  = Recaptured { commit_ordinal: Int, repository_path: String }
+  | RecaptureRefused { detail: String }
+  | RecapturePoisoned { detail: String }
+
+fn belt_scm_recapture(
+  instance: HostDashboardInstance,
+  project_key: String,
+  node_id: String,
+  attempt_key: String,
+) -> BeltRecapture {
+  match project_key_for_node(node_id: node_id, memberships: roadmap_memberships()) {
+    Absent => RecapturePoisoned { detail: "multiple authored parents name this node; project ownership is ambiguous" }
+    Present { value: derived } =>
+      if derived != project_key {
+        RecaptureRefused {
+          detail: join(["project_key ", project_key, " is not the envelope of node ", node_id, " (derived key ", derived, ")"], ""),
+        }
+      } else {
+        let worktree = dispatch_worktree_path_for_instance(
+          instance: instance,
+          node_id: node_id as RoadmapNodeId,
+          attempt_key: attempt_key,
+        )
+        match belt_commit_git(instance: instance, worktree: worktree, args: shape_git_status_porcelain_nul_args()) {
+          ExecFailed { program, exit_code, stderr } =>
+            RecaptureRefused { detail: belt_commit_exec_detail(step: "status", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }) }
+          ExecRefused { program, reason } =>
+            RecaptureRefused { detail: belt_commit_exec_detail(step: "status", outcome: ExecRefused { program: program, reason: reason }) }
+          ExecOk { stdout } =>
+            match belt_scm_recapture_preconditions(
+              porcelain_nul: stdout,
+              head: belt_worktree_head_observe(instance: instance, worktree: worktree),
+              base: belt_scm_base_sha_observe(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key),
+            ) {
+              RecaptureWorktreeDirty =>
+                RecaptureRefused { detail: "the attempt worktree is dirty: recapture reads the committed tree, and a dirty tree is the tick's capture job" }
+              RecaptureHasNoCommittedRevision { detail } =>
+                RecaptureRefused { detail: join(["the attempt has no committed revision: ", detail], "") }
+              RecaptureBaseUnobservable { detail } => RecapturePoisoned { detail: detail }
+              RecaptureAdmitted { head_sha, base_sha: _ } =>
+                match belt_scm_recapture_capture_gate(observation: belt_submission_capture_for_head(
+                  instance: instance,
+                  worktree: worktree,
+                  dir: belt_attempt_submission_dir_for_instance(
+                    instance: instance,
+                    node_id: node_id as RoadmapNodeId,
+                    attempt_key: attempt_key,
+                  ),
+                  head_sha: head_sha,
+                )) {
+                  RecaptureCaptureRefused { detail } => RecaptureRefused { detail: detail }
+                  RecaptureCapturePoisoned { detail } => RecapturePoisoned { detail: detail }
+                  RecaptureCaptureProceeds { capture: _ } =>
+                match belt_scm_capture_candidate_tree(
+                  instance: instance,
+                  worktree: worktree,
+                  node_id: node_id as RoadmapNodeId,
+                  attempt_key: attempt_key,
+                  message: belt_candidate_commit_message(node_id: node_id, attempt_key: attempt_key) as String,
+                  committed_revision: Present { value: head_sha },
+                ) {
+                  ScmCaptureMintRefused { detail } => RecaptureRefused { detail: detail }
+                  ScmCaptureMintPoisoned { detail } => RecapturePoisoned { detail: detail }
+                  ScmCandidateMinted { repository, generation, path, commit_ordinal, commit_root_locator } =>
+                    match belt_capture_standing(
+                      commits: repository.commits,
+                      candidate: RepositoryCommitRef { identity: MintedId { ordinal: commit_ordinal } },
+                    ) {
+                      CaptureStandingUnderivable { detail } => RecapturePoisoned { detail: detail }
+                      CaptureBaseStale { commit: _, captured_against: _, repository_base: _ } =>
+                        RecaptureRefused {
+                          detail: belt_supersession_refusal_detail(cause: SupersessionSourceNotFresh {
+                            source: RepositoryCommitRef { identity: MintedId { ordinal: commit_ordinal } },
+                          }),
+                        }
+                      CaptureOnBase =>
+                        match belt_scm_persist_capture(mint: ScmCandidateMinted {
+                          repository: repository,
+                          generation: generation,
+                          path: path,
+                          commit_ordinal: commit_ordinal,
+                          commit_root_locator: commit_root_locator,
+                        }) {
+                          ScmCaptureRefused { detail } => RecaptureRefused { detail: detail }
+                          ScmCapturePoisoned { detail } => RecapturePoisoned { detail: detail }
+                          ScmCandidateCaptured { repository_path, commit_ordinal: saved, commit_root_locator: _ } =>
+                            Recaptured { commit_ordinal: saved, repository_path: repository_path }
+                        }
+                    }
+                }
+                }
+            }
+        }
+      }
+  }
+}
+
+data belt_recapture_receipt_schema: String = "gunbc-belt-recapture/v1"
+
+fn belt_scm_recapture_cli(project_key: String, node_id: String, attempt_key: String, receipt_path: String) -> ProcessExit {
+  match belt_dispatch_instance_cli() {
+    Absent => exit_failure(reason: "belt_scm_recapture_cli: GUNBC_BELT_INSTANCE_ID names no admitted instance (fail-closed)")
+    Present { value: instance } => {
+      let outcome = belt_scm_recapture(instance: instance, project_key: project_key, node_id: node_id, attempt_key: attempt_key)
+      let document = serialize_json(v: match outcome {
+        Recaptured { commit_ordinal, repository_path } =>
+          json_object(members: [
+            json_kv(key: "schema", value: json_string(s: belt_recapture_receipt_schema)),
+            json_kv(key: "status", value: json_string(s: "recaptured")),
+            json_kv(key: "path", value: json_string(s: repository_path)),
+            json_kv(key: "commit_ordinal", value: json_int(n: commit_ordinal)),
+          ])
+        RecaptureRefused { detail } =>
+          json_object(members: [
+            json_kv(key: "schema", value: json_string(s: belt_recapture_receipt_schema)),
+            json_kv(key: "status", value: json_string(s: "refused")),
+            json_kv(key: "detail", value: json_string(s: detail)),
+          ])
+        RecapturePoisoned { detail } =>
+          json_object(members: [
+            json_kv(key: "schema", value: json_string(s: belt_recapture_receipt_schema)),
+            json_kv(key: "status", value: json_string(s: "poisoned")),
+            json_kv(key: "detail", value: json_string(s: detail)),
+          ])
+      })
+      let w = Filesystem.Write(path: receipt_path, content: document)
+      if !w.success {
+        exit_failure(reason: join(["belt_scm_recapture_cli: receipt could not be written: ", w.error, "; result was ", document], ""))
+      } else {
+        match outcome {
+          RecaptureRefused { detail } => exit_failure(reason: join(["belt_scm_recapture_cli: refused: ", detail], ""))
+          RecapturePoisoned { detail } => exit_failure(reason: join(["belt_scm_recapture_cli: poisoned: ", detail], ""))
+          Recaptured { commit_ordinal: _, repository_path: _ } => ExitSuccess
+        }
+      }
+    }
   }
 }
 
@@ -11035,25 +12265,24 @@ fn belt_integrate_into_envelope(
   capture: SubmissionCapture,
   project_key: String,
   dir: String,
-  attempt_base: BeltBaseSha,
 ) -> BeltEnvelopeIntegration {
   match load_repository_indexed(path: capture.scm_repository) {
     RepositoryLoadRefused { cause } =>
       EnvelopeIntegrationUnreadable { detail: belt_scm_load_refusal_detail(cause: cause) }
     RepositoryLoaded { path: _, envelope, generation } =>
-      match belt_integrate_stale_base_detail(envelope: envelope, base: attempt_base) {
-        Present { value: detail } =>
-          match attempt_base {
-            BaseShaUnobserved { reason: _ } => EnvelopeIntegrationUnreadable { detail: detail }
-            BaseShaObserved { base_sha: _ } =>
-              match belt_integration_receipt_record_state(instance: instance, worktree: worktree, dir: dir, capture: capture, project_key: project_key, state: IntegrationBlocked { detail: detail }) {
-                IntegrationReceiptRecorded => EnvelopeIntegrationBlocked { detail: detail }
-                IntegrationReceiptRecordFailed { detail: d } => EnvelopeIntegrationUnreadable { detail: d }
-              }
-          }
-        Absent => {
       let candidate = RepositoryCommitRef { identity: MintedId { ordinal: capture.scm_commit_ordinal } }
-      match belt_line_standing_detail(standing: belt_selected_head_line_standing(instance: instance, envelope: envelope)) {
+      match belt_capture_standing(commits: envelope.commits, candidate: candidate) {
+        CaptureStandingUnderivable { detail } =>
+          EnvelopeIntegrationUnreadable { detail: belt_capture_underivable_detail(detail: detail) }
+        CaptureBaseStale { commit, captured_against, repository_base } => {
+          let detail = belt_capture_base_stale_detail(commit: commit, captured_against: captured_against, repository_base: repository_base)
+          match belt_integration_receipt_record_state(instance: instance, worktree: worktree, dir: dir, capture: capture, project_key: project_key, state: IntegrationBlocked { detail: detail }) {
+            IntegrationReceiptRecorded => EnvelopeIntegrationBlocked { detail: detail }
+            IntegrationReceiptRecordFailed { detail: d } => EnvelopeIntegrationUnreadable { detail: d }
+          }
+        }
+        CaptureOnBase => {
+      match belt_line_standing_detail(standing: belt_selected_head_line_standing(envelope: envelope)) {
         Present { value: line_detail } => EnvelopeIntegrationUnreadable { detail: line_detail }
         Absent =>
       match envelope.checked_out {
@@ -11121,7 +12350,7 @@ fn belt_integrate_into_envelope(
                   staged: advanced.staged,
                 }
                 match save_repository_sharded_guarded(path: capture.scm_repository, repo: moved, expected: GenerationExpected(generation)) {
-                  RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _ }) =>
+                  RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _, generation: _ }) =>
                     match belt_integration_receipt_record_state(instance: instance, worktree: worktree, dir: dir, capture: capture, project_key: project_key, state: IntegrationIntegrated) {
                       IntegrationReceiptRecorded => EnvelopeIntegrated
                       IntegrationReceiptRecordFailed { detail } => EnvelopeIntegrationUnreadable { detail: detail }
@@ -11286,11 +12515,6 @@ fn belt_integrate_candidate_core_for_instance(
                     capture: capture,
                     project_key: project_key,
                     dir: belt_attempt_integration_dir_for_instance(
-                      instance: instance,
-                      node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
-                      attempt_key: attempt_key,
-                    ),
-                    attempt_base: belt_scm_base_sha_observe(
                       instance: instance,
                       node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
                       attempt_key: attempt_key,
@@ -11752,28 +12976,104 @@ fn belt_publish_tree_of(entries: List<CorpusManifestEntry>) -> List<String> {
   sort_by(entries, e => e.path as String) |> map(e => join([e.path as String, "=", object_id_key(identity: e.source.locator)], ""))
 }
 
+// THE PUBLISH BASE: THE INTAKE COMMIT WHOSE TREE THE INTEGRATION WORKTREE IS CHECKED OUT AT, and
+// against whose manifest the head's re-bound entries are planned. A head's tree contains every
+// external revision its line and its LIVE integrated sources were based on (a superseded
+// integration's content was replaced by its corrective squash), and those intake commits lie on ONE
+// chain (gunbc.scm.repository_envelope mint_intake_advance), so the base is the deepest of them:
+// diffing against an earlier one would publish the upstream change between the two as if it were the
+// work. A line that still reads unrecorded has not been converted and is underivable.
+type BeltPublishBase {
+  commit: RepositoryCommit
+  sha: String
+}
+
+type BeltPublishBaseDerivation
+  = PublishBaseDerived { base: BeltPublishBase }
+  | PublishBaseUnderivable { detail: String }
+
+type BeltPublishBaseAcc {
+  typed: List<RepositoryCommitRef>
+  refused: String?
+}
+
+fn belt_publish_base(commits: List<RepositoryCommit>, head: RepositoryCommitRef) -> BeltPublishBaseDerivation {
+  match belt_line_integrated_sources(commits: commits, head: head) {
+    LineSourcesUnreadable { detail } => PublishBaseUnderivable { detail: detail }
+    LineSourcesRead { sources } => {
+      let lines = concat([head], map(belt_line_live_sources(sources: sources), l => l.source.reference))
+      let acc = fold(lines, init: BeltPublishBaseAcc { typed: [], refused: none }, f: (acc, at) =>
+        match acc.refused {
+          Present { value: _ } => acc
+          Absent =>
+            match line_intake(commits: commits, head: at) {
+              LineIntakeAt { commit, revision: _ } => BeltPublishBaseAcc { typed: concat([commit], acc.typed), refused: none }
+              LineIntakeUnrecorded { commit: _ } => BeltPublishBaseAcc { typed: acc.typed, refused: Present { value: join(["commit ", to_string(minted_id_ordinal(id: at.identity)), " is on a line that predates typed base records and has not been converted (belt_scm_intake_convert_cli)"], "") } }
+              LineIntakeAbsent => BeltPublishBaseAcc { typed: acc.typed, refused: Present { value: join(["commit ", to_string(minted_id_ordinal(id: at.identity)), " is on no base line"], "") } }
+              LineIntakeUnreadable { at: u } => BeltPublishBaseAcc { typed: acc.typed, refused: Present { value: join(["the ancestry of commit ", to_string(minted_id_ordinal(id: u.identity)), " cannot be read"], "") } }
+            }
+        })
+      match acc.refused {
+        Present { value: detail } => PublishBaseUnderivable { detail: detail }
+        Absent =>
+          match (sort_by(acc.typed, r => 0 - belt_line_depth(commits: commits, at: r))).first() {
+            Absent => PublishBaseUnderivable { detail: "the head's line records no base" }
+            Present { value: deepest } =>
+              match commit_at_reference(commits: commits, reference: deepest) {
+                Absent => PublishBaseUnderivable { detail: "the publish base is not a commit of its own envelope, which is envelope damage" }
+                Present { value: base_commit } =>
+                  PublishBaseDerived { base: BeltPublishBase { commit: base_commit, sha: belt_line_revision_sha(commits: commits, at: deepest) } }
+              }
+          }
+      }
+    }
+  }
+}
+
+fn belt_line_depth(commits: List<RepositoryCommit>, at: RepositoryCommitRef) -> Int {
+  match ancestry_walk(start: at, history: repository_history(commits: commits)) {
+    AncestryTraced { chain } => count(chain)
+    AncestryBrokenAt { commit: _, missing_parent: _ } => 0
+    AncestryStartNotInHistory { start: _ } => 0
+    AncestryRevisitsACommit { detected_from: _ } => 0
+  }
+}
+
+// WHAT A PUBLISH IS ABOUT, READ FROM THE INDEX ONCE: the head, and the base its worktree is checked
+// out at. The same envelope value then plans the delta, so the index is not read twice.
+type BeltPublishSubject
+  = PublishSubjectRead { envelope: RepositoryEnvelope, head_commit: RepositoryCommit, base: BeltPublishBase }
+  | PublishSubjectUnreadable { detail: String }
+
+fn belt_publish_subject_of(path: String) -> BeltPublishSubject {
+  match load_repository_indexed(path: path) {
+    RepositoryLoadRefused { cause } => PublishSubjectUnreadable { detail: belt_scm_load_refusal_detail(cause: cause) }
+    RepositoryLoaded { path: _, envelope, generation: _ } =>
+      match envelope.checked_out {
+        Absent => PublishSubjectUnreadable { detail: "the project envelope selects no integration head, so there is nothing to publish" }
+        Present { value: head } =>
+          match commit_at_reference(commits: envelope.commits, reference: head) {
+            Absent => PublishSubjectUnreadable { detail: "the integration head is not a commit of its own envelope, which is envelope damage" }
+            Present { value: head_commit } =>
+              match belt_publish_base(commits: envelope.commits, head: head) {
+                PublishBaseUnderivable { detail } =>
+                  PublishSubjectUnreadable { detail: join(["the publish base is underivable, so which head entries the base checkout already holds is unknown and the publish refuses rather than recovering the whole corpus: ", detail], "") }
+                PublishBaseDerived { base } => PublishSubjectRead { envelope: envelope, head_commit: head_commit, base: base }
+              }
+          }
+      }
+  }
+}
+
 fn belt_publish_head_delta(
   instance: HostDashboardInstance,
   path: String,
   envelope: RepositoryEnvelope,
   head_commit: RepositoryCommit,
-  base_sha: String,
+  base: BeltPublishBase,
 ) -> BeltPublishDelta {
-  match belt_scm_root_commit_ref(envelope: envelope) {
-    Absent => PublishDeltaRefused { detail: "the project envelope holds no root commit, so the base the integration worktree holds has no manifest to diff against" }
-    Present { value: root_ref } =>
-      match commit_at_reference(commits: envelope.commits, reference: root_ref) {
-        Absent => PublishDeltaRefused { detail: "the root commit is not a commit of its own envelope, which is envelope damage" }
-        Present { value: root_commit } =>
-          if root_commit.message != join(["project base: ", base_sha], "") {
-            PublishDeltaRefused {
-              detail: join([
-                "the envelope's root commit does not record the intake base ", base_sha,
-                " the integration worktree is checked out at, so which head entries that checkout already holds is underivable; the publish refuses rather than recovering the whole corpus",
-              ], ""),
-            }
-          } else {
-            match belt_line_standing_detail(standing: belt_head_line_standing(instance: instance, envelope: envelope, head: head_commit.reference)) {
+  let root_commit = base.commit
+            match belt_line_standing_detail(standing: belt_line_standing(commits: envelope.commits, head: head_commit.reference)) {
               Present { value: line_detail } => PublishDeltaRefused { detail: line_detail }
               Absent =>
             match materialize_objects(envelope_path: path, store: envelope.store, identities: [head_commit.root.locator, root_commit.root.locator]) {
@@ -11808,9 +13108,6 @@ fn belt_publish_head_delta(
                 }
             }
             }
-          }
-      }
-  }
 }
 
 fn belt_publish_project_for_instance(
@@ -11819,14 +13116,12 @@ fn belt_publish_project_for_instance(
   attempt_key: String,
   project_key: String,
 ) -> BeltPublishOutcome {
-  match belt_scm_base_sha_observe(
-    instance: instance,
-    node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
-    attempt_key: attempt_key,
-  ) {
-    BaseShaUnobserved { reason } =>
-      PublishEvidenceUnreadable { node_id: node_id, detail: reason }
-    BaseShaObserved { base_sha } =>
+  let envelope_path = belt_scm_project_repository_path(instance: instance, project_key: project_key)
+  match belt_publish_subject_of(path: envelope_path) {
+    PublishSubjectUnreadable { detail } =>
+      PublishEvidenceUnreadable { node_id: node_id, detail: detail }
+    PublishSubjectRead { envelope, head_commit, base } => {
+      let base_sha = base.sha
       match belt_publish_project_worktree(instance: instance, project_key: project_key, base_sha: base_sha) {
         ExecFailed { program, exit_code, stderr } =>
           PublishEvidenceUnreadable {
@@ -11868,26 +13163,7 @@ fn belt_publish_project_for_instance(
                     detail: belt_commit_exec_detail(step: "integration-clean", outcome: ExecRefused { program: program, reason: reason }),
                   }
                 ExecOk { stdout: _ } => {
-                  let envelope_path = belt_scm_project_repository_path(instance: instance, project_key: project_key)
-                  match load_repository_indexed(path: envelope_path) {
-                    RepositoryLoadRefused { cause } =>
-                      PublishEvidenceUnreadable { node_id: node_id, detail: belt_scm_load_refusal_detail(cause: cause) }
-                    RepositoryLoaded { path: _, envelope, generation: _ } =>
-                      match envelope.checked_out {
-                        Absent =>
-                          PublishEvidenceUnreadable {
-                            node_id: node_id,
-                            detail: "the project envelope selects no integration head, so there is nothing to publish",
-                          }
-                        Present { value: head } =>
-                          match commit_at_reference(commits: envelope.commits, reference: head) {
-                            Absent =>
-                              PublishEvidenceUnreadable {
-                                node_id: node_id,
-                                detail: "the integration head is not a commit of its own envelope, which is envelope damage",
-                              }
-                            Present { value: head_commit } =>
-                              match belt_publish_head_delta(instance: instance, path: envelope_path, envelope: envelope, head_commit: head_commit, base_sha: base_sha) {
+                              match belt_publish_head_delta(instance: instance, path: envelope_path, envelope: envelope, head_commit: head_commit, base: base) {
                                 PublishDeltaRefused { detail } =>
                                   PublishEvidenceUnreadable { node_id: node_id, detail: detail }
                                     PublishDeltaFiles { files, deletes } =>
@@ -11967,14 +13243,12 @@ fn belt_publish_project_for_instance(
                                           }
                                       }
                               }
-                          }
-                      }
                   }
                 }
               }
           }
         }
-      }
+    }
   }
 }
 

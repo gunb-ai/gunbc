@@ -519,15 +519,15 @@ pub fn parser_state_arg_expr(
                     let idx = pair.0.clone();
                     let arg_node = pair.1.clone();
                     let matches_state =
-                        if (crate::v1_std_core::arg_name_at(arg_node.clone(), si.clone())
-                            .as_deref()
-                            != Some("".to_string()).as_deref())
-                        {
-                            (crate::v1_std_core::arg_name_at(arg_node.clone(), si.clone())
-                                .as_deref()
-                                == Some(state_param.name.clone()).as_deref())
-                        } else {
-                            (idx.clone() == state_param.index.clone())
+                        match crate::v1_std_core::arg_name_at(arg_node.clone(), si.clone()) {
+                            Some(label) => {
+                                if (label.clone() != "".to_string()) {
+                                    (label.clone() == state_param.name.clone())
+                                } else {
+                                    (idx.clone() == state_param.index.clone())
+                                }
+                            }
+                            std::option::Option::None => (idx.clone() == state_param.index.clone()),
                         };
                     if matches_state.clone() {
                         Some(crate::v1_std_core::arg_value(arg_node.clone()))
@@ -3078,7 +3078,7 @@ pub fn is_list_shrink_expr(
                     .clone()
                     {
                         ExprData::ExprLiteral { ref value, .. }
-                            if matches!(value.as_ref(), LiteralValue::LitInt { .. }) =>
+                            if matches!(value.as_ref(), LiteralValue::LitInt { value: _, .. }) =>
                         {
                             let LiteralValue::LitInt { value: n, .. } = value.as_ref() else {
                                 unreachable!()
@@ -3115,7 +3115,7 @@ pub fn is_generalized_shrink(expr: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIn
                     .clone()
                     {
                         ExprData::ExprLiteral { ref value, .. }
-                            if matches!(value.as_ref(), LiteralValue::LitInt { .. }) =>
+                            if matches!(value.as_ref(), LiteralValue::LitInt { value: _, .. }) =>
                         {
                             let LiteralValue::LitInt { value: n, .. } = value.as_ref() else {
                                 unreachable!()
@@ -4517,7 +4517,10 @@ pub fn is_arithmetic_descent_expr(
                         == param_name.clone())
                         && match (*right.expr_data.clone()).clone() {
                             ExprData::ExprLiteral { ref value, .. }
-                                if matches!(value.as_ref(), LiteralValue::LitInt { .. }) =>
+                                if matches!(
+                                    value.as_ref(),
+                                    LiteralValue::LitInt { value: _, .. }
+                                ) =>
                             {
                                 let LiteralValue::LitInt { value: n, .. } = value.as_ref() else {
                                     unreachable!()

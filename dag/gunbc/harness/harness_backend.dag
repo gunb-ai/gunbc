@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.checked_arithmetic { CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
 import std.algebra { trim }
 import v2.std.algebra { filter }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import product.fabric.demand { ObservationReceiptRef }
 import std.measure { Second, second, second_count }
 import gunbc.serving.engine_progress { EngineProgressSample }
@@ -98,7 +98,12 @@ fn harness_bounded_presence(url: String) -> HarnessBoundedPresence {
     match curl_exit_outcome(code: read.exit_code) {
       CurlCouldNotConnect => HarnessConnectFailed { url: url, curl_exit: read.exit_code }
       CurlOperationTimedOut => HarnessDeadline { url: url }
-      _ => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
+      CurlTransferCompleted => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
+      CurlCouldNotResolveHost => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
+      CurlTlsHandshakeFailed => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
+      CurlEmptyReply => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
+      CurlReceiveFailed => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
+      CurlExitUnnamed { code: _ } => HarnessTransportUnread { url: url, curl_exit: read.exit_code }
     }
   }
 }
@@ -263,6 +268,18 @@ type HarnessRosterFold {
   unresolved: List<NonEmptyStr>
 }
 
+fn harness_roster_decline(acc: HarnessRosterFold, e: ServingRouteEndpoint, standing: HarnessBackendStanding) -> HarnessRosterFold {
+  HarnessRosterFold {
+    serving: acc.serving,
+    declined: concat(acc.declined, [HarnessRouteDecline {
+      endpoint: serving_route_endpoint_wire(e: e),
+      group_wire: fabric_group_wire(g: e.group),
+      standing: standing,
+    }]),
+    unresolved: acc.unresolved,
+  }
+}
+
 fn harness_observe_route(acc: HarnessRosterFold, route: ServingRoute) -> HarnessRosterFold {
   match route {
     ServingRouteUnresolved { group: _, obligation: o } =>
@@ -281,16 +298,9 @@ fn harness_observe_route(acc: HarnessRosterFold, route: ServingRoute) -> Harness
             declined: acc.declined,
             unresolved: acc.unresolved,
           }
-        _ =>
-          HarnessRosterFold {
-            serving: acc.serving,
-            declined: concat(acc.declined, [HarnessRouteDecline {
-              endpoint: serving_route_endpoint_wire(e: e),
-              group_wire: fabric_group_wire(g: e.group),
-              standing: standing,
-            }]),
-            unresolved: acc.unresolved,
-          }
+        HarnessBackendModelNotAdmitted { advertised: _ } => harness_roster_decline(acc: acc, e: e, standing: standing)
+        HarnessBackendUnreachable { url: _ } => harness_roster_decline(acc: acc, e: e, standing: standing)
+        HarnessBackendUnreadable { cause: _ } => harness_roster_decline(acc: acc, e: e, standing: standing)
       }
     }
   }

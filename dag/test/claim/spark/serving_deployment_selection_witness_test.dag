@@ -8,7 +8,7 @@ import extdeps.vllm.engine_args {
   VllmMemoryRequest, VllmKvCacheDtypeRequest, KvFp8DsMla, KvFp8, KvAuto, KvNvfp4,
   vllm_kv_cache_dtype_wire, vllm_kv_cache_dtype_request_matching_wire,
 }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.interval { IntervalReady, IntervalRefused }
 import gunbc.spark.pair_serving_observed {
   GroupRankFreeMemoryObserved, gib_hundredths_interval, group_rank_free_memory_upper,

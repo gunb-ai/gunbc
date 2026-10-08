@@ -17,7 +17,7 @@ import v2.lens.common.graph_invariant {
   graph_reach_unreachable_diagnostic
 }
 import std.perturbation { BackwardDiffInDiffOut, perturbation_consistent }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,

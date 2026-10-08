@@ -55,12 +55,15 @@ module gunbc.scm.repository_convert
 // (gunbc.scm.repository_load load_repository_indexed, RepositoryIndexHasNoObjectRoster) and the roster
 // can only be derived by decoding every shard ONCE. This entry is that once: a v7 envelope plans
 // RepositoryConvertShardedPlan, the shell loads it whole through load_repository (every shard read and
-// assembled, the full census run), and the same guarded sharded writer re-saves it as v8 -- manifests
-// split into their own shards, every object rostered. The writer's order is the migration's safety:
+// assembled, the full census run), and the same guarded sharded writer re-saves it in the rostered
+// layout (v9 since the typed intake record: v8's index plus each commit's intake, which a v7
+// repository's commits carry as unrecorded) -- manifests split into their own shards, every object
+// rostered. The writer's order is the migration's safety:
 // new shards first (the v7 shards are never touched or deleted), the roster's shard coverage
 // confirmed by a fresh listing, and the index -- the envelope pointer -- moved last under the
 // generation guard, so an interrupted run leaves the v7 index and every shard it rosters intact and
-// loadable. A v8 envelope is the typed no-op, so a re-run writes nothing. It is run outside a belt
+// loadable. A v8 or v9 envelope is the typed no-op, so a re-run writes nothing: the two share the
+// rostered layout and differ only inside a commit record, which the indexed reader takes as it is. It is run outside a belt
 // tick: `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/scm/repository_convert.dag
 // --function scm_convert_repository_cli --arg path=<envelope> --arg receipt_path=<receipt>`.
 
@@ -96,6 +99,7 @@ import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
   RepositoryDecodeRefusal,
   repository_format_of,
+  RepositoryFormatV9,
   RepositoryFormatV8,
   RepositoryFormatV7,
   RepositoryFormatV6,
@@ -196,6 +200,7 @@ type RepositoryConvertReadRefusal
 // tags itself.
 fn repository_convert_format_plan(tag: String, v: JsonValue) -> RepositoryConvertPlan {
   match repository_format_of(tag: tag) {
+    RepositoryFormatV9 => RepositoryConvertNoOpPlan
     RepositoryFormatV8 => RepositoryConvertNoOpPlan
     RepositoryFormatV7 => RepositoryConvertShardedPlan { from_format: tag }
     RepositoryFormatV6 =>
@@ -300,7 +305,7 @@ fn repository_convert_write(
   expected: RepositoryGenerationExpectation,
 ) -> RepositoryConvert {
   match save_repository_sharded_guarded(path: path, repo: envelope, expected: expected) {
-    RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written }) =>
+    RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written, generation: _ }) =>
       RepositoryConverted {
         path: path,
         from_format: from_format,
@@ -451,6 +456,7 @@ fn repository_convert_version_refused_detail(path: String, found: String) -> Str
   match repository_format_of(tag: found) {
     RepositoryFormatV4 =>
       join(["the envelope declares format ", found, ", which this build reads but does not convert (the conversion admits v5 and v6 monoliths): ", path], "")
+    RepositoryFormatV9 => repository_convert_unread_format_detail(path: path, found: found)
     RepositoryFormatV8 => repository_convert_unread_format_detail(path: path, found: found)
     RepositoryFormatV7 => repository_convert_unread_format_detail(path: path, found: found)
     RepositoryFormatV6 => repository_convert_unread_format_detail(path: path, found: found)

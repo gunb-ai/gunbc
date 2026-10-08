@@ -5,10 +5,11 @@
 // termination vocabulary), `gunbc.instrument_targets` (live target and binding rows, the
 // differential's classifier and rendering), `extdeps.bazel.label` (the label grammar mirrored
 // here) and `extdeps.bazel.target_pattern` (the pattern grammar mirrored here). The SET forms
-// (`//pkg:all`, `//pkg:*`, `//pkg/...`) this file admits are NOT executed anywhere yet: they are
-// refused with status 2 (`test_operand_set_form_refusal_rendered`, mirroring
-// `gunbc.target_invocation`), because their only admissible executor is the native test route and
-// no interpreter delegation may stand in for it. None of the
+// (`//pkg:all`, `//pkg:*`, `//pkg/...`) execute only inside a route's universe: the native test
+// route (`//v2/test/...`) or the claim route (`//test/claim/...`, the discovered witness claims,
+// evaluated by the floor's own discovery authority and claim evaluation). A set form outside both
+// is refused with status 2 (`test_operand_set_form_refusal_rendered`, mirroring
+// `gunbc.target_invocation`) and is never widened into another route. None of the
 // modeled modules is in the v1 seed's emitted closure — `src/gunbc_cli_dispatch_surface.rs` is
 // the only `gunbc.*` mirror the emitter produces — so this file is hand-written beside the
 // carrier, as `required_regen_host.rs` mirrors `v2.workflow.required_regen`. The seam is
@@ -17,8 +18,9 @@
 // `gunbc.target_invocation_seed_growth`.
 //
 // WHAT IS AND IS NOT GENERIC HERE. One route: argv operand -> admit pattern -> the operand's
-// CONTAINMENT in the native route's universe decides the executor. Inside it, the native test
-// route adjudicates that pattern through the emitted compiler. Outside it, a single target builds
+// CONTAINMENT in a route's universe decides the executor. Inside the native one, the native test
+// route adjudicates that pattern through the emitted compiler; inside the claim one, the claim
+// route evaluates the discovered claims the pattern selects. Outside both, a single target builds
 // the registry, exact lookup, invoke the bound producer, render its native standing; a set form
 // has no executor and is refused with status 2. No per-instrument arm on that route, and none
 // may be added; a second instrument is a row in `instrument_registry` plus one `Producer` arm in
@@ -279,6 +281,8 @@ pub enum TargetProducer {
     SelfHostBehavioralEquivalence,
     DependencyDemandCensus,
     GenericIdentityCensus,
+    InterpolationHoleCensus,
+    RegenRoundCost,
     /// `NativeClaimProgramProducer { entry }`: the entry is carried, so a second program of the same
     /// shape is a registry row naming its entry, never another variant.
     NativeClaimProgram {
@@ -454,6 +458,14 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("generic-identity-census"),
             TargetProducer::GenericIdentityCensus,
+        ),
+        (
+            instrument_label("interpolation-hole-census"),
+            TargetProducer::InterpolationHoleCensus,
+        ),
+        (
+            instrument_label("regen-round-cost"),
+            TargetProducer::RegenRoundCost,
         ),
     ]
 }
@@ -875,6 +887,10 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::GenericIdentityCensus => {
             run_generic_identity_census(&self_host_source_roots())
         }
+        TargetProducer::InterpolationHoleCensus => {
+            run_interpolation_hole_census(&self_host_source_roots())
+        }
+        TargetProducer::RegenRoundCost => run_regen_round_cost_instrument(),
         TargetProducer::SelfHostBehavioralEquivalence => run_cli_wire_census(
             "self-host-behavioral-equivalence",
             "dag/gunbc/instruments/self_host_behavioral_equivalence_take.dag",
@@ -1630,7 +1646,7 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
             _ => None,
         }
     };
-    let plan = (|| -> Result<(Vec<String>, String, String), String> {
+    let plan = (|| -> Result<(Vec<String>, String, String, String), String> {
         let requests = match &read("native_serve_probe_requests")? {
             crate::v1_interpreter::Value::List(items) => items
                 .iter()
@@ -1642,9 +1658,11 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
             .ok_or("the release revision is not a String")?;
         let refused = text(&read("native_serve_probe_refused_revision")?)
             .ok_or("the refused revision is not a String")?;
-        Ok((requests, release, refused))
+        let deadline = text(&read("native_serve_probe_request_deadline_ms")?)
+            .ok_or("the request deadline is not a String")?;
+        Ok((requests, release, refused, deadline))
     })();
-    let (requests, release, refused) = match plan {
+    let (requests, release, refused, deadline) = match plan {
         Ok(plan) => plan,
         Err(cause) => {
             return InvocationOutcome {
@@ -1658,6 +1676,7 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
         entry,
         &release,
         &refused,
+        &deadline,
         &requests,
     ) {
         Ok(run) => run,
@@ -1691,6 +1710,10 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
         (
             Some("refused_stderr".to_string()),
             crate::v1_interpreter::Value::Str(run.refused_stderr.clone().into()),
+        ),
+        (
+            Some("served_exit_status".to_string()),
+            crate::v1_interpreter::Value::Int(i64::from(run.served_exit_status.unwrap_or(-1))),
         ),
     ];
     let standing = match crate::v1_interpreter::run_in_context_with_args(
@@ -2051,8 +2074,131 @@ fn native_member_outcome(
 /// `test_operand_set_form_refusal_rendered`.
 fn test_operand_set_form_refusal_rendered(operand: &str) -> String {
     format!(
-        "gunbc test: {operand} denotes a SET of targets outside the native test route's universe; no executor enumerates that population, and set forms are never delegated to the interpreter"
+        "gunbc test: {operand} denotes a SET of targets outside every route's universe (the native test route and the claim route); no executor enumerates that population, and a set form is never widened into another route"
     )
+}
+
+/// `gunbc.discovery_census` `claim_route_universe`, mirrored: `//test/claim/...`, the subtree
+/// `site_label` maps every `test.claim.*` claim into. An operand contained in it (and not in the
+/// native universe, which is asked first) belongs to the claim route.
+pub fn claim_route_universe() -> TargetPattern {
+    TargetPattern::SubtreeTargets(vec!["test".to_string(), "claim".to_string()])
+}
+
+/// `gunbc.target_invocation` `ClaimRouteVerdict`, mirrored.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClaimRouteVerdict {
+    ClaimHeld,
+    ClaimDidNotHold,
+    ClaimUnobserved,
+}
+
+/// One claim's outcome as the route's verdict. `Fail`, `NotBool` and `ExitFailure` are
+/// observations that did not hold; every other arm is the absence of an observation -- an error,
+/// a refusal, an unwind, a budget interrupt -- and is never reported as a failing claim.
+/// Wildcard-free so a new outcome arm must be classified here.
+fn claim_route_verdict(outcome: &cli_run::ClaimOutcome) -> ClaimRouteVerdict {
+    use cli_run::ClaimOutcome as O;
+    match outcome {
+        O::Pass => ClaimRouteVerdict::ClaimHeld,
+        O::Fail | O::NotBool { .. } | O::ExitFailure { .. } => ClaimRouteVerdict::ClaimDidNotHold,
+        O::RuntimeError { .. }
+        | O::BudgetInterrupted { .. }
+        | O::CompletedOverBudget { .. }
+        | O::HostToolUnresolved { .. }
+        | O::HostEffectRefused { .. }
+        | O::Panicked { .. }
+        | O::NotAttempted { .. } => ClaimRouteVerdict::ClaimUnobserved,
+    }
+}
+
+/// `gunbc.target_invocation` `claim_route_termination`, mirrored: a definite failure dominates, an
+/// unobserved member or an empty selection is `SubjectUnreached`.
+fn claim_route_termination(verdicts: &[ClaimRouteVerdict]) -> Termination {
+    if verdicts.contains(&ClaimRouteVerdict::ClaimDidNotHold) {
+        Termination::ObservationDidNotHold
+    } else if verdicts.contains(&ClaimRouteVerdict::ClaimUnobserved) || verdicts.is_empty() {
+        Termination::SubjectUnreached
+    } else {
+        Termination::ObservationHeld
+    }
+}
+
+/// THE CLAIM ROUTE: select the discovered claims the operand's pattern contains, evaluate each,
+/// print one line per claim, fold the verdicts. The subject is narrowed to the modules the pattern
+/// can reach BEFORE discovery, so `//test/claim/m:x` reads one module, not the corpus; the corpus
+/// roots are `cli_run::witness_layer_roots`, the floor's own authority for them.
+fn run_claim_route(pattern: &TargetPattern) -> InvocationOutcome {
+    let rendered = render_target_pattern(pattern);
+    let module_selected = |module_path: &str| {
+        let segments: Vec<String> = module_path.split('.').map(str::to_string).collect();
+        match pattern {
+            TargetPattern::SingleTarget(label) => label.package_segments == segments,
+            TargetPattern::PackageTargets(_) | TargetPattern::SubtreeTargets(_) => {
+                target_pattern_within(&TargetPattern::PackageTargets(segments), pattern)
+            }
+        }
+    };
+    let claim_selected = |module_path: &str, function: &str| {
+        let label = Label {
+            package_segments: module_path.split('.').map(str::to_string).collect(),
+            target: function.to_string(),
+        };
+        target_pattern_within(&TargetPattern::SingleTarget(label), pattern)
+    };
+    let members = match cli_run::run_claim_route(
+        &cli_run::witness_layer_roots(),
+        &module_selected,
+        &claim_selected,
+    ) {
+        Ok(members) => members,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("claim route: {rendered} — {cause}"),
+            }
+        }
+    };
+    let mut verdicts = Vec::with_capacity(members.len());
+    for m in &members {
+        let verdict = claim_route_verdict(&m.outcome);
+        let word = match verdict {
+            ClaimRouteVerdict::ClaimHeld => "HELD",
+            ClaimRouteVerdict::ClaimDidNotHold => "DID-NOT-HOLD",
+            ClaimRouteVerdict::ClaimUnobserved => "UNOBSERVED",
+        };
+        let label = render_label(&Label {
+            package_segments: m.module_path.split('.').map(str::to_string).collect(),
+            target: m.function.clone(),
+        });
+        let detail = match verdict {
+            ClaimRouteVerdict::ClaimHeld => String::new(),
+            _ => format!(" outcome={:?}", m.outcome),
+        };
+        println!(
+            "{label} {word} eval_steps={} cpu_ms={}{detail}",
+            m.eval_steps, m.cpu_ms
+        );
+        verdicts.push(verdict);
+    }
+    let count = |v: ClaimRouteVerdict| verdicts.iter().filter(|x| **x == v).count();
+    let held = count(ClaimRouteVerdict::ClaimHeld);
+    let did_not_hold = count(ClaimRouteVerdict::ClaimDidNotHold);
+    let unobserved = count(ClaimRouteVerdict::ClaimUnobserved);
+    let termination = claim_route_termination(&verdicts);
+    let note = if verdicts.is_empty() {
+        " — the pattern selected no discovered claim"
+    } else {
+        ""
+    };
+    InvocationOutcome {
+        termination,
+        message: format!(
+            "claim route: {rendered} — {} claim(s): {held} held, {did_not_hold} did not hold, \
+             {unobserved} unobserved{note}",
+            verdicts.len()
+        ),
+    }
 }
 
 /// `gunbc.target_invocation` `BinaryInput`, mirrored.
@@ -2360,16 +2506,29 @@ pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
 }
 
 fn test_verb_after(operand: &str, freshness: &BinaryFreshness) -> InvocationOutcome {
+    match stale_binary_refusal(freshness) {
+        Some(refused) => refused,
+        None => test_verb(operand),
+    }
+}
+
+/// THE FRESHNESS DECISION, ALONE: `Some` is the refusal a stale or undecided binary earns before any
+/// producer runs, `None` admits the run (after logging the fresh inputs). Split from
+/// `test_verb_after` so its witness exercises the decision without reaching `test_verb`'s producers,
+/// several of which set the process cwd (`process_cwd_mutation_reachability_gate`).
+fn stale_binary_refusal(freshness: &BinaryFreshness) -> Option<InvocationOutcome> {
     let line = binary_freshness_rendered(freshness);
     match freshness {
         BinaryFreshness::Fresh { inputs, .. } => {
             eprintln!("{line} inputs={inputs}");
-            test_verb(operand)
+            None
         }
-        BinaryFreshness::Stale { .. } | BinaryFreshness::Undecided { .. } => InvocationOutcome {
-            termination: Termination::Refused,
-            message: line,
-        },
+        BinaryFreshness::Stale { .. } | BinaryFreshness::Undecided { .. } => {
+            Some(InvocationOutcome {
+                termination: Termination::Refused,
+                message: line,
+            })
+        }
     }
 }
 
@@ -2388,6 +2547,9 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
     };
     if target_pattern_within(&pattern, &native_route_default_pattern()) {
         return run_native_test_route(&pattern);
+    }
+    if target_pattern_within(&pattern, &claim_route_universe()) {
+        return run_claim_route(&pattern);
     }
     let label = match pattern {
         TargetPattern::SingleTarget(label) => label,
@@ -3193,6 +3355,38 @@ fn run_floor_memory_qualification() -> InvocationOutcome {
 mod native_route_termination_tests {
     use super::*;
 
+    /// `gunbc.target_invocation` `claim_route_termination`, mirrored: the same five rows
+    /// `test.claim.target_invocation_witness` `the_claim_route_termination_maps_to_the_three_exit_statuses`
+    /// pins on the model, so the host mirror cannot drift from it silently.
+    #[test]
+    fn claim_route_termination_matches_the_model() {
+        use ClaimRouteVerdict::*;
+        let status = |v: &[ClaimRouteVerdict]| invocation_exit_status(claim_route_termination(v));
+        assert_eq!(status(&[ClaimHeld, ClaimHeld]), 0);
+        assert_eq!(status(&[ClaimHeld, ClaimDidNotHold]), 1);
+        assert_eq!(status(&[ClaimUnobserved, ClaimDidNotHold]), 1);
+        assert_eq!(status(&[ClaimHeld, ClaimUnobserved]), 2);
+        assert_eq!(status(&[]), 2);
+    }
+
+    /// The claim universe is asked AFTER the native one and refuses what lies outside it, mirroring
+    /// the model's admission rows.
+    #[test]
+    fn claim_universe_containment_matches_the_model() {
+        let within = |operand: &str| {
+            target_pattern_within(
+                &parse_target_pattern(operand).expect("pattern"),
+                &claim_route_universe(),
+            )
+        };
+        assert!(within("//test/claim/target_invocation_witness:w"));
+        assert!(within("//test/claim/target_invocation_witness:all"));
+        assert!(within("//test/claim/..."));
+        assert!(!within("//test/..."));
+        assert!(!within("//dag/test/claim/compute:all"));
+        assert!(!within("//gunbc/instruments:self-host"));
+    }
+
     /// `gunbc.instrument_targets` `native_route_termination_under_qualification`, mirrored here and
     /// given its own red. The `.dag` witness pins the fold; this pins that THIS host applies it.
     ///
@@ -3416,7 +3610,7 @@ mod binary_freshness_tests {
             input: "a.rs".into(),
             why: "changed after the binary was built".into(),
         };
-        let outcome = test_verb_after("//gunbc/instruments:self-host", &stale);
+        let outcome = stale_binary_refusal(&stale).expect("a stale binary is refused");
         assert_eq!(outcome.termination, Termination::Refused);
         assert!(
             outcome.message.contains("cause=StaleBinary"),
@@ -3424,6 +3618,99 @@ mod binary_freshness_tests {
             outcome.message
         );
         assert!(outcome.message.contains("a.rs"));
+    }
+}
+
+/// `gunbc.instrument_targets` `interpolation_hole_census_label`. TRANSPORT ONLY: every `.dag` file
+/// under the source roots is read and handed to `v1.tests.claim.interpolation_hole_census` as
+/// `SourceFile` data; that module decides which files are subjects (those whose v1 lexing yields an
+/// interpolating template), the host loads each subject's closure, and the union is handed back for
+/// one compile. The standing, every row, every count and every completeness mismatch are that
+/// module's; this function holds only when the fixture standing AND the receipt's corpus standing (its first line) both hold. An unreadable root,
+/// file, fixture or closure is `SubjectUnreached`, never a standing.
+fn run_interpolation_hole_census(source_roots: &[String]) -> InvocationOutcome {
+    use crate::v1_compiler_compile::SourceFile;
+    use crate::v1_tests_claim_interpolation_hole_census as census;
+    use std::rc::Rc;
+    const FIXTURE: &str = "fixtures/interpolation_hole_census/a.dag";
+    let unreached = |detail: String| InvocationOutcome {
+        termination: Termination::SubjectUnreached,
+        message: format!("interpolation-hole-census: subject unreached: {detail}"),
+    };
+    let fixture = match std::fs::read_to_string(FIXTURE) {
+        Ok(content) => vec![Rc::new(SourceFile {
+            path: FIXTURE.to_string(),
+            content,
+        })],
+        Err(err) => return unreached(format!("fixture {FIXTURE}: {err}")),
+    };
+    let standing = census::interpolation_hole_fixture_standing(Rc::new(fixture.into()));
+    if standing.starts_with("REFUSED") {
+        return unreached(format!("fixture did not compile: {standing}"));
+    }
+    for line in standing.lines() {
+        println!("interpolation-hole-census: {line}");
+    }
+    let mut paths: Vec<std::path::PathBuf> = Vec::new();
+    for root in source_roots {
+        if let Err(detail) =
+            cli_run::collect_dag_files_result(std::path::Path::new(root), &mut paths)
+        {
+            return unreached(format!("root {root}: {detail}"));
+        }
+    }
+    let mut corpus: Vec<Rc<SourceFile>> = Vec::new();
+    for path in &paths {
+        let path = path.to_string_lossy().to_string();
+        match std::fs::read_to_string(&path) {
+            Ok(content) => corpus.push(Rc::new(SourceFile { path, content })),
+            Err(err) => return unreached(format!("corpus file {path}: {err}")),
+        }
+    }
+    let corpus_files = corpus.len();
+    let subjects: Vec<String> = census::interpolation_hole_census_subjects(Rc::new(corpus.into()))
+        .iter()
+        .map(|p| p.to_string())
+        .collect();
+    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut closure: Vec<Rc<SourceFile>> = Vec::new();
+    for subject in &subjects {
+        let sources =
+            match cli_run::load_sources_for_entry_with_pool_index(source_roots, subject, false) {
+                Ok(sources) => sources,
+                Err(detail) => return unreached(format!("closure of {subject}: {detail}")),
+            };
+        for source in sources {
+            if seen.insert(source.path.clone()) {
+                closure.push(source);
+            }
+        }
+    }
+    let compiled = closure.len();
+    let receipt = census::interpolation_hole_census_from_sources(
+        Rc::new(closure.into()),
+        Rc::new(subjects.clone().into()),
+    );
+    if receipt.starts_with("REFUSED") {
+        return unreached(format!("subject closure did not compile: {receipt}"));
+    }
+    for line in receipt.lines() {
+        println!("interpolation-hole-census: report {line}");
+    }
+    let held = standing.lines().next() == Some("STANDING held")
+        && receipt.lines().next() == Some("CORPUS complete");
+    InvocationOutcome {
+        termination: if held {
+            Termination::ObservationHeld
+        } else {
+            Termination::ObservationDidNotHold
+        },
+        message: format!(
+            "interpolation-hole-census: {} {} (controls over {FIXTURE}; report over {} subjects of {corpus_files} corpus files, {compiled} sources compiled)",
+            standing.lines().next().unwrap_or("STANDING absent"),
+            receipt.lines().next().unwrap_or("CORPUS absent"),
+            subjects.len()
+        ),
     }
 }
 
@@ -3508,5 +3795,63 @@ fn run_dependency_demand_census(source_roots: &[String]) -> InvocationOutcome {
             termination: Termination::SubjectUnreached,
             message: cause,
         },
+    }
+}
+
+/// `gunbc test //gunbc/instruments:regen-round-cost`: one whole-population regen round, priced
+/// by phase on two clocks (`gunbc.regen_round_cost`), then the one-mirror discriminator over the
+/// same corpus. On-demand only: it is reached through instrument-dispatch and no required job.
+///
+/// The probe's mirror is a fixed fact of the instrument rather than an option, so two runs
+/// measure the same selection. `std_measure.rs` is an ordinary leaf mirror of the population.
+const REGEN_ROUND_COST_PROBE_MIRROR: &str = "std_measure.rs";
+
+fn run_regen_round_cost_instrument() -> InvocationOutcome {
+    let unreached = |detail: String| InvocationOutcome {
+        termination: Termination::SubjectUnreached,
+        message: format!("regen-round-cost: subject unreached: {detail}"),
+    };
+    let roots = self_host_source_roots();
+    let round = match cli_run::run_regen_round_cost(
+        "target/stage0-regen-candidate",
+        "target/stage0-regen-receipt.json",
+        &roots,
+        false,
+    ) {
+        Ok(round) => round,
+        Err(e) => return unreached(format!("round: {e}")),
+    };
+    print!("{}", round.rendered);
+    let rows = match cli_run::run_regen_one_mirror_emit_probe(REGEN_ROUND_COST_PROBE_MIRROR) {
+        Ok(rows) => rows,
+        Err(e) => return unreached(format!("one-mirror probe: {e}")),
+    };
+    for row in &rows {
+        println!(
+            "regen-round-cost: one-mirror-probe mirror={} phase={} wall_ms={} cpu_ms={}",
+            REGEN_ROUND_COST_PROBE_MIRROR,
+            row.label,
+            row.wall_ms,
+            row.cpu_ms
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "unreadable".to_string())
+        );
+    }
+    if round.round_failures.is_empty() {
+        InvocationOutcome {
+            termination: Termination::ObservationHeld,
+            message: format!(
+                "regen-round-cost: round clean; receipt={}",
+                round.receipt_path.display()
+            ),
+        }
+    } else {
+        InvocationOutcome {
+            termination: Termination::ObservationDidNotHold,
+            message: format!(
+                "regen-round-cost: round not clean: {}",
+                round.round_failures.join("; ")
+            ),
+        }
     }
 }

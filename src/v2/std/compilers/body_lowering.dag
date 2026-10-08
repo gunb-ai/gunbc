@@ -19,7 +19,7 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.integer { Int }
-import v2.std.optional { Optional }
+import std.optional { Optional }
 import v2.std.node {
   Bind,
   Branch,
@@ -261,7 +261,12 @@ fn view_atom_identity_optional(n: Node) -> Optional<Symbol> {
         Empty => Present { value: id }
         Cons { head: _, tail: _ } => Absent
       }
-    _ => Absent
+    TypeNode { connective: Conj } => Absent
+    TypeNode { connective: Disj } => Absent
+    TypeNode { connective: Arrow } => Absent
+    TypeNode { connective: Cardinality } => Absent
+    TypeNode { connective: Instantiation } => Absent
+    ComputationNode { behavior: _ } => Absent
   }
 }
 
@@ -300,11 +305,19 @@ type ApplicationRead
 fn application_head_optional(n: Node) -> Optional<ApplicationHead> {
   match n.kind {
     TypeNode { connective: Arrow } => Present { value: ArrowHead }
-    _ =>
-      match view_atom_identity_optional(n: n) {
-        Present { value: id } => Present { value: AtomHead { identity: id } }
-        Absent => Absent
-      }
+    TypeNode { connective: Atom { identity: _ } } => application_head_optional_otherwise(n: n)
+    TypeNode { connective: Conj } => application_head_optional_otherwise(n: n)
+    TypeNode { connective: Disj } => application_head_optional_otherwise(n: n)
+    TypeNode { connective: Cardinality } => application_head_optional_otherwise(n: n)
+    TypeNode { connective: Instantiation } => application_head_optional_otherwise(n: n)
+    ComputationNode { behavior: _ } => application_head_optional_otherwise(n: n)
+  }
+}
+
+fn application_head_optional_otherwise(n: Node) -> Optional<ApplicationHead> {
+  match view_atom_identity_optional(n: n) {
+    Present { value: id } => Present { value: AtomHead { identity: id } }
+    Absent => Absent
   }
 }
 
@@ -434,7 +447,12 @@ fn application_head_read_transform(site: Node) -> ApplicationHeadRead {
               }
           }
       }
-    _ => NotApplicationHead
+    TypeNode { connective: _ } => NotApplicationHead
+    ComputationNode { behavior: Value } => NotApplicationHead
+    ComputationNode { behavior: Branch } => NotApplicationHead
+    ComputationNode { behavior: Loop } => NotApplicationHead
+    ComputationNode { behavior: Bind } => NotApplicationHead
+    ComputationNode { behavior: Match } => NotApplicationHead
   }
 }
 
@@ -566,7 +584,12 @@ fn match_arm_view(arm: Node) -> Outcome<MatchArmView> {
       } else {
         view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
       }
-    _ => view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
+    TypeNode { connective: Atom { identity: _ } } => view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
+    TypeNode { connective: Disj } => view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
+    TypeNode { connective: Arrow } => view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
+    TypeNode { connective: Cardinality } => view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
+    TypeNode { connective: Instantiation } => view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
+    ComputationNode { behavior: _ } => view_refusal(reason: ^body_view_match_arm_malformed, at: arm)
   }
 }
 
@@ -601,7 +624,12 @@ fn match_view(site: Node) -> Outcome<MatchView> {
               }
           }
       }
-    _ => view_refusal(reason: ^body_view_not_match, at: site)
+    TypeNode { connective: _ } => view_refusal(reason: ^body_view_not_match, at: site)
+    ComputationNode { behavior: Value } => view_refusal(reason: ^body_view_not_match, at: site)
+    ComputationNode { behavior: Transform } => view_refusal(reason: ^body_view_not_match, at: site)
+    ComputationNode { behavior: Branch } => view_refusal(reason: ^body_view_not_match, at: site)
+    ComputationNode { behavior: Loop } => view_refusal(reason: ^body_view_not_match, at: site)
+    ComputationNode { behavior: Bind } => view_refusal(reason: ^body_view_not_match, at: site)
   }
 }
 
@@ -644,7 +672,12 @@ fn bind_view(site: Node) -> Outcome<BindView> {
               })
           }
       }
-    _ => view_refusal(reason: ^body_view_not_bind, at: site)
+    TypeNode { connective: _ } => view_refusal(reason: ^body_view_not_bind, at: site)
+    ComputationNode { behavior: Value } => view_refusal(reason: ^body_view_not_bind, at: site)
+    ComputationNode { behavior: Transform } => view_refusal(reason: ^body_view_not_bind, at: site)
+    ComputationNode { behavior: Branch } => view_refusal(reason: ^body_view_not_bind, at: site)
+    ComputationNode { behavior: Loop } => view_refusal(reason: ^body_view_not_bind, at: site)
+    ComputationNode { behavior: Match } => view_refusal(reason: ^body_view_not_bind, at: site)
   }
 }
 
@@ -662,6 +695,11 @@ fn branch_view(site: Node) -> Outcome<BranchView> {
             else_arm: t.third
           })
       }
-    _ => view_refusal(reason: ^body_view_not_branch, at: site)
+    TypeNode { connective: _ } => view_refusal(reason: ^body_view_not_branch, at: site)
+    ComputationNode { behavior: Value } => view_refusal(reason: ^body_view_not_branch, at: site)
+    ComputationNode { behavior: Transform } => view_refusal(reason: ^body_view_not_branch, at: site)
+    ComputationNode { behavior: Loop } => view_refusal(reason: ^body_view_not_branch, at: site)
+    ComputationNode { behavior: Bind } => view_refusal(reason: ^body_view_not_branch, at: site)
+    ComputationNode { behavior: Match } => view_refusal(reason: ^body_view_not_branch, at: site)
   }
 }

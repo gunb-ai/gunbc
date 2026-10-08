@@ -11,7 +11,7 @@ import extdeps.shell
 import gunbc.fabric_storage_client { FabricStorageLocalFiles }
 import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
 import gunbc.workspace_allocation_store { workspace_record_request_at, WorkspaceStoreWritten, WorkspaceReleased, workspace_record_preparation_wait, workspace_request_release_at, WorkspaceStoreConflict }
-import gunbc.workspace_request_consumer { workspace_consumer_reconcile_owner, WorkspaceConsumerSettled, WorkspaceConsumerIdle }
+import gunbc.workspace_request_consumer { workspace_consumer_reconcile_owner, workspace_consumer_reconcile_enrolled, WorkspaceConsumerSettled, WorkspaceConsumerIdle }
 
 fn recorded() -> WorkspaceAllocation {
   WorkspaceAllocation { retired_at: "", recorded_at: "2026-09-27T12:00:00Z", plan: none, desired: WorkspaceWanted,
@@ -107,6 +107,34 @@ test fn waiting_reason_is_durable_but_cannot_refresh_readiness_or_overwrite_reti
           })
         other => false
       }
+      other => false
+    }
+    other => false
+  } }
+  let cleaned = shell.Remove.RecursiveForce(path: directory.path)
+  passed && cleaned.success
+}
+
+// Owner discovery is the enrolled roster. A customer enrolled after the operator has its live
+// request discovered; the same store reconciled over the operator alone -- the former fixed
+// owner -- reports Idle, which is the obligation the single-owner consumer silently missed.
+test fn enrolled_roster_discovers_a_customer_request_the_operator_pass_misses() -> Bool {
+  let directory = shell.Mktemp.Dir()
+  let root = fabric_storage_file_root(root: directory.path)
+  let store = FabricStorageLocalFiles { root: root }
+  let operator = PrincipalRef { authority: "google-oidc", namespace: "accounts", subject: "operator-test" }
+  let request = recorded().request
+  let passed = if !directory.success { false } else { match fabric_storage_file_root_ensure(root: root) {
+    FabricStorageRootReady => match workspace_record_request_at(store: store, request: request, observed_at: "2026-09-27T12:00:00Z") {
+      WorkspaceStoreWritten { allocation: _ } =>
+        (match workspace_consumer_reconcile_enrolled(store: store, owners: [operator, request.owner], observed_at: "2026-09-27T12:01:00Z") {
+          WorkspaceConsumerPrepare { allocation: found } => found.request == request
+          other => false
+        })
+        && (match workspace_consumer_reconcile_enrolled(store: store, owners: [operator], observed_at: "2026-09-27T12:01:00Z") {
+          WorkspaceConsumerIdle => true
+          other => false
+        })
       other => false
     }
     other => false

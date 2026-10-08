@@ -4,10 +4,12 @@ import gunbc.roadmap_served_observation { IssueQueryRows, served_observation_bod
 import gunbc.roadmap_view_preferences { issue_view_preferences_of, issue_view_preferences_json }
 import gunbc.roadmap_view_preference_store { issue_view_store_key, issue_view_store_root, issue_view_store_read, issue_view_store_save, IssueViewAbsent, IssueViewFound, IssueViewUnread, IssueViewSaveOk, IssueViewSaveConflict, IssueViewSaveRefused }
 import gunbc.auth.request_authentication { ServeActionSaveOwnView }
-import extdeps.http.server { ServeResponseHeaderNoStore }
+import extdeps.http.server { ServeResponseHeaderNoStore, ServeResponseHeaderCacheImmutable, text_css_utf8 }
+import gunbc.site.web_fonts { web_font_stylesheet, web_font_stylesheet_path, web_font_stylesheet_max_age_seconds }
 import extdeps.languages.json.emit { JsonNull }
 
 import gunbc.site.document { site_document }
+import gunbc.site.specimen { specimen_route_path, specimen_page }
 import gunbc.site.markup { el, txt }
 import gunbc.site.brand { site_favicon_path, site_favicon_type, site_favicon_source }
 import gunbc.site.controls { site_client_path, site_client_source }
@@ -15,6 +17,7 @@ import gunbc.roadmap_style { roadmap_styles }
 import gunbc.site.document { SiteStyles }
 
 import gunbc.roadmap.roadmap_attempt_request_binding { AttemptLaunchRequest, LaunchForClaim, LaunchAutonomous }
+import gunbc.roadmap_dispatch_actuator { ExecutorDefault, decode_dispatch_executor_request, DispatchExecutorRequestDecoded, DispatchExecutorRequestUnknown }
 import gunbc.roadmap.roadmap_event_log { StandingsObserved, NodeStandingRow }
 
 import gunbc.roadmap.roadmap_event_log { roadmap_issue_state }
@@ -77,7 +80,6 @@ import extdeps.uri_path { PathParamBinding, path_param_value }
 import std.markup { Fragment }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.uri_path { uri_query_param }
 import gunbc.auth.approval_broker_serve {
   ApprovalBrokerHandler, approval_broker_route_specs, approval_broker_invoke,
   ApprovalConfirmPageHandler, ApprovalDecideHandler, ApprovalSubmitHandler, ApprovalStatusHandler, ApprovalStoreReceiptHandler,
@@ -111,6 +113,7 @@ import extdeps.languages.json.emit {
   json_int,
   json_array,
   JsonValue,
+  JsonKeyValue,
 }
 import gunbc.roadmap_launch_admission {
   LaunchRefusal,
@@ -121,42 +124,25 @@ import gunbc.roadmap_launch_admission {
   launch_refusal_label, launch_refusal_reason,
 }
 import gunbc.roadmap_page { issue_detail_not_found_page,
-  roadmap_page_for_projection_launch, roadmap_fleet_page,
+  roadmap_fleet_page,
   issue_detail_page_for, issue_detail_node_exists,
-  project_suite_headline, project_suite_not_found_page, project_suite_page_launch, project_suite_rows,
 }
 import gunbc.roadmap_authority {
   roadmap_acceptance_event_history_load, RoadmapAuthorityProjection, roadmap_authority_projection,
-  RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
-  declared_roadmap_edges,
+  RoadmapAuthorityProjectionRefused,
 }
-import gunbc.roadmap_nesting { roadmap_memberships }
-import gunbc.roadmap_spawner { doc_all_nodes }
 import gunbc.roadmap_component {
   dispatch_client_js_source, roadmap_dispatch_asset_path,
-  sandbox_client_js_source, sandbox_asset_path,
-  instrument_tuner_client_js_source, instrument_tuner_asset_path,
-  instrument_motion_client_js_source, instrument_motion_asset_path, instrument_motion_page_path,
-  repo_atlas_page_path,
-  instrument_sandbox_page_path, instrument_tuner_page_path,
 }
-import gunbc.roadmap_sandbox { sandbox_page }
-import gunbc.roadmap_instrument_sandbox { instrument_sandbox_page }
-import gunbc.roadmap_instrument_tuner { instrument_tuner_page }
-import gunbc.roadmap_instrument_motion { instrument_motion_page }
-import gunbc.roadmap_repo_atlas_sandbox { repo_atlas_page }
 import gunbc.roadmap_static_site {
-  roadmap_site_roadmap_md_body_over,
   roadmap_site_dispatch_json_body_over,
   roadmap_site_healthz_body_for_release,
 }
 import gunbc.site.markup { page_render_refusal_body }
 import gunbc.roadmap_site_surface_render {
   roadmap_site_health_path,
-  roadmap_site_roadmap_url_path,
   roadmap_site_dispatch_url_path,
   roadmap_site_daily_url_path,
-  roadmap_site_full_url_path,
 }
 import gunbc.roadmap_served_observation {
   DailyPage, AttemptsJson, WorkflowJson, SessionsJson,
@@ -192,8 +178,6 @@ import gunbc.roadmap_belt_actuate {
   belt_dispatch_node, belt_dispatch_node_for_instance_over,
   belt_workflow_attempts_observe_scoped, WorkflowAttemptsOneNode,
   WorkflowAttemptsObserved, WorkflowAttemptsRefused,
-  belt_dispatch_result_for_label,
-  belt_dispatch_all_status_labels,
   BeltStopResult, belt_stop_node, belt_stop_node_for_instance,
   belt_stop_result_json_value, belt_stop_http_status,
   BeltPublishOutcome,
@@ -293,32 +277,23 @@ data roadmap_serve_interpreted_scaffold: Disposition = Scaffold {
 
 type RoadmapServeHandler
   = RoadmapDailyPageHandler
-  | RoadmapFullPageHandler
   | AllocationPageHandler
   | SiteFaviconHandler
   | SiteClientHandler
+  | WebFontStylesheetHandler
   | AllocationCreateHandler
   | AllocationListHandler
   | AllocationGetHandler
   | AllocationReleaseHandler
   | AllocationClientHandler
   | FleetStandingPageHandler
-  | RoadmapMdHandler
+  | SpecimenPageHandler
   | DispatchJsonHandler
   | HealthzHandler
   | DashboardInstanceHandler
   | ProviderReadinessHandler
   | BeltDispatchHandler
   | DispatchAssetHandler
-  | SandboxPageHandler
-  | InstrumentSandboxPageHandler
-  | InstrumentTunerPageHandler
-  | InstrumentTunerAssetHandler
-  | InstrumentMotionPageHandler
-  | InstrumentMotionAssetHandler
-  | RepoAtlasPageHandler
-  | SandboxAssetHandler
-  | SandboxEchoHandler
   | SessionsJsonHandler
   | AttemptsJsonHandler
   | WorkflowJsonHandler
@@ -333,7 +308,6 @@ type RoadmapServeHandler
   | IssueViewPreferencesReadHandler
   | IssueViewPreferencesSaveHandler
   | IssueCommentHandler
-  | ProjectSuitePageHandler
   | AuthSessionHandler
   | AuthLoginHandler
   | AuthGoogleCallbackHandler
@@ -383,7 +357,6 @@ type ServedDailyBodyAuthority
 fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>> {
   [
     ServedRouteSpec { method: GET, raw: roadmap_site_daily_url_path as String, handler: RoadmapDailyPageHandler },
-    ServedRouteSpec { method: GET, raw: roadmap_site_full_url_path as String, handler: RoadmapFullPageHandler },
     ServedRouteSpec { method: POST, raw: allocation_page_path, handler: AllocationCreateHandler },
     ServedRouteSpec { method: GET, raw: allocation_list_path, handler: AllocationListHandler },
     ServedRouteSpec { method: GET, raw: allocation_item_route(), handler: AllocationGetHandler },
@@ -391,9 +364,10 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
     ServedRouteSpec { method: GET, raw: allocation_page_path, handler: AllocationPageHandler },
     ServedRouteSpec { method: GET, raw: site_favicon_path, handler: SiteFaviconHandler },
     ServedRouteSpec { method: GET, raw: site_client_path, handler: SiteClientHandler },
+    ServedRouteSpec { method: GET, raw: web_font_stylesheet_path(), handler: WebFontStylesheetHandler },
     ServedRouteSpec { method: GET, raw: allocation_client_path, handler: AllocationClientHandler },
     ServedRouteSpec { method: GET, raw: "/fleet", handler: FleetStandingPageHandler },
-    ServedRouteSpec { method: GET, raw: roadmap_site_roadmap_url_path as String, handler: RoadmapMdHandler },
+    ServedRouteSpec { method: GET, raw: specimen_route_path, handler: SpecimenPageHandler },
     ServedRouteSpec { method: GET, raw: roadmap_site_dispatch_url_path as String, handler: DispatchJsonHandler },
     ServedRouteSpec { method: GET, raw: roadmap_site_health_path as String, handler: HealthzHandler },
     ServedRouteSpec { method: GET, raw: "/instance.json", handler: DashboardInstanceHandler },
@@ -403,18 +377,8 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
     ServedRouteSpec { method: GET, raw: "/workflow.json", handler: WorkflowJsonHandler },
     ServedRouteSpec { method: GET, raw: "/observation.json", handler: ObservationJsonHandler },
     ServedRouteSpec { method: GET, raw: roadmap_dispatch_asset_path, handler: DispatchAssetHandler },
-    ServedRouteSpec { method: GET, raw: "/sandbox", handler: SandboxPageHandler },
-    ServedRouteSpec { method: GET, raw: instrument_sandbox_page_path, handler: InstrumentSandboxPageHandler },
-    ServedRouteSpec { method: GET, raw: instrument_tuner_page_path, handler: InstrumentTunerPageHandler },
-    ServedRouteSpec { method: GET, raw: instrument_tuner_asset_path, handler: InstrumentTunerAssetHandler },
-    ServedRouteSpec { method: GET, raw: instrument_motion_page_path, handler: InstrumentMotionPageHandler },
-    ServedRouteSpec { method: GET, raw: instrument_motion_asset_path, handler: InstrumentMotionAssetHandler },
-    ServedRouteSpec { method: GET, raw: repo_atlas_page_path, handler: RepoAtlasPageHandler },
-    ServedRouteSpec { method: GET, raw: sandbox_asset_path, handler: SandboxAssetHandler },
-    ServedRouteSpec { method: POST, raw: "/sandbox/echo", handler: SandboxEchoHandler },
     ServedRouteSpec { method: POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
     ServedRouteSpec { method: GET, raw: "/issue/\{node_id\}", handler: IssueDetailPageHandler },
-    ServedRouteSpec { method: GET, raw: "/project/\{node_id\}", handler: ProjectSuitePageHandler },
     ServedRouteSpec { method: GET, raw: "/issue/\{node_id\}/assignment", handler: IssueAssignmentContextHandler },
     ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/assign", handler: IssueAssignHandler },
     ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/comment", handler: IssueCommentHandler },
@@ -454,6 +418,17 @@ fn serve_text_response(status: HttpStatus, content_type: MediaType, body: String
 // process is serving THIS tree, and a digest taken over a body that is merely supposed to match the
 // route's would be validation standing where construction was available — the check would go green
 // while the route lied. Only the STATUS split lives here, because a digest has no status.
+
+// The self-hosted face stylesheet (gunbc.site.web_fonts). Its path is content-addressed, so the
+// response is immutable under that path for as long as any client may hold it.
+fn web_font_stylesheet_response() -> ServeHttpResponse {
+  ServeHttpResponse {
+    status: 200,
+    content_type: text_css_utf8,
+    body: web_font_stylesheet(),
+    headers: [ServeResponseHeaderCacheImmutable { max_age_seconds: web_font_stylesheet_max_age_seconds }],
+  }
+}
 
 fn serve_page_response(page: Fragment) -> ServeHttpResponse {
   match try_serialize_html_source(node: page) {
@@ -535,10 +510,16 @@ fn belt_dispatch_response(r: BeltSpawnOutcome) -> ServeHttpResponse {
 // backstop for that unreachable arm — a 400 refusal, never a dispatch with a fabricated id (DESIGN
 // 5: an unreachable arm refuses, never fabricates).
 
+// THE EXECUTOR IS AN OPTIONAL ?executor=LABEL ON THE DISPATCH ROUTE (gunbc.roadmap_dispatch_actuator
+// DispatchExecutorRequest): absent, it is the default executor; a vendor label routes the attempt to
+// that vendor's selection, which refuses typed when the vendor's offer or standing does not admit it.
+// An unknown label is a 400 naming the accepted set -- never a dispatch to the default, which would
+// run the attempt somewhere the operator did not ask.
 fn serve_dispatch_handler_response_over(
   instance: HostDashboardInstance,
   plan: RoadmapAuthorityProjection,
   params: List<PathParamBinding>,
+  executor_word: String,
 ) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
   if node_id == "" {
@@ -548,9 +529,18 @@ fn serve_dispatch_handler_response_over(
       body: "dispatch requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
     )
   } else {
-    belt_dispatch_response(
-      r: belt_dispatch_node_for_instance_over(instance: instance, plan: plan, node_id: node_id, request: LaunchAutonomous),
-    )
+    match decode_dispatch_executor_request(word: executor_word) {
+      DispatchExecutorRequestUnknown { word, known } =>
+        serve_text_response(
+          status: 400,
+          content_type: text_plain_utf8,
+          body: join(["dispatch executor ", word, " is not a known executor; accepted: ", join(known, ", "), "\n"], ""),
+        )
+      DispatchExecutorRequestDecoded { request: executor } =>
+        belt_dispatch_response(
+          r: belt_dispatch_node_for_instance_over(instance: instance, plan: plan, node_id: node_id, request: LaunchAutonomous, executor: executor),
+        )
+    }
   }
 }
 
@@ -562,6 +552,7 @@ fn serve_dispatch_handler_response_for_instance(
     instance: instance,
     plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
     params: params,
+    executor_word: "",
   )
 }
 
@@ -757,45 +748,6 @@ fn serve_issue_detail_response_over(
       }
     }
   } }
-}
-
-// THE PROJECT SUITE ROUTE (GET /project/<node_id>): ONE project's direct membership listing
-// rendered live from the same authorities the issue detail route reads -- the declared nesting
-// for the member set, the declared dependency edges for the topological layering, the plan's own
-// rows for the titles. The heading is the project row's own ticket headline; an absent row or a
-// non-ticket row renders the not-found document at 404, the issue route's grain. The page carries
-// no form and no session secret, so it renders for every viewer standing exactly alike; the
-// viewer label is still resolved here, so the render entry keeps the issue route's signature
-// shape. A refused plan is a located 503, never a silent empty page.
-fn serve_project_suite_response_over(
-  plan: RoadmapAuthorityProjection,
-  params: List<PathParamBinding>,
-  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
-) -> ServeHttpResponse {
-  let node_id = path_param_value(params: params, name: "node_id")
-  let viewer = authenticated_viewer_label(evidence: request.security.authentication)
-  match plan {
-    RoadmapAuthorityProjectionRefused { detail: detail } =>
-      serve_text_response(status: 503, content_type: text_plain_utf8,
-        body: join(["project suite unavailable: the roadmap authority refused at ", detail], ""))
-    RoadmapAuthorityProjected { doc, accepted: _, withheld: _ } =>
-      match project_suite_headline(nodes: doc_all_nodes(doc: doc), node_id: node_id) {
-        Absent =>
-          serve_page_response_with_status(page: project_suite_not_found_page(node_id: node_id, viewer: viewer), status: 404)
-        Present { value: headline } =>
-          serve_page_response_with_status(
-            page: project_suite_page_launch(
-              headline: headline,
-              node_id: node_id,
-              rows: project_suite_rows(
-                memberships: roadmap_memberships(),
-                edges: declared_roadmap_edges(),
-                nodes: doc_all_nodes(doc: doc),
-                project: node_id),
-              viewer: viewer),
-            status: 200)
-      }
-  }
 }
 
 // THE AUTH PROFILE ROSTER, read once per render under the never-blocks law: the store's refusal
@@ -1057,6 +1009,7 @@ fn serve_assignment_launch_follow_through_over(
         plan: plan,
         node_id: node_id,
         request: LaunchForClaim { node: node_id as NonEmptyStr as RoadmapNodeId, claim: event_id as NonEmptyStr as RoadmapEventId },
+        executor: ExecutorDefault,
       ),
     )
   } else {
@@ -1238,35 +1191,6 @@ fn dashboard_instance_json(instance: HostDashboardInstance) -> String {
   ]))
 }
 
-// The /sandbox echo handler answers ANY wire arm on demand so every dispatch state is pressable
-// without spawning a session (P4). It reads ?status=LABEL from the request path (uri_query_param —
-// the query survives in request.path; match_path_template strips it only for routing) and maps it
-// to the belt result exemplar via belt_dispatch_result_for_label, serializing the SAME
-// belt_dispatch_result_json_value the real dispatch returns — so the sandbox JSON shape is
-// identical to production, never a mock. Fail-closed: an unknown or missing status refuses with a
-// 400 that names the valid label set, never a fabricated arm.
-
-fn sandbox_echo_response(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>) -> ServeHttpResponse {
-  let status = uri_query_param(path: request.path, key: "status")
-  match belt_dispatch_result_for_label(wire_label: status) {
-    Present { value: r } =>
-      serve_text_response(
-        status: 200,
-        content_type: application_json_utf8,
-        body: serialize_json(v: belt_spawn_outcome_json(o: r)),
-      )
-    Absent =>
-      serve_text_response(
-        status: 400,
-        content_type: text_plain_utf8,
-        body: join([
-          "unknown status label: ", status,
-          " (fail-closed; valid: ", join(belt_dispatch_all_status_labels(), ", "), ")\n",
-        ], ""),
-      )
-  }
-}
-
 // Every handler receives the FULL modeled ServeHttpRequest (review 40314: the request body was
 // formerly accepted at the seam and dropped before invoke, so a body-reading POST handler would
 // have silently seen the empty string — a latent widen).
@@ -1277,8 +1201,8 @@ fn sandbox_echo_response(request: ServeHttpRequest<RequestAccessPath, RequestAut
 // CALLING this fold, and nothing here enumerates or registers callers. The handlers that consult a
 // roadmap read the parameter instead of the public carrier, so one response cannot mix two plans.
 //
-// WHICH HANDLERS IGNORE IT, AND THE ONE THAT ONLY LOOKS LIKE IT DOES. Assets and the sandbox echo
-// consult no roadmap at all. The sessions, attempts, workflow and observation surfaces read bodies
+// WHICH HANDLERS IGNORE IT, AND THE ONE THAT ONLY LOOKS LIKE IT DOES. Assets consult no roadmap
+// at all. The sessions, attempts, workflow and observation surfaces read bodies
 // the belt tick already wrote, and none of them is a roadmap render.
 //
 // RoadmapDailyPageHandler IS a roadmap render and must not be filed with them (review 63341, which
@@ -1330,23 +1254,17 @@ fn roadmap_serve_invoke_over(
             ], ""),
           )
       }
-    RoadmapFullPageHandler => {
-      let p = plan()
-      serve_page_response(page: roadmap_page_for_projection_launch(
-        proj: p,
-        launch: belt_launch_host_standing_for_page_over(instance: instance, plan: p),
-      ))
-    }
     AllocationPageHandler => allocation_page_response(request: request)
     SiteFaviconHandler => serve_text_response(status: 200, content_type: site_favicon_type, body: site_favicon_source())
     SiteClientHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: site_client_source())
+    WebFontStylesheetHandler => web_font_stylesheet_response()
     AllocationCreateHandler => workspace_route_create(request: request)
     AllocationListHandler => workspace_route_list(request: request)
     AllocationReleaseHandler => workspace_route_release(request: request, allocation_id: path_param_value(params: params, name: "allocation_id") as NonEmptyStr)
     AllocationGetHandler => workspace_route_get(request: request, allocation_id: path_param_value(params: params, name: "allocation_id") as NonEmptyStr)
     AllocationClientHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: allocation_client_source())
     FleetStandingPageHandler => serve_page_response(page: roadmap_fleet_page())
-    RoadmapMdHandler => serve_text_response(status: 200, content_type: text_plain_utf8, body: roadmap_site_roadmap_md_body_over(plan: plan()))
+    SpecimenPageHandler => serve_page_response(page: specimen_page())
     DispatchJsonHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_dispatch_json_body_over(plan: plan()))
     HealthzHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_healthz_body_for_release(release_revision: release_revision))
     DashboardInstanceHandler =>
@@ -1362,19 +1280,9 @@ fn roadmap_serve_invoke_over(
         body: dashboard_provider_readiness_json(instance: instance),
       )
     BeltDispatchHandler =>
-      serve_dispatch_handler_response_over(instance: instance, plan: plan(), params: params)
+      serve_dispatch_handler_response_over(instance: instance, plan: plan(), params: params, executor_word: uri_query_param(path: request.path, key: "executor"))
     DispatchAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: dispatch_client_js_source())
-    SandboxPageHandler => serve_page_response(page: sandbox_page())
-    InstrumentSandboxPageHandler => serve_page_response(page: instrument_sandbox_page())
-    InstrumentTunerPageHandler => serve_page_response(page: instrument_tuner_page())
-    InstrumentTunerAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: instrument_tuner_client_js_source())
-    InstrumentMotionPageHandler => serve_page_response(page: instrument_motion_page())
-    InstrumentMotionAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: instrument_motion_client_js_source())
-    RepoAtlasPageHandler => serve_page_response(page: repo_atlas_page())
-    SandboxAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: sandbox_client_js_source())
-    SandboxEchoHandler => sandbox_echo_response(request: request)
     IssueDetailPageHandler => serve_issue_detail_response_over(instance: instance, plan: plan(), params: params, request: request)
-    ProjectSuitePageHandler => serve_project_suite_response_over(plan: plan(), params: params, request: request)
     IssueAssignmentContextHandler => serve_issue_assignment_context_over(instance: instance, plan: plan(), request: request, params: params)
     IssueAssignHandler => serve_issue_assign_response_over(instance: instance, plan: plan(), request: request, params: params)
     IssueCommentHandler => serve_issue_comment_response_over(instance: instance, request: request, params: params)
@@ -2096,14 +2004,14 @@ fn auth_session_response_over(instance: HostDashboardInstance, request: ServeHtt
   )
 }
 
-fn auth_session_roster_standing_members(roster: ProfileStoreReadAll) -> List<JsonValue> {
-  let unreadable = [ json_kv(key: "profile_standing", value: json_string(s: "profile store unread; session profile only")) ] as List<JsonValue>
-  let partial = [ json_kv(key: "profile_standing", value: json_string(s: "one or more profile records unreadable; the affected members render their fallback")) ] as List<JsonValue>
+fn auth_session_roster_standing_members(roster: ProfileStoreReadAll) -> List<JsonKeyValue> {
+  let unreadable = [ json_kv(key: "profile_standing", value: json_string(s: "profile store unread; session profile only")) ]
+  let partial = [ json_kv(key: "profile_standing", value: json_string(s: "one or more profile records unreadable; the affected members render their fallback")) ]
   match roster {
     ProfileStoreUnread { step: _, reason: _ } => unreadable
     ProfileStoreRead { profiles: _, skipped } =>
       if count(skipped) == 0 {
-        [] as List<JsonValue>
+        []
       } else {
         partial
       }
@@ -2168,7 +2076,7 @@ fn auth_session_body_over(roster: ProfileStoreReadAll, evidence: RequestAuthenti
 // projected one — absence is the member's ABSENCE, never an empty string standing in for none,
 // and the client reads absence (like a failed fetch) as the initials fallback, never an
 // identity claim from a hole in the wire.
-fn auth_session_picture_members(picture: Uri?) -> List<JsonValue> {
+fn auth_session_picture_members(picture: Uri?) -> List<JsonKeyValue> {
   match picture {
     Present { value: u } => [ json_kv(key: "picture", value: json_string(s: uri_wire(uri: u) as String)) ]
     Absent => []
@@ -2177,7 +2085,7 @@ fn auth_session_picture_members(picture: Uri?) -> List<JsonValue> {
 
 // THE OPTIONAL NAME MEMBER, the same law as the picture: absence is the member's ABSENCE,
 // never an empty string standing in for none.
-fn auth_session_name_members(name: String?) -> List<JsonValue> {
+fn auth_session_name_members(name: String?) -> List<JsonKeyValue> {
   match name {
     Present { value: n } => [ json_kv(key: "name", value: json_string(s: n)) ]
     Absent => []
@@ -2185,7 +2093,7 @@ fn auth_session_name_members(name: String?) -> List<JsonValue> {
 }
 
 // THE OPTIONAL EMAIL MEMBER, the same law as the name: absence is the member's ABSENCE.
-fn auth_session_email_members(email: Email?) -> List<JsonValue> {
+fn auth_session_email_members(email: Email?) -> List<JsonKeyValue> {
   match email {
     Present { value: e } => [ json_kv(key: "email", value: json_string(s: e as String)) ]
     Absent => []

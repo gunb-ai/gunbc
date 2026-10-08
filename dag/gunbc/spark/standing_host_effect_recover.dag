@@ -2,10 +2,10 @@ module gunbc.spark.standing_host_effect_recover
 
 import std.types { String, Bool, List, NonEmptyStr, EpochSecs }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import product.host_identity { HostIdentity, host_identity_eq }
 import product.capacity.event_chain { EventId }
-import gunbc.auth.standing_operator_grant { StandingOperatorGrant, standing_grant_covers, StandingHostEffectRecover }
+import gunbc.auth.standing_operator_grant { StandingOperatorGrant, standing_grant_covers, StandingHostEffectRecover, StandingGrantFabricGroup }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, fabric_group_of_host, fabric_group_wire }
 import gunbc.spark.pair_serving_d0 { d0_standing_grants }
 import gunbc.spark.pair_serving_d0_door { StandingGrantRowStanding, StandingGrantRowOnMain, StandingGrantRowNotOnMain, fresh_grant_row_standing, executed_grant_row }
@@ -62,7 +62,7 @@ fn recover_claim_selection(host: HostIdentity, effects: List<HostEffectRecord>) 
 // THE COVERING GRANT ITSELF, not a yes/no: its identity is what the release records as its authority, so the
 // provenance is read from the grant that covered rather than restated (review 74852).
 fn recover_covering_grant(host: HostIdentity, host_group: FabricGroup) -> StandingOperatorGrant? {
-  first(filter(d0_standing_grants, standing => standing_grant_covers(g: standing, group: host_group, effect: StandingHostEffectRecover, hosts: [host])))
+  first(filter(d0_standing_grants, standing => standing_grant_covers(g: standing, scope: StandingGrantFabricGroup { group: host_group, hosts: [host] }, effect: StandingHostEffectRecover)))
 }
 
 type RecoverAuthority

@@ -10,7 +10,7 @@ import extdeps.exec.command { LocalExec }
 import extdeps.transports.rest { mutation_status_is_commit_ambiguous }
 import extdeps.tools.curl { curl_sigv4_s3_upload_command, curl_sigv4_s3_download_command, curl_aws_sigv4_cli_tool, curl_s3_entity_tag_cli_tool, S3TransferReport, ReportStatus, ReportStatusAndEntityTag }
 import extdeps.object_storage { ObjectEntityTag, ObjectPutPrecondition, PutUnconditional, PutIfAbsent, PutIfMatch }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.host_cli_dependency {
   observe_host_cli_dependency,
   HostCliDependencyPresent,

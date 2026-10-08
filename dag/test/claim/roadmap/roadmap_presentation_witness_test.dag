@@ -21,16 +21,16 @@ import gunbc.roadmap_status {
   TicketLine, TicketFields, Unsigned,
 }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
-import gunbc.roadmap.roadmap_alignment {
-  AlignmentResolution,
-  alignment_chain, alignment_resolve_chain, alignment_base_cadence_state,
-}
 import gunbc.roadmap_page {
-  IssueBreadcrumbPath, IssueBreadcrumbRefused,
-  IssueBreadcrumbProject, IssueBreadcrumbTask,
-  issue_breadcrumb_of, issue_alignment_breadcrumb_node, issue_breadcrumb_short_label, issue_breadcrumb_compact_labels,
-  project_suite_headline, project_suite_rows, project_suite_row_node,
+  issue_chain_breadcrumb_node, issue_breadcrumb_short_label, issue_breadcrumb_compact_labels,
 }
+import gunbc.roadmap.roadmap_hierarchy_view {
+  NodePresentation, NodeStatus, NodeStatusDerived, NodeStatusUnavailable, node_status_derived,
+  NodeChain, NodeChainRooted, NodeChainRefused,
+  issue_hierarchy_view, hierarchy_nodes, relation_summary,
+}
+import gunbc.roadmap.roadmap_lineage { lineage_refusal_detail }
+import gunbc.roadmap_priority { DerivedPriority, PriorityP2 }
 import gunbc.roadmap_workflow_stage {
   WorkflowSegment, WorkflowSegmentState,
   WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
@@ -51,6 +51,7 @@ import gunbc.roadmap_launch_admission {
 import test.claim.roadmap.roadmap_launch_admission_fixture {
   launch_fixture_standing_clear, launch_fixture_doc, launch_fixture_identity,
 }
+import gunbc.roadmap_issue_status { DisplayReady, DisplayDone, DisplaySuperseded, issue_display_status_is_closed }
 import gunbc.roadmap_presentation {
   ActivityView, NoActiveWork, ActiveWork, ActiveWorkRefused, LegacySupersedableAttempt,
   CompletedWork, ActivityUnobservable,
@@ -90,7 +91,8 @@ import gunbc.roadmap_presentation {
   row_is_project, row_is_nested, row_display_parent_id, row_pulses,
   AttemptRevisionObservation, stale_attempt_nodes,
   activity_uniform_lane_summary,
-  IssueLinkView, IssueLinkPanel, issue_link_panel, issue_work_history_rounds,
+  issue_work_history_rounds,
+  omitted_node_display_status, closed_lifecycle_display_status, work_lifecycle_is_closed,
   issue_status_label, issue_first_open_kind, issue_wait_state_label,
 }
 import gunbc.roadmap.roadmap_event_log {
@@ -1628,38 +1630,33 @@ test fn witness_issue_table_carries_collapsed_chain_members_flat() -> Bool {
     && (match table.first() { Present { value: id } => id == "hier-chain-a" Absent => false })
 }
 
-// THE ISSUE DETAIL'S LINK PANEL (owner ruling 2026-09-22: blocking edges express dependencies):
-// Blocking names the node's children — the dependents it structurally blocks; Blocked-by names
-// ONLY the unmet parents — a done parent has closed its edge and must not read as an obstruction.
-// The met-parent half of the claim is the discriminating red: listing it would contradict the
-// bar's "blocked on" signal, which derives from the same scheduling_blockers seam.
-test fn witness_issue_link_panel_blocks_children_and_unmet_parents() -> Bool {
-  let signed_parent = fx_sign(
-    rn: fx_sized(id: "lnk-done", content: "closed parent"),
-    s: fx_signed(
-      by: "operator",
-      works: RedControlExecuted { witness_module: "test.claim.roadmap_presentation_witness", witness_fn: "witness_issue_link_panel_blocks_children_and_unmet_parents", executed_on: "2026-09-23" },
-      scope_equivalent: HandbackDelivered { first_artifact: "receipt", further_artifacts: [] },
-      as_expected: true))
+// THE ISSUE'S DEPENDENCY RELATIONS (owner ruling 2026-09-22: blocking edges express dependencies;
+// revised 2026-10-04: a relation is its declared edges). Blocking names the dependents this issue
+// blocks. Blocked by names EVERY declared prerequisite, the closed one included: closed describes
+// the prerequisite, and whether the edge still holds the issue back is the readiness predicate's
+// answer, not this list's. The discriminating red is a relation that drops the closed prerequisite
+// -- it would make the row count say one where two edges are declared.
+fn fx_supplied_status(rn: RoadmapNode) -> NodeStatus {
+  if (rn.node as String) == "lnk-done" { node_status_derived(status: DisplayDone) } else { node_status_derived(status: DisplayReady) }
+}
+
+test fn witness_dependency_relations_list_every_declared_edge() -> Bool {
   let nodes = [
     fx_sized(id: "lnk-top", content: "the issue"),
-    fx_sized(id: "lnk-mid", content: "open parent"),
+    fx_sized(id: "lnk-mid", content: "open prerequisite"),
     fx_sized(id: "lnk-child", content: "dependent"),
-    signed_parent,
+    fx_sized(id: "lnk-done", content: "closed prerequisite"),
   ]
   let edges = [
     gunbc.roadmap_authority.edge(child: "lnk-top", parent: "lnk-mid"),
     gunbc.roadmap_authority.edge(child: "lnk-top", parent: "lnk-done"),
     gunbc.roadmap_authority.edge(child: "lnk-child", parent: "lnk-top"),
   ]
-  let top = (filter(nodes, n => (n.node as String) == "lnk-top")).first()
-  match top {
-    Absent => false
-    Present { value: rn } =>
-      let panel = issue_link_panel(rn: rn, nodes: nodes, edges: edges)
-      map(panel.blocking, l => l.node_id) == ["lnk-child"]
-        && map(panel.blocked_by, l => l.node_id) == ["lnk-mid"]
-  }
+  let dependency = issue_hierarchy_view(node: "lnk-top" as RoadmapNodeId, nodes: nodes, edges: edges, status_of: fx_supplied_status).dependency
+  let summary = relation_summary(relation: dependency.blocked_by)
+  map(dependency.blocking.rows, row => row.node.slug) == ["lnk-child"]
+    && map(dependency.blocked_by.rows, row => row.node.slug) == ["lnk-mid", "lnk-done"]
+    && summary.total == 2 && summary.closed == 1
 }
 
 // THE WORK TAB'S HISTORY ORDER (owner ruling 2026-09-22: execution history as taskbar rows,
@@ -1740,11 +1737,9 @@ test fn witness_pending_stage_names_what_it_waits_on() -> Bool {
 
 // ── Project path breadcrumb and project suite (operator request 2026-09-29) ───────────────────
 //
-// The breadcrumb's ONLY derivation is the alignment resolution the dispatch gate consumes --
-// fixtures build that resolution through the same alignment_chain + alignment_resolve_chain
-// crossing production names, over ticket rows (the chain projects ONLY from ticket rows). The
-// chain must end at the admitted root "gunbc-project-root": roadmap_roots is the one
-// live read the walk makes. Every fixture is constructed; no live roadmap population is read.
+// The breadcrumb's ONLY derivation is the hierarchy view's chain, which is the one parent walk
+// (gunbc.roadmap.roadmap_lineage) over the rows the fixture plants. The chain must end at a row
+// declaring AdmittedRoot. Every fixture is constructed; no live roadmap population is read.
 
 fn fx_aln_fields(headline: String, brief: String) -> TicketFields {
   TicketFields {
@@ -1799,12 +1794,12 @@ fn fx_aln_with_parent(n: RoadmapNode, memberships: List<gunbc.roadmap_nesting.Ro
   }
 }
 
-fn fx_aln_resolution(task: String, memberships: List<gunbc.roadmap_nesting.RoadmapMembership>, nodes: List<RoadmapNode>) -> AlignmentResolution {
-  alignment_resolve_chain(
-    chain: alignment_chain(node_id: task, nodes: nodes |> map(n => fx_aln_with_parent(n: n, memberships: memberships))),
-    turns_elapsed: 1,
-    state: alignment_base_cadence_state(),
-  )
+fn fx_aln_ready(rn: RoadmapNode) -> NodeStatus {
+  node_status_derived(status: DisplayReady)
+}
+
+fn fx_aln_chain(task: String, memberships: List<gunbc.roadmap_nesting.RoadmapMembership>, nodes: List<RoadmapNode>) -> NodeChain {
+  issue_hierarchy_view(node: task as RoadmapNodeId, nodes: nodes |> map(n => fx_aln_with_parent(n: n, memberships: memberships)), edges: [], status_of: fx_aln_ready).chain
 }
 
 fn fx_aln_rooted_nodes() -> List<RoadmapNode> {
@@ -1822,120 +1817,112 @@ fn fx_aln_rooted_memberships() -> List<gunbc.roadmap_nesting.RoadmapMembership> 
   ]
 }
 
-// THE READY ARM, ROOT-TO-LEAF: a rooted node's breadcrumb lists the root project first and the
-// task last; the project crumbs carry /project/ links and their boundary rides the title
-// attribute; the task crumb is the current page and renders as PLAIN TEXT (no /issue/ self-link
-// anywhere in the nav); the root-principles pointer contributes no crumb at all. A crumb folded
-// out of the raw memberships, a leaf-first order, or a partial path reds every conjunct.
-test fn witness_issue_breadcrumb_renders_root_to_leaf_with_suite_links() -> Bool {
-  let resolution = fx_aln_resolution(task: "hier-aln-task", memberships: fx_aln_rooted_memberships(), nodes: fx_aln_rooted_nodes())
-  let structural = match issue_breadcrumb_of(resolution: resolution) {
-    IssueBreadcrumbPath { crumbs } =>
-      map(crumbs, c => match c {
-        IssueBreadcrumbProject { node_id, purpose: _, boundary: _ } => node_id
-        IssueBreadcrumbTask { node_id, purpose: _, boundary: _ } => node_id
-      }) == ["gunbc-project-root", "hier-aln-mid", "hier-aln-task"]
-        && (match crumbs.first() {
-          Present { value: c } => match c {
-            IssueBreadcrumbProject { node_id: _, purpose: _, boundary: _ } => true
-            IssueBreadcrumbTask { node_id: _, purpose: _, boundary: _ } => false
-          }
-          Absent => false
-        })
-        && (match crumbs.last() {
-          Present { value: c } => match c {
-            IssueBreadcrumbTask { node_id: _, purpose: _, boundary: _ } => true
-            IssueBreadcrumbProject { node_id: _, purpose: _, boundary: _ } => false
-          }
-          Absent => false
-        })
-    IssueBreadcrumbRefused { reason: _ } => false
+// The tree is the markup after the issue-path-tree list opens (the collapsed summary before it
+// repeats two of the titles). `outer` nests `inner` when outer's text precedes inner's there, which
+// in a list nested one level per chain level is the nesting order. The red this pins is real: the
+// first rendering of the chain put the current node outermost with the root inside it, and every
+// other conjunct of the witness below still held.
+fn fx_tree_nests_in_order(html: String, outer: String, inner: String) -> Bool {
+  match split(s: html, delimiter: "<ol class=\"issue-path-tree\">").last() {
+    Absent => false
+    Present { value: tree } => match split(s: tree, delimiter: inner).first() {
+      Absent => false
+      Present { value: before_inner } => string_contains(s: before_inner, pattern: outer) && string_contains(s: tree, pattern: inner)
+    }
   }
-  let rendered = match try_serialize_html_source(node: issue_alignment_breadcrumb_node(resolution: resolution)) {
+}
+
+// THE ROOTED ARM, ROOT-TO-LEAF: a rooted node's breadcrumb lists the root first and the node itself
+// last; every ancestor carries a link to its canonical /issue/ route and its slug rides the title
+// attribute; the current node is the page and renders as PLAIN TEXT (no /issue/ self-link anywhere
+// in the nav). Ancestors are one kind of node: the chain has no project/task split to match on. A
+// leaf-first order or a partial path reds every conjunct.
+test fn witness_issue_breadcrumb_renders_root_to_leaf_with_canonical_links() -> Bool {
+  let chain = fx_aln_chain(task: "hier-aln-task", memberships: fx_aln_rooted_memberships(), nodes: fx_aln_rooted_nodes())
+  let structural = match chain {
+    NodeChainRooted { ancestors, self_node } =>
+      map(ancestors, a => a.slug) == ["gunbc-project-root", "hier-aln-mid"]
+        && self_node.slug == "hier-aln-task"
+    NodeChainRefused { refusal: _ } => false
+  }
+  let rendered = match try_serialize_html_source(node: issue_chain_breadcrumb_node(chain: chain)) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      string_contains(s: h, pattern: "href=\"/project/gunbc-project-root\"")
-        && string_contains(s: h, pattern: "href=\"/project/hier-aln-mid\"")
+      string_contains(s: h, pattern: "href=\"/issue/gunbc-project-root\"")
+        && string_contains(s: h, pattern: "href=\"/issue/hier-aln-mid\"")
         && string_contains(s: h, pattern: "Root headline")
         && string_contains(s: h, pattern: "Mid headline")
         && string_contains(s: h, pattern: "Task headline")
         && string_contains(s: h, pattern: "issue-path-tree")
         && string_contains(s: h, pattern: "aria-current=\"page\"")
-        && string_contains(s: h, pattern: "title=\"Root boundary\"")
-        && !string_contains(s: h, pattern: "href=\"/issue/")
+        && string_contains(s: h, pattern: "title=\"gunbc-project-root\"")
+        && !string_contains(s: h, pattern: "href=\"/issue/hier-aln-task\"")
+        && !string_contains(s: h, pattern: "href=\"/project/")
         && !string_contains(s: h, pattern: "principles")
   }
   structural && rendered
 }
 
-// THE REFUSAL ARM, NO PARTIAL PATH: an unrooted node's breadcrumb renders "project path
-// unavailable: " plus the typed reason, and NOT ONE crumb of the walked prefix -- no /project/
-// link, no headline text. Rendering the prefix as if it were a path is the red this control pins.
+// THE NESTING ORDER, ALONE: the tree nests one level per chain level with the root outermost and the
+// current node innermost. It is its own claim so that its red names the defect: with the current
+// node drawn outermost, every conjunct of the claim above still holds (each name, link and
+// attribute occurs) and only this one fails. The third conjunct is the relation the pin is about --
+// the current node sits inside the nearest ancestor's list item, not beside or around it.
+test fn witness_issue_breadcrumb_tree_nests_root_outermost_and_current_innermost() -> Bool {
+  let chain = fx_aln_chain(task: "hier-aln-task", memberships: fx_aln_rooted_memberships(), nodes: fx_aln_rooted_nodes())
+  match try_serialize_html_source(node: issue_chain_breadcrumb_node(chain: chain)) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      fx_tree_nests_in_order(html: h, outer: "Root headline", inner: "Mid headline")
+        && fx_tree_nests_in_order(html: h, outer: "Mid headline", inner: "Task headline")
+        && !fx_tree_nests_in_order(html: h, outer: "Task headline", inner: "Root headline")
+        && string_contains(s: h, pattern: "Mid headline</a><ol><li><span")
+  }
+}
+
+// A DECLARED NODE THE PLAN OMITS: what the shared producer establishes about it. An accepted one is
+// Done, by the same mapping a done plan row takes; a superseded line is Superseded whether or not
+// it is also listed as accepted; and an open one that nothing has accepted has no status at all
+// (Absent), which is the only case a page may call unavailable. The last conjuncts tie the two
+// closure spellings together: each closed lifecycle maps to a status the vocabulary calls closed,
+// and no open lifecycle is closed.
+test fn witness_omitted_node_status_is_done_when_accepted_and_absent_when_unknown() -> Bool {
+  let open_row = gunbc.roadmap_authority.roadmap_node(identity: "rnfx_omit_open", id: "omit-open", owner: "", carriers: [], line: AuthoredLine { done: false, content: "An open row" })
+  let superseded_row = gunbc.roadmap_authority.roadmap_node(identity: "rnfx_omit_sup", id: "omit-sup", owner: "", carriers: [], line: gunbc.roadmap_status.SupersededLine { by: "omit-open", content: "A replaced row" })
+  let accepted = omitted_node_display_status(rn: open_row, merged: [], accepted: true)
+  let unknown = omitted_node_display_status(rn: open_row, merged: [], accepted: false)
+  let superseded = omitted_node_display_status(rn: superseded_row, merged: [], accepted: false)
+  let superseded_and_accepted = omitted_node_display_status(rn: superseded_row, merged: [], accepted: true)
+  (match accepted { Present { value: s } => s == DisplayDone  Absent => false })
+    && (match unknown { Present { value: _ } => false  Absent => true })
+    && (match superseded { Present { value: s } => s == DisplaySuperseded  Absent => false })
+    && (match superseded_and_accepted { Present { value: s } => s == DisplaySuperseded  Absent => false })
+    && issue_display_status_is_closed(status: closed_lifecycle_display_status(l: DoneLifecycle))
+    && issue_display_status_is_closed(status: closed_lifecycle_display_status(l: SupersededLifecycle))
+    && work_lifecycle_is_closed(l: DoneLifecycle) && work_lifecycle_is_closed(l: SupersededLifecycle)
+    && !work_lifecycle_is_closed(l: OpenLifecycle) && !work_lifecycle_is_closed(l: ReviewLifecycle)
+}
+
+// THE REFUSAL ARM, NO PARTIAL PATH: an unrooted node's chain is the lineage walk's own refusal, and
+// its breadcrumb renders "project path unavailable: " plus that refusal's text and NOT ONE level of
+// the walked prefix -- no /issue/ link, no headline text. Rendering the prefix as if it were a path
+// is the red this control pins.
 test fn witness_issue_breadcrumb_refusal_renders_no_partial_path() -> Bool {
   let nodes = [fx_aln_ticket(id: "hier-aln-lone", headline: "Lone headline", brief: "Lone boundary")]
-  let resolution = fx_aln_resolution(task: "hier-aln-lone", memberships: [], nodes: nodes)
-  match issue_breadcrumb_of(resolution: resolution) {
-    IssueBreadcrumbRefused { reason } =>
-      string_contains(s: reason, pattern: "hier-aln-lone")
-        && (match try_serialize_html_source(node: issue_alignment_breadcrumb_node(resolution: resolution)) {
+  let chain = fx_aln_chain(task: "hier-aln-lone", memberships: [], nodes: nodes)
+  match chain {
+    NodeChainRefused { refusal } =>
+      string_contains(s: lineage_refusal_detail(w: refusal), pattern: "hier-aln-lone")
+        && (match try_serialize_html_source(node: issue_chain_breadcrumb_node(chain: chain)) {
           EmitRejected { reason: _ } => false
           EmitOk { html: h } =>
             string_contains(s: h, pattern: "project path unavailable: ")
               && string_contains(s: h, pattern: "issue-breadcrumb-refused")
-              && !string_contains(s: h, pattern: "href=\"/project/")
+              && !string_contains(s: h, pattern: "href=\"/issue/")
               && !string_contains(s: h, pattern: "Lone headline")
         })
-    IssueBreadcrumbPath { crumbs: _ } => false
+    NodeChainRooted { ancestors: _, self_node: _ } => false
   }
-}
-
-// THE SUITE LISTING'S MEMBERSHIP: exactly the DIRECT descendants -- the memberships authored
-// under THIS project, nothing from another project -- one row each, the row titled from its node
-// row when one exists and spelling the raw id when none does, and the row links to the member's
-// /issue/ page. The heading projection reads ticket rows only: the authored (non-ticket) member
-// row has no headline, while the ticket project row does.
-test fn witness_project_suite_lists_exactly_the_direct_members() -> Bool {
-  let memberships = [
-    gunbc.roadmap_nesting.RoadmapMembership { member: "hier-suite-m1", project: "hier-suite-proj", contribution: "c1" },
-    gunbc.roadmap_nesting.RoadmapMembership { member: "hier-suite-m2", project: "hier-suite-proj", contribution: "c2" },
-    gunbc.roadmap_nesting.RoadmapMembership { member: "hier-suite-elsewhere", project: "hier-suite-other", contribution: "c3" },
-  ]
-  let nodes = [
-    fx_aln_ticket(id: "hier-suite-proj", headline: "suite project headline", brief: "project boundary"),
-    fx_sized(id: "hier-suite-m1", content: "member one title"),
-  ]
-  let rows = project_suite_rows(memberships: memberships, edges: [], nodes: nodes, project: "hier-suite-proj")
-  map(rows, r => r.node_id) == ["hier-suite-m1", "hier-suite-m2"]
-    && count(rows |> filter(r => r.node_id == "hier-suite-elsewhere")) == 0
-    && (match rows.first() {
-      Present { value: r } =>
-        r.title == "member one title"
-          && (match try_serialize_html_source(node: project_suite_row_node(row: r)) {
-            EmitOk { html: row_html } => string_contains(s: row_html, pattern: "href=\"/issue/hier-suite-m1\"")
-            EmitRejected { reason: _ } => false
-          })
-      Absent => false
-    })
-    && (match rows |> filter(r => r.node_id == "hier-suite-m2") |> first() {
-      Present { value: r } => r.title == "hier-suite-m2"
-      Absent => false
-    })
-    && project_suite_headline(nodes: nodes, node_id: "hier-suite-proj") == Present { value: "suite project headline" }
-    && project_suite_headline(nodes: nodes, node_id: "hier-suite-m1") == none
-}
-
-// THE SUITE LISTING'S TOPOLOGICAL LAYERING: a member whose in-set prerequisite is another member
-// sorts AFTER that member even when authored BEFORE it -- authored order [m2, m1] with the edge
-// making m1 a prerequisite of m2 renders m1 first; with no in-set edges at all the authored order
-// stands. A declaration-order listing reds the first conjunct.
-test fn witness_project_suite_topological_layering_orders_prereq_first() -> Bool {
-  let memberships = [
-    gunbc.roadmap_nesting.RoadmapMembership { member: "hier-suite-m2", project: "hier-suite-proj", contribution: "c2" },
-    gunbc.roadmap_nesting.RoadmapMembership { member: "hier-suite-m1", project: "hier-suite-proj", contribution: "c1" },
-  ]
-  let edges = [gunbc.roadmap_authority.edge(child: "hier-suite-m2", parent: "hier-suite-m1")]
-  map(project_suite_rows(memberships: memberships, edges: edges, nodes: [], project: "hier-suite-proj"), r => r.node_id) == ["hier-suite-m1", "hier-suite-m2"]
-    && map(project_suite_rows(memberships: memberships, edges: [], nodes: [], project: "hier-suite-proj"), r => r.node_id) == ["hier-suite-m2", "hier-suite-m1"]
 }
 
 // These older fixtures explicitly declare both relations with the same endpoints. Production
@@ -1948,19 +1935,22 @@ fn fixture_nesting_relation(edges: List<gunbc.roadmap_model.RoadmapEdge>) -> Lis
 // rendered "top-level" for shell-typed-invocation, a member of gunbc-project-root, because the root
 // program is not one of the plan rows and the lookup read Absent as "no parent" while the
 // breadcrumb (over every declared node) showed the root. The declared membership decides the
-// relation: the parent is titled from member_titles when the plan omits it, spelled by its id when
-// no title exists anywhere, and absent only for a node that is a member of nothing.
-test fn witness_issue_link_panel_parent_follows_membership_not_the_plan_rows() -> Bool {
-  let member = fx_sized(id: "pm-member", content: "the member")
-  let root = fx_sized(id: "pm-root", content: "the root program")
+// relation: the hierarchy's universe is the plan rows joined with the declared rows the plan omits
+// (hierarchy_nodes), so the parent is a row titled from its declared row; a parent no row declares
+// anywhere is NAMED as undeclared rather than shown as a row; and the parent relation is empty only
+// for a node that is a member of nothing.
+test fn witness_parent_relation_follows_membership_not_the_plan_rows() -> Bool {
   let nesting = [gunbc.roadmap_nesting.RoadmapMembership { member: "pm-member", project: "pm-root", contribution: "fixture contribution" }]
-  let titled = issue_link_panel(rn: member, nodes: [member], edges: [], memberships: nesting, member_titles: [member, root])
-  let untitled = issue_link_panel(rn: member, nodes: [member], edges: [], memberships: nesting)
-  let standalone = issue_link_panel(rn: root, nodes: [member], edges: [], memberships: nesting, member_titles: [member, root])
-  (match titled.parent { Present { value: p } => p.node_id == "pm-root" && p.headline == "the root program"  Absent => false })
-    && (match untitled.parent { Present { value: p } => p.node_id == "pm-root" && p.headline == "pm-root"  Absent => false })
-    && (match standalone.parent { Present { value: _ } => false  Absent => true })
-    && map(standalone.children, c => c.node_id) == ["pm-member"]
+  let member = fx_aln_with_parent(n: fx_sized(id: "pm-member", content: "the member"), memberships: nesting)
+  let root = fx_sized(id: "pm-root", content: "the root program")
+  let declared = issue_hierarchy_view(node: member.node, nodes: hierarchy_nodes(plan: [member], declared: [member, root]), edges: [], status_of: fx_aln_ready).membership
+  let undeclared = issue_hierarchy_view(node: member.node, nodes: hierarchy_nodes(plan: [member], declared: []), edges: [], status_of: fx_aln_ready).membership
+  let standalone = issue_hierarchy_view(node: root.node, nodes: hierarchy_nodes(plan: [member], declared: [member, root]), edges: [], status_of: fx_aln_ready).membership
+  map(declared.parent.rows, row => row.node.slug) == ["pm-root"]
+    && map(declared.parent.rows, row => row.node.title) == ["the root program"]
+    && count(undeclared.parent.rows) == 0 && undeclared.parent.undeclared == ["pm-root"]
+    && count(standalone.parent.rows) == 0 && count(standalone.parent.undeclared) == 0
+    && map(standalone.sub_issues.rows, row => row.node.slug) == ["pm-member"]
 }
 
 // THE PAGE HIDES A NOT-READY LEAF (operator ruling, 2026-09-30), decided by row_is_shown from the
@@ -2000,28 +1990,31 @@ test fn witness_page_hides_a_not_ready_leaf_and_nothing_in_progress() -> Bool {
 }
 
 
-// Compact display preserves full authoritative path data and never repeats a lone ancestor.
+// Compact display preserves full authoritative path data and never repeats a lone ancestor. The
+// labels are read off the chain's ancestors -- the current node is not among them, so it cannot be
+// repeated -- and the count between the ends is the number of levels the summary leaves out.
+fn fx_ancestor(slug: String, title: String) -> NodePresentation {
+  NodePresentation { slug: slug, title: title, status: NodeStatusUnavailable { reason: "fixture" }, priority: DerivedPriority { priority: PriorityP2, source: "", reason: "fixture" }, route: "" }
+}
+
 test fn issue_path_compacts_only_display_and_omits_current_title() -> Bool {
   issue_breadcrumb_short_label(label: "Short title") == "Short title"
     && issue_breadcrumb_short_label(label: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ") == "abcdefghijklmnopqrstuvwxyzA…MNOPQRSTUVWXYZ"
-    && issue_breadcrumb_compact_labels(crumbs: []) == []
-    && issue_breadcrumb_compact_labels(crumbs: [
-      IssueBreadcrumbProject { node_id: "root", purpose: "Root", boundary: "" },
-      IssueBreadcrumbProject { node_id: "mid", purpose: "Middle", boundary: "" },
-      IssueBreadcrumbProject { node_id: "parent", purpose: "Parent", boundary: "" },
-      IssueBreadcrumbTask { node_id: "task", purpose: "Current title", boundary: "" }
+    && issue_breadcrumb_compact_labels(ancestors: []) == []
+    && issue_breadcrumb_compact_labels(ancestors: [
+      fx_ancestor(slug: "root", title: "Root"),
+      fx_ancestor(slug: "mid", title: "Middle"),
+      fx_ancestor(slug: "parent", title: "Parent"),
     ]) == ["Root", "› … 1 ›", "Parent"]
-    && issue_breadcrumb_compact_labels(crumbs: [
-      IssueBreadcrumbProject { node_id: "root", purpose: "Root", boundary: "" },
-      IssueBreadcrumbProject { node_id: "parent", purpose: "Parent", boundary: "" },
-      IssueBreadcrumbTask { node_id: "task", purpose: "Task", boundary: "" }
+    && issue_breadcrumb_compact_labels(ancestors: [
+      fx_ancestor(slug: "root", title: "Root"),
+      fx_ancestor(slug: "parent", title: "Parent"),
     ]) == ["Root", "›", "Parent"]
-    && issue_breadcrumb_compact_labels(crumbs: [
-      IssueBreadcrumbProject { node_id: "root", purpose: "Root", boundary: "" },
-      IssueBreadcrumbProject { node_id: "a", purpose: "A", boundary: "" },
-      IssueBreadcrumbProject { node_id: "b", purpose: "B", boundary: "" },
-      IssueBreadcrumbProject { node_id: "parent", purpose: "Parent", boundary: "" },
-      IssueBreadcrumbTask { node_id: "task", purpose: "Task", boundary: "" }
+    && issue_breadcrumb_compact_labels(ancestors: [
+      fx_ancestor(slug: "root", title: "Root"),
+      fx_ancestor(slug: "a", title: "A"),
+      fx_ancestor(slug: "b", title: "B"),
+      fx_ancestor(slug: "parent", title: "Parent"),
     ]) == ["Root", "› … 2 ›", "Parent"]
-    && issue_breadcrumb_compact_labels(crumbs: [IssueBreadcrumbProject { node_id: "root", purpose: "Root", boundary: "" }]) == ["Root"]
+    && issue_breadcrumb_compact_labels(ancestors: [fx_ancestor(slug: "root", title: "Root")]) == ["Root"]
 }

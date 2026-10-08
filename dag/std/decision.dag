@@ -15,7 +15,7 @@ import std.observation_completeness {
 import extdeps.external_authority {
   ExternalAuthority,
   CitedFigureStanding,
-  CitedToAuthority,
+  CitedToAuthority, ObservedByReceipt,
   TranscribedUncited,
   cited_figure_read_obligation,
 }
@@ -191,10 +191,19 @@ fn physical_model_read_obligations(physical: PhysicalModelPopulation) -> List<No
   }
 }
 
+// A RECEIPT GRADES BY CONSTRUCTION FOR THE REASON A FLEET-OBSERVED COUPLING IS ADMITTED BESIDE A
+// VENDOR-DOCUMENTED ONE IN CausalCoupling: the reading was executed, and its acquiring declaration holds
+// it. The arm can only be minted by a fold over that reading: extdeps.external_authority ObservedReceipt
+// is sole_constructor and observed_receipt admits only zero-argument folds (for example
+// gunbc.cloudflare.r2_conditional_put_race_probe r2_conditional_put_linearizability_ground), so the grade
+// rests on an executed judgement of committed data.
+// It is not ranked ABOVE a citation, because LifecycleGrade is two-valued and a cell needs only
+// "grounded"; what it adds over a citation (the figure was read, not asserted) is carried by the arm.
 fn cited_figure_lifecycle(standing: CitedFigureStanding) -> LifecycleGrade {
   match standing {
     CitedToAuthority { authority: _ } => LifecycleByConstruction
     TranscribedUncited { read_obligation: _ } => LifecycleByConvention
+    ObservedByReceipt { observed: _ } => LifecycleByConstruction
   }
 }
 
@@ -644,7 +653,10 @@ fn decision_closure(assessment: DecisionAssessment) -> DecisionClosure {
                       }
                   }
                 }
-                _ => DecisionClosureRefused { cause: CausalCouplingIncomplete { detail: coup } }
+                ObservationRepeatedExpected { keys: _ } => DecisionClosureRefused { cause: CausalCouplingIncomplete { detail: coup } }
+                ObservationMissingExpected { keys: _ } => DecisionClosureRefused { cause: CausalCouplingIncomplete { detail: coup } }
+                ObservationForeignObserved { keys: _ } => DecisionClosureRefused { cause: CausalCouplingIncomplete { detail: coup } }
+                ObservationRepeatedObserved { keys: _ } => DecisionClosureRefused { cause: CausalCouplingIncomplete { detail: coup } }
               }
             }
           }

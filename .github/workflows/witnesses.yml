@@ -21,6 +21,360 @@ env:
   CARGO_TERM_COLOR: always
   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 2026-09-01.1
 jobs:
+  rust-unit-tests:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 25
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Isolate toolchain homes
+        run: |-
+          # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not
+          rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
+          echo "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+          echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7
+        with:
+          components: rustfmt
+          cache: false
+          rustflags: -D warnings
+      - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
+        run: |-
+          # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing
+          rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+          if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
+          if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
+          echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
+      - name: Run the v1 unit tests
+        id: rust_unit_tests
+        run: |+
+          GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
+          'set' '+e'
+          'set' '-o' 'pipefail'
+          ('sh' '-e' '-c' 'cargo test --release -p v1-compiler --lib') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
+          GUNBC_FLOOR_EXIT="$?"
+          GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'
+          GUNBC_FLOOR_CLASS='structural'
+          GUNBC_FLOOR_SIGNATURE=''
+          if '[' "$GUNBC_FLOOR_EXIT" '-eq' '126' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandInvokedCannotExecute'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '127' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandNotFound'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '0' ']'; then GUNBC_FLOOR_CLASS='none'; GUNBC_FLOOR_SIGNATURE=''; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'MemoryStallRefusedPageThrash' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='MemoryStallRefusedPageThrash'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'The runner has received a shutdown signal' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='RunnerLost'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: error: failed to execute compile' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFailedToExecuteCompile'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' '(exit status: 254)' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheRustcWrapperExit254'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: encountered fatal error' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFatalError'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'failed to spawn' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ProcessSpawnFailure'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi
+          if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
+          'exit' "$GUNBC_FLOOR_EXIT"
+
+        timeout-minutes: 15
+  seed:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 90
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      release_bins_key: ${{ steps.release_bins_key.outputs.key }}
+    steps:
+      - name: Checkout the commit this lane judges
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Isolate toolchain homes
+        run: |-
+          # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not
+          rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
+          echo "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+          echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7
+        with:
+          components: rustfmt
+          cache: false
+          rustflags: -D warnings
+      - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
+        run: |-
+          # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing
+          rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+          if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
+          if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
+          echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
+      - name: Key the compiler pair (stamps the build with the materialized tree)
+        id: release_bins_key
+        run: |
+          set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          DIRTY=$('git' '-C' "$ROOT" 'status' '--porcelain' '--untracked-files=no')
+          '[' '-z' "$DIRTY" ']' || ('echo' '::error title=release-bins SourceTreeDirty::tracked files differ from HEAD, so HEAD^{tree} does not name the build input; refusing to key'; exit 1)
+          'env' '-0' > "$RUNNER_TEMP"'/env.nul'
+          if 'grep' '-zqE' '^(CARGO|RUST|CC|CXX|AR|CFLAGS|CXXFLAGS|LDFLAGS|TARGET_CC|HOST_CC)[A-Za-z0-9_]*(TOKEN|CREDENTIAL|SECRET|PASSWORD|PASSWD|AUTH)[A-Za-z0-9_]*=' "$RUNNER_TEMP"'/env.nul'; then ('echo' '::error title=release-bins CredentialInBuildEnvironment::a registry or toolchain credential is present in the build environment; credentials are not build inputs and must not reach a key or a published preimage, so the build is refused'; exit 1); fi
+          if 'grep' '-zqE' '^(RUSTC|RUSTC_WORKSPACE_WRAPPER|CARGO_BUILD_RUSTC|CARGO_BUILD_RUSTC_WRAPPER|CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER|CARGO_BUILD_TARGET|CARGO_BUILD_TARGET_DIR|CARGO_TARGET_DIR|CARGO_TARGET_[A-Z0-9_]*_(LINKER|RUNNER))=' "$RUNNER_TEMP"'/env.nul'; then ('echo' '::error title=release-bins BuildOverrideNotAdmitted::the environment overrides the compiler, linker, target or target directory Cargo would use; the key probes only the admitted defaults, so the build is refused rather than keyed wrongly'; exit 1); fi
+          'sed' '-z' '-nE' '/^(CARGO_[A-Z0-9_]*|RUST[A-Z0-9_]*|CC|CXX|AR|CFLAGS|CXXFLAGS|LDFLAGS|CC_[A-Za-z0-9_]*|CFLAGS_[A-Za-z0-9_]*|TARGET_CC|HOST_CC)=/p' "$RUNNER_TEMP"'/env.nul' > "$RUNNER_TEMP"'/env-keyed.nul'
+          'sed' '-z' '-E' '/^(CARGO_HOME|RUSTUP_HOME|CARGO_BIN|CARGO_TERM_COLOR|CARGO_BUILD_JOBS|RUSTC_WRAPPER)=/d' "$RUNNER_TEMP"'/env-keyed.nul' > "$RUNNER_TEMP"'/env-kept.nul'
+          'sort' '-z' "$RUNNER_TEMP"'/env-kept.nul' > "$RUNNER_TEMP"'/env-sorted.nul'
+          'sha256sum' "$RUNNER_TEMP"'/env-sorted.nul' > "$RUNNER_TEMP"'/AXIS_ENVIRONMENT_DIGEST.out'
+          AXIS_ENVIRONMENT_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/AXIS_ENVIRONMENT_DIGEST.out')
+          ANCESTOR_0="$ROOT"
+          ANCESTOR_CONFIG=''
+          ANCESTOR_1=$('dirname' "$ANCESTOR_0")
+          ('[' '!' '-e' "$ANCESTOR_1"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_1"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_1"
+          ANCESTOR_2=$('dirname' "$ANCESTOR_1")
+          ('[' '!' '-e' "$ANCESTOR_2"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_2"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_2"
+          ANCESTOR_3=$('dirname' "$ANCESTOR_2")
+          ('[' '!' '-e' "$ANCESTOR_3"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_3"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_3"
+          ANCESTOR_4=$('dirname' "$ANCESTOR_3")
+          ('[' '!' '-e' "$ANCESTOR_4"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_4"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_4"
+          ANCESTOR_5=$('dirname' "$ANCESTOR_4")
+          ('[' '!' '-e' "$ANCESTOR_5"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_5"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_5"
+          ANCESTOR_6=$('dirname' "$ANCESTOR_5")
+          ('[' '!' '-e' "$ANCESTOR_6"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_6"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_6"
+          ANCESTOR_7=$('dirname' "$ANCESTOR_6")
+          ('[' '!' '-e' "$ANCESTOR_7"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_7"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_7"
+          ANCESTOR_8=$('dirname' "$ANCESTOR_7")
+          ('[' '!' '-e' "$ANCESTOR_8"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_8"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_8"
+          ANCESTOR_9=$('dirname' "$ANCESTOR_8")
+          ('[' '!' '-e' "$ANCESTOR_9"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_9"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_9"
+          ANCESTOR_10=$('dirname' "$ANCESTOR_9")
+          ('[' '!' '-e' "$ANCESTOR_10"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_10"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_10"
+          ANCESTOR_11=$('dirname' "$ANCESTOR_10")
+          ('[' '!' '-e' "$ANCESTOR_11"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_11"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_11"
+          ANCESTOR_12=$('dirname' "$ANCESTOR_11")
+          ('[' '!' '-e' "$ANCESTOR_12"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_12"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_12"
+          ANCESTOR_13=$('dirname' "$ANCESTOR_12")
+          ('[' '!' '-e' "$ANCESTOR_13"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_13"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_13"
+          ANCESTOR_14=$('dirname' "$ANCESTOR_13")
+          ('[' '!' '-e' "$ANCESTOR_14"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_14"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_14"
+          ANCESTOR_15=$('dirname' "$ANCESTOR_14")
+          ('[' '!' '-e' "$ANCESTOR_15"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_15"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_15"
+          ANCESTOR_16=$('dirname' "$ANCESTOR_15")
+          ('[' '!' '-e' "$ANCESTOR_16"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_16"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_16"
+          if '[' '-n' "$ANCESTOR_CONFIG" ']'; then 'echo' 'release-bins: Cargo config found above the checkout in '"$ANCESTOR_CONFIG"; ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1); fi
+          '[' "$ANCESTOR_16" '=' '/' ']' || ('echo' '::error title=release-bins CheckoutPathTooDeep::the checkout is deeper than the ancestor Cargo-config scan covers, so ancestor configuration cannot be ruled out'; exit 1)
+          OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
+          SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
+          '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
+          SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
+          EXPECTED="$RUNNER_TEMP"'/release-bins.preimage.expected'
+          AXIS_PRODUCER=$("$CARGO_BIN" '-V')
+          '[' '-n' "$AXIS_PRODUCER" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_PRODUCER read back empty, so the key would not name the build; refusing to key'; exit 1)
+          'rustc' '-vV' > "$RUNNER_TEMP"'/rustc-host.out'
+          AXIS_HOST=$('sed' '-n' 's/^host: //p' "$RUNNER_TEMP"'/rustc-host.out')
+          'cc' '--version' > "$RUNNER_TEMP"'/AXIS_CC.out'
+          AXIS_CC=$('head' '-n' '1' "$RUNNER_TEMP"'/AXIS_CC.out')
+          'ld' '--version' > "$RUNNER_TEMP"'/AXIS_LD.out'
+          AXIS_LD=$('head' '-n' '1' "$RUNNER_TEMP"'/AXIS_LD.out')
+          'ldd' '--version' > "$RUNNER_TEMP"'/AXIS_LIBC.out'
+          AXIS_LIBC=$('head' '-n' '1' "$RUNNER_TEMP"'/AXIS_LIBC.out')
+          '[' '-n' "$AXIS_HOST" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_HOST read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$AXIS_CC" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_CC read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$AXIS_LD" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_LD read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$AXIS_LIBC" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_LIBC read back empty, so the key would not name the build; refusing to key'; exit 1)
+          'rustc' '-vV' > "$RUNNER_TEMP"'/rustc-vV.out'
+          AXIS_TOOLCHAIN=$('paste' '-s' '-d' ';' "$RUNNER_TEMP"'/rustc-vV.out')
+          '[' '-n' "$AXIS_TOOLCHAIN" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_TOOLCHAIN read back empty, so the key would not name the build; refusing to key'; exit 1)
+          ('printf' 'kind=%s\n' 'gunbc.compiler_pair_release_bins'; 'printf' 'address=sha256 scope=cross_run\n'; 'printf' 'producer_compiler=%s\n' "$AXIS_PRODUCER"; 'printf' 'source_closure=%s\n' "$SOURCE_CLOSURE"; 'printf' 'target_model=%s;cc=%s;ld=%s;libc=%s\n' "$AXIS_HOST" "$AXIS_CC" "$AXIS_LD" "$AXIS_LIBC"; 'printf' 'toolchain=%s\n' "$AXIS_TOOLCHAIN"; 'printf' 'build_configuration=%s;embedded_build_identity=%s;environment=%s;roster=%s\n' 'cargo build --release -p v1-compiler --bin claim_executor --bin gunbc' "$SOURCE_CLOSURE" 'sha256:'"$AXIS_ENVIRONMENT_DIGEST" 'claim_executor gunbc'; 'printf' 'required_lens_contract=none (a seed cargo build admits no lens contract)\n') > "$EXPECTED"
+          'sha256sum' "$EXPECTED" > "$RUNNER_TEMP"'/PREIMAGE_DIGEST.out'
+          PREIMAGE_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/PREIMAGE_DIGEST.out')
+          KEY='release-bins-'"$PREIMAGE_DIGEST"
+          'rm' '-rf' "$ROOT"'/.release-bins-staging'
+          'mkdir' '-p' "$ROOT"'/.release-bins-staging'
+          'echo' 'release-bins request key '"$KEY"' over preimage:'
+          'cat' "$EXPECTED"
+          'echo' 'key='"$KEY" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          'echo' 'GUNBC_MATERIALIZED_TREE_IDENTITY='"$SOURCE_CLOSURE" | 'tee' '-a' "$GITHUB_ENV" > '/dev/null'
+        timeout-minutes: 5
+      - name: Look up release-bins by exact key under the admitted producer refs (cache API; a failed lookup is not absence)
+        id: release_bins_lookup
+        run: |
+          set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          STANDING='absent'
+          ENTRY='none'
+          'curl' '-sSf' '-H' 'Authorization: Bearer '"$GH_TOKEN" '-H' 'Accept: application/vnd.github+json' "$GITHUB_API_URL"'/repos/'"$GITHUB_REPOSITORY"'/actions/caches?per_page=100&key='"$RELEASE_BINS_KEY"'&ref=''refs/heads/main' '-o' "$ROOT"'/.release-bins-lookup-main.json' || ('echo' '::error title=release-bins LookupTransportFailed::the cache API lookup FAILED (unreachable or refused); this is not absence, so neither reuse nor rebuild is decided'; exit 1)
+          'jq' '--raw-output' '--exit-status' '. as $answer | [inputs] | if length != 0 then error("the cache-API answer is not exactly one JSON document") else $answer | if type == "object" and (.total_count | type) == "number" and (.actions_caches | type) == "array" and .total_count == (.actions_caches | length) and .total_count <= 100 and all(.actions_caches[]; type == "object" and (.key | type) == "string" and (.ref | type) == "string") then [.actions_caches[] | select(.key == $ENV.RELEASE_BINS_KEY and .ref == "refs/heads/main")] | if length == 0 then "absent" elif length == 1 then "present\nid=\(.[0].id) ref=\(.[0].ref) version=\(.[0].version) created=\(.[0].created_at)" else error("duplicate exact entries") end else error("cache-API answer is not the admitted shape") end end' '.release-bins-lookup-main.json' > "$RUNNER_TEMP"'/lookup-main.decoded' || ('echo' '::error title=release-bins LookupAnswerUnusable::the cache API answer was unreadable or incomplete; it is not treated as absence'; exit 1)
+          DECODED_STANDING=$('head' '-n' '1' "$RUNNER_TEMP"'/lookup-main.decoded')
+          if '[' "$DECODED_STANDING" '=' 'present' ']'; then STANDING='present'; ENTRY=$('sed' '-n' '2p' "$RUNNER_TEMP"'/lookup-main.decoded'); else '[' "$DECODED_STANDING" '=' 'absent' ']' || ('echo' '::error title=release-bins LookupAnswerUnusable::the cache API answer was unreadable or incomplete; it is not treated as absence'; exit 1); fi
+          'curl' '-sSf' '-H' 'Authorization: Bearer '"$GH_TOKEN" '-H' 'Accept: application/vnd.github+json' "$GITHUB_API_URL"'/repos/'"$GITHUB_REPOSITORY"'/actions/caches?per_page=100&key='"$RELEASE_BINS_KEY"'&ref='"$RELEASE_BINS_DISPATCH_SCOPE_REF" '-o' "$ROOT"'/.release-bins-lookup-dispatch.json' || ('echo' '::error title=release-bins LookupTransportFailed::the cache API lookup FAILED (unreachable or refused); this is not absence, so neither reuse nor rebuild is decided'; exit 1)
+          'jq' '--raw-output' '--exit-status' '. as $answer | [inputs] | if length != 0 then error("the cache-API answer is not exactly one JSON document") else $answer | if type == "object" and (.total_count | type) == "number" and (.actions_caches | type) == "array" and .total_count == (.actions_caches | length) and .total_count <= 100 and all(.actions_caches[]; type == "object" and (.key | type) == "string" and (.ref | type) == "string") then [.actions_caches[] | select(.key == $ENV.RELEASE_BINS_KEY and .ref == $ENV.RELEASE_BINS_DISPATCH_SCOPE_REF)] | if length == 0 then "absent" elif length == 1 then "present\nid=\(.[0].id) ref=\(.[0].ref) version=\(.[0].version) created=\(.[0].created_at)" else error("duplicate exact entries") end else error("cache-API answer is not the admitted shape") end end' '.release-bins-lookup-dispatch.json' > "$RUNNER_TEMP"'/lookup-dispatch.decoded' || ('echo' '::error title=release-bins LookupAnswerUnusable::the cache API answer was unreadable or incomplete; it is not treated as absence'; exit 1)
+          DECODED_STANDING=$('head' '-n' '1' "$RUNNER_TEMP"'/lookup-dispatch.decoded')
+          if '[' "$DECODED_STANDING" '=' 'present' ']'; then STANDING='present'; ENTRY=$('sed' '-n' '2p' "$RUNNER_TEMP"'/lookup-dispatch.decoded'); else '[' "$DECODED_STANDING" '=' 'absent' ']' || ('echo' '::error title=release-bins LookupAnswerUnusable::the cache API answer was unreadable or incomplete; it is not treated as absence'; exit 1); fi
+          'echo' 'standing='"$STANDING" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          'echo' 'entry='"$ENTRY" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+          'echo' 'release-bins lookup: standing='"$STANDING"' entry='"$ENTRY"
+        env:
+          RELEASE_BINS_KEY: ${{ steps.release_bins_key.outputs.key }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_BINS_DISPATCH_SCOPE_REF: ${{ startsWith(github.ref, 'refs/tags/') && format('refs/heads/{0}', github.ref) || github.ref }}
+        timeout-minutes: 5
+      - name: Restore release-bins into isolated staging (transport only; publishes on a verified build)
+        id: release_bins_cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            .release-bins-staging/release-bins.tgz
+            .release-bins-staging/release-bins.preimage
+            .release-bins-staging/release-bins.manifest
+          key: ${{ steps.release_bins_key.outputs.key }}
+        timeout-minutes: 10
+      - name: Decide the compiler pair outcome; verify a stored pack completely before any restored binary runs
+        id: release_bins_outcome
+        run: |
+          set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          STAGE="$ROOT"'/.release-bins-staging'
+          EXPECTED="$RUNNER_TEMP"'/release-bins.preimage.expected'
+          if '[' "$LOOKUP_STANDING" '=' 'present' ']' && '[' "$CACHE_HIT" '=' 'true' ']'; then ':' 'no-op'; else if '[' "$LOOKUP_STANDING" '=' 'present' ']' && '[' "$CACHE_HIT" '!=' 'true' ']'; then ('echo' '::error title=release-bins StoreTransportDisagreePresentMiss::the cache API holds an exact admitted entry for this key but the transport did not restore it exactly; refusing rather than rebuilding over a present entry'; exit 1); else if '[' "$LOOKUP_STANDING" '=' 'absent' ']' && '[' "$CACHE_HIT" '=' 'true' ']'; then ('echo' '::error title=release-bins StoreTransportDisagreeAbsentHit::the cache API holds no exact admitted entry for this key but the transport reported an exact hit; the store and its transport disagree'; exit 1); else if '[' "$LOOKUP_STANDING" '=' 'absent' ']' && '[' "$CACHE_HIT" '!=' 'true' ']'; then 'rm' '-rf' "$STAGE"; 'mkdir' '-p' "$STAGE"; 'echo' 'outcome=build' | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'; exit 0; else ('echo' '::error title=release-bins OutcomeInputsMissing::the lookup standing or the transport exactness is missing, so no outcome can be decided'; exit 1); fi; fi; fi; fi
+          '[' '-f' "$STAGE"'/release-bins.preimage' ']' || ('echo' '::error title=release-bins StoredEntryIncomplete::the stored entry is incomplete: release-bins.preimage is missing'; exit 1)
+          '[' '-f' "$STAGE"'/release-bins.manifest' ']' || ('echo' '::error title=release-bins StoredEntryIncomplete::the stored entry is incomplete: release-bins.manifest is missing'; exit 1)
+          '[' '-f' "$STAGE"'/release-bins.tgz' ']' || ('echo' '::error title=release-bins StoredEntryIncomplete::the stored entry is incomplete: release-bins.tgz is missing'; exit 1)
+          'cmp' '-s' "$EXPECTED" "$STAGE"'/release-bins.preimage' || ('diff' "$EXPECTED" "$STAGE"'/release-bins.preimage' || ':' 'no-op'; ('echo' '::error title=release-bins StoredPreimageDiffers::the stored preimage differs from this run'\''s independently derived preimage'; exit 1))
+          'sha256sum' "$STAGE"'/release-bins.preimage' > "$RUNNER_TEMP"'/STORED_DIGEST.out'
+          STORED_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/STORED_DIGEST.out')
+          '[' 'release-bins-'"$STORED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins StoredPreimageKeyMismatch::the stored preimage does not hash to the probed key'; exit 1)
+          'printf' '%s' 'claim_executor
+          gunbc
+          build_diagnostics
+          claim_executor_checker_inputs
+          ' > "$RUNNER_TEMP"'/release-bins.roster'
+          'tar' '-tzf' "$STAGE"'/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the stored pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
+          'cut' '-c' '67-' "$STAGE"'/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ManifestRosterMismatch::the stored manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
+          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$STAGE"'/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the stored manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
+          'rm' '-rf' "$STAGE"'/unpacked'
+          'mkdir' '-p' "$STAGE"'/unpacked'
+          'tar' '-xzf' "$STAGE"'/release-bins.tgz' '-C' "$STAGE"'/unpacked' '--no-same-owner'
+          'printf' '%s' 'claim_executor:regular file:1
+          gunbc:regular file:1
+          ' > "$RUNNER_TEMP"'/member-types.expected'
+          ('cd' "$STAGE"'/unpacked' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc') > "$RUNNER_TEMP"'/member-types.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the stored pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
+          ('cd' "$STAGE"'/unpacked' && 'find' 'claim_executor' 'gunbc' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the stored pack has a member that is not executable (listed above)'; exit 1))
+          ('cd' "$STAGE"'/unpacked' && 'sha256sum' '--strict' '--quiet' '-c' "$STAGE"'/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the stored member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
+          'mkdir' '-p' "$ROOT"'/target/release'
+          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc')
+          ('cd' "$STAGE"'/unpacked' && 'cp' '-p' 'claim_executor' 'gunbc' "$ROOT"'/target/release/')
+          ('cd' "$STAGE"'/unpacked' && 'cp' '-p' 'claim_executor_checker_inputs' "$ROOT"'/target/release/')
+          'rm' '-rf' "$STAGE"'/unpacked'
+          'echo' 'release-bins: stored pack verified and promoted'
+          'sha256sum' "$STAGE"'/release-bins.manifest' > "$RUNNER_TEMP"'/OUTPUT_DIGEST.out'
+          OUTPUT_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/OUTPUT_DIGEST.out')
+          'echo' 'ReleaseBinsReuseReceipt: request='"$RELEASE_BINS_KEY"' output=sha256:'"$OUTPUT_DIGEST"' dispatch='"$GITHUB_RUN_ID"'/'"$GITHUB_RUN_ATTEMPT"' producer=['"$LOOKUP_ENTRY"'] built=no'
+          'echo' 'outcome=reuse' | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
+        env:
+          RELEASE_BINS_KEY: ${{ steps.release_bins_key.outputs.key }}
+          LOOKUP_STANDING: ${{ steps.release_bins_lookup.outputs.standing }}
+          LOOKUP_ENTRY: ${{ steps.release_bins_lookup.outputs.entry }}
+          CACHE_HIT: ${{ steps.release_bins_cache.outputs.cache-hit }}
+        timeout-minutes: 5
+      - name: Cache Cargo
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |-
+            ${{ runner.temp }}/cargo/registry/index/
+            ${{ runner.temp }}/cargo/registry/cache/
+            ${{ runner.temp }}/cargo/git/db/
+            target/
+          key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            cargo-ci-${{ runner.os }}-${{ runner.arch }}-
+        if: steps.release_bins_outcome.outputs.outcome != 'reuse'
+      - name: Build the compiler pair (keyed miss only)
+        id: build_witness_fold
+        run: |+
+          GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
+          'set' '+e'
+          'set' '-o' 'pipefail'
+          ('sh' '-e' '-c' 'cargo build --release -p v1-compiler --bin claim_executor --bin gunbc') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
+          GUNBC_FLOOR_EXIT="$?"
+          GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'
+          GUNBC_FLOOR_CLASS='structural'
+          GUNBC_FLOOR_SIGNATURE=''
+          if '[' "$GUNBC_FLOOR_EXIT" '-eq' '126' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandInvokedCannotExecute'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '127' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandNotFound'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '0' ']'; then GUNBC_FLOOR_CLASS='none'; GUNBC_FLOOR_SIGNATURE=''; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'MemoryStallRefusedPageThrash' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='MemoryStallRefusedPageThrash'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'The runner has received a shutdown signal' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='RunnerLost'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: error: failed to execute compile' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFailedToExecuteCompile'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' '(exit status: 254)' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheRustcWrapperExit254'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: encountered fatal error' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFatalError'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'failed to spawn' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ProcessSpawnFailure'; fi
+          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi
+          if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
+          'exit' "$GUNBC_FLOOR_EXIT"
+
+        if: steps.release_bins_outcome.outputs.outcome != 'reuse'
+      - name: Pack the compiler pair with its build log (build outcomes only)
+        run: |
+          set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          STAGE="$ROOT"'/.release-bins-staging'
+          'mkdir' '-p' "$STAGE"
+          '[' '-s' "$ROOT"'/gunbc-floor-cmd.log' ']' || ('echo' '::error title=release-bins BuildDiagnosticsMissing::the product requires the build log gunbc-floor-cmd.log as a pack member and the build step left none; a pack without its diagnostics is incomplete, not smaller'; exit 1)
+          'cp' "$ROOT"'/gunbc-floor-cmd.log' "$ROOT"'/target/release/build_diagnostics'
+          './target/release/claim_executor' '--write-checker-inputs' "$ROOT"'/target/release/claim_executor_checker_inputs'
+          '[' '-s' "$ROOT"'/target/release/claim_executor_checker_inputs' ']' || ('echo' '::error title=release-bins SidecarMissing::the product requires the sidecar claim_executor_checker_inputs as a pack member and the producing job left none; a pack without it is incomplete, not smaller'; exit 1)
+          ('cd' "$ROOT"'/target/release' && 'sha256sum' 'claim_executor' 'gunbc' 'build_diagnostics' 'claim_executor_checker_inputs') > "$STAGE"'/release-bins.manifest'
+          'tar' '-czf' "$STAGE"'/release-bins.tgz' '-C' "$ROOT"'/target/release' 'claim_executor' 'gunbc' 'build_diagnostics' 'claim_executor_checker_inputs'
+          'cp' "$RUNNER_TEMP"'/release-bins.preimage.expected' "$STAGE"'/release-bins.preimage'
+          'sha256sum' "$STAGE"'/release-bins.manifest' > "$RUNNER_TEMP"'/OUTPUT_DIGEST.out'
+          OUTPUT_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/OUTPUT_DIGEST.out')
+          'echo' 'ReleaseBinsBuildReceipt: request='"$RELEASE_BINS_KEY"' output=sha256:'"$OUTPUT_DIGEST"' dispatch='"$GITHUB_RUN_ID"'/'"$GITHUB_RUN_ATTEMPT"' built=yes publish=requested-not-yet-persisted scope='"$GITHUB_REF"
+        env:
+          RELEASE_BINS_KEY: ${{ steps.release_bins_key.outputs.key }}
+        if: steps.release_bins_outcome.outputs.outcome != 'reuse'
+        timeout-minutes: 5
+      - name: Upload release-bins artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: release-bins
+          path: |-
+            .release-bins-staging/release-bins.tgz
+            .release-bins-staging/release-bins.preimage
+            .release-bins-staging/release-bins.manifest
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+        timeout-minutes: 10
+      - name: Wrap the compiler pair as the merge-group candidate object
+        run: |
+          set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          STAGE="$ROOT"'/.release-bins-staging'
+          'tar' '-cf' "$RUNNER_TEMP"'/pack.tar' '-C' "$STAGE" 'release-bins.preimage' 'release-bins.manifest' 'release-bins.tgz'
+        if: github.event_name == 'merge_group'
+        timeout-minutes: 5
+      - name: Upload the compiler pair candidate
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: compiler-pair-candidate
+          path: ${{ runner.temp }}/pack.tar
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+        if: github.event_name == 'merge_group'
+      - name: Require isolated toolchain homes
+        run: |
+          if [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2; exit 1; fi
+        if: "!cancelled()"
+    env:
+      MALLOC_ARENA_MAX: "2"
   emit-build:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 90
@@ -106,6 +460,8 @@ jobs:
           if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
           'exit' "$GUNBC_FLOOR_EXIT"
 
+        env:
+          GUNBC_NATIVE_FAULT_EXPERIMENT: ${{ github.event_name == 'pull_request' && 'skip_pull_request' || 'run' }}
       - name: emit and build //gunbc/instruments:v2-native-cli
         id: emit_build_v2_native_cli
         run: |+
@@ -130,6 +486,8 @@ jobs:
           if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
           'exit' "$GUNBC_FLOOR_EXIT"
 
+        env:
+          GUNBC_NATIVE_FAULT_EXPERIMENT: ${{ github.event_name == 'pull_request' && 'skip_pull_request' || 'run' }}
       - name: Why this lane is red, and what would be a real finding
         run: |-
           printf '%s\n' 'emit-build is a REQUIRED lane: a red here BLOCKS your merge, through the required context `witnesses`.'
@@ -139,6 +497,7 @@ jobs:
       MALLOC_ARENA_MAX: "2"
   floor:
     runs-on: [self-hosted, linux, arm64]
+    needs: [seed]
     timeout-minutes: 90
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     permissions:
@@ -170,143 +529,60 @@ jobs:
           if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
           if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
           echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
-      - name: Key the compiler pair candidate (merge group; stamps the build with the materialized tree)
+      - name: Download release-bins artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: release-bins
+          path: ${{ runner.temp }}/release-bins-download
+        timeout-minutes: 10
+      - name: Verify the seed's compiler pair against its key and promote it into this checkout
+        id: build_witness_fold
         run: |
           set -e
           ROOT=$('git' 'rev-parse' '--show-toplevel')
-          DIRTY=$('git' '-C' "$ROOT" 'status' '--porcelain' '--untracked-files=no')
-          '[' '-z' "$DIRTY" ']' || ('echo' '::error title=release-bins SourceTreeDirty::tracked files differ from HEAD, so HEAD^{tree} does not name the build input; refusing to key'; exit 1)
-          'env' '-0' > "$RUNNER_TEMP"'/env.nul'
-          if 'grep' '-zqE' '^(CARGO|RUST|CC|CXX|AR|CFLAGS|CXXFLAGS|LDFLAGS|TARGET_CC|HOST_CC)[A-Za-z0-9_]*(TOKEN|CREDENTIAL|SECRET|PASSWORD|PASSWD|AUTH)[A-Za-z0-9_]*=' "$RUNNER_TEMP"'/env.nul'; then ('echo' '::error title=release-bins CredentialInBuildEnvironment::a registry or toolchain credential is present in the build environment; credentials are not build inputs and must not reach a key or a published preimage, so the build is refused'; exit 1); fi
-          if 'grep' '-zqE' '^(RUSTC|RUSTC_WORKSPACE_WRAPPER|CARGO_BUILD_RUSTC|CARGO_BUILD_RUSTC_WRAPPER|CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER|CARGO_BUILD_TARGET|CARGO_BUILD_TARGET_DIR|CARGO_TARGET_DIR|CARGO_TARGET_[A-Z0-9_]*_(LINKER|RUNNER))=' "$RUNNER_TEMP"'/env.nul'; then ('echo' '::error title=release-bins BuildOverrideNotAdmitted::the environment overrides the compiler, linker, target or target directory Cargo would use; the key probes only the admitted defaults, so the build is refused rather than keyed wrongly'; exit 1); fi
-          'sed' '-z' '-nE' '/^(CARGO_[A-Z0-9_]*|RUST[A-Z0-9_]*|CC|CXX|AR|CFLAGS|CXXFLAGS|LDFLAGS|CC_[A-Za-z0-9_]*|CFLAGS_[A-Za-z0-9_]*|TARGET_CC|HOST_CC)=/p' "$RUNNER_TEMP"'/env.nul' > "$RUNNER_TEMP"'/env-keyed.nul'
-          'sed' '-z' '-E' '/^(CARGO_HOME|RUSTUP_HOME|CARGO_BIN|CARGO_TERM_COLOR|CARGO_BUILD_JOBS|RUSTC_WRAPPER)=/d' "$RUNNER_TEMP"'/env-keyed.nul' > "$RUNNER_TEMP"'/env-kept.nul'
-          'sort' '-z' "$RUNNER_TEMP"'/env-kept.nul' > "$RUNNER_TEMP"'/env-sorted.nul'
-          'sha256sum' "$RUNNER_TEMP"'/env-sorted.nul' > "$RUNNER_TEMP"'/AXIS_ENVIRONMENT_DIGEST.out'
-          AXIS_ENVIRONMENT_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/AXIS_ENVIRONMENT_DIGEST.out')
-          ANCESTOR_0="$ROOT"
-          ANCESTOR_CONFIG=''
-          ANCESTOR_1=$('dirname' "$ANCESTOR_0")
-          ('[' '!' '-e' "$ANCESTOR_1"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_1"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_1"
-          ANCESTOR_2=$('dirname' "$ANCESTOR_1")
-          ('[' '!' '-e' "$ANCESTOR_2"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_2"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_2"
-          ANCESTOR_3=$('dirname' "$ANCESTOR_2")
-          ('[' '!' '-e' "$ANCESTOR_3"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_3"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_3"
-          ANCESTOR_4=$('dirname' "$ANCESTOR_3")
-          ('[' '!' '-e' "$ANCESTOR_4"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_4"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_4"
-          ANCESTOR_5=$('dirname' "$ANCESTOR_4")
-          ('[' '!' '-e' "$ANCESTOR_5"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_5"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_5"
-          ANCESTOR_6=$('dirname' "$ANCESTOR_5")
-          ('[' '!' '-e' "$ANCESTOR_6"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_6"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_6"
-          ANCESTOR_7=$('dirname' "$ANCESTOR_6")
-          ('[' '!' '-e' "$ANCESTOR_7"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_7"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_7"
-          ANCESTOR_8=$('dirname' "$ANCESTOR_7")
-          ('[' '!' '-e' "$ANCESTOR_8"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_8"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_8"
-          ANCESTOR_9=$('dirname' "$ANCESTOR_8")
-          ('[' '!' '-e' "$ANCESTOR_9"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_9"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_9"
-          ANCESTOR_10=$('dirname' "$ANCESTOR_9")
-          ('[' '!' '-e' "$ANCESTOR_10"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_10"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_10"
-          ANCESTOR_11=$('dirname' "$ANCESTOR_10")
-          ('[' '!' '-e' "$ANCESTOR_11"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_11"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_11"
-          ANCESTOR_12=$('dirname' "$ANCESTOR_11")
-          ('[' '!' '-e' "$ANCESTOR_12"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_12"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_12"
-          ANCESTOR_13=$('dirname' "$ANCESTOR_12")
-          ('[' '!' '-e' "$ANCESTOR_13"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_13"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_13"
-          ANCESTOR_14=$('dirname' "$ANCESTOR_13")
-          ('[' '!' '-e' "$ANCESTOR_14"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_14"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_14"
-          ANCESTOR_15=$('dirname' "$ANCESTOR_14")
-          ('[' '!' '-e' "$ANCESTOR_15"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_15"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_15"
-          ANCESTOR_16=$('dirname' "$ANCESTOR_15")
-          ('[' '!' '-e' "$ANCESTOR_16"'/.cargo/config.toml' ']' && '[' '!' '-e' "$ANCESTOR_16"'/.cargo/config' ']') || ANCESTOR_CONFIG="$ANCESTOR_16"
-          if '[' '-n' "$ANCESTOR_CONFIG" ']'; then 'echo' 'release-bins: Cargo config found above the checkout in '"$ANCESTOR_CONFIG"; ('echo' '::error title=release-bins AncestorCargoConfigPresent::a Cargo config file exists in a directory above the checkout; it is outside the committed tree the key covers, so the build is refused'; exit 1); fi
-          '[' "$ANCESTOR_16" '=' '/' ']' || ('echo' '::error title=release-bins CheckoutPathTooDeep::the checkout is deeper than the ancestor Cargo-config scan covers, so ancestor configuration cannot be ruled out'; exit 1)
+          '[' '-n' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerKeyMissing::the build job published no release-bins key'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
+          'sha256sum' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
+          DOWNLOADED_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out')
+          '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
           OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
           SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
           '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
           '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
           SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
-          EXPECTED="$RUNNER_TEMP"'/release-bins.preimage.expected'
-          AXIS_PRODUCER=$("$CARGO_BIN" '-V')
-          '[' '-n' "$AXIS_PRODUCER" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_PRODUCER read back empty, so the key would not name the build; refusing to key'; exit 1)
-          'rustc' '-vV' > "$RUNNER_TEMP"'/rustc-host.out'
-          AXIS_HOST=$('sed' '-n' 's/^host: //p' "$RUNNER_TEMP"'/rustc-host.out')
-          'cc' '--version' > "$RUNNER_TEMP"'/AXIS_CC.out'
-          AXIS_CC=$('head' '-n' '1' "$RUNNER_TEMP"'/AXIS_CC.out')
-          'ld' '--version' > "$RUNNER_TEMP"'/AXIS_LD.out'
-          AXIS_LD=$('head' '-n' '1' "$RUNNER_TEMP"'/AXIS_LD.out')
-          'ldd' '--version' > "$RUNNER_TEMP"'/AXIS_LIBC.out'
-          AXIS_LIBC=$('head' '-n' '1' "$RUNNER_TEMP"'/AXIS_LIBC.out')
-          '[' '-n' "$AXIS_HOST" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_HOST read back empty, so the key would not name the build; refusing to key'; exit 1)
-          '[' '-n' "$AXIS_CC" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_CC read back empty, so the key would not name the build; refusing to key'; exit 1)
-          '[' '-n' "$AXIS_LD" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_LD read back empty, so the key would not name the build; refusing to key'; exit 1)
-          '[' '-n' "$AXIS_LIBC" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_LIBC read back empty, so the key would not name the build; refusing to key'; exit 1)
-          'rustc' '-vV' > "$RUNNER_TEMP"'/rustc-vV.out'
-          AXIS_TOOLCHAIN=$('paste' '-s' '-d' ';' "$RUNNER_TEMP"'/rustc-vV.out')
-          '[' '-n' "$AXIS_TOOLCHAIN" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input AXIS_TOOLCHAIN read back empty, so the key would not name the build; refusing to key'; exit 1)
-          ('printf' 'kind=%s\n' 'gunbc.compiler_pair_release_bins'; 'printf' 'address=sha256 scope=cross_run\n'; 'printf' 'producer_compiler=%s\n' "$AXIS_PRODUCER"; 'printf' 'source_closure=%s\n' "$SOURCE_CLOSURE"; 'printf' 'target_model=%s;cc=%s;ld=%s;libc=%s\n' "$AXIS_HOST" "$AXIS_CC" "$AXIS_LD" "$AXIS_LIBC"; 'printf' 'toolchain=%s\n' "$AXIS_TOOLCHAIN"; 'printf' 'build_configuration=%s;embedded_build_identity=%s;environment=%s;roster=%s\n' 'cargo build --release -p v1-compiler --bin claim_executor --bin gunbc' "$SOURCE_CLOSURE" 'sha256:'"$AXIS_ENVIRONMENT_DIGEST" 'claim_executor gunbc'; 'printf' 'required_lens_contract=none (a seed cargo build admits no lens contract)\n') > "$EXPECTED"
-          'sha256sum' "$EXPECTED" > "$RUNNER_TEMP"'/PREIMAGE_DIGEST.out'
-          PREIMAGE_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/PREIMAGE_DIGEST.out')
-          KEY='release-bins-'"$PREIMAGE_DIGEST"
-          'rm' '-rf' "$ROOT"'/.release-bins-staging'
-          'mkdir' '-p' "$ROOT"'/.release-bins-staging'
-          'echo' 'release-bins request key '"$KEY"' over preimage:'
-          'cat' "$EXPECTED"
-          'echo' 'key='"$KEY" | 'tee' '-a' "$GITHUB_OUTPUT" > '/dev/null'
-          'echo' 'GUNBC_MATERIALIZED_TREE_IDENTITY='"$SOURCE_CLOSURE" | 'tee' '-a' "$GITHUB_ENV" > '/dev/null'
-        if: github.event_name == 'merge_group'
-      - name: Build the compiler and the witness executor
-        id: build_witness_fold
-        run: |+
-          GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
-          'set' '+e'
-          'set' '-o' 'pipefail'
-          ('sh' '-e' '-c' 'cargo build --release -p v1-compiler --bin claim_executor --bin gunbc') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
-          GUNBC_FLOOR_EXIT="$?"
-          GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'
-          GUNBC_FLOOR_CLASS='structural'
-          GUNBC_FLOOR_SIGNATURE=''
-          if '[' "$GUNBC_FLOOR_EXIT" '-eq' '126' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandInvokedCannotExecute'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '127' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandNotFound'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '0' ']'; then GUNBC_FLOOR_CLASS='none'; GUNBC_FLOOR_SIGNATURE=''; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'MemoryStallRefusedPageThrash' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='MemoryStallRefusedPageThrash'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'The runner has received a shutdown signal' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='RunnerLost'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: error: failed to execute compile' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFailedToExecuteCompile'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' '(exit status: 254)' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheRustcWrapperExit254'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: encountered fatal error' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFatalError'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'failed to spawn' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ProcessSpawnFailure'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi
-          if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
-          'exit' "$GUNBC_FLOOR_EXIT"
-
-      - name: Pack the compiler pair candidate with its build log
-        run: |
-          set -e
-          ROOT=$('git' 'rev-parse' '--show-toplevel')
-          STAGE="$ROOT"'/.release-bins-staging'
-          'mkdir' '-p' "$STAGE"
-          '[' '-s' "$ROOT"'/gunbc-floor-cmd.log' ']' || ('echo' '::error title=release-bins BuildDiagnosticsMissing::the product requires the build log gunbc-floor-cmd.log as a pack member and the build step left none; a pack without its diagnostics is incomplete, not smaller'; exit 1)
-          'cp' "$ROOT"'/gunbc-floor-cmd.log' "$ROOT"'/target/release/build_diagnostics'
-          ('cd' "$ROOT"'/target/release' && 'sha256sum' 'claim_executor' 'gunbc' 'build_diagnostics') > "$STAGE"'/release-bins.manifest'
-          'tar' '-czf' "$STAGE"'/release-bins.tgz' '-C' "$ROOT"'/target/release' 'claim_executor' 'gunbc' 'build_diagnostics'
-          'cp' "$RUNNER_TEMP"'/release-bins.preimage.expected' "$STAGE"'/release-bins.preimage'
-          'sha256sum' "$STAGE"'/release-bins.manifest' > "$RUNNER_TEMP"'/OUTPUT_DIGEST.out'
-          OUTPUT_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/OUTPUT_DIGEST.out')
-          'echo' 'ReleaseBinsBuildReceipt: request='"$RELEASE_BINS_KEY"' output=sha256:'"$OUTPUT_DIGEST"' dispatch='"$GITHUB_RUN_ID"'/'"$GITHUB_RUN_ATTEMPT"' built=yes publish=requested-not-yet-persisted scope='"$GITHUB_REF"
-
-          set -e
-          ROOT=$('git' 'rev-parse' '--show-toplevel')
-          STAGE="$ROOT"'/.release-bins-staging'
-          'tar' '-cf' "$RUNNER_TEMP"'/pack.tar' '-C' "$STAGE" 'release-bins.preimage' 'release-bins.manifest' 'release-bins.tgz'
-        if: github.event_name == 'merge_group' && steps.build_witness_fold.outcome == 'success'
-      - name: Upload the compiler pair candidate
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
-        with:
-          name: compiler-pair-candidate
-          path: ${{ runner.temp }}/pack.tar
-          if-no-files-found: error
-          retention-days: 1
-          compression-level: 0
-        if: github.event_name == 'merge_group' && steps.build_witness_fold.outcome == 'success'
+          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
+          'printf' '%s' 'claim_executor
+          gunbc
+          build_diagnostics
+          claim_executor_checker_inputs
+          ' > "$RUNNER_TEMP"'/release-bins.roster'
+          'tar' '-tzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
+          'cut' '-c' '67-' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
+          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          'mkdir' '-p' "$RUNNER_TEMP"'/release-bins-check'
+          'tar' '-xzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
+          'printf' '%s' 'claim_executor:regular file:1
+          gunbc:regular file:1
+          ' > "$RUNNER_TEMP"'/member-types.expected'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc') > "$RUNNER_TEMP"'/member-types.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
+          'mkdir' '-p' "$ROOT"'/target/release'
+          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc')
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' "$ROOT"'/target/release/')
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor_checker_inputs' "$ROOT"'/target/release/')
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc'
+        env:
+          RELEASE_BINS_KEY: ${{ needs.seed.outputs.release_bins_key }}
+        timeout-minutes: 5
       - name: Require isolated toolchain homes
         run: |
           if [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2; exit 1; fi
@@ -410,6 +686,14 @@ jobs:
           if-no-files-found: error
           retention-days: 14
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
+      - name: Upload the floor's admission roster
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: required-floor-disposition
+          path: required_floor_disposition.tsv
+          if-no-files-found: error
+          retention-days: 14
+        if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
     env:
       MALLOC_ARENA_MAX: "2"
       GUNBC_EXPECTED_RED_ROSTER_JOIN: expected_red_roster_join.tsv
@@ -419,6 +703,7 @@ jobs:
       GUNBC_REQUIRED_FLOOR_CROSS_CLAIM_DEMAND: required_floor_cross_claim_demand.tsv
   generated:
     runs-on: [self-hosted, linux, arm64]
+    needs: [seed]
     timeout-minutes: 90
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     permissions:
@@ -450,30 +735,60 @@ jobs:
           if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
           if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
           echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
-      - name: Build the compiler and the witness executor
+      - name: Download release-bins artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: release-bins
+          path: ${{ runner.temp }}/release-bins-download
+        timeout-minutes: 10
+      - name: Verify the seed's compiler pair against its key and promote it into this checkout
         id: build_witness_fold
-        run: |+
-          GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
-          'set' '+e'
-          'set' '-o' 'pipefail'
-          ('sh' '-e' '-c' 'cargo build --release -p v1-compiler --bin claim_executor --bin gunbc') 2>&1 | 'tee' "$GUNBC_FLOOR_LOG"
-          GUNBC_FLOOR_EXIT="$?"
-          GUNBC_FLOOR_RECEIPT='gunbc-floor-outcome.txt'
-          GUNBC_FLOOR_CLASS='structural'
-          GUNBC_FLOOR_SIGNATURE=''
-          if '[' "$GUNBC_FLOOR_EXIT" '-eq' '126' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandInvokedCannotExecute'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '127' ']'; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='CommandNotFound'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' "$GUNBC_FLOOR_EXIT" '-eq' '0' ']'; then GUNBC_FLOOR_CLASS='none'; GUNBC_FLOOR_SIGNATURE=''; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'MemoryStallRefusedPageThrash' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='MemoryStallRefusedPageThrash'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'The runner has received a shutdown signal' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='RunnerLost'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: error: failed to execute compile' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFailedToExecuteCompile'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' '(exit status: 254)' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheRustcWrapperExit254'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'sccache: encountered fatal error' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='SccacheFatalError'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'failed to spawn' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ProcessSpawnFailure'; fi
-          if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' && '[' '-f' "$GUNBC_FLOOR_LOG" ']' && 'grep' '-q' 'Resource temporarily unavailable' "$GUNBC_FLOOR_LOG"; then GUNBC_FLOOR_CLASS='infra'; GUNBC_FLOOR_SIGNATURE='ResourceTemporarilyUnavailable'; fi
-          if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
-          'exit' "$GUNBC_FLOOR_EXIT"
-
+        run: |
+          set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          '[' '-n' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerKeyMissing::the build job published no release-bins key'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
+          'sha256sum' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
+          DOWNLOADED_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out')
+          '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
+          OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
+          SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
+          '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
+          SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
+          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
+          'printf' '%s' 'claim_executor
+          gunbc
+          build_diagnostics
+          claim_executor_checker_inputs
+          ' > "$RUNNER_TEMP"'/release-bins.roster'
+          'tar' '-tzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
+          'cut' '-c' '67-' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
+          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          'mkdir' '-p' "$RUNNER_TEMP"'/release-bins-check'
+          'tar' '-xzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
+          'printf' '%s' 'claim_executor:regular file:1
+          gunbc:regular file:1
+          ' > "$RUNNER_TEMP"'/member-types.expected'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc') > "$RUNNER_TEMP"'/member-types.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
+          'mkdir' '-p' "$ROOT"'/target/release'
+          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc')
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' "$ROOT"'/target/release/')
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor_checker_inputs' "$ROOT"'/target/release/')
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc'
+        env:
+          RELEASE_BINS_KEY: ${{ needs.seed.outputs.release_bins_key }}
+        timeout-minutes: 5
       - name: Require isolated toolchain homes
         run: |
           if [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2; exit 1; fi
@@ -573,7 +888,7 @@ jobs:
       MALLOC_ARENA_MAX: "2"
   witnesses:
     runs-on: [self-hosted, linux, arm64]
-    needs: [emit-build, floor, generated]
+    needs: [rust-unit-tests, seed, emit-build, floor, generated]
     timeout-minutes: 5
     if: always()
     permissions:
@@ -581,12 +896,16 @@ jobs:
     steps:
       - name: Every required lane must have succeeded
         run: |-
-          echo "required lanes: emit-build=$EMIT_BUILD floor=$FLOOR generated=$GENERATED (same_repo=$SAME_REPO)"
-          if [ "$EMIT_BUILD" = failure ] || [ "$FLOOR" = failure ] || [ "$GENERATED" = failure ]; then echo "::error::a required lane concluded failure (emit-build=$EMIT_BUILD floor=$FLOOR generated=$GENERATED) - open that job's log" >&2; exit 1; fi
+          echo "required lanes: rust-unit-tests=$RUST_UNIT_TESTS seed=$SEED emit-build=$EMIT_BUILD floor=$FLOOR generated=$GENERATED (same_repo=$SAME_REPO)"
+          if [ "$RUST_UNIT_TESTS" = failure ] || [ "$SEED" = failure ] || [ "$EMIT_BUILD" = failure ] || [ "$FLOOR" = failure ] || [ "$GENERATED" = failure ]; then echo "::error::a required lane concluded failure (rust-unit-tests=$RUST_UNIT_TESTS seed=$SEED emit-build=$EMIT_BUILD floor=$FLOOR generated=$GENERATED) - open that job's log" >&2; exit 1; fi
+          if [ "$RUST_UNIT_TESTS" != success ]; then if [ "$GITHUB_EVENT_NAME" = pull_request ] && [ "$RUST_UNIT_TESTS" = skipped ]; then echo "::notice::the v1 unit-test lane does not run on pull_request: it runs on merge_group and workflow_dispatch on the fleet"; else echo "::error::the v1 unit-test lane produced no success (rust-unit-tests=$RUST_UNIT_TESTS), so this head carries no verdict from that lane"; exit 1; fi; fi
+          if [ "$SEED" != success ]; then if [ "$SAME_REPO" = false ] && [ "$SEED" = skipped ]; then echo "::notice::the seed lane is skipped for a fork pull request: no compiler pair was built or restored for this head"; else echo "::error::the seed lane produced no success (seed=$SEED), so this head carries no verdict from that lane"; exit 1; fi; fi
           if [ "$EMIT_BUILD" != success ]; then if [ "$SAME_REPO" = false ] && [ "$EMIT_BUILD" = skipped ]; then echo "::notice::the emit-build lane is skipped for a fork pull request: no self-host or native-CLI emission verdict for this head"; else echo "::error::the emit-build lane produced no success (emit-build=$EMIT_BUILD), so this head carries no verdict from that lane"; exit 1; fi; fi
           if [ "$FLOOR" != success ]; then if [ "$SAME_REPO" = false ] && [ "$FLOOR" = skipped ]; then echo "::notice::the fleet lane is skipped for a fork pull request: no witnesses fold and no generated-artifact verdict for this head"; else echo "::error::the fleet lane produced no success (floor=$FLOOR), so this head carries no verdict from that lane"; exit 1; fi; fi
           if [ "$GENERATED" != success ]; then if [ "$SAME_REPO" = false ] && [ "$GENERATED" = skipped ]; then echo "::notice::the generated-artifact lane is skipped for a fork pull request: no generated-artifact verdict for this head"; else echo "::error::the generated-artifact lane produced no success (generated=$GENERATED), so this head carries no verdict from that lane"; exit 1; fi; fi
         env:
+          RUST_UNIT_TESTS: ${{ needs['rust-unit-tests'].result }}
+          SEED: ${{ needs.seed.result }}
           EMIT_BUILD: ${{ needs['emit-build'].result }}
           FLOOR: ${{ needs.floor.result }}
           GENERATED: ${{ needs.generated.result }}

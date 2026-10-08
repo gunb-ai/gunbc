@@ -40,7 +40,7 @@ import std.primitive_projection {
   primitive_type_declarer_qualified_names,
   primitive_concept_decl_facts, primitive_concept_decl_facts_live,
   primitive_symbol_lexeme, primitive_symbol_intern_lexeme,
-  primitive_data_init_decl_facts_live, primitive_bytes_octets, primitive_utf8_encode_bytes, primitive_pure_dag_seam_unreachable,
+  primitive_data_init_decl_facts_live, primitive_bytes_octets, primitive_utf8_encode_bytes, primitive_pure_dag_seam_unreachable, primitive_to_string,
 }
 
 // D0 is NOT terminal acceptance and does NOT close the subject universe. Landed and executing: join
@@ -1267,6 +1267,7 @@ data primitive_projection_target_canonical_names: List<String> = [
   "bytes_octets",
   "utf8_encode_bytes",
   "pure_dag_seam_unreachable",
+  "to_string",
 ]
 
 fn primitive_declared_definitions() -> List<PrimitiveDefinition> {
@@ -1651,6 +1652,15 @@ data primitive_utf8_encode_bytes_traversal: PrimitiveTraversalOrderFact = Primit
 // pure_dag_seam_unreachable produces no value at all -- it diverges -- so no order is consulted.
 data primitive_pure_dag_seam_unreachable_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_pure_dag_seam_unreachable, order: OrderFreeResult }
 
+// to_string RENDERS, and rendering a Map is a traversal of its entries, so it is classified here
+// rather than left Deterministic by non-membership (node adhoc-77383faf-d07). CanonicalOrder is the
+// EXECUTED READING of both realizations: the seed interpreter's Display for Value::Map orders
+// entries by canonical_content_cmp, the realization of std.algebra TotalOrder over value content,
+// never by HamtMap iteration; and the emitted realization renders no Map at all -- v1.compiler
+// emit_rust emitted_map_rendering_refusal refuses it typed and located. Every other argument kind
+// is a scalar whose rendering consults no order. String interpolation lowers to the same Display
+// and is syntax, not a primitive call, so this row covers it only through that shared realization.
+data primitive_to_string_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_to_string, order: CanonicalOrder }
 data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_length_traversal,
   primitive_map_insert_traversal,
@@ -1671,6 +1681,7 @@ data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_bytes_octets_traversal,
   primitive_utf8_encode_bytes_traversal,
   primitive_pure_dag_seam_unreachable_traversal,
+  primitive_to_string_traversal,
 ]
 
 fn primitive_declared_traversal_facts() -> List<PrimitiveTraversalOrderFact> {
