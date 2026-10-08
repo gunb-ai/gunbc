@@ -3976,6 +3976,43 @@ mod fixture_closure_union_tests {
         );
     }
 
+    /// PLAN-TIME CLOSURE of the forged-probe witness module (the changed-witness seed), not
+    /// the in-memory probe string. If MegaRAC production paths appear, planning that witness
+    /// compiled the string's imports as both-closure edges and the pin at fold-start is that
+    /// increment. If they do not, the increment is the typed graph of this module itself.
+    #[test]
+    fn forged_probe_witness_module_both_closure_excludes_string_literal_imports() {
+        let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let layers = crate::cli_run::witness_layer_roots();
+        let shared = super::entry_resolve::try_process_shared_index(&layers)
+            .unwrap_or_else(|e| panic!("process-shared index is the subject of this control: {e}"));
+        let scratch = super::entry_resolve::new_multi_entry_index_shell(
+            shared.source_files.clone(),
+            &shared.source_roots,
+        );
+        let rel = "dag/test/claim/host/megarac_managed_host_forged_probe_witness_test.dag";
+        let content = std::fs::read_to_string(process_workspace_root().join(rel))
+            .unwrap_or_else(|e| panic!("read {rel}: {e}"));
+        let source = Rc::new(v1_compiler_compile::SourceFile {
+            path: rel.to_string(),
+            content,
+        });
+        let closed =
+            crate::cli_run::extend_sources_to_both_closure_fixpoint(vec![source], &scratch)
+                .unwrap_or_else(|e| panic!("witness-module closure must close: {e}"));
+        let megarac: Vec<String> = closed
+            .iter()
+            .map(|s| s.path.replace('\\', "/"))
+            .filter(|p| p.contains("megarac") && p != rel)
+            .collect();
+        assert!(
+            megarac.is_empty(),
+            "planning the witness must not both-close MegaRAC production named only inside \
+             forged_probe_source; pulled {megarac:?} (closure_len={})",
+            closed.len()
+        );
+    }
+
     #[test]
     fn capture_gap_keys_on_shell_channel_not_realized_fact_equality() {
         use crate::v1_compiler_emit::{shell_emission_refusal_fact, ShellEmissionRefusal};
