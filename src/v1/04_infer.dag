@@ -139,7 +139,7 @@ import v1.compiler.infer_env {
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, lookup_binding_on_chain, collect_chain_bare_names, scratch_parent_chain_overlay, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref,
+  lookup_binding_by_name, lookup_binding_on_chain, collect_chain_bare_names, scratch_parent_chain_overlay, type_env_retain_complete_chain_index, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref,
   listed_import_required_bare_call_blocked,
   effective_visible_binding, unit_variant_index_shadow_insert,
   build_unit_variant_index, UnitVariantContribution
@@ -14276,10 +14276,11 @@ fn type_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv {
   } else { parent_env }
 }
 
-// Interface-grain scope parent (S2a move 2 increment B): a dependent's typecheck reads a
-// direct import's exported surface (str_bindings as that module's locals, merged
-// inductive_fields/recursive sets) and walks `parents` on a miss when ancestry_str_bindings
-// is empty. It does not retain a flattened ancestry overlay on the TypeEnv. Discriminating
+// Interface-grain scope parent: a dependent's typecheck reads a direct import's exported
+// surface (str_bindings as that module's locals). After typecheck_module, ancestry_str_bindings
+// is the complete chain index for that prefix (locals last-wins onto the parent prefix),
+// one map per typed module, Rc-shared into every importer's overlay via last_wins of an
+// empty base. Production graphs drop the overlay after reconcile. Discriminating
 // receipt: transitive_interface_binding_test.
 
 fn interface_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv {
@@ -17019,18 +17020,19 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
 
   let env_errors = env_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
   let seed_diags = builtin_kernel_seed_diagnostics()
+  let stored_env = type_env_retain_complete_chain_index(env: env)
   if env_errors |> count > 0 {
     return TypecheckModuleResult {
       typed: TypedModule {
         progress: AbandonedBeforeItems,
         module: resolved.module,
         items: [],
-        type_env: env,
+        type_env: stored_env,
         type_env_cache: env_cache,
         interface: build_module_interface(
           module_path: authored_name_at(source_indices: source_indices, node: resolved.module),
           module: resolved.module,
-          env: env,
+          env: stored_env,
           cache: env_cache,
           source_indices: source_indices
         ),
@@ -17120,12 +17122,12 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       progress: ItemsChecked,
       module: typed_module,
       items: grounded.items,
-      type_env: env,
+      type_env: stored_env,
       type_env_cache: module_type_env_cache,
       interface: build_module_interface(
         module_path: resolved_module_name,
         module: typed_module,
-        env: env,
+        env: stored_env,
         cache: module_type_env_cache,
         source_indices: source_indices
       ),

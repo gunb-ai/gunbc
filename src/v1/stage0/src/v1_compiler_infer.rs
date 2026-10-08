@@ -142,7 +142,7 @@ pub use crate::v1_compiler_infer_env::{
     host_text_into_structural_sequence, inductive_fields_for, inductive_fields_list_to_map,
     is_recursive_type, is_recursive_type_by_name, ledger_peer_import_binding_forks,
     listed_import_required_bare_call_blocked, lookup_binding_by_name, lookup_binding_on_chain,
-    scratch_parent_chain_overlay,
+    scratch_parent_chain_overlay, type_env_retain_complete_chain_index,
     lookup_type, lookup_type_by_name, lookup_type_for, merge_inductive_fields,
     merge_type_env_cache, merge_type_env_cache_skip_equal, node_with_children, node_with_inferred,
     put_inductive_field, put_inductive_field_cross, qualified_all_but_last,
@@ -30879,13 +30879,14 @@ pub fn typecheck_module(
             __result
         });
         let seed_diags = crate::v1_compiler_infer_method::builtin_kernel_seed_diagnostics();
+        let stored_env = type_env_retain_complete_chain_index(env.clone());
         if ((env_errors.clone().len() as i64) > 0) {
             return Rc::new(TypecheckModuleResult {
                 typed: Rc::new(TypedModule {
                     progress: ModuleTypecheckProgress::AbandonedBeforeItems,
                     module: resolved.module.clone(),
                     items: Rc::new(vec![]),
-                    type_env: env.clone(),
+                    type_env: stored_env.clone(),
                     type_env_cache: env_cache.clone(),
                     interface: build_module_interface(
                         crate::v1_std_core::authored_name_at(
@@ -30893,7 +30894,7 @@ pub fn typecheck_module(
                             resolved.module.clone(),
                         ),
                         resolved.module.clone(),
-                        env.clone(),
+                        stored_env.clone(),
                         env_cache.clone(),
                         source_indices.clone(),
                     ),
@@ -31073,12 +31074,12 @@ pub fn typecheck_module(
                 progress: ModuleTypecheckProgress::ItemsChecked,
                 module: typed_module.clone(),
                 items: grounded.items.clone(),
-                type_env: env.clone(),
+                type_env: stored_env.clone(),
                 type_env_cache: module_type_env_cache.clone(),
                 interface: build_module_interface(
                     resolved_module_name.clone(),
                     typed_module.clone(),
-                    env.clone(),
+                    stored_env.clone(),
                     module_type_env_cache.clone(),
                     source_indices.clone(),
                 ),

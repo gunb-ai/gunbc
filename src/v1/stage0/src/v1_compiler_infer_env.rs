@@ -927,7 +927,36 @@ fn last_wins_merge_bindings(
     base: Rc<HashMap<String, Rc<TypeBinding>>>,
     overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    v1_rt::rc_map_merge(base, overlay)
+    if base.is_empty() {
+        overlay
+    } else if overlay.is_empty() {
+        base
+    } else {
+        v1_rt::rc_map_merge(base, overlay)
+    }
+}
+
+pub fn type_env_retain_complete_chain_index(env: Rc<TypeEnv>) -> Rc<TypeEnv> {
+    Rc::new(TypeEnv {
+        module_path: env.module_path.clone(),
+        bindings: env.bindings.clone(),
+        str_bindings: env.str_bindings.clone(),
+        ancestry_str_bindings: last_wins_merge_bindings(
+            env.ancestry_str_bindings.clone(),
+            env.str_bindings.clone(),
+        ),
+        parents: env.parents.clone(),
+        recursive_types: env.recursive_types.clone(),
+        recursive_type_set: env.recursive_type_set.clone(),
+        inductive_fields: env.inductive_fields.clone(),
+        source_indices: env.source_indices.clone(),
+        intern_table: env.intern_table.clone(),
+        source_visible_names: env.source_visible_names.clone(),
+        authored_import_names: env.authored_import_names.clone(),
+        symbol_index: env.symbol_index.clone(),
+        unit_variant_index: env.unit_variant_index.clone(),
+        unit_variant_index_observed: env.unit_variant_index_observed,
+    })
 }
 
 fn collect_chain_lookup_index_seen(
@@ -938,13 +967,13 @@ fn collect_chain_lookup_index_seen(
         Some(acc) => ChainIndexMemo { acc, memo },
         std::option::Option::None => {
             if !env.ancestry_str_bindings.is_empty() {
-                let with_local = last_wins_merge_bindings(
-                    env.ancestry_str_bindings.clone(),
-                    env.str_bindings.clone(),
-                );
                 ChainIndexMemo {
-                    acc: with_local.clone(),
-                    memo: v1_rt::rc_map_insert(memo, env.module_path.clone(), with_local),
+                    acc: env.ancestry_str_bindings.clone(),
+                    memo: v1_rt::rc_map_insert(
+                        memo,
+                        env.module_path.clone(),
+                        env.ancestry_str_bindings.clone(),
+                    ),
                 }
             } else {
                 let parent_st = env.parents.iter().cloned().fold(

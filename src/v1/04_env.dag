@@ -634,8 +634,34 @@ fn type_env_drop_scratch_overlay(env: TypeEnv) -> TypeEnv {
   }
 }
 
+fn type_env_retain_complete_chain_index(env: TypeEnv) -> TypeEnv {
+  TypeEnv {
+    module_path: env.module_path,
+    bindings: env.bindings,
+    str_bindings: env.str_bindings,
+    ancestry_str_bindings: last_wins_merge_bindings(base: env.ancestry_str_bindings, overlay: env.str_bindings),
+    parents: env.parents,
+    recursive_types: env.recursive_types,
+    recursive_type_set: env.recursive_type_set,
+    inductive_fields: env.inductive_fields,
+    source_indices: env.source_indices,
+    intern_table: env.intern_table,
+    source_visible_names: env.source_visible_names,
+    authored_import_names: env.authored_import_names,
+    symbol_index: env.symbol_index,
+    unit_variant_index: env.unit_variant_index,
+    unit_variant_index_observed: env.unit_variant_index_observed
+  }
+}
+
 fn last_wins_merge_bindings(base: Map<String, TypeBinding>, overlay: Map<String, TypeBinding>) -> Map<String, TypeBinding> {
-  map_merge(base, overlay)
+  if (base |> map_keys |> count) == 0 {
+    overlay
+  } else if (overlay |> map_keys |> count) == 0 {
+    base
+  } else {
+    map_merge(base, overlay)
+  }
 }
 
 fn collect_chain_lookup_index_seen(env: TypeEnv, memo: Map<String, Map<String, TypeBinding>>) -> ChainIndexMemo {
@@ -643,8 +669,7 @@ fn collect_chain_lookup_index_seen(env: TypeEnv, memo: Map<String, Map<String, T
     Present { value: acc } => ChainIndexMemo { acc: acc, memo: memo }
     Absent =>
       if (env.ancestry_str_bindings |> map_keys |> count) > 0 {
-        let with_local = last_wins_merge_bindings(base: env.ancestry_str_bindings, overlay: env.str_bindings)
-        ChainIndexMemo { acc: with_local, memo: map_insert(memo, env.module_path, with_local) }
+        ChainIndexMemo { acc: env.ancestry_str_bindings, memo: map_insert(memo, env.module_path, env.ancestry_str_bindings) }
       } else {
         let parent_st = fold(env.parents, init: ChainIndexMemo { acc: empty_map(), memo: memo }, f: (st, parent) =>
           let nxt = collect_chain_lookup_index_seen(env: parent, memo: st.memo)
