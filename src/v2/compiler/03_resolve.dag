@@ -120,6 +120,7 @@ import v2.std.symbol_index {
   symbol_index_declaring_path_of,
   symbol_index_lexical_lookup,
   symbol_index_declared_binders_at,
+  symbol_index_declared_type_params_at,
   symbol_index_lookup,
   symbol_index_renaming_alias_at
 }
@@ -2710,6 +2711,47 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: FrameBinders) ->
 // instead of staying on the frontier with the match spine. A tag that names no declared arm, or a
 // field the arm does not declare, leaves the binder untyped exactly as before: the match row judges
 // the pattern against the scrutinee's coproduct and refuses the mismatch at the arm row.
+
+// A payload field whose type still names the DECLARING TYPE's formal (`value: T` in
+// `type Out<T> = Acc { value: T, ... }`) cannot hand its binder a declared type here: no
+// instance flows at this stage (the deep-instantiation follow-up installs the scrutinee's
+// arguments into the arm frame), so minting the formal would fabricate a type the binder does
+// not have (DESIGN 5: no fabricated plausible output; the operand read in infer refuses the
+// same shape). The binder stays untyped and its reference stays honestly underived. The
+// declaring type's own parameter list is the authority for what counts as its formal --
+// `symbol_index_declared_type_params_at` at the arm's parent path -- so a concrete user type
+// or another declaration's parameter never trips this gate.
+fn resolve_payload_field_type_holds_declaring_formal(
+  ctx: ResolveContext,
+  arm_path: QualifiedName,
+  t: Node
+) -> Bool {
+  resolve_type_node_mentions_any_name(
+    t: t,
+    names: symbol_index_declared_type_params_at(
+      index: ctx.namespace.symbol_index,
+      qualified_path: qualified_name_init(qn: arm_path)
+    )
+  )
+}
+
+fn resolve_type_node_mentions_any_name(t: Node, names: List<Symbol>) -> Bool {
+  match t.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      any(xs: names, predicate: fn(n) { n == id })
+    TypeNode { connective: _ } =>
+      any(
+        xs: node_positional_child_targets(node: t),
+        predicate: fn(c) { resolve_type_node_mentions_any_name(t: c, names: names) }
+      )
+    ComputationNode { behavior: _ } =>
+      any(
+        xs: node_positional_child_targets(node: t),
+        predicate: fn(c) { resolve_type_node_mentions_any_name(t: c, names: names) }
+      )
+  }
+}
+
 fn resolve_pattern_binder_declared_type(ctx: ResolveContext, pat: Node, field: Edge) -> Optional<Node> {
   match resolve_pattern_tag_declared_payload_path_optional(ctx: ctx, pat: pat) {
     Absent => optional_absent()
@@ -2720,7 +2762,16 @@ fn resolve_pattern_binder_declared_type(ctx: ResolveContext, pat: Node, field: E
           match field.label {
             Authored { name: field_name } =>
               match declared_field_named(payload: payload, name: field_name) {
-                Present { value: f } => optional_present(value: f.type_node)
+                Present { value: f } =>
+                  if resolve_payload_field_type_holds_declaring_formal(
+                    ctx: ctx,
+                    arm_path: arm_path,
+                    t: f.type_node
+                  ) {
+                    optional_absent()
+                  } else {
+                    optional_present(value: f.type_node)
+                  }
                 Absent => optional_absent()
               }
             StructuralLabel { label: _ } => optional_absent()

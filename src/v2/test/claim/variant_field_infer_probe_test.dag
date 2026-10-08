@@ -148,19 +148,6 @@ fn vfp_match_scrutinee(m: Optional<Node>) -> Optional<Node> {
   }
 }
 
-fn vfp_first_arm_body_of(m: Node) -> Optional<Node> {
-  fold(m.children, init: Absent, f: fn(acc, e) {
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        match e.label {
-          StructuralLabel { label: CoreMarker { marker: MatchArmBodyEdge } } => Present { value: e.target }
-          _ => Absent
-        }
-    }
-  })
-}
-
 fn vfp_type_name(t: Node) -> Symbol {
   match declaration_reference_path_optional(node: t) {
     Present { value: path } =>
@@ -465,10 +452,7 @@ fn vfp_reading(src: String) -> VfpReading {
           ),
           arm_body_fact: vfp_fact_in(
             inferred: inferred,
-            subject: match vfp_find_match(n: resolved.root) {
-              Absent => Absent
-              Present { value: m } => vfp_first_arm_body_of(m: m)
-            }
+            subject: vfp_arm_body_first(m: vfp_find_match(n: resolved.root))
           ),
           construct_read: vfp_construct_read_decode(resolved: resolved),
           construct_read_carrier: vfp_construct_read_carrier_decode(resolved: resolved)
@@ -701,4 +685,3 @@ fn vfp_decode_arrow_reading(r: VfpArrowReading) -> CliWireResponse {
 }
 
 fn vfp_decode_arrow() -> CliWireResponse { vfp_decode_arrow_reading(r: vfp_arrow_reading()) }
-
