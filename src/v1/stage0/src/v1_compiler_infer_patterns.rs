@@ -34,7 +34,7 @@ pub use crate::v1_std_core::{
     arm_pattern, authored_name_at, error_type, field_binding_name_at, field_binding_pattern,
     find_child_named, generic_param_name_at, is_compiler_error, kernel_span, make_error_node,
     match_pattern_is_irrefutable, no_span, none_type, qualified_last_segment,
-    with_optional_cardinality,
+    preserve_outer_optional_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, DeclarationMarker, ErrorNode, ExprData,
@@ -915,7 +915,10 @@ pub fn resolve_scrutinee_type(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node>
             }
         };
         if scrut_is_optional.clone() {
-            crate::v1_std_core::with_optional_cardinality(resolved_raw.clone())
+            crate::v1_std_core::preserve_outer_optional_cardinality(
+                type_node.clone(),
+                resolved_raw.clone(),
+            )
         } else {
             resolved_raw.clone()
         }

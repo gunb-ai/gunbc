@@ -21,7 +21,7 @@ import v1.std.core { Unmarked,
   Wildcard, Bind, VariantPattern,
   field_binding_pattern, field_binding_name_at,
   LitBool, LitNull,
-  with_optional_cardinality,
+  preserve_outer_optional_cardinality,
   none_type, error_type, no_span, kernel_span,
   qualified_last_segment
 }
@@ -496,7 +496,7 @@ fn resolve_scrutinee_type(type_node: Node, env: TypeEnv) -> Node {
       Absent => type_node
     }
   }
-  if scrut_is_optional { with_optional_cardinality(n: resolved_raw) } else { resolved_raw }
+  if scrut_is_optional { preserve_outer_optional_cardinality(outer: type_node, inner: resolved_raw) } else { resolved_raw }
 }
 
 // THE ROSTER FOLLOWS THE TYPE SYSTEM'S ANSWER, NOT THE AUTHORED SPELLING -- AND THAT IS AN OPEN
