@@ -87,6 +87,7 @@ jobs:
           'printf' '%s' 'claim_executor
           gunbc
           build_diagnostics
+          claim_executor_checker_inputs
           ' > "$RUNNER_TEMP"'/release-bins.roster'
           'tar' '-tzf' "$RUNNER_TEMP"'/canonical-pack/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
           'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
@@ -106,9 +107,10 @@ jobs:
           ('cd' "$RUNNER_TEMP"'/canonical-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/canonical-pack/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
           'mkdir' '-p' "$ROOT"'/target/release'
           ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc')
-          ('cd' "$RUNNER_TEMP"'/canonical-check' && 'cp' '-p' 'claim_executor' 'gunbc' "$ROOT"'/target/release''/')
+          ('cd' "$RUNNER_TEMP"'/canonical-check' && 'cp' '-p' 'claim_executor' 'gunbc' "$ROOT"'/target/release/')
+          ('cd' "$RUNNER_TEMP"'/canonical-check' && 'cp' '-p' 'claim_executor_checker_inputs' "$ROOT"'/target/release/')
           'rm' '-rf' "$RUNNER_TEMP"'/canonical-check'
-          "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release''/claim_executor' "$ROOT"'/target/release''/gunbc'
+          "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc'
           'echo' 'release-bins: canonical gunbc.compiler_pair_release_bins pack verified and promoted'
         if: steps.pair_candidate.outputs.standing == 'present'
         timeout-minutes: 10

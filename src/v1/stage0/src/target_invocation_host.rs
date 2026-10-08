@@ -279,6 +279,7 @@ pub enum TargetProducer {
     SelfHostBehavioralEquivalence,
     DependencyDemandCensus,
     GenericIdentityCensus,
+    InterpolationHoleCensus,
     RegenRoundCost,
     /// `NativeClaimProgramProducer { entry }`: the entry is carried, so a second program of the same
     /// shape is a registry row naming its entry, never another variant.
@@ -455,6 +456,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("generic-identity-census"),
             TargetProducer::GenericIdentityCensus,
+        ),
+        (
+            instrument_label("interpolation-hole-census"),
+            TargetProducer::InterpolationHoleCensus,
         ),
         (
             instrument_label("regen-round-cost"),
@@ -879,6 +884,9 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         }
         TargetProducer::GenericIdentityCensus => {
             run_generic_identity_census(&self_host_source_roots())
+        }
+        TargetProducer::InterpolationHoleCensus => {
+            run_interpolation_hole_census(&self_host_source_roots())
         }
         TargetProducer::RegenRoundCost => run_regen_round_cost_instrument(),
         TargetProducer::SelfHostBehavioralEquivalence => run_cli_wire_census(
@@ -3450,6 +3458,99 @@ mod binary_freshness_tests {
             outcome.message
         );
         assert!(outcome.message.contains("a.rs"));
+    }
+}
+
+/// `gunbc.instrument_targets` `interpolation_hole_census_label`. TRANSPORT ONLY: every `.dag` file
+/// under the source roots is read and handed to `v1.tests.claim.interpolation_hole_census` as
+/// `SourceFile` data; that module decides which files are subjects (those whose v1 lexing yields an
+/// interpolating template), the host loads each subject's closure, and the union is handed back for
+/// one compile. The standing, every row, every count and every completeness mismatch are that
+/// module's; this function holds only when the fixture standing AND the receipt's corpus standing (its first line) both hold. An unreadable root,
+/// file, fixture or closure is `SubjectUnreached`, never a standing.
+fn run_interpolation_hole_census(source_roots: &[String]) -> InvocationOutcome {
+    use crate::v1_compiler_compile::SourceFile;
+    use crate::v1_tests_claim_interpolation_hole_census as census;
+    use std::rc::Rc;
+    const FIXTURE: &str = "fixtures/interpolation_hole_census/a.dag";
+    let unreached = |detail: String| InvocationOutcome {
+        termination: Termination::SubjectUnreached,
+        message: format!("interpolation-hole-census: subject unreached: {detail}"),
+    };
+    let fixture = match std::fs::read_to_string(FIXTURE) {
+        Ok(content) => vec![Rc::new(SourceFile {
+            path: FIXTURE.to_string(),
+            content,
+        })],
+        Err(err) => return unreached(format!("fixture {FIXTURE}: {err}")),
+    };
+    let standing = census::interpolation_hole_fixture_standing(Rc::new(fixture.into()));
+    if standing.starts_with("REFUSED") {
+        return unreached(format!("fixture did not compile: {standing}"));
+    }
+    for line in standing.lines() {
+        println!("interpolation-hole-census: {line}");
+    }
+    let mut paths: Vec<std::path::PathBuf> = Vec::new();
+    for root in source_roots {
+        if let Err(detail) =
+            cli_run::collect_dag_files_result(std::path::Path::new(root), &mut paths)
+        {
+            return unreached(format!("root {root}: {detail}"));
+        }
+    }
+    let mut corpus: Vec<Rc<SourceFile>> = Vec::new();
+    for path in &paths {
+        let path = path.to_string_lossy().to_string();
+        match std::fs::read_to_string(&path) {
+            Ok(content) => corpus.push(Rc::new(SourceFile { path, content })),
+            Err(err) => return unreached(format!("corpus file {path}: {err}")),
+        }
+    }
+    let corpus_files = corpus.len();
+    let subjects: Vec<String> = census::interpolation_hole_census_subjects(Rc::new(corpus.into()))
+        .iter()
+        .map(|p| p.to_string())
+        .collect();
+    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut closure: Vec<Rc<SourceFile>> = Vec::new();
+    for subject in &subjects {
+        let sources =
+            match cli_run::load_sources_for_entry_with_pool_index(source_roots, subject, false) {
+                Ok(sources) => sources,
+                Err(detail) => return unreached(format!("closure of {subject}: {detail}")),
+            };
+        for source in sources {
+            if seen.insert(source.path.clone()) {
+                closure.push(source);
+            }
+        }
+    }
+    let compiled = closure.len();
+    let receipt = census::interpolation_hole_census_from_sources(
+        Rc::new(closure.into()),
+        Rc::new(subjects.clone().into()),
+    );
+    if receipt.starts_with("REFUSED") {
+        return unreached(format!("subject closure did not compile: {receipt}"));
+    }
+    for line in receipt.lines() {
+        println!("interpolation-hole-census: report {line}");
+    }
+    let held = standing.lines().next() == Some("STANDING held")
+        && receipt.lines().next() == Some("CORPUS complete");
+    InvocationOutcome {
+        termination: if held {
+            Termination::ObservationHeld
+        } else {
+            Termination::ObservationDidNotHold
+        },
+        message: format!(
+            "interpolation-hole-census: {} {} (controls over {FIXTURE}; report over {} subjects of {corpus_files} corpus files, {compiled} sources compiled)",
+            standing.lines().next().unwrap_or("STANDING absent"),
+            receipt.lines().next().unwrap_or("CORPUS absent"),
+            subjects.len()
+        ),
     }
 }
 

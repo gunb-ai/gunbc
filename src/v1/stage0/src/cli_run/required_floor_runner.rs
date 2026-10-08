@@ -7066,7 +7066,7 @@ pub(crate) fn derive_and_install_cross_claim_share(
     in_flight_wall_cap_ms: u64,
 ) -> Result<(), String> {
     use super::claim_call_site_demand::{
-        CallSiteDemandObserver, CallSiteDemandRow, CLOSED_ARGUMENT_NORMALIZER,
+        CallSiteDemandObserver, CallSiteDemandRow, ConsumerRead, CLOSED_ARGUMENT_NORMALIZER,
     };
     use v1_interpreter::Value;
     const MODULE: &str = "v2.workflow.floor_pure_producer_share";
@@ -7137,6 +7137,7 @@ pub(crate) fn derive_and_install_cross_claim_share(
                 claims,
                 planned_claims,
                 sites,
+                reads,
             } => Value::Variant {
                 type_name: sym("CallSiteDemandObservation"),
                 variant_name: sym("ClosedCallSiteDemand"),
@@ -7162,6 +7163,44 @@ pub(crate) fn derive_and_install_cross_claim_share(
                     (
                         sym("sites"),
                         list_value_from_vec(sites.iter().map(str_value).collect()),
+                    ),
+                    (
+                        sym("reads"),
+                        list_value_from_vec(
+                            reads
+                                .iter()
+                                .map(|(claim, read)| {
+                                    let read = match read {
+                                        ConsumerRead::WholeValue => {
+                                            unit("ConsumerRead", "WholeValue")
+                                        }
+                                        ConsumerRead::ProjectedField(field) => Value::Variant {
+                                            type_name: sym("ConsumerRead"),
+                                            variant_name: sym("ProjectedField"),
+                                            fields: std::rc::Rc::new(vec![(
+                                                sym("field"),
+                                                str_value(field),
+                                            )]),
+                                        },
+                                        ConsumerRead::Unread(cause) => Value::Variant {
+                                            type_name: sym("ConsumerRead"),
+                                            variant_name: sym("ConsumerReadUnobserved"),
+                                            fields: std::rc::Rc::new(vec![(
+                                                sym("cause"),
+                                                unit("ConsumerReadCause", cause.variant()),
+                                            )]),
+                                        },
+                                    };
+                                    Value::Record {
+                                        type_name: sym("ClaimConsumerRead"),
+                                        fields: std::rc::Rc::new(vec![
+                                            (sym("claim"), str_value(claim)),
+                                            (sym("read"), read),
+                                        ]),
+                                    }
+                                })
+                                .collect(),
+                        ),
                     ),
                 ]),
             },
@@ -7329,15 +7368,39 @@ pub(crate) fn derive_and_install_cross_claim_share(
         };
         *decline_counts.entry(variant_of(r, "decline")?).or_default() += 1;
         // EVERY decline is printed, single-claim ones included, so each producer's disposition is
-        // readable by identity from the run's own log.
-        {
-            eprintln!(
-                "[cross-claim-share-declined] producer={} decline={} argument_preimage={}",
-                text_of(r, "producer")?,
-                variant_of(r, "decline")?,
-                text_of(r, "argument_preimage")?
-            );
-        }
+        // readable by identity from the run's own log. A bundle names the slices only one claim
+        // reads, and an unreadable consumer names its cause.
+        let detail = match ctx.field(r, "decline") {
+            Some(Value::Variant {
+                variant_name,
+                fields: d,
+                ..
+            }) => match ctx.resolve(*variant_name).as_str() {
+                "BundleOfDisjointProjections" => {
+                    let slices = ctx
+                        .field(d, "sole_projections")
+                        .and_then(|v| v1_interpreter::list_value_items(ctx, v))
+                        .ok_or_else(|| malformed("a bundle decline has no `sole_projections`"))?;
+                    let mut names = Vec::new();
+                    for s in &slices {
+                        let Value::Str(s) = s else {
+                            return Err(malformed("a sole projection is not a String"));
+                        };
+                        names.push(s.to_string());
+                    }
+                    format!(" sole_projections=[{}]", names.join(","))
+                }
+                "ConsumerReadUnknown" => format!(" cause={}", variant_of(d, "cause")?),
+                _ => String::new(),
+            },
+            _ => return Err(malformed("a declined row has no `decline` variant")),
+        };
+        eprintln!(
+            "[cross-claim-share-declined] producer={} decline={}{detail} argument_preimage={}",
+            text_of(r, "producer")?,
+            variant_of(r, "decline")?,
+            text_of(r, "argument_preimage")?
+        );
     }
     let mut unadmissible_rendered = Vec::new();
     for row in &unadmissible {
