@@ -275,6 +275,10 @@ fn optional_data_row_cases() -> List<NativeEmissionCase> {
     NativeEmissionCase {
       identity: "optional_data_row_red_absent_answers_absent",
       held: control_optional_brand_value(d: control_optional_brand_absent) == ""
+    }
+  ]
+}
+
 // RULE: an effectful function's return type is rendered against the module's type environment
 // (v1.compiler.emit_rust emit_func_inferred through render_rust_fn_sig_type), the same authority a
 // pure function's return uses. It rendered with an empty emit info, so a type argument was judged
