@@ -2,94 +2,54 @@ module v2.test.provenance.parse_memo_frame_replay
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// A MEMO HIT MUST RESOLVE EVERY NODE IT RETURNS EXACTLY AS A PARSE WITH NO MEMO DOES. A memo hit
-// replays the stored frame -- the ids minted or replayed inside the memoized production -- into
-// the current span index, instead of merging the stored index whole. The oracle is independent of
-// that mechanism: the same tokens under the same prepared grammar, once with the table's
-// materialization Memoize (hits happen) and once with Recompute (the door refuses every store, so
-// no hit can happen), must give every minted node in the tree a span-index entry, and the
-// pre-order list of their textual-locus resolutions must be identical. A replay that drops an id the
-// returned subtree references reds on the entry check; one that adopts the wrong event reds on the
-// comparison.
+// EVERY NODE A PARSE RETURNS RESOLVES TO ITS OWN SURVIVING-PATH PROVENANCE. Backtracking restores
+// the whole ParseProvenanceState on a failed attempt, so occurrence ids are a counter along
+// whichever path survives: an id minted on an abandoned attempt is minted again by the next one
+// and recorded once. The packrat memo that served captures across paths -- and with them ids
+// minted on an abandoned path -- was deleted (operator ruling R2, 2026-10-08;
+// gunbc.recurring_failure_mode parse_memo_hit_serves_occurrences_minted_on_an_abandoned_path), and
+// this module keeps the grammars that exposed it as regression controls on the memo-free door.
 //
-// Both specimens are hand grammars small enough for the floor's per-witness step budget. The first
-// was a real .dag specimen under the real .dag grammar, which cost ~489k eval steps and was refused
-// at enrolment; what it uniquely exercised -- a memo hit whose frame holds a NESTED memoized frame --
-// is built directly below.
+// The expected results are stated without reference to any memo: every minted occurrence in the
+// accepted tree is distinct, every one has a span-index entry, the index holds nothing the
+// surviving path did not mint, and each terminal resolves to its own bytes. Every run goes through
+// the PRODUCTION DOOR -- prepare_grammar, then parse_production_prepared over the prepared
+// analysis, the route parse_module_prepared_seeded takes -- so a door that served a capture across
+// paths again reds here.
+//
+// The module name is kept because the failure-mode row above cites its colliding-grammar claim.
 
-type ParseMemoFrameReplayRun {
+type ParsePathRun {
   tree: Node
   index: SpanIndex
-  hits: Int
 }
 
-fn parse_memo_frame_replay_run_modeled(
-  tokens: List<Token>,
-  validated: ValidatedGrammarRoot,
-  analysis: GrammarFirstAnalysis,
-  materialization: Materialization
-) -> Optional<ParseMemoFrameReplayRun> {
-  let root = validated.root
-  let base = parse_table_for_production_analyzed(
-    validated: validated,
-    analysis: analysis,
-    all_tokens: tokens,
-    materialization: Memoize
-  )
-  let table = ParseTableRealization {
-    artifact_kind: base.artifact_kind,
-    provider_id: base.provider_id,
-    materialization: materialization,
-    grammar_digest: base.grammar_digest,
-    token_stream_digest: base.token_stream_digest,
-    entries: base.entries,
-    memo_hits: base.memo_hits,
-    memo_misses: base.memo_misses,
-    memo_lookup_calls: base.memo_lookup_calls,
-    furthest: base.furthest,
-    nullable_set: base.nullable_set,
-    first_rows: base.first_rows,
-    productions_by_name: base.productions_by_name,
-    prepared_exprs: base.prepared_exprs,
-    layout: base.layout,
-    refusal: base.refusal
-  }
-  match grammar_lookup_production(root: root, name: root.start) {
-    Violates { diagnostic: _ } => optional_absent()
-    Holds { value: production } =>
-      match parse_expr(
-        expr: production.expression,
-        tokens: tokens,
-        all_tokens: tokens,
-        root: root,
-        table: table,
-        prov: parse_prov_initial()
-      ) {
-        ParseExprRejected { diagnostics: _, table: _ } => optional_absent()
-        ParseExprAccepted { remaining: _, captured: captured, diagnostics: _, prov: prov, table: final_table } =>
-          optional_present(value: ParseMemoFrameReplayRun {
-            tree: captured,
-            index: prov.index,
-            hits: final_table.memo_hits
-          })
+fn parse_path_run_through_door(root: GrammarRoot, tokens: List<Token>) -> Optional<ParsePathRun> {
+  match prepare_grammar(grammar: ModeledGrammar { root: root }) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: prepared, diagnostics: _ } =>
+      match prepared {
+        PreparedVoidGrammar => optional_absent()
+        PreparedModeled { modeled: modeled } =>
+          match parse_production_prepared(
+            tokens: tokens,
+            validated: modeled.validated,
+            analysis: modeled.analysis,
+            production_name: modeled.validated.root.start
+          ) {
+            Rejected { diagnostics: _ } => optional_absent()
+            Accepted { value: artifact, diagnostics: _ } =>
+              optional_present(value: ParsePathRun { tree: artifact.tree, index: artifact.span_index })
+          }
       }
   }
 }
 
-// THROUGH A TYPED PARAMETER, deliberately. Inside this module a field read on a variable bound by
-// `Present { value: r }` from an Optional of this module's own record type evaluates to an error type
-// under the seed interpreter's inference ("error type cascade" at the read), while the same read on a
-// declared parameter, or from any other module, types correctly. The defect is recorded on the PR
-// that added these witnesses; this accessor is the one spelling that reads the field here.
-fn parse_memo_frame_replay_hits(run: ParseMemoFrameReplayRun) -> Int {
-  run.hits
-}
-
-// Absent when any minted node has no span-index entry -- the fact a dropped replay breaks.
+// Absent when any minted node has no span-index entry -- the fact a dropped record breaks.
 // Otherwise each minted node's textual-locus resolution in pre-order. Resolution itself is not
 // total (a DerivedBy over children with no minted id exhausts its chain), so an unresolved node is
-// recorded as Absent and compared, never treated as failure.
-fn parse_memo_frame_replay_loci(run: ParseMemoFrameReplayRun) -> Optional<List<Optional<Locus>>> {
+// recorded as Absent, never treated as failure.
+fn parse_path_run_loci(run: ParsePathRun) -> Optional<List<Optional<Locus>>> {
   fold_list(
     xs: node_subtree_nodes(root: run.tree),
     empty: optional_present(value: std.algebra.Empty),
@@ -118,22 +78,58 @@ fn parse_memo_frame_replay_loci(run: ParseMemoFrameReplayRun) -> Optional<List<O
   )
 }
 
+fn parse_path_minted_ids(tree: Node) -> List<std.occurrence_identity.OccurrenceId> {
+  fold_list(
+    xs: node_subtree_nodes(root: tree),
+    empty: std.algebra.Empty,
+    cons: fn(acc, n) {
+      match n.occurrence_id {
+        OccurrenceMinted { id: id } => list_snoc_item(xs: acc, item: id)
+        OccurrenceSynthetic => acc
+        OccurrenceProjected { id: _, caused_by: _ } => acc
+        OccurrencePending { caused_by: _ } => acc
+      }
+    }
+  )
+}
 
-// THE ACCEPTED ARTIFACT CARRIES ONLY ACCEPTED-PATH PROVENANCE. A memo-free parse discards a failed
-// branch's provenance with the branch, so its index holds exactly the entries minted on the accepted
-// path. The stored index a memo hit used to merge whole also held entries the MISS path minted
-// before the memoized production started. Those only survive when the miss path minted more ids
-// before that production than the hit path did -- a shorter hit path re-mints the low ids itself,
-// and the base entry wins -- so the real .dag specimen above cannot show the difference, and this
-// hand grammar is built to:
-//
-//   S = R X z | a a X y      R = a a      X = b      tokens: a a b y
-//
-// Alternative one mints four ids before X (a, a, their conjunction, R's wrap), memoizes X at
-// position 2, and fails at z. Alternative two mints three ids before X and hits that memo entry,
-// whose stored index carries alternative one's fourth id. Replaying the memoized frame imports
-// nothing but X's own ids, so the memoized index holds exactly the memo-free index's entry count;
-// the whole-index merge held one more.
+fn occurrence_id_set_empty() -> Map<std.occurrence_identity.OccurrenceId, Bool> {
+  empty_map()
+}
+
+fn parse_path_minted_ids_distinct(run: ParsePathRun) -> Bool {
+  let ids = parse_path_minted_ids(tree: run.tree)
+  let distinct = fold_list(
+    xs: ids,
+    empty: occurrence_id_set_empty(),
+    cons: fn(acc, id) { map_insert(m: acc, key: id, value: true) }
+  )
+  length(xs: map_keys(distinct)) == length(xs: ids)
+}
+
+// The index holds exactly the surviving path's mints: one entry per minted node in the tree, none
+// left over from an abandoned attempt.
+fn parse_path_index_is_the_tree(run: ParsePathRun) -> Bool {
+  length(xs: map_keys(run.index.entries)) == length(xs: parse_path_minted_ids(tree: run.tree))
+}
+
+fn parse_path_loci_contain(loci: List<Optional<Locus>>, want: Locus) -> Bool {
+  fold_list(
+    xs: loci,
+    empty: false,
+    cons: fn(acc, l) {
+      match l {
+        Absent => acc
+        Present { value: got } => acc || (got == want)
+      }
+    }
+  )
+}
+
+fn abandoned_locus(start: Int) -> Locus {
+  Textual { file: ^abandoned_path_file, extent: ByteRange { start: start, end: start + 1 } }
+}
+
 fn abandoned_token(token_class: Symbol, offset: Int) -> Token {
   Token { class: token_class, lexeme: std.algebra.Empty, file: ^abandoned_path_file, start: offset, end: offset + 1 }
 }
@@ -142,6 +138,22 @@ fn abandoned_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
 
+fn abandoned_path_tokens() -> List<Token> {
+  Cons { head: abandoned_token(token_class: ^abandoned_tok_a, offset: 0),
+  tail: Cons { head: abandoned_token(token_class: ^abandoned_tok_a, offset: 1),
+  tail: Cons { head: abandoned_token(token_class: ^abandoned_tok_b, offset: 2),
+  tail: Cons { head: abandoned_token(token_class: ^abandoned_tok_y, offset: 3),
+  tail: std.algebra.Empty } } } }
+}
+
+// THE ABANDONED-PATH DIRECTION.
+//
+//   S = R X z | a a X y      R = a a      X = b      tokens: a a b y
+//
+// Alternative one mints four ids before X (a, a, their conjunction, R's wrap), parses X at position
+// 2, and fails at z. Alternative two mints three ids before X and parses X again. Nothing the first
+// alternative minted may survive into the accepted artifact: the index holds exactly the tree's
+// minted ids, they are distinct, and every terminal resolves to its own byte.
 fn abandoned_path_root() -> GrammarRoot {
   GrammarRoot {
     start: ^abandoned_path_s,
@@ -188,52 +200,23 @@ fn abandoned_path_root() -> GrammarRoot {
   }
 }
 
-fn abandoned_path_tokens() -> List<Token> {
-  Cons { head: abandoned_token(token_class: ^abandoned_tok_a, offset: 0),
-  tail: Cons { head: abandoned_token(token_class: ^abandoned_tok_a, offset: 1),
-  tail: Cons { head: abandoned_token(token_class: ^abandoned_tok_b, offset: 2),
-  tail: Cons { head: abandoned_token(token_class: ^abandoned_tok_y, offset: 3),
-  tail: std.algebra.Empty } } } }
-}
-
-fn abandoned_path_run(materialization: Materialization) -> Optional<ParseMemoFrameReplayRun> {
-  let contract_locus = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^abandoned_path_grammar_contract)
-  match grammar_validate_for_parse(root: abandoned_path_root(), at: contract_locus) {
-    Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: validated, diagnostics: _ } =>
-      parse_memo_frame_replay_run_modeled(
-        tokens: abandoned_path_tokens(),
-        validated: validated,
-        analysis: compute_grammar_first_analysis(root: validated.root),
-        materialization: materialization
-      )
+fn abandoned_run_holds(run: ParsePathRun) -> Bool {
+  match parse_path_run_loci(run: run) {
+    Absent => false
+    Present { value: loci } =>
+      parse_path_minted_ids_distinct(run: run)
+        && parse_path_index_is_the_tree(run: run)
+        && parse_path_loci_contain(loci: loci, want: abandoned_locus(start: 0))
+        && parse_path_loci_contain(loci: loci, want: abandoned_locus(start: 1))
+        && parse_path_loci_contain(loci: loci, want: abandoned_locus(start: 2))
+        && parse_path_loci_contain(loci: loci, want: abandoned_locus(start: 3))
   }
 }
 
-fn parse_memo_frame_replay_entry_count(run: ParseMemoFrameReplayRun) -> Int {
-  length(xs: map_keys(run.index.entries))
-}
-
-test fn parse_memo_hit_carries_no_abandoned_path_provenance() -> Bool {
-  match abandoned_path_run(materialization: Memoize) {
+test fn abandoned_path_parse_carries_only_surviving_path_provenance() -> Bool {
+  match parse_path_run_through_door(root: abandoned_path_root(), tokens: abandoned_path_tokens()) {
     Absent => false
-    Present { value: memo_run } =>
-      match abandoned_path_run(materialization: Recompute) {
-        Absent => false
-        Present { value: free_run } =>
-          match parse_memo_frame_replay_loci(run: memo_run) {
-            Absent => false
-            Present { value: memo_loci } =>
-              match parse_memo_frame_replay_loci(run: free_run) {
-                Absent => false
-                Present { value: free_loci } =>
-                  (parse_memo_frame_replay_hits(run: memo_run) > 0)
-                    && (parse_memo_frame_replay_hits(run: free_run) == 0)
-                    && (memo_loci == free_loci)
-                    && (parse_memo_frame_replay_entry_count(run: memo_run) == parse_memo_frame_replay_entry_count(run: free_run))
-              }
-          }
-      }
+    Present { value: run } => abandoned_run_holds(run: run)
   }
 }
 
@@ -242,13 +225,12 @@ test fn parse_memo_hit_carries_no_abandoned_path_provenance() -> Bool {
 //
 //   S = a a X z | R X y      R = a a      X = b      tokens: a a b y
 //
-// Backtracking restores the allocator, so ids are re-minted along whichever path survives.
 // Alternative one mints three ids before X, then X's own, and fails at z. Alternative two mints FOUR
-// ids before X (a, a, their conjunction, R's wrap) -- one more than the miss path -- so a served X
-// would carry a b whose id the surviving path has already given to R's wrap. The expected results
-// are stated without reference to any memo: every minted occurrence in the accepted tree is
-// distinct, and the token b resolves to its own bytes, 2..3. The run takes its materialization from
-// the production door, so it reds whenever that door admits the memo for this grammar.
+// ids before X (a, a, their conjunction, R's wrap) -- one more than the first -- so an X served from
+// the first attempt would carry a b whose id the surviving path has already given to R's wrap. This
+// claim was red under the memo and is the permanent regression control for its deletion (DESIGN
+// section 4b(4)): every minted occurrence in the accepted tree is distinct, and the token b resolves
+// to its own bytes, 2..3.
 fn collision_path_root() -> GrammarRoot {
   GrammarRoot {
     start: ^collision_path_s,
@@ -295,94 +277,30 @@ fn collision_path_root() -> GrammarRoot {
   }
 }
 
-fn collision_path_derived_run() -> Optional<ParseMemoFrameReplayRun> {
-  let contract_locus = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^collision_path_grammar_contract)
-  match grammar_validate_for_parse(root: collision_path_root(), at: contract_locus) {
-    Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: validated, diagnostics: _ } =>
-      let analysis = compute_grammar_first_analysis(root: validated.root)
-      match parse_table_memo_materialization_for(r: analysis.memo_recurrence) {
-        Rejected { diagnostics: _ } => optional_absent()
-        Accepted { value: derived, diagnostics: _ } =>
-          parse_memo_frame_replay_run_modeled(
-            tokens: abandoned_path_tokens(),
-            validated: validated,
-            analysis: analysis,
-            materialization: derived
-          )
-      }
-  }
-}
-
-fn parse_memo_minted_ids(tree: Node) -> List<std.occurrence_identity.OccurrenceId> {
-  fold_list(
-    xs: node_subtree_nodes(root: tree),
-    empty: std.algebra.Empty,
-    cons: fn(acc, n) {
-      match n.occurrence_id {
-        OccurrenceMinted { id: id } => list_snoc_item(xs: acc, item: id)
-        OccurrenceSynthetic => acc
-        OccurrenceProjected { id: _, caused_by: _ } => acc
-        OccurrencePending { caused_by: _ } => acc
-      }
-    }
-  )
-}
-
-fn occurrence_id_set_empty() -> Map<std.occurrence_identity.OccurrenceId, Bool> {
-  empty_map()
-}
-
-fn parse_memo_minted_ids_distinct(run: ParseMemoFrameReplayRun) -> Bool {
-  let ids = parse_memo_minted_ids(tree: run.tree)
-  let distinct = fold_list(
-    xs: ids,
-    empty: occurrence_id_set_empty(),
-    cons: fn(acc, id) { map_insert(m: acc, key: id, value: true) }
-  )
-  length(xs: map_keys(distinct)) == length(xs: ids)
-}
-
-fn collision_b_locus() -> Locus {
-  Textual { file: ^abandoned_path_file, extent: ByteRange { start: 2, end: 3 } }
-}
-
-fn parse_memo_loci_contain(loci: List<Optional<Locus>>, want: Locus) -> Bool {
-  fold_list(
-    xs: loci,
-    empty: false,
-    cons: fn(acc, l) {
-      match l {
-        Absent => acc
-        Present { value: got } => acc || (got == want)
-      }
-    }
-  )
-}
-
-fn collision_run_holds(run: ParseMemoFrameReplayRun) -> Bool {
-  match parse_memo_frame_replay_loci(run: run) {
+fn collision_run_holds(run: ParsePathRun) -> Bool {
+  match parse_path_run_loci(run: run) {
     Absent => false
     Present { value: loci } =>
-      parse_memo_minted_ids_distinct(run: run)
-        && parse_memo_loci_contain(loci: loci, want: collision_b_locus())
+      parse_path_minted_ids_distinct(run: run)
+        && parse_path_loci_contain(loci: loci, want: abandoned_locus(start: 2))
   }
 }
 
 test fn parse_memo_production_door_keeps_occurrences_distinct_on_a_colliding_grammar() -> Bool {
-  match collision_path_derived_run() {
+  match parse_path_run_through_door(root: collision_path_root(), tokens: abandoned_path_tokens()) {
     Absent => false
     Present { value: run } => collision_run_holds(run: run)
   }
 }
 
-// A HIT WHOSE FRAME HOLDS A NESTED MEMOIZED FRAME.
+// A NESTED NONTERMINAL PARSED TWICE AT ONE POSITION.
 //
 //   S = X z | (X y) z*      X = W b      W = a      tokens: a b y
 //
-// The second alternative is nested so it does not share a sequence-left atom with the first.
-// SharedPrefix would parse X once and never hit the memo. OrderedBacktrack tries X z (miss,
-// nested W miss, fail at z), then (X y) z* (hit X, whose stored frame holds W).
+// The first alternative parses X -- and W inside it -- then fails at z; the second parses both again
+// at the same position. The second alternative is nested so it does not share a sequence-left atom
+// with the first (SharedPrefix would parse X once). The accepted artifact must carry exactly the
+// surviving path's ids, distinct, each terminal at its own byte.
 fn nested_frame_root() -> GrammarRoot {
   GrammarRoot {
     start: ^nested_frame_s,
@@ -430,253 +348,21 @@ fn nested_frame_tokens() -> List<Token> {
   tail: std.algebra.Empty } } }
 }
 
-fn nested_frame_run(materialization: Materialization) -> Optional<ParseMemoFrameReplayRun> {
-  let contract_locus = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^nested_frame_grammar_contract)
-  match grammar_validate_for_parse(root: nested_frame_root(), at: contract_locus) {
-    Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: validated, diagnostics: _ } =>
-      parse_memo_frame_replay_run_modeled(
-        tokens: nested_frame_tokens(),
-        validated: validated,
-        analysis: compute_grammar_first_analysis(root: validated.root),
-        materialization: materialization
-      )
-  }
-}
-
-test fn parse_memo_hit_replays_nested_frames_like_a_memo_free_parse() -> Bool {
-  match nested_frame_run(materialization: Memoize) {
+fn nested_run_holds(run: ParsePathRun) -> Bool {
+  match parse_path_run_loci(run: run) {
     Absent => false
-    Present { value: warm } =>
-      match nested_frame_run(materialization: Recompute) {
-        Absent => false
-        Present { value: cold } =>
-          match parse_memo_frame_replay_loci(run: warm) {
-            Absent => false
-            Present { value: warm_loci } =>
-              match parse_memo_frame_replay_loci(run: cold) {
-                Absent => false
-                Present { value: cold_loci } =>
-                  (parse_memo_frame_replay_hits(run: warm) > 0)
-                    && (parse_memo_frame_replay_hits(run: cold) == 0)
-                    && (length(xs: warm_loci) > 0)
-                    && (warm_loci == cold_loci)
-              }
-          }
-      }
+    Present { value: loci } =>
+      parse_path_minted_ids_distinct(run: run)
+        && parse_path_index_is_the_tree(run: run)
+        && parse_path_loci_contain(loci: loci, want: abandoned_locus(start: 0))
+        && parse_path_loci_contain(loci: loci, want: abandoned_locus(start: 1))
+        && parse_path_loci_contain(loci: loci, want: abandoned_locus(start: 2))
   }
 }
 
-// THE PARSE MEMO'S DEMAND CASE IS DERIVED BY THE REAL PRODUCER, AND THE DIRECT ARM PRESERVES THE
-// WHOLE PARSE. v2.compiler.parse compute_grammar_first_analysis rules each grammar's
-// (nonterminal, position) demand through std.materialization_ladder once, and every table built
-// from that analysis carries the answer. Two grammars, one per arm the grammar can reach:
-//
-//   abandoned_path_root above: S's Choice abandons a left branch that demands R and X, so X can be
-//   asked again at position 2 -- the ladder discharges the demand to the in-process provider and
-//   the table stores (Memoize).
-//
-//   S = R X y      R = a a      X = b      tokens: a a b y
-//
-//   no Choice, Optional or Repeat abandons a nonterminal demand and nothing is nullable, so each
-//   (nonterminal, position) is asked at most once -- AcceptedSingleRecompute, and the table does
-//   no memo work (Recompute).
-//
-// The direct arm is qualified on the full result, not on acceptance: the same tokens under the
-// same analysis with the store FORCED ON must record zero hits -- the census's claim, checked by
-// execution -- and must return the identical remaining input, tree, diagnostics and provenance
-// state (allocator, span index, frame). If the census missed a recurrence the forced run hits and
-// this reds; if the direct arm changed the parse, the equality reds.
-fn linear_root() -> GrammarRoot {
-  GrammarRoot {
-    start: ^linear_s,
-    productions: Cons {
-      head: GrammarProduction {
-        name: ^linear_s,
-        expression: Sequence {
-          left: Nonterminal { production: ^linear_r },
-          right: Sequence {
-            left: Nonterminal { production: ^linear_x },
-            right: abandoned_terminal(token_class: ^abandoned_tok_y)
-          }
-        },
-        emitted: grammar_atom(identity: ^linear_s)
-      },
-      tail: Cons { head: GrammarProduction {
-        name: ^linear_r,
-        expression: Sequence {
-          left: abandoned_terminal(token_class: ^abandoned_tok_a),
-          right: abandoned_terminal(token_class: ^abandoned_tok_a)
-        },
-        emitted: grammar_atom(identity: ^linear_r)
-      },
-      tail: Cons { head: GrammarProduction {
-        name: ^linear_x,
-        expression: abandoned_terminal(token_class: ^abandoned_tok_b),
-        emitted: grammar_atom(identity: ^linear_x)
-      },
-      tail: std.algebra.Empty } }
-    },
-    sync_tokens: grammar_empty_sync_tokens()
-  }
-}
-
-// THE INHABITANCE CLAIM FOR THE DERIVATION, and it runs the PRODUCTION DOOR rather than a
-// reconstruction of it. prepare_grammar is where the admission is made -- it analyzes the grammar,
-// takes the recurrence census off that analysis, and asks parse_table_memo_materialization_for --
-// so reading the materialization off its PreparedModeled arm is reading exactly the value every
-// ParseTable built from this grammar will carry. Supplying a materialization to
-// parse_table_for_production_analyzed here instead would have asserted only that the constructor
-// copies its argument, which is the thing the derivation is not.
-fn derived_memo_materialization(root: GrammarRoot) -> Optional<Materialization> {
-  match prepare_grammar(grammar: ModeledGrammar { root: root }) {
-    Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: prepared, diagnostics: _ } =>
-      match prepared {
-        PreparedVoidGrammar => optional_absent()
-        PreparedModeled { modeled: _, materialization: m } => optional_present(value: m)
-      }
-  }
-}
-
-// Through a typed parameter: a bare constructor inside the generic optional_present has no
-// expected type to resolve against, while a declared Materialization parameter supplies one.
-fn derived_memo_materialization_is(root: GrammarRoot, want: Materialization) -> Bool {
-  match derived_memo_materialization(root: root) {
+test fn nested_reparse_carries_only_surviving_path_provenance() -> Bool {
+  match parse_path_run_through_door(root: nested_frame_root(), tokens: nested_frame_tokens()) {
     Absent => false
-    Present { value: got } => got == want
-  }
-}
-
-// THESE TWO CLAIMS CARRY AN ADMISSION ARM, NOT ONLY A REPLAY ONE, and that is a load the module
-// name does not advertise. Between them they drive the REAL prepare_grammar across both census
-// outcomes: a census that counts a discarding backtrack site here, and one that counts nothing
-// below. Since the 2026-10-08 ruling priced the parse recurrence below the cost floor
-// (v2.compiler.materialization_carriers parse_table_memo_cost_floor_exempt) BOTH answer Recompute,
-// so the arm is told apart by the verdict, in
-// v2.test.claim.compiler_materialization_witness
-// parse_table_demand_with_recurrence_is_priced_below_the_cost_floor, not by the prescription.
-test fn parse_memo_demand_derived_below_cost_floor_when_the_grammar_abandons_a_demand() -> Bool {
-  derived_memo_materialization_is(root: abandoned_path_root(), want: Recompute)
-}
-
-test fn parse_memo_demand_derived_single_when_the_grammar_cannot_recur() -> Bool {
-  derived_memo_materialization_is(root: linear_root(), want: Recompute)
-}
-
-type ParseFullRun {
-  remaining: List<Token>
-  captured: Node
-  diagnostics: List<Diagnostic>
-  prov: ParseProvenanceState
-  hits: Int
-}
-
-// THE UNFORCED RUN IS THE DERIVED ONE, so the base table's materialization comes from the real
-// door asked about THIS grammar's census -- not from a literal, which would make the equality
-// claim compare two runs the derivation never chose.
-//
-// A REFUSAL FAILS THE CLAIM RATHER THAN SUBSTITUTING FOR IT. Standing in Recompute on the
-// Rejected arm would be the very move this package exists to remove, one layer down: a refusal
-// replaced by a valid operational value so the caller can proceed. The objection is not about
-// the store -- Recompute does turn it off and the comparison would still run -- it is about this
-// claim's PREMISE. A refused admission means the derived side of the pair does not exist, so the
-// claim would go green having evaluated a state it was never written to evaluate, with nothing
-// saying so. Refusal is owned elsewhere for COVERAGE (refused_scope_is_not_admitted, and the
-// consumer-boundary control over prepare_grammar); it is not owned elsewhere for this claim's
-// honesty. optional_absent() reaches the claim's own Absent arm, which is false.
-fn linear_run(forced: Optional<Materialization>) -> Optional<ParseFullRun> {
-  let contract_locus = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^abandoned_path_grammar_contract)
-  match grammar_validate_for_parse(root: linear_root(), at: contract_locus) {
-    Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: validated, diagnostics: _ } =>
-      let tokens = abandoned_path_tokens()
-      let root = validated.root
-      let analysis = compute_grammar_first_analysis(root: root)
-      match parse_table_memo_materialization_for(r: analysis.memo_recurrence) {
-        Rejected { diagnostics: _ } => optional_absent()
-        Accepted { value: derived, diagnostics: _ } =>
-      let base = parse_table_for_production_analyzed(
-        validated: validated,
-        analysis: analysis,
-        all_tokens: tokens,
-        materialization: derived
-      )
-      let table = ParseTableRealization {
-        artifact_kind: base.artifact_kind,
-        provider_id: base.provider_id,
-        materialization: match forced {
-          Absent => base.materialization
-          Present { value: m } => m
-        },
-        grammar_digest: base.grammar_digest,
-        token_stream_digest: base.token_stream_digest,
-        entries: base.entries,
-        memo_hits: base.memo_hits,
-        memo_misses: base.memo_misses,
-        memo_lookup_calls: base.memo_lookup_calls,
-        furthest: base.furthest,
-        nullable_set: base.nullable_set,
-        first_rows: base.first_rows,
-        productions_by_name: base.productions_by_name,
-        prepared_exprs: base.prepared_exprs,
-        layout: base.layout,
-        refusal: base.refusal
-      }
-      match grammar_lookup_production(root: root, name: root.start) {
-        Violates { diagnostic: _ } => optional_absent()
-        Holds { value: production } =>
-          match parse_expr(
-            expr: production.expression,
-            tokens: tokens,
-            all_tokens: tokens,
-            root: root,
-            table: table,
-            prov: parse_prov_initial()
-          ) {
-            ParseExprRejected { diagnostics: _, table: _ } => optional_absent()
-            ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: prov, table: final_table } =>
-              optional_present(value: ParseFullRun {
-                remaining: remaining,
-                captured: captured,
-                diagnostics: diags,
-                prov: prov,
-                hits: final_table.memo_hits
-              })
-          }
-      }
-      }
-  }
-}
-
-fn linear_run_forced(m: Materialization) -> Optional<ParseFullRun> {
-  linear_run(forced: optional_present(value: m))
-}
-
-fn linear_run_forced_memoize() -> Optional<ParseFullRun> {
-  linear_run_forced(m: Memoize)
-}
-
-fn parse_full_run_same_parse(a: ParseFullRun, b: ParseFullRun) -> Bool {
-  (a.remaining == b.remaining)
-    && (a.captured == b.captured)
-    && (a.diagnostics == b.diagnostics)
-    && (a.prov == b.prov)
-}
-
-fn parse_full_run_hits(run: ParseFullRun) -> Int {
-  run.hits
-}
-
-test fn parse_memo_direct_arm_preserves_the_whole_parse() -> Bool {
-  match linear_run(forced: optional_absent()) {
-    Absent => false
-    Present { value: direct } =>
-      match linear_run_forced_memoize() {
-        Absent => false
-        Present { value: stored } =>
-          (parse_full_run_hits(run: stored) == 0)
-            && parse_full_run_same_parse(a: direct, b: stored)
-      }
+    Present { value: run } => nested_run_holds(run: run)
   }
 }

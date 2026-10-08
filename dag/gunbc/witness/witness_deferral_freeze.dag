@@ -1045,23 +1045,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/long/parse_table_memo_amortization_test.dag",
-    functions: [
-      "memo_amort_parse_one_file_holds", "memo_amort_parse_two_files_twice_holds",
-      "parse_table_grammar_memo_multi_file_ingest_parses",
-      "parse_table_memo_hit_path_content_hash_stable_holds",
-      "empty_ingest_assembles_to_empty_roots_without_prepare"
-    ]
-  },
-  FrozenPathDeferral {
-    entry: "src/v2/test/claim/long/parse_table_memo_counter_witness_test.dag",
-    functions: [
-      "parse_memo_counter_lookup_calls_recorded_holds",
-      "parse_memo_counter_counters_consistent_holds", "parse_memo_counter_misses_recorded_holds"
-    ]
-  },
-  FrozenPathDeferral { entry: "src/v2/test/claim/long/parse_table_memo_governed_witness_test.dag", functions: ["parse_table_memo_warm_equals_cold_content_hash"] },
-  FrozenPathDeferral {
     entry: "src/v2/test/claim/long/parser_completeness_frontier_test.dag",
     functions: [
       "parser_frontier_parse_module_header_holds", "parser_frontier_parse_type_decl_holds",

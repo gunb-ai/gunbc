@@ -5530,12 +5530,6 @@ mod cross_claim_memo_tests {
     }
 }
 
-#[derive(Default)]
-struct ParseTableMemo {
-    map: HashMap<(String, String, i64, Symbol), Value>,
-    keepalive: Vec<Value>,
-}
-
 // Recompute-trace ledger (diagnostic READ mode: reports, never gates — DESIGN §5 stopped-line
 // audit). Counts evaluations of pure named fns (empty `uses` row) per (fn identity, argument
 // identity). Keying is SOUND-ONLY: an argument without a cheap sound identity (composite
@@ -6518,7 +6512,6 @@ pub struct InterpContext {
     cast_source_name_cache: std::cell::RefCell<HashMap<usize, String>>,
     cast_source_name_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
     pure_call_memo: std::cell::RefCell<PureCallMemo>,
-    parse_table_memo: std::cell::RefCell<ParseTableMemo>,
     eval_recompute_trace: std::cell::RefCell<EvalRecomputeTrace>,
     eval_call_memo: std::cell::RefCell<EvalCallMemo>,
     // Effect-dispatch odometer, incremented per service-operation dispatch. The eval-call memo
@@ -6944,7 +6937,6 @@ impl InterpContext {
             cast_source_name_cache: std::cell::RefCell::new(HashMap::new()),
             cast_source_name_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
-            parse_table_memo: std::cell::RefCell::new(ParseTableMemo::default()),
             eval_recompute_trace: std::cell::RefCell::new(EvalRecomputeTrace::default()),
             eval_call_memo: std::cell::RefCell::new(EvalCallMemo::default()),
             effect_dispatch_count: std::cell::Cell::new(0),
@@ -11232,10 +11224,6 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         return result;
     }
 
-    if let Some(result) = try_parse_table_memo_dispatch(ctx, &func_name, &fn_node, &args, env)? {
-        return Ok(result);
-    }
-
     if let Some(key) = pure_call_memo_key(&fn_node, &func_name, &args) {
         if let Some(v) = pure_call_memo_get(ctx, &key) {
             return Ok(v);
@@ -11461,147 +11449,12 @@ fn eval_fold_list_right_native(
     Ok(acc)
 }
 
-fn witness_holds(value: Value, ctx: &InterpContext) -> Value {
-    Value::Variant {
-        type_name: ctx.sym("Witness"),
-        variant_name: ctx.sym("Holds"),
-        fields: Rc::new(vec![(ctx.sym("value"), value)]),
-    }
-}
-
 fn witness_violates(diagnostic: Value, ctx: &InterpContext) -> Value {
     Value::Variant {
         type_name: ctx.sym("Witness"),
         variant_name: ctx.sym("Violates"),
         fields: Rc::new(vec![(ctx.sym("diagnostic"), diagnostic)]),
     }
-}
-
-fn parse_table_materialization_allows_memo(ctx: &InterpContext, table: &Value) -> bool {
-    // SCAFFOLD (§7 seed-retained): extdeps/realization/parse_table_memo.dag
-    // parse_table_memo_seed_handler_dissolution_trigger (Disposition Scaffold) — seed
-    // try_parse_table_memo_dispatch gates ParseTableMemo map insert/serve on Memoize;
-    // .dag authority: v2.compiler.materialization_allows_memo_store.
-    let table_fields = match table {
-        Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
-        _ => return false,
-    };
-    let Some(mat) = ctx.field(table_fields, "materialization") else {
-        return false;
-    };
-    match mat {
-        Value::Variant { variant_name, .. } => resolve_sym(*variant_name) == "Memoize",
-        _ => false,
-    }
-}
-
-fn parse_table_memo_scope_and_key(
-    ctx: &InterpContext,
-    table: &Value,
-    key: &Value,
-) -> Option<(String, String, i64, Symbol)> {
-    if !parse_table_materialization_allows_memo(ctx, table) {
-        return None;
-    }
-    let table_fields = match table {
-        Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
-        _ => return None,
-    };
-    let grammar_digest = match ctx.field(table_fields, "grammar_digest")? {
-        Value::Str(s) => s.to_string(),
-        _ => return None,
-    };
-    let token_stream_digest = match ctx.field(table_fields, "token_stream_digest")? {
-        Value::Str(s) => s.to_string(),
-        _ => return None,
-    };
-    let key_fields = match key {
-        Value::Record { fields, .. } | Value::Variant { fields, .. } => fields,
-        _ => return None,
-    };
-    let position = match fields_get(key_fields, ctx.sym("position")) {
-        Some(Value::Int(n)) => *n,
-        _ => return None,
-    };
-    let production = match fields_get(key_fields, ctx.sym("production")) {
-        Some(Value::Str(s)) => ctx.sym(s.as_ref()),
-        _ => return None,
-    };
-    Some((grammar_digest, token_stream_digest, position, production))
-}
-
-/// Handler bodies for parse-table memo dispatch. Roster authority is
-/// `v1_interpreter_authored_roster_arms()`; generated lookup routes spellings
-/// before this macro matches on the generated enum variant.
-macro_rules! v1_parse_table_arms {
-    ($cb:ident, $func_name:ident, $ctx:ident, $fn_node:ident, $args:ident, $env:ident) => {
-        $cb! {
-            $func_name, $ctx, $fn_node, $args, $env;
-                arm "parse_table_memo.parse_table_lookup" { "parse_table_lookup" } => {
-                    let positional: Vec<&Value> = $args.iter().map(|(_, v)| v).collect();
-                    let [table, key] = match positional.as_slice() {
-                        [table, key] => [table, key],
-                        _ => return Ok(None),
-                    };
-                    let Some(memo_key) = parse_table_memo_scope_and_key($ctx, table, key) else {
-                        return Ok(None);
-                    };
-                    let allows_memo = parse_table_materialization_allows_memo($ctx, table);
-                    let mut st = $ctx.parse_table_memo.borrow_mut();
-                    if allows_memo {
-                        if let Some(v) = st.map.get(&memo_key).cloned() {
-                            drop(st);
-                            record_parse_memo_lookup(&memo_key, true);
-                            return Ok(Some(witness_holds(v, $ctx)));
-                        }
-                    }
-                    drop(st);
-                    record_parse_memo_lookup(&memo_key, false);
-                    let result = call_function($ctx, $fn_node, $args, $env)?;
-                    Ok(Some(result))
-                },
-                arm "parse_table_memo.parse_table_insert" { "parse_table_insert" } => {
-                    let positional: Vec<&Value> = $args.iter().map(|(_, v)| v).collect();
-                    let [table, key, value] = match positional.as_slice() {
-                        [table, key, value] => [table, key, value],
-                        _ => return Ok(None),
-                    };
-                    let result = call_function($ctx, $fn_node, $args, $env)?;
-                    if parse_table_materialization_allows_memo($ctx, table) {
-                        if let Some(memo_key) = parse_table_memo_scope_and_key($ctx, table, key) {
-                            let mut st = $ctx.parse_table_memo.borrow_mut();
-                            st.keepalive.push((*table).clone());
-                            st.keepalive.push((*key).clone());
-                            st.keepalive.push((*value).clone());
-                            st.map.insert(memo_key, (*value).clone());
-                        }
-                    }
-                    Ok(Some(result))
-                },
-        }
-    };
-}
-
-/// Expansion 1: the dispatch.
-macro_rules! v1_parse_table_dispatch {
-    ($f:ident, $c:ident, $n:ident, $a:ident, $e:ident; $(arm $id:tt { $lit:literal } => $body:expr ,)*) => {
-        match $crate::v1_interpreter_dispatch_generated::lookup_try_parse_table_memo_dispatch(&$f) {
-            Some(arm) => match arm {
-                $( try_parse_table_memo_dispatch_arm!($id) => $body , )*
-            },
-            None => Ok(None),
-        }
-    };
-}
-
-fn try_parse_table_memo_dispatch(
-    ctx: &InterpContext,
-    func_name: &str,
-    fn_node: &Rc<Node>,
-    args: &[(Option<String>, Value)],
-    env: &Rc<Env>,
-) -> InterpResult<Option<Value>> {
-    v1_parse_table_arms!(v1_parse_table_dispatch, func_name, ctx, fn_node, args, env)
 }
 
 fn is_structural_pure_fn(name: &str) -> bool {
@@ -25735,45 +25588,6 @@ static CALL_FREQUENCY_WATCHLIST: std::sync::Mutex<
     Option<std::collections::HashMap<&'static str, u64>>,
 > = std::sync::Mutex::new(None);
 
-/// adhoc-c328b166-bca memo-effectiveness discriminator: distinct (grammar_digest,
-/// token_stream_digest, position, production) keys ever looked up vs total lookups/hits.
-/// `lookups >> distinct` with `hits == 0` is the smoking gun for "memo never serves a
-/// re-attempted span"; `lookups == distinct` is the benign "every position visited once"
-/// signature. Global (not per-InterpContext) so the periodic dump thread
-/// (GUNBC_FLATTEN_SITE_DUMP_SECS), which never enters with_active_context, can read it --
-/// survives a DNF, unlike ctx-scoped stats.
-static PARSE_MEMO_LOOKUPS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-static PARSE_MEMO_HITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-static PARSE_MEMO_DISTINCT_KEYS: std::sync::Mutex<
-    Option<std::collections::HashSet<(String, String, i64, Symbol)>>,
-> = std::sync::Mutex::new(None);
-
-fn record_parse_memo_lookup(key: &(String, String, i64, Symbol), hit: bool) {
-    if !residual_hunt_forensics_enabled() {
-        return;
-    }
-    PARSE_MEMO_LOOKUPS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    if hit {
-        PARSE_MEMO_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    }
-    let mut guard = PARSE_MEMO_DISTINCT_KEYS.lock().unwrap();
-    guard
-        .get_or_insert_with(std::collections::HashSet::new)
-        .insert(key.clone());
-}
-
-pub fn parse_memo_global_snapshot() -> (u64, u64, u64) {
-    let lookups = PARSE_MEMO_LOOKUPS.load(std::sync::atomic::Ordering::Relaxed);
-    let hits = PARSE_MEMO_HITS.load(std::sync::atomic::Ordering::Relaxed);
-    let distinct = PARSE_MEMO_DISTINCT_KEYS
-        .lock()
-        .unwrap()
-        .as_ref()
-        .map(|s| s.len() as u64)
-        .unwrap_or(0);
-    (lookups, hits, distinct)
-}
-
 fn record_call_frequency(func_name: &str) {
     if !residual_hunt_forensics_enabled() {
         return;
@@ -25797,17 +25611,10 @@ fn record_call_frequency(func_name: &str) {
         "parse_expr_sequence",
         "parse_expr_choice",
         "parse_expr_optional",
-        "parse_production_memo_stats",
         "filter",
         "upsert_production_first_row",
         "parse_current_position",
-        "parse_nonterminal_memoized",
-        "parse_nonterminal_memoized_core",
-        "parse_table_record_lookup_call",
-        "parse_table_record_hit",
-        "parse_table_record_miss",
-        "parse_table_lookup",
-        "parse_table_insert",
+        "parse_nonterminal",
         "parse_choice_plan",
         "parse_choice_ordered_backtrack",
         "uri_percent_encode_scalar_fragment",

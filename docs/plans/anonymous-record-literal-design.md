@@ -248,7 +248,7 @@ It re-derives which of these files are admitted, and PR2 cites that census rathe
 | dag/std/primitives | 17, `data char_at_contract: PrimitiveContract = {` | data initializer | yes |
 | dag/std/termination | 45, `data .. : BoundedLattice<DescentEvidence> = {` | data initializer, generic, newline-separated fields | yes, by HEAD lookup: `BoundedLattice` resolves to a single record. Its type argument is not substituted and chooses nothing, and none of its field inits is headless. The newline separator is to be confirmed in PR2. |
 | dag/extdeps/realization/compile_stage_memo | 39, `key_derivation: {` | record field under a headless data initializer (lowering refuses the inner brace first) | yes: data initializer plus record field |
-| dag/extdeps/realization/parse_table_memo | 50, `key_derivation: {` | same | yes |
+| dag/extdeps/realization/parse_table_memo (since deleted with the parse memo carrier, operator ruling R2 2026-10-08) | 50, `key_derivation: {` | same | yes |
 | dag/std/types | 5, `data kernel_type_set: Map<String, Bool> = {` | MAP literal | **no: MAP arm.** Reaches the elided-tag writer in resolve and refuses located `map_literal_construction_not_modeled`, as a declared population (below). |
 | src/v2/std/host_transport | about 119, `reason: ^emit_host_runtime_row_..` | **caret symbol literal** (`body_lowering_reason_caret_symbol_not_lowered`), not Form B | **not by Form B alone.** Its first blocker is the caret form. Its Form B site (`RuntimePrimitive { value: { .. } }`, record field) is admitted by this lane, but the file stays refused until caret symbols lower. That is #12420 (vivid-ant-536), so PR2 lists it as depending on #12420. |
 

@@ -246,7 +246,6 @@ dag/extdeps/realization/eval_memo.dag
 dag/extdeps/realization/frame_boundary_simulated.dag
 dag/extdeps/realization/hermetic_fixture.dag
 dag/extdeps/realization/native_artifact_cache.dag
-dag/extdeps/realization/parse_table_memo.dag
 dag/extdeps/realization/reconcile_in_process.dag
 dag/extdeps/realization/resolved_graph.dag
 dag/extdeps/realization/v1_handler.dag

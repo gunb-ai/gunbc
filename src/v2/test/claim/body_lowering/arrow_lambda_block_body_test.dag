@@ -227,7 +227,7 @@ test fn no_statement_begins_with_a_comma_or_a_close_paren_holds() -> Bool {
     Accepted { value: prepared, diagnostics: _ } =>
       match prepared {
         PreparedVoidGrammar => false
-        PreparedModeled { modeled: modeled, materialization: _ } =>
+        PreparedModeled { modeled: modeled } =>
           let first = production_first_row_lookup(rows: modeled.analysis.first_rows, name: ^dag_production_stmt)
           !alb_first_has(keys: first, token_class: ^dag_token_comma)
             && !alb_first_has(keys: first, token_class: ^dag_token_rparen)
