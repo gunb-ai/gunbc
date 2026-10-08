@@ -265,6 +265,79 @@ pub(super) fn lookup(root: &Path, key: &ProductKey) -> Lookup {
     }
 }
 
+const SHARED_RESTORE_ENTRY: &str = "dag/gunbc/native_product_shared_transfer.dag";
+const SHARED_RESTORE_FUNCTION: &str = "native_product_restore_wet";
+
+/// SHARED-STORE RESTORE on an L1 miss. The key is derived here and nowhere else, so the restore is
+/// asked for exactly this key (`GUNBC_NATIVE_PRODUCT_KEY`); the `.dag` entry only moves bytes into
+/// the job-private store, and the caller's `lookup` then re-verifies them like any local entry. Every
+/// failure is a counted miss named on stderr and the caller builds cold; nothing here fails a lane.
+pub(super) fn restore_from_shared_store(
+    source_roots: &[String],
+    key: &ProductKey,
+    workspace: &Path,
+) {
+    let event = std::env::var("GITHUB_EVENT_NAME").unwrap_or_default();
+    if event != "pull_request" && event != "merge_group" {
+        return;
+    }
+    if std::env::var("WIF_ACCESS_TOKEN")
+        .map(|t| t.trim().is_empty())
+        .unwrap_or(true)
+    {
+        eprintln!(
+            "v2-native-route: native product SHARED-RESTORE-SKIPPED key={} — no workload identity              in this run (fork pull request or federation not wired); building cold",
+            key.digest
+        );
+        return;
+    }
+    let exe = match std::env::current_exe() {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!(
+                "v2-native-route: native product SHARED-RESTORE-FAILED key={} — current_exe: {e}",
+                key.digest
+            );
+            return;
+        }
+    };
+    let mut cmd = std::process::Command::new(exe);
+    cmd.current_dir(workspace).arg("run");
+    for root in source_roots {
+        cmd.arg("--source-root").arg(root);
+    }
+    cmd.arg("--entry")
+        .arg(SHARED_RESTORE_ENTRY)
+        .arg("--function")
+        .arg(SHARED_RESTORE_FUNCTION)
+        .env("GUNBC_NATIVE_PRODUCT_KEY", &key.digest)
+        .stdout(std::process::Stdio::null());
+    match cmd.output() {
+        Ok(out) if out.status.success() => {
+            eprintln!(
+                "v2-native-route: native product SHARED-RESTORED key={}",
+                key.digest
+            )
+        }
+        Ok(out) => {
+            let err = String::from_utf8_lossy(&out.stderr);
+            let reason = err
+                .lines()
+                .rev()
+                .find(|l| !l.starts_with("[pre-entry]") && !l.trim().is_empty())
+                .unwrap_or("no reason reported");
+            eprintln!(
+                "v2-native-route: native product SHARED-RESTORE-MISS key={} — {reason}",
+                key.digest
+            )
+        }
+        Err(e) => eprintln!(
+            "v2-native-route: native product SHARED-RESTORE-FAILED key={} — spawn: {e}",
+            key.digest
+        ),
+    }
+}
+
 /// Publication standing: only the merge queue's composed-revision run may publish. Pull-request
 /// code can set any variable inside its own job, so this names the protected event and does not
 /// claim to stop hostile PR code on a shared filesystem; that boundary is the credential

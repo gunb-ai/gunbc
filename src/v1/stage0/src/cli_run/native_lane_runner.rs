@@ -368,7 +368,12 @@ fn prepare_emitted_compiler_for_entry(
         None => None,
     };
     if let (Some(root), Some(key)) = (&store, &product_key) {
-        match super::native_product_cache::lookup(root, key) {
+        let mut looked = super::native_product_cache::lookup(root, key);
+        if matches!(looked, super::native_product_cache::Lookup::Miss) {
+            super::native_product_cache::restore_from_shared_store(source_roots, key, &workspace);
+            looked = super::native_product_cache::lookup(root, key);
+        }
+        match looked {
             super::native_product_cache::Lookup::Hit {
                 executable,
                 manifest,
