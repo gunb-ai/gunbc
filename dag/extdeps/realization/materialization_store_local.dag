@@ -1036,9 +1036,11 @@ fn local_store_write_index_settled(held: LocalStoreFamilyHeld, expected: CasExpe
 //
 // HOLD CHECK AND RELEASE READ THE SLOT BY NAME. The windowed verify step is: generation G present
 // and G+1 absent. LocalStoreFamilyHeld already names G, so those two reads are cas_file_slot_path
-// Filesystem.Read -- O(1) in the number of objects in the store root. That preserves the existing
-// argument (a head is never guessed; a successor present means the slot moved; an absent G is not
-// this hold).
+// Filesystem.Read -- O(1) in the number of objects in the store root. That two-read proof is sound
+// only while a surviving eligible prefix cannot have holes: cas_reclaim_below deletes in generation
+// order and stops at the first host refusal, so it cannot remove G+1 while G stays. A successor
+// present still means the slot moved; an absent G is not this hold. Unknown-head observation
+// (acquire, index) still lists, as DESIGN §3b states for a window whose generation is not named.
 //
 // ACQUIRE STILL LISTS. Windowed presence is not a prefix: generations at or below head-k are
 // deleted, so a named gallop from generation 1 would read NotFound and treat a live head at 100 as
