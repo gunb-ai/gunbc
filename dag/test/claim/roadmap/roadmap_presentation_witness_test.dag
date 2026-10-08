@@ -29,7 +29,6 @@ import gunbc.roadmap_page {
   IssueBreadcrumbPath, IssueBreadcrumbRefused,
   IssueBreadcrumbProject, IssueBreadcrumbTask,
   issue_breadcrumb_of, issue_alignment_breadcrumb_node, issue_breadcrumb_short_label, issue_breadcrumb_compact_labels,
-  project_suite_headline, project_suite_rows, project_suite_row_node,
 }
 import gunbc.roadmap_workflow_stage {
   WorkflowSegment, WorkflowSegmentState,
@@ -1823,9 +1822,9 @@ fn fx_aln_rooted_memberships() -> List<gunbc.roadmap_nesting.RoadmapMembership> 
 }
 
 // THE READY ARM, ROOT-TO-LEAF: a rooted node's breadcrumb lists the root project first and the
-// task last; the project crumbs carry /project/ links and their boundary rides the title
-// attribute; the task crumb is the current page and renders as PLAIN TEXT (no /issue/ self-link
-// anywhere in the nav); the root-principles pointer contributes no crumb at all. A crumb folded
+// task last; the project crumbs carry /issue/ links to their own pages and their boundary rides
+// the title attribute; the task crumb is the current page and renders as PLAIN TEXT (no /issue/
+// self-link to the task anywhere in the nav); the root-principles pointer contributes no crumb at all. A crumb folded
 // out of the raw memberships, a leaf-first order, or a partial path reds every conjunct.
 test fn witness_issue_breadcrumb_renders_root_to_leaf_with_suite_links() -> Bool {
   let resolution = fx_aln_resolution(task: "hier-aln-task", memberships: fx_aln_rooted_memberships(), nodes: fx_aln_rooted_nodes())
@@ -1854,22 +1853,23 @@ test fn witness_issue_breadcrumb_renders_root_to_leaf_with_suite_links() -> Bool
   let rendered = match try_serialize_html_source(node: issue_alignment_breadcrumb_node(resolution: resolution)) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      string_contains(s: h, pattern: "href=\"/project/gunbc-project-root\"")
-        && string_contains(s: h, pattern: "href=\"/project/hier-aln-mid\"")
+      string_contains(s: h, pattern: "href=\"/issue/gunbc-project-root\"")
+        && string_contains(s: h, pattern: "href=\"/issue/hier-aln-mid\"")
         && string_contains(s: h, pattern: "Root headline")
         && string_contains(s: h, pattern: "Mid headline")
         && string_contains(s: h, pattern: "Task headline")
         && string_contains(s: h, pattern: "issue-path-tree")
         && string_contains(s: h, pattern: "aria-current=\"page\"")
         && string_contains(s: h, pattern: "title=\"Root boundary\"")
-        && !string_contains(s: h, pattern: "href=\"/issue/")
+        && !string_contains(s: h, pattern: "href=\"/issue/hier-aln-task\"")
+        && !string_contains(s: h, pattern: "href=\"/project/")
         && !string_contains(s: h, pattern: "principles")
   }
   structural && rendered
 }
 
 // THE REFUSAL ARM, NO PARTIAL PATH: an unrooted node's breadcrumb renders "project path
-// unavailable: " plus the typed reason, and NOT ONE crumb of the walked prefix -- no /project/
+// unavailable: " plus the typed reason, and NOT ONE crumb of the walked prefix -- no /issue/
 // link, no headline text. Rendering the prefix as if it were a path is the red this control pins.
 test fn witness_issue_breadcrumb_refusal_renders_no_partial_path() -> Bool {
   let nodes = [fx_aln_ticket(id: "hier-aln-lone", headline: "Lone headline", brief: "Lone boundary")]
@@ -1882,60 +1882,11 @@ test fn witness_issue_breadcrumb_refusal_renders_no_partial_path() -> Bool {
           EmitOk { html: h } =>
             string_contains(s: h, pattern: "project path unavailable: ")
               && string_contains(s: h, pattern: "issue-breadcrumb-refused")
-              && !string_contains(s: h, pattern: "href=\"/project/")
+              && !string_contains(s: h, pattern: "href=\"/issue/")
               && !string_contains(s: h, pattern: "Lone headline")
         })
     IssueBreadcrumbPath { crumbs: _ } => false
   }
-}
-
-// THE SUITE LISTING'S MEMBERSHIP: exactly the DIRECT descendants -- the memberships authored
-// under THIS project, nothing from another project -- one row each, the row titled from its node
-// row when one exists and spelling the raw id when none does, and the row links to the member's
-// /issue/ page. The heading projection reads ticket rows only: the authored (non-ticket) member
-// row has no headline, while the ticket project row does.
-test fn witness_project_suite_lists_exactly_the_direct_members() -> Bool {
-  let memberships = [
-    gunbc.roadmap_nesting.RoadmapMembership { member: "hier-suite-m1", project: "hier-suite-proj", contribution: "c1" },
-    gunbc.roadmap_nesting.RoadmapMembership { member: "hier-suite-m2", project: "hier-suite-proj", contribution: "c2" },
-    gunbc.roadmap_nesting.RoadmapMembership { member: "hier-suite-elsewhere", project: "hier-suite-other", contribution: "c3" },
-  ]
-  let nodes = [
-    fx_aln_ticket(id: "hier-suite-proj", headline: "suite project headline", brief: "project boundary"),
-    fx_sized(id: "hier-suite-m1", content: "member one title"),
-  ]
-  let rows = project_suite_rows(memberships: memberships, edges: [], nodes: nodes, project: "hier-suite-proj")
-  map(rows, r => r.node_id) == ["hier-suite-m1", "hier-suite-m2"]
-    && count(rows |> filter(r => r.node_id == "hier-suite-elsewhere")) == 0
-    && (match rows.first() {
-      Present { value: r } =>
-        r.title == "member one title"
-          && (match try_serialize_html_source(node: project_suite_row_node(row: r)) {
-            EmitOk { html: row_html } => string_contains(s: row_html, pattern: "href=\"/issue/hier-suite-m1\"")
-            EmitRejected { reason: _ } => false
-          })
-      Absent => false
-    })
-    && (match rows |> filter(r => r.node_id == "hier-suite-m2") |> first() {
-      Present { value: r } => r.title == "hier-suite-m2"
-      Absent => false
-    })
-    && project_suite_headline(nodes: nodes, node_id: "hier-suite-proj") == Present { value: "suite project headline" }
-    && project_suite_headline(nodes: nodes, node_id: "hier-suite-m1") == none
-}
-
-// THE SUITE LISTING'S TOPOLOGICAL LAYERING: a member whose in-set prerequisite is another member
-// sorts AFTER that member even when authored BEFORE it -- authored order [m2, m1] with the edge
-// making m1 a prerequisite of m2 renders m1 first; with no in-set edges at all the authored order
-// stands. A declaration-order listing reds the first conjunct.
-test fn witness_project_suite_topological_layering_orders_prereq_first() -> Bool {
-  let memberships = [
-    gunbc.roadmap_nesting.RoadmapMembership { member: "hier-suite-m2", project: "hier-suite-proj", contribution: "c2" },
-    gunbc.roadmap_nesting.RoadmapMembership { member: "hier-suite-m1", project: "hier-suite-proj", contribution: "c1" },
-  ]
-  let edges = [gunbc.roadmap_authority.edge(child: "hier-suite-m2", parent: "hier-suite-m1")]
-  map(project_suite_rows(memberships: memberships, edges: edges, nodes: [], project: "hier-suite-proj"), r => r.node_id) == ["hier-suite-m1", "hier-suite-m2"]
-    && map(project_suite_rows(memberships: memberships, edges: [], nodes: [], project: "hier-suite-proj"), r => r.node_id) == ["hier-suite-m2", "hier-suite-m1"]
 }
 
 // These older fixtures explicitly declare both relations with the same endpoints. Production

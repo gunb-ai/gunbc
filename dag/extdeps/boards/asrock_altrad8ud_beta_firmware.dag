@@ -1,0 +1,91 @@
+module extdeps.boards.asrock_altrad8ud_beta_firmware
+
+import std.types { NonEmptyStr, List, EpochMs }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate }
+import extdeps.firmware.types {
+  FirmwareTarget, FirmwareSemanticVersion, FirmwareImageKind,
+  HostBios, BmcController, ScpFirmware, InstantFlashRom, InstantFlashSlim,
+  OpenBmcWebUiTar, firmware_semantic_version,
+}
+import extdeps.boards.asrock_rack {
+  asrock_altrad8ud_download_authority, asrock_altrad8ud_bmc_3_22_00_release,
+}
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// The operator transcribed the product page's Beta Firmware table on 2026-10-07.
+// A listing is not an acquired FirmwareReleaseRow: the table gives rounded sizes,
+// no digest and no established applicability prerequisite. Its Global/China link
+// targets were not included in the transcription, so the reference stays the page.
+// Consumer: gunbc.altra_firmware_library reference_report, for operator discovery.
+type AsrockAltrad8udBetaFirmwareListing {
+  target: FirmwareTarget
+  version: AsrockBetaFirmwareVersion
+  listed_on: EpochMs
+  packages: List<AsrockBetaFirmwarePackage>
+  description: NonEmptyStr
+}
+
+type AsrockBetaFirmwarePackage {
+  image_kind: FirmwareImageKind
+  displayed_size: AsrockUnresolvedDisplaySize
+}
+
+// SCP's trailing component is a YYYYMMDD build date, not a semver patch.
+type AsrockBetaFirmwareVersion
+  = SemanticFirmwareVersion { value: FirmwareSemanticVersion }
+  | ScpBuildVersion { major: Nat, minor: Nat, build_date: Iso8601CivilDate }
+
+// The page labels MB/KB without establishing decimal versus binary scaling.
+// These fields encode the decimal interpretation and the printed increment;
+// neither is an exact archive byte count. The distinct carrier preserves that
+// unresolved basis instead of silently comparing a rounded label with a ZIP.
+type AsrockUnresolvedDisplaySize {
+  decimal_interpretation: ByteSize
+  decimal_increment: ByteSize
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.boards.asrock_altrad8ud_beta_firmware",
+    decl_name: "asrock_altrad8ud_beta_firmware_listings", field: WholeDeclaration,
+  } },
+  first_citation: asrock_altrad8ud_download_authority,
+  further_citations: [],
+}
+
+data asrock_altrad8ud_beta_disclaimer: NonEmptyStr = "Beta firmware is still undergoing final testing; use is at the user's risk and ASRock Rack assumes no responsibility. ASRock Rack recommends keeping current firmware when the system works properly."
+
+data asrock_altrad8ud_beta_firmware_listings: List<AsrockAltrad8udBetaFirmwareListing> = [
+  AsrockAltrad8udBetaFirmwareListing {
+    target: HostBios,
+    version: SemanticFirmwareVersion { value: firmware_semantic_version(major: 4, minor: 1, patch: 0) },
+    listed_on: 1776124800000,
+    packages: [
+      AsrockBetaFirmwarePackage { image_kind: InstantFlashRom, displayed_size: AsrockUnresolvedDisplaySize { decimal_interpretation: byte_size(count: 5110000), decimal_increment: byte_size(count: 10000) } },
+      AsrockBetaFirmwarePackage { image_kind: OpenBmcWebUiTar, displayed_size: AsrockUnresolvedDisplaySize { decimal_interpretation: byte_size(count: 5110000), decimal_increment: byte_size(count: 10000) } },
+    ],
+    description: "Updated RC to 0ACRB_022",
+  },
+  AsrockAltrad8udBetaFirmwareListing {
+    target: BmcController,
+    version: SemanticFirmwareVersion { value: asrock_altrad8ud_bmc_3_22_00_release.version },
+    listed_on: 1772064000000,
+    packages: [
+      AsrockBetaFirmwarePackage { image_kind: OpenBmcWebUiTar, displayed_size: AsrockUnresolvedDisplaySize { decimal_interpretation: byte_size(count: 27710000), decimal_increment: byte_size(count: 10000) } },
+    ],
+    description: "A password change is enforced upon the first login to the WebUI",
+  },
+  AsrockAltrad8udBetaFirmwareListing {
+    target: ScpFirmware,
+    version: ScpBuildVersion { major: 2, minor: 10, build_date: Iso8601CivilDate { year: 2026, month: 2, day: 10 } },
+    listed_on: 1776729600000,
+    packages: [
+      AsrockBetaFirmwarePackage { image_kind: OpenBmcWebUiTar, displayed_size: AsrockUnresolvedDisplaySize { decimal_interpretation: byte_size(count: 165250), decimal_increment: byte_size(count: 10) } },
+      AsrockBetaFirmwarePackage { image_kind: InstantFlashSlim, displayed_size: AsrockUnresolvedDisplaySize { decimal_interpretation: byte_size(count: 165010), decimal_increment: byte_size(count: 10) } },
+    ],
+    description: "Ampere SCP firmware",
+  },
+]
