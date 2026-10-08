@@ -280,7 +280,7 @@ fn native_serve_wire_parse(response: String) -> NativeServeWire? {
         ""
       }
       match parse_int(s: status_text) {
-        Present { value: status } => NativeServeWire { status: status, head_lines: head_lines, body: join(rest, "\r\n\r\n") }
+        Present { value: status } => Present { value: NativeServeWire { status: status, head_lines: head_lines, body: join(rest, "\r\n\r\n") } }
         Absent => none
       }
     Empty => none
@@ -342,7 +342,7 @@ fn native_serve_case_failures(cases: List<NativeServeProbeCase>, responses: List
   match cases {
     Empty =>
       match responses {
-        Empty => acc
+        Empty => Present { value: acc }
         Cons { head: _, tail: _ } => none
       }
     Cons { head: c, tail: more } =>
