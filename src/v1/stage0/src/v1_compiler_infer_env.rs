@@ -1010,25 +1010,27 @@ pub fn collect_chain_bare_names(
     env: Rc<TypeEnv>,
     acc: Rc<HashMap<String, bool>>,
 ) -> Rc<HashMap<String, bool>> {
-    collect_chain_bare_names_seen(env, acc, &mut std::collections::HashSet::new())
+    collect_chain_bare_names_seen(env, acc, v1_rt::rc_empty_map())
 }
 
 fn collect_chain_bare_names_seen(
     env: Rc<TypeEnv>,
     acc: Rc<HashMap<String, bool>>,
-    seen: &mut std::collections::HashSet<usize>,
+    seen: Rc<HashMap<String, bool>>,
 ) -> Rc<HashMap<String, bool>> {
-    let ptr = Rc::as_ptr(&env) as usize;
-    if !seen.insert(ptr) {
-        return acc;
+    match v1_rt::map_get(&seen, env.module_path.clone()) {
+        Some(_) => acc,
+        std::option::Option::None => {
+            let seen = v1_rt::rc_map_insert(seen, env.module_path.clone(), true);
+            let with_local = Rc::new(v1_rt::map_keys(&*env.str_bindings))
+                .iter()
+                .cloned()
+                .fold(acc, |a, n| v1_rt::rc_map_insert(a, n.clone(), true));
+            env.parents.iter().cloned().fold(with_local, |a, p| {
+                collect_chain_bare_names_seen(p, a, seen.clone())
+            })
+        }
     }
-    let with_local = Rc::new(v1_rt::map_keys(&*env.str_bindings))
-        .iter()
-        .cloned()
-        .fold(acc, |a, n| v1_rt::rc_map_insert(a, n.clone(), true));
-    env.parents.iter().cloned().fold(with_local, |a, p| {
-        collect_chain_bare_names_seen(p, a, seen)
-    })
 }
 
 pub fn lookup_binding_local_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
@@ -1053,34 +1055,42 @@ pub fn str_bindings_from_bindings(
 }
 
 pub fn lookup_binding_on_chain(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
-    lookup_binding_on_chain_seen(env, name, &mut std::collections::HashSet::new())
+    lookup_binding_on_chain_seen(env, name, v1_rt::rc_empty_map())
 }
 
 fn lookup_binding_on_chain_seen(
     env: Rc<TypeEnv>,
     name: String,
-    seen: &mut std::collections::HashSet<usize>,
+    seen: Rc<HashMap<String, bool>>,
 ) -> Option<Rc<TypeBinding>> {
-    let ptr = Rc::as_ptr(&env) as usize;
-    if !seen.insert(ptr) {
-        return std::option::Option::None;
-    }
-    match v1_rt::map_get(&env.str_bindings.clone(), name.clone()) {
-        Some(binding) => Some(binding.clone()),
+    match v1_rt::map_get(&seen, env.module_path.clone()) {
+        Some(_) => std::option::Option::None,
         std::option::Option::None => {
-            if env.ancestry_str_bindings.is_empty() {
-                for parent in env.parents.iter().rev() {
-                    if let Some(binding) =
-                        lookup_binding_on_chain_seen(parent.clone(), name.clone(), seen)
-                    {
-                        return Some(binding);
+            let seen = v1_rt::rc_map_insert(seen, env.module_path.clone(), true);
+            match v1_rt::map_get(&env.str_bindings.clone(), name.clone()) {
+                Some(binding) => Some(binding.clone()),
+                std::option::Option::None => {
+                    if env.ancestry_str_bindings.is_empty() {
+                        env.parents.iter().cloned().fold(
+                            std::option::Option::None,
+                            |acc, parent| {
+                                match lookup_binding_on_chain_seen(
+                                    parent,
+                                    name.clone(),
+                                    seen.clone(),
+                                ) {
+                                    Some(binding) => Some(binding),
+                                    std::option::Option::None => acc,
+                                }
+                            },
+                        )
+                    } else {
+                        match v1_rt::map_get(&env.ancestry_str_bindings.clone(), name.clone())
+                        {
+                            Some(binding) => Some(binding.clone()),
+                            std::option::Option::None => std::option::Option::None,
+                        }
                     }
-                }
-                std::option::Option::None
-            } else {
-                match v1_rt::map_get(&env.ancestry_str_bindings.clone(), name.clone()) {
-                    Some(binding) => Some(binding.clone()),
-                    std::option::Option::None => std::option::Option::None,
                 }
             }
         }

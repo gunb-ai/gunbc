@@ -624,8 +624,17 @@ fn merge_type_env_cache(base: TypeEnvCache, overlay: TypeEnvCache) -> TypeEnvCac
 }
 
 fn collect_chain_bare_names(env: TypeEnv, acc: Map<String, Bool>) -> Map<String, Bool> {
-  let with_local = fold(map_keys(env.str_bindings), init: acc, f: (a, n) => map_insert(a, n, true))
-  fold(env.parents, init: with_local, f: (a, p) => collect_chain_bare_names(env: p, acc: a))
+  collect_chain_bare_names_seen(env: env, acc: acc, seen: empty_map())
+}
+
+fn collect_chain_bare_names_seen(env: TypeEnv, acc: Map<String, Bool>, seen: Map<String, Bool>) -> Map<String, Bool> {
+  match map_get(seen, env.module_path) {
+    Present { value: _ } => acc
+    Absent =>
+      let seen = map_insert(seen, env.module_path, true)
+      let with_local = fold(map_keys(env.str_bindings), init: acc, f: (a, n) => map_insert(a, n, true))
+      fold(env.parents, init: with_local, f: (a, p) => collect_chain_bare_names_seen(env: p, acc: a, seen: seen))
+  }
 }
 
 fn lookup_binding_local_by_name(env: TypeEnv, name: String) -> TypeBinding? {
@@ -651,21 +660,30 @@ fn str_bindings_from_bindings(bindings: Map<Int, TypeBinding>) -> Map<String, Ty
 // (scope_parents = imports ++ [kernel]). Serves the v2 self-host floor by not retaining a
 // per-module flatten of shared ancestry.
 fn lookup_binding_on_chain(env: TypeEnv, name: String) -> TypeBinding? {
-  match map_get(env.str_bindings, name) {
-    Present { value: binding } => Present { value: binding }
+  lookup_binding_on_chain_seen(env: env, name: name, seen: empty_map())
+}
+
+fn lookup_binding_on_chain_seen(env: TypeEnv, name: String, seen: Map<String, Bool>) -> TypeBinding? {
+  match map_get(seen, env.module_path) {
+    Present { value: _ } => none
     Absent =>
-      if (env.ancestry_str_bindings |> map_keys |> count) == 0 {
-        fold(env.parents, init: none, f: (acc, parent) =>
-          match lookup_binding_on_chain(env: parent, name: name) {
-            Present { value: binding } => Present { value: binding }
-            Absent => acc
+      let seen = map_insert(seen, env.module_path, true)
+      match map_get(env.str_bindings, name) {
+        Present { value: binding } => Present { value: binding }
+        Absent =>
+          if (env.ancestry_str_bindings |> map_keys |> count) == 0 {
+            fold(env.parents, init: none, f: (acc, parent) =>
+              match lookup_binding_on_chain_seen(env: parent, name: name, seen: seen) {
+                Present { value: binding } => Present { value: binding }
+                Absent => acc
+              }
+            )
+          } else {
+            match map_get(env.ancestry_str_bindings, name) {
+              Present { value: binding } => Present { value: binding }
+              Absent => none
+            }
           }
-        )
-      } else {
-        match map_get(env.ancestry_str_bindings, name) {
-          Present { value: binding } => Present { value: binding }
-          Absent => none
-        }
       }
   }
 }
