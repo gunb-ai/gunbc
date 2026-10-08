@@ -1386,7 +1386,7 @@ fn controller_clock_reading_same(left: ControllerClockReading?, right: Controlle
 }
 
 fn bmc_account_state_observation_same(a: BmcAccountStateObservation, b: BmcAccountStateObservation) -> Bool {
-  controller_clock_reading_same(a: a.controller_clock, b: b.controller_clock)
+  controller_clock_reading_same(left: a.controller_clock, right: b.controller_clock)
     && (observation_with_controller_clock(base: a, controller_clock: none)
       == observation_with_controller_clock(base: b, controller_clock: none))
 }
