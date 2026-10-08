@@ -7,7 +7,11 @@ import std.disposition { SingleAuthority }
 
 import v2.std.witness { Holds }
 import v2.std.node_query { edge_field_type_name, member_edge_type_node, member_not_a_binder_diagnostic }
-import v2.extdeps.languages.dag { dag_node_is_module_surface, dag_node_is_record_field_carrier }
+import v2.extdeps.languages.dag {
+  dag_authored_name_is_parse_production_projection,
+  dag_node_is_namespace_member_target,
+  dag_node_is_record_field_carrier
+}
 import v2.std.diagnostic { node_locus, outcome_accepted, outcome_rejected }
 import std.optional { optional_absent, optional_present, optional_prefer_first_present }
 
@@ -96,9 +100,12 @@ fn type_is_flat_scalar(target: Node) -> Bool {
 fn field_unit_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> {
   match edge.label {
     Authored { name: nm } =>
+      if dag_authored_name_is_parse_production_projection(name: nm) {
+        optional_absent()
+      } else {
       match member_edge_type_node(e: edge) {
         Absent =>
-          if dag_node_is_module_surface(node: edge.target) {
+          if dag_node_is_namespace_member_target(node: edge.target) {
             optional_absent()
           } else {
             optional_present(value: member_not_a_binder_diagnostic(e: edge))
@@ -113,6 +120,7 @@ fn field_unit_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> {
           } else {
             optional_absent()
           }
+      }
       }
     StructuralLabel { label: _ } => optional_absent()
     Positional => optional_absent()

@@ -894,31 +894,53 @@ fn run_required_lens_gates(
   )
 }
 
+fn run_required_lens_gates_from_type_carrier(
+  node: Node,
+  inferred: InferredTree,
+  lenses: List<CompileLens>
+) -> Outcome<List<LensGateWitness>> {
+  bind_outcome(
+    o: run_required_lens_gates(
+      inferred: InferredTree { root: node, facts: inferred.facts },
+      lenses: lenses
+    ),
+    f: fn(here) {
+      match node.kind {
+        ComputationNode { behavior: _ } =>
+          outcome_accepted(value: here)
+        TypeNode { connective: Atom { identity: _ } } =>
+          outcome_accepted(value: here)
+        TypeNode { connective: Arrow } =>
+          outcome_accepted(value: here)
+        TypeNode { connective: _ } =>
+          fold(node.children, init: outcome_accepted(value: here), f: fn(acc, e) {
+            bind_outcome(o: acc, f: fn(ws) {
+              bind_outcome(
+                o: run_required_lens_gates_from_type_carrier(
+                  node: e.target,
+                  inferred: inferred,
+                  lenses: lenses
+                ),
+                f: fn(child_ws) {
+                  outcome_accepted(value: list_append(left: child_ws, right: ws))
+                }
+              )
+            })
+          })
+      }
+    }
+  )
+}
+
 fn run_required_lens_gates_on_subtree(
   inferred: InferredTree,
   lenses: List<CompileLens>
 ) -> Outcome<List<LensGateWitness>> {
   bind_outcome(
-    o: fold_node(
-      n: inferred.root,
-      algebra: NodeFold {
-        init: fn(n0) {
-          run_required_lens_gates(
-            inferred: InferredTree { root: n0, facts: inferred.facts },
-            lenses: lenses
-          )
-        },
-        step: fn(acc, _, child) {
-          bind_outcome(o: acc, f: fn(ws) {
-            bind_outcome(
-              o: child,
-              f: fn(child_ws) {
-                outcome_accepted(value: list_append(left: child_ws, right: ws))
-              }
-            )
-          })
-        }
-      }
+    o: run_required_lens_gates_from_type_carrier(
+      node: inferred.root,
+      inferred: inferred,
+      lenses: lenses
     ),
     f: fn(collected) { outcome_accepted(value: list_reverse(xs: collected)) }
   )

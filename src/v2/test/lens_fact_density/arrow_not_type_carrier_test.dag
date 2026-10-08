@@ -1,0 +1,26 @@
+module v2.test.lens_fact_density.arrow_not_type_carrier
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.lens.fact_density { NotATypeCarrier, carrier_spec_fact }
+import v2.std.node { Arrow, Edge, Node, Positional, TypeNode }
+
+data arrow_not_type_carrier_codomain: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^arrow_not_type_carrier_int } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data arrow_not_type_carrier_input: Node = Node {
+  kind: TypeNode { connective: Arrow },
+  children: [
+    Edge { label: Positional, target: arrow_not_type_carrier_codomain }
+  ],
+  occurrence_id: OccurrenceSynthetic
+}
+
+// A lowered fn is an Arrow with positional domain/codomain/order, not a type alias. Before this
+// classification, compile_source_root_ingest_with_admission refused `fn f() -> Int { 1 }` at
+// fact_density_hollow_alias_locus once member_not_a_binder stopped masking the child walk.
+test fn arrow_not_type_carrier_claim_holds() -> Bool {
+  carrier_spec_fact(carrier: arrow_not_type_carrier_input) == NotATypeCarrier
+}

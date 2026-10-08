@@ -7620,7 +7620,8 @@ fn dag_node_is_module_surface(node: Node) -> Bool {
       (id == ^dag_surface_module) || (id == namespace_graft_module_body_identity)
     Absent =>
       match node_atom_identity_optional(node: node) {
-        Present { value: id } => id == ^dag_surface_module
+        Present { value: id } =>
+          (id == ^dag_surface_module) || (id == namespace_graft_module_body_identity)
         Absent => namespace_graft_has_module_header(root: node)
       }
   }
@@ -7635,6 +7636,31 @@ fn dag_node_is_record_field_carrier(node: Node) -> Bool {
     TypeNode { connective: Conj } => !dag_node_is_module_surface(node: node)
     TypeNode { connective: _ } => false
     ComputationNode { behavior: _ } => false
+  }
+}
+
+// An Authored member whose TARGET is a function (Arrow) or a module surface is a declaration
+// in a namespace, not a record field. unit_modeling / lifecycle_carrier refuse non-binder
+// record fields; they must not refuse `fn f() -> Int { 1 }` on that account.
+fn dag_authored_name_is_parse_production_projection(name: Symbol) -> Bool {
+  (name == ^grammar_production_identity_node_projection) ||
+    (name == ^grammar_production_captured_node_projection)
+}
+
+fn dag_node_is_namespace_member_target(node: Node) -> Bool {
+  if dag_node_is_module_surface(node: node) || dag_node_is_fn_decl(node: node) {
+    true
+  } else {
+    match parse_production_emitted_identity_optional(node: node) {
+      Present { value: _ } => true
+      Absent =>
+        match node.kind {
+          TypeNode { connective: Arrow } => true
+          TypeNode { connective: Conj } => true
+          TypeNode { connective: _ } => false
+          ComputationNode { behavior: _ } => true
+        }
+    }
   }
 }
 
