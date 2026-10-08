@@ -26414,7 +26414,7 @@ fn parse_unified_diff_added_paths(diff_text: &str) -> HashSet<String> {
     // added-side entry, so it stays fail-closed as before.
     //
     // DECLARED GAP (DESIGN §4b(3)) — copy destinations are NOT enrolled. A `copy to NEW`
-    // destination is new-at- the same argument as `rename to`: every declaration at
+    // destination is new-at-path by the same argument as `rename to`: every declaration at
     // NEW is a newly qualified identity that has never executed under that spelling. It is
     // not matched here, so such a file would enroll only the declarations the copy's own
     // edited lines reach. POPULATION: empty — the floor's observation is
