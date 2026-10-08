@@ -3459,6 +3459,7 @@ error: could not compile `probe` (lib) due to 1 previous error
             let outcome = EmitCompileOutcome::Measured {
                 entry: "e.dag".to_string(),
                 crate_dir: "/tmp/x".to_string(),
+                module_dir: "/tmp/x/src/v1/stage0/src".to_string(),
                 emitted_files: 1,
                 baseline: green.clone(),
                 mutation,
@@ -3480,6 +3481,7 @@ error: could not compile `probe` (lib) due to 1 previous error
         let discriminated = EmitCompileOutcome::Measured {
             entry: "e.dag".to_string(),
             crate_dir: "/tmp/x".to_string(),
+            module_dir: "/tmp/x/src/v1/stage0/src".to_string(),
             emitted_files: 1,
             baseline: green,
             mutation: MutationVerdict::Discriminated {
