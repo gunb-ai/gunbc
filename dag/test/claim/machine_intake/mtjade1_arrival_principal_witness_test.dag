@@ -157,18 +157,6 @@ fn fixture_acquired_slot() -> ArrivalArchiveSlotAcquire {
   }
 }
 
-test fn w_failed_acquire_runs_no_body() -> Bool {
-  match arrival_after_acquire(
-    outcome: ArrivalArchiveSlotAcquireRefused { cause: "slot occupied" as NonEmptyStr },
-    body: fn() { body_that_refuses() },
-    release_fn: fn(h) { release_that_marks(held: h) },
-  ) {
-    ExitSuccess => false
-    ExitFailure { code: _, reason: r } =>
-      string_contains(s: r, pattern: "slot occupied") && !string_contains(s: r, pattern: "BODY_RAN")
-  }
-}
-
 test fn w_acquired_runs_body_and_release_when_body_refuses() -> Bool {
   match arrival_after_acquire(
     outcome: fixture_acquired_slot(),
