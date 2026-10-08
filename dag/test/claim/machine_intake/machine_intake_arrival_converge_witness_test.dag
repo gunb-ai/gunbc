@@ -1271,9 +1271,12 @@ test fn w_bmc_secure_apply_for_a_later_break_glass_generation_is_refused() -> Bo
   }
 }
 
-fn mtjade1_controller_clock(millis: Int, label: String) -> ControllerClockReading {
+data mtjade1_controller_clock_x_millis: EpochMs = 1
+data mtjade1_controller_clock_y_millis: EpochMs = 2
+
+fn mtjade1_controller_clock(millis: EpochMs, label: String) -> ControllerClockReading {
   ControllerClockReading {
-    reported_millis: millis as EpochMs,
+    reported_millis: millis,
     evidence: EvidenceRef { label: label as NonEmptyStr, digest: content_hash_of_value(value: label) },
   }
 }
@@ -1285,8 +1288,8 @@ test fn w_bmc_secure_apply_of_a_different_present_controller_clock_is_refused() 
   match mtjade1_dry_applied_bmc(subject: mtjade1_intake_subject()) {
     Absent => false
     Present { value: apply } => {
-      let clock_x = mtjade1_controller_clock(millis: 1, label: "controller-clock-x")
-      let clock_y = mtjade1_controller_clock(millis: 2, label: "controller-clock-y")
+      let clock_x = mtjade1_controller_clock(millis: mtjade1_controller_clock_x_millis, label: "controller-clock-x")
+      let clock_y = mtjade1_controller_clock(millis: mtjade1_controller_clock_y_millis, label: "controller-clock-y")
       let reading = observation_with_controller_clock(base: apply.application.plan.diverged, controller_clock: Present { value: clock_y })
       let stamped = apply_with_diverged_controller_clock(application: apply.application, controller_clock: Present { value: clock_x })
       match bmc_secure_bound(
@@ -1318,7 +1321,7 @@ test fn w_bmc_secure_apply_of_a_present_controller_clock_over_absent_is_refused(
     Present { value: apply } => {
       let reading = observation_with_controller_clock(
         base: apply.application.plan.diverged,
-        controller_clock: Present { value: mtjade1_controller_clock(millis: 1, label: "controller-clock-x") },
+        controller_clock: Present { value: mtjade1_controller_clock(millis: mtjade1_controller_clock_x_millis, label: "controller-clock-x") },
       )
       match bmc_secure_bound(
         key: bmc_key,
