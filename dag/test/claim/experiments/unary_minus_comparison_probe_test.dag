@@ -1,0 +1,44 @@
+module test.claim.experiments.unary_minus_comparison_probe_test
+
+// EXPERIMENT for gunbc#13289 (side-chat review 5450363883): does the unary-minus
+// comparison operand spelling evaluate differently from the corpus `0 - N`
+// spelling on a pinned engine, for a value that really is -1?
+// The value is built by the SAFE spelling (`0 - 1`) so the only variable is the
+// comparison operand spelling; a second helper returns the unary literal itself
+// so the literal-as-value surface is probed too. Every claim is TRUE when the
+// two spellings agree (defect absent) and FALSE (terminal, not lost) when they
+// do not -- read the verdicts, do not infer from absence.
+
+fn safe_minus_one() -> Int {
+  0 - 1
+}
+
+fn unary_minus_one() -> Int {
+  -1
+}
+
+test fn the_safe_value_compared_through_the_unary_operand_agrees() -> Bool {
+  let x = safe_minus_one()
+  (x == -1) == (x == 0 - 1)
+}
+
+test fn the_safe_value_really_is_minus_one() -> Bool {
+  safe_minus_one() == 0 - 1
+}
+
+test fn the_unary_literal_value_compared_through_both_operands_agrees() -> Bool {
+  let y = unary_minus_one()
+  (y == -1) == (y == 0 - 1)
+}
+
+test fn the_unary_literal_value_really_is_minus_one() -> Bool {
+  unary_minus_one() == 0 - 1
+}
+
+test fn the_direct_inline_forms_agree() -> Bool {
+  (0 - 1 == -1) == (0 - 1 == 0 - 1)
+}
+
+test fn the_specimen_shape_fn_call_lhs_agrees() -> Bool {
+  (safe_minus_one() == -1) == (safe_minus_one() == 0 - 1)
+}
