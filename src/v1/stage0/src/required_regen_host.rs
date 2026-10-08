@@ -3973,6 +3973,18 @@ fn current_exe_on_disk() -> Result<PathBuf, String> {
     ))
 }
 
+/// Open the path ONCE and digest the bytes read through that descriptor. The returned file is
+/// the exec target: `/proc/self/fd/N` names this inode, so a later replacement of the path
+/// cannot make the executed image differ from the hashed one.
+fn open_exec_target(path: &Path) -> Result<(fs::File, String), String> {
+    use std::io::Read;
+    let mut file = fs::File::open(path).map_err(|e| format!("open {}: {e}", path.display()))?;
+    let mut bytes = std::vec::Vec::new();
+    file.read_to_end(&mut bytes)
+        .map_err(|e| format!("read {}: {e}", path.display()))?;
+    Ok((file, bytes_digest(&bytes)))
+}
+
 fn current_exe_digest() -> Result<String, String> {
     let on_disk = current_exe_on_disk()?;
     let bytes = fs::read(&on_disk).map_err(|e| format!("read {}: {e}", on_disk.display()))?;
@@ -3997,9 +4009,10 @@ fn source_identity(workspace: &Path, head: &str) -> Result<String, String> {
     let listing = run(&["ls-files", "--others", "--exclude-standard", "-z"])?;
     let mut untracked = std::vec::Vec::new();
     for rel in listing.split(|b| *b == 0).filter(|p| !p.is_empty()) {
-        let rel = String::from_utf8_lossy(rel).into_owned();
-        let content = fs::read(workspace.join(&rel)).map_err(|e| format!("read {rel}: {e}"))?;
-        untracked.push((rel, content));
+        use std::os::unix::ffi::OsStrExt;
+        let full = workspace.join(std::ffi::OsStr::from_bytes(rel));
+        let content = fs::read(&full).map_err(|e| format!("read {}: {e}", full.display()))?;
+        untracked.push((rel.to_vec(), content));
     }
     Ok(compose_source_identity(head, &diff, &mut untracked))
 }
@@ -4007,20 +4020,21 @@ fn source_identity(workspace: &Path, head: &str) -> Result<String, String> {
 fn compose_source_identity(
     head: &str,
     tracked_diff: &[u8],
-    untracked: &mut [(String, Vec<u8>)],
+    untracked: &mut [(std::vec::Vec<u8>, std::vec::Vec<u8>)],
 ) -> String {
     untracked.sort_by(|a, b| a.0.cmp(&b.0));
-    let mut payload = String::new();
+    // Length-prefixed raw path bytes: no filename byte (`=`, newline, NUL) can move a
+    // boundary between entries.
+    let mut payload = std::vec::Vec::new();
     for (path, content) in untracked.iter() {
-        payload.push_str(path);
-        payload.push('=');
-        payload.push_str(&bytes_digest(content));
-        payload.push('\n');
+        payload.extend_from_slice(&(path.len() as u64).to_le_bytes());
+        payload.extend_from_slice(path);
+        payload.extend_from_slice(bytes_digest(content).as_bytes());
     }
     format!(
         "{head}+{}+{}",
         bytes_digest(tracked_diff),
-        bytes_digest(payload.as_bytes())
+        bytes_digest(&payload)
     )
 }
 
@@ -5771,9 +5785,16 @@ pub fn run_regen_round_cost(
             // relinks replaces the executable that is running it. The emit below runs in this
             // process, so it must be the built seed: hand the observation to the built binary,
             // which composes it into the receipt exactly once.
+            use std::os::fd::AsRawFd;
             use std::os::unix::process::CommandExt;
             let on_disk = current_exe_on_disk()?;
-            let err = Command::new(&on_disk)
+            // built_exe is the digest of the descriptor we exec, hashed here, after the build
+            // and immediately before the exec; not the earlier path read.
+            let (target, target_digest) = open_exec_target(&on_disk)?;
+            let mut carry = carry;
+            carry.built_exe = target_digest;
+            let err = Command::new(format!("/proc/self/fd/{}", target.as_raw_fd()))
+                .arg0(&on_disk)
                 .args(std::env::args_os().skip(1))
                 .env(REGEN_ROUND_COST_REEXEC_ENV, carry.encode())
                 .exec();
@@ -6215,11 +6236,11 @@ mod regen_round_cost_tests {
 
     #[test]
     fn source_identity_sees_untracked_files() {
-        let mut none: Vec<(String, Vec<u8>)> = vec![];
+        let mut none: Vec<(Vec<u8>, Vec<u8>)> = vec![];
         let base = compose_source_identity("H", b"d", &mut none);
-        let mut added = vec![("new.dag".to_string(), b"x".to_vec())];
+        let mut added = vec![(b"new.dag".to_vec(), b"x".to_vec())];
         let with_new = compose_source_identity("H", b"d", &mut added);
-        let mut edited = vec![("new.dag".to_string(), b"y".to_vec())];
+        let mut edited = vec![(b"new.dag".to_vec(), b"y".to_vec())];
         let edited_id = compose_source_identity("H", b"d", &mut edited);
         assert_ne!(
             base, with_new,
@@ -6238,6 +6259,59 @@ mod regen_round_cost_tests {
             decide_seed_handoff(Some(&carry), "b", "b", &edited_id, &c),
             Err(SeedHandoffRefusal::SourceChangedAcrossHandoff { .. })
         ));
+    }
+
+    #[test]
+    fn untracked_framing_distinguishes_ambiguous_populations() {
+        let c = cost(1, 1, None);
+        // old framing: path '=' digest '\n'. Two files vs one file whose NAME embeds the
+        // first file's entry.
+        let mut two = vec![
+            (b"a.dag".to_vec(), b"x".to_vec()),
+            (b"b.dag".to_vec(), b"y".to_vec()),
+        ];
+        let forged = format!("a.dag={}\nb.dag", bytes_digest(b"x")).into_bytes();
+        let mut one = vec![(forged, b"y".to_vec())];
+        let id_two = compose_source_identity("H", b"d", &mut two);
+        let id_one = compose_source_identity("H", b"d", &mut one);
+        assert_ne!(id_two, id_one);
+        let carry = match decide_seed_handoff(None, "a", "b", &id_two, &c).unwrap() {
+            SeedHandoffDecision::ReExec(h) => h,
+            SeedHandoffDecision::Proceed => panic!(),
+        };
+        assert!(matches!(
+            decide_seed_handoff(Some(&carry), "b", "b", &id_one, &c),
+            Err(SeedHandoffRefusal::SourceChangedAcrossHandoff { .. })
+        ));
+        assert!(matches!(
+            decide_seed_handoff(Some(&carry), "b", "b", &id_two, &c),
+            Ok(SeedHandoffDecision::Proceed)
+        ));
+    }
+
+    #[test]
+    fn exec_target_digest_is_of_the_opened_inode_not_the_path() {
+        let dir = std::env::temp_dir().join(format!("rrc-exec-target-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("img");
+        fs::write(&path, b"built").unwrap();
+        let (file, digest) = open_exec_target(&path).unwrap();
+        // the path is replaced after the open: the descriptor still names the hashed bytes
+        fs::remove_file(&path).unwrap();
+        fs::write(&path, b"replaced").unwrap();
+        use std::io::{Read, Seek};
+        let mut f = file;
+        f.rewind().unwrap();
+        let mut got = std::vec::Vec::new();
+        f.read_to_end(&mut got).unwrap();
+        assert_eq!(got, b"built");
+        assert_eq!(digest, bytes_digest(b"built"));
+        assert_ne!(digest, current_digest_of(&path));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    fn current_digest_of(p: &Path) -> String {
+        bytes_digest(&fs::read(p).unwrap())
     }
 
     #[test]
