@@ -222,25 +222,6 @@ fn fabric_writer_verdict(key: String, want_approval: Bool) -> Bool {
       })
 }
 
-test fn the_d0_door_selects_operator_approval_and_states_the_unverified_store() -> Bool {
-  fabric_writer_verdict(key: "gunbc.spark.pair_serving_d0_door::pair_serving_d0_ci_wet", want_approval: true)
-}
-
-// THE D0 RELEASE UNDER THE GROUP A STANDING GRANT IS CLASSIFIED BY THE SELECTION, NOT ASSERTED (review
-// 74624): with the ruling as its witness discharge the one-off irreversible release selects the run's
-// scoped identity, and it diverges with the fabric store's stated reason like every writer of that
-// store. The mutation is the ruling: strip it and the same effect does NOT select federation.
-test fn the_d0_release_under_the_standing_grant_is_classified_by_the_selection() -> Bool {
-  fabric_writer_verdict(key: "gunbc.spark.pair_serving_d0_door::d0_standing_grant_for", want_approval: false)
-    && any(privileged_effect_census, row =>
-      declaration_ref_display_key(ref: row.site) == "gunbc.spark.pair_serving_d0_door::d0_standing_grant_for"
-        && !selected_federated(s: select_authorization_pattern(e: PrivilegedEffect {
-          subject: row.effect.subject, frequency: row.effect.frequency, reversibility: row.effect.reversibility,
-          surface: row.effect.surface, workload_identity: row.effect.workload_identity,
-          minted_reach: row.effect.minted_reach, billing: row.effect.billing, witness_discharge: NoWitnessDischarge,
-        })))
-}
-
 test fn the_host_effect_lanes_select_workload_identity_and_state_the_unverified_store() -> Bool {
   fabric_writer_verdict(key: "gunbc.spark.host_commitment::claim_host_effect_live", want_approval: false)
     && fabric_writer_verdict(key: "gunbc.spark.host_commitment::settle_host_effect_live_over", want_approval: false)

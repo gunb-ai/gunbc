@@ -17,7 +17,7 @@ import gunbc.spark.pair_serving_realization { spark_pair_vllm_serve_argv }
 import gunbc.spark.model_snapshot_acquisition { deepseek_v4_flash_snapshot }
 import gunbc.spark.serving_engine { VllmServing, OllamaServing }
 import gunbc.fleet_host_identity { operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
-import gunbc.spark.fabric_switch_observed { FabricGroupB, FabricGroup }
+import gunbc.spark.fabric_switch_observed { FabricGroupB, FabricGroup, fabric_group_wire }
 import gunbc.spark.fabric_rail_desired { fabric_rail_address }
 import gunbc.spark.pair_serving_desired {
   spark_pair_serving_engine_args,
@@ -25,7 +25,7 @@ import gunbc.spark.pair_serving_desired {
   SparkPairServingUnit, SparkPairServingUnitReady, SparkPairServingUnitRefused,
   SparkPairServingSeqCapacity, SeqCapacityMeasured, SeqCapacityUnmeasured, SeqCapacityByOperatorPolicy,
   spark_pair_serving_seq_capacity, spark_pair_serving_seq_capacity_for,
-  spark_pair_serving_unit_wire,
+  spark_pair_serving_unit_wire, spark_pair_serving_groups,
 }
 
 // THE RENDERED LINE IS REACHED THROUGH THE DECLARED SNAPSHOT, because that is what the renderer now
@@ -120,19 +120,27 @@ test fn the_live_sequence_count_is_an_operator_launch_argument() -> Bool {
   }
 }
 
-// THE GROUPS ARE LAUNCHABLE, which is the property an over-corrected revision of this branch
-// destroyed by answering Unmeasured: the unit refused, the realization refused, the apply plan
-// refused, and no engine could ever start to produce the launch line a measurement needs.
-test fn the_promoted_group_is_launchable() -> Bool {
+// NO GROUP IS PROMOTED, AND THAT IS ASSERTED RATHER THAN LEFT VACUOUS: the roster's only group was Group A,
+// decommissioned and sold on 2026-10-07, so the projection is empty -- and Group B, which serves the GLM
+// native canary, is not laundered into it.
+test fn no_group_is_promoted_and_group_b_is_not_in_the_roster() -> Bool {
+  length(spark_pair_serving_groups) == 0
+    && !any(spark_pair_serving_groups, g => (fabric_group_wire(g: g) as String) == "group-b")
+}
+
+// THE UNIT CONSTRUCTOR IS LAUNCHABLE OVER A SUPPLIED GROUP -- a property of spark_pair_serving_unit, not a
+// claim that Group B is promoted (no group is: see the claim above). It is the property an over-corrected
+// revision destroyed by answering Unmeasured: the unit refused and no engine could ever start.
+test fn the_pair_unit_is_launchable_over_a_supplied_group() -> Bool {
   match spark_pair_serving_unit(group: FabricGroupB {}) {
     SparkPairServingUnitReady { group: _, engine: _, head: _, workers: _ } => true
     SparkPairServingUnitRefused { group: _, cause: _ } => false
   }
 }
 
-// GROUP B IS srv9 AT THE HEAD WITH srv10, srv11 AND srv12 AS WORKERS, EVERY RANK AT ITS RAIL ADDRESS,
-// tensor-parallel four, and the engine is vLLM.
-test fn group_b_is_four_ranks_headed_by_srv9_at_their_rail_addresses() -> Bool {
+// OVER A SUPPLIED GROUP B (not a promoted one), THE UNIT IS srv9 AT THE HEAD WITH srv10, srv11 AND srv12 AS
+// WORKERS, EVERY RANK AT ITS RAIL ADDRESS, tensor-parallel four, and the engine is vLLM.
+test fn a_supplied_group_b_unit_is_four_ranks_headed_by_srv9_at_their_rail_addresses() -> Bool {
   match spark_pair_serving_unit(group: FabricGroupB {}) {
     SparkPairServingUnitRefused { group: _, cause: _ } => false
     SparkPairServingUnitReady { group: _, engine: e, head: h, workers: ws } =>

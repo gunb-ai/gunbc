@@ -202,7 +202,7 @@ fn mtjade1_interlocked_ruling() -> StandingDestructiveAuthorization {
   StandingDestructiveAuthorization {
     ruling_text: mtjade1_live_standing_grant.ruling.ruling_text,
     effect_subject: mtjade1_live_standing_grant.ruling.effect_subject,
-    interlock: InterlockedBy { hold: decl_ref(module_path: "gunbc.spark.pair_serving_d0", decl_name: "d0_claim_grant") },
+    interlock: InterlockedBy { hold: decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof") },
   }
 }
 
