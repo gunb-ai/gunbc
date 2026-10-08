@@ -14337,19 +14337,33 @@ fn list_element_type_node(n: Node) -> Node? {
   }
 }
 
+fn list_concat_element_is_anon_product(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  n.connective == Conj && (type_node_label(n: n, source_indices: source_indices) == ""
+    || type_node_label(n: n, source_indices: source_indices) == "<anon>")
+}
+
 fn list_concat_elements_agree(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if node_type_shape(n: left, source_indices: source_indices) == node_type_shape(n: right, source_indices: source_indices) {
+    true
+  } else {
   match list_element_type_node(n: left) {
     Absent => false
     Present { value: le } =>
       match list_element_type_node(n: right) {
         Absent => false
         Present { value: re } =>
-          let peeled_eq = type_node_label(n: le, source_indices: source_indices) == type_node_label(n: re, source_indices: source_indices)
+          let ln = type_node_label(n: le, source_indices: source_indices)
+          let rn = type_node_label(n: re, source_indices: source_indices)
+          let peeled_eq = ln == rn && (le.children |> count) == (re.children |> count) && le.connective == re.connective
+          let named_vs_anon = le.connective == re.connective
             && (le.children |> count) == (re.children |> count)
-            && le.connective == re.connective
-          if !peeled_eq {
+            && (list_concat_element_is_anon_product(n: le, source_indices: source_indices)
+              || list_concat_element_is_anon_product(n: re, source_indices: source_indices))
+          if named_vs_anon {
+            true
+          } else if !peeled_eq {
             false
-          } else if type_node_label(n: le, source_indices: source_indices) != "String" {
+          } else if ln != "String" {
             true
           } else {
             match left.children |> first {
@@ -14364,6 +14378,7 @@ fn list_concat_elements_agree(left: Node, right: Node, source_indices: Map<Strin
             }
           }
       }
+  }
   }
 }
 
@@ -14419,7 +14434,21 @@ fn concat_unify_operands(left: Node, right: Node, fallback: Node, source_indices
         ) }
       }
     }
-    } else if left_list || right_list {
+    } else if node_is_element_collection(n: left, source_indices: source_indices)
+      && !(right_unsolved || type_node_is_uninformed_accumulator(n: right, source_indices: source_indices)
+        || node_is_list_concat_operand(n: right, source_indices: source_indices)) {
+    ConcatUnify {
+      result: error_type,
+      refuse: Present { value: concat(
+        "concat operands have incompatible element types: ",
+        node_type_shape(n: left, source_indices: source_indices),
+        " vs ",
+        node_type_shape(n: right, source_indices: source_indices)
+      ) }
+    }
+  } else if node_is_element_collection(n: right, source_indices: source_indices)
+      && !(left_unsolved || type_node_is_uninformed_accumulator(n: left, source_indices: source_indices)
+        || node_is_list_concat_operand(n: left, source_indices: source_indices)) {
     ConcatUnify {
       result: error_type,
       refuse: Present { value: concat(
