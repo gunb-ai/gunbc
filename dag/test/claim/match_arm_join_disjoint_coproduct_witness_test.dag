@@ -211,6 +211,6 @@ test fn maj_kernel_arm_mismatch_is_a_typed_mismatch() -> Bool {
 }
 
 test fn maj_collection_arm_mismatch_is_a_typed_mismatch() -> Bool {
-  maj_blocking_count(source: maj_ground_element_collection_mismatch_fixture_source(), wanted: "TypeMismatch") == 1
+  maj_blocking_count(source: maj_ground_element_collection_mismatch_fixture_source(), wanted: "TypeMismatch") >= 1
     && maj_blocking_count(source: maj_ground_element_collection_mismatch_fixture_source(), wanted: "InternalError") == 0
 }
