@@ -907,6 +907,11 @@ fn required_gate_prefixes() -> List<String> {
 // duplicate-key and well-formed checks and the addition/staleness join; it matched no family prefix,
 // so those reds executed on no merge lane. Admitted at exact module grain for the same reason as the
 // test-reference wall: a family prefix would silently widen to any future sibling.
+// THE ROUTE-GAP PARTITION WITNESS (same reason, same grain). `test.claim.route_gap_partition_witness`
+// carries the route-gap admission partition's discriminating red -- an enrollment the tree does not
+// declare refuses -- through the modeled relation on `v2.workflow.floor_route_gap`, over substrate
+// inputs only (constructed lists; no host effect, no service). It matched no family prefix, so the
+// wall's red would execute on no merge lane without this row.
 //
 // THE CALIBRATION SPECIMEN (node adhoc-c9504740-637; sharp-raven-357 ruling with the operator's
 // go-ahead, 2026-10-05). The enrolment margin is judged in calibrated CPU ms, and the factor comes
@@ -933,6 +938,7 @@ fn required_gate_authored_modules() -> List<String> {
     "v2.test.claim.effect_demand.effect_demand_floor_join_test",
     "test.claim.test_reference_wall_witness",
     "test.claim.seed_growth_admission_witness",
+    "test.claim.route_gap_partition_witness",
     "test.claim.floor_eval_step_calibration_specimen_test",
   ]
 }

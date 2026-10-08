@@ -50,7 +50,7 @@ import gunbc.spark.arm_memory_fit {
   demand_for_phase,
   arm_memory_fit_subject, arm_memory_fit_subject_with_rank_demands, arm_memory_fit_subject_for_launch,
   arm_memory_fit_verdict, arm_memory_subject_open_components,
-  gb10_pool_bound,
+  gb10_pool_bound, gb10_memory_tier, gb10_host_class, ArmTierSupply, placed_in, ArmRowView,
   arm_memory_fit_experiment_plan, arm_memory_experiment_runtime, arm_memory_launch_gate,
   arm_classify_measurement, arm_apply_measurement, arm_readback_observation,
   ArmMemorySubjectReady, ArmMemorySubjectRefused,
@@ -255,17 +255,23 @@ fn fx_derived_profile() -> ServingLaunchProfile {
 // ONE MEASURED RANK ROW: per-rank checkpoint placement measured even (the ceiling is the split
 // share of the 306 ceil-GiB aggregate), every other mechanism carried as a measured ceiling, the
 // KV demand exact. Receipts name the identity throughout.
+// ONE SUPPLY ROW OVER THE GB10 HOST'S ONE CATALOG MEMORY: every pre-tier fixture is the one-tier
+// case, so its pool and deductions become that tier's.
+fn fx_tiers(pool: ArmPoolBound, deductions: ArmSupplyDeductions) -> List<ArmTierSupply> {
+  [ArmTierSupply { tier: gb10_memory_tier(), pool: pool, deductions: deductions }]
+}
+
 fn fx_rank(rank: Nat, checkpoint: ArmComponentBound) -> ArmRankDemand {
   ArmRankDemand {
     rank: rank,
-    checkpoint_residency: checkpoint,
-    loader_transform: fx_ceiling(component_kind: "CheckpointRankResidencyBound" as NonEmptyStr, gib: 1),
-    runtime_fixed: fx_ceiling(component_kind: "RuntimeFixedAllocationBound" as NonEmptyStr, gib: 2),
-    collective_workspace: fx_ceiling(component_kind: "CollectiveWorkspaceBound" as NonEmptyStr, gib: 1),
-    activation_workspace: fx_ceiling(component_kind: "ActivationWorkspaceBound" as NonEmptyStr, gib: 2),
-    graph_capture: fx_ceiling(component_kind: "GraphCaptureBound" as NonEmptyStr, gib: 1),
-    kv_cache: fx_kv_bound(),
-    fragmentation_allowance: fx_ceiling(component_kind: "AllocatorFragmentationBound" as NonEmptyStr, gib: 1),
+    checkpoint_residency: placed_in(tier: gb10_memory_tier(), bound: checkpoint),
+    loader_transform: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "CheckpointRankResidencyBound" as NonEmptyStr, gib: 1)),
+    runtime_fixed: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "RuntimeFixedAllocationBound" as NonEmptyStr, gib: 2)),
+    collective_workspace: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "CollectiveWorkspaceBound" as NonEmptyStr, gib: 1)),
+    activation_workspace: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "ActivationWorkspaceBound" as NonEmptyStr, gib: 2)),
+    graph_capture: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "GraphCaptureBound" as NonEmptyStr, gib: 1)),
+    kv_cache: placed_in(tier: gb10_memory_tier(), bound: fx_kv_bound()),
+    fragmentation_allowance: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "AllocatorFragmentationBound" as NonEmptyStr, gib: 1)),
   }
 }
 
@@ -328,13 +334,13 @@ test fn w_fewer_ranks_refuse_by_the_aggregate_argument_without_naming_a_rank() -
     runtime: GunbcGlm53NopeDerivedGb10,
     topology: EightSparkTp8, profile: glm_native_initial_profile))
   (match tp1 {
-    Present { value: ArmMemoryFitRefused { rank: r, phase: p, demand_lower: d, supply_upper: _, cause: c } } =>
+    Present { value: ArmMemoryFitRefused { rank: r, tiers: _, phase: p, demand_lower: d, supply_upper: _, cause: c } } =>
       r == 1 && p == ArmPhaseModelLoad && byte_size_count(b: d) == 327491256321
         && string_contains(s: c as String, pattern: "at least one rank")
     _ => false
   })
     && (match tp2 {
-      Present { value: ArmMemoryFitRefused { rank: r, phase: _, demand_lower: d, supply_upper: _, cause: c } } =>
+      Present { value: ArmMemoryFitRefused { rank: r, tiers: _, phase: _, demand_lower: d, supply_upper: _, cause: c } } =>
         r == 2 && byte_size_count(b: d) == 163745628161
           && string_contains(s: c as String, pattern: "at least one rank")
       _ => false
@@ -364,8 +370,8 @@ test fn w_a_profile_that_does_not_derive_from_the_intent_is_refused_at_the_mint(
     topology: FourSparkTp4,
     intent: fx_shrunk_intent(),
     requested_profile: glm_native_concurrent_profile,
-    pool: fx_pool(),
-    deductions: fx_deductions()) {
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions())) {
     ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "does not derive from the capacity intent")
     ArmMemorySubjectReady { subject: _ } => false
   })
@@ -375,8 +381,8 @@ test fn w_a_profile_that_does_not_derive_from_the_intent_is_refused_at_the_mint(
       topology: FourSparkTp4,
       intent: fx_shrunk_intent(),
       requested_profile: glm_native_concurrent_profile,
-      pool: fx_pool(),
-      deductions: fx_deductions(),
+      host: gb10_host_class(),
+      tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
       ranks: fx_four_even_ranks()) {
       ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "does not derive from the capacity intent")
       ArmMemorySubjectReady { subject: _ } => false
@@ -392,8 +398,8 @@ test fn w_the_derived_profile_joins_and_the_subject_mints() -> Bool {
     topology: FourSparkTp4,
     intent: fx_shrunk_intent(),
     requested_profile: fx_derived_profile(),
-    pool: fx_pool(),
-    deductions: fx_deductions()) {
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions())) {
     ArmMemorySubjectReady { subject: _ } => true
     ArmMemorySubjectRefused { cause: _ } => false
   }
@@ -407,8 +413,8 @@ test fn w_a_receipt_for_another_checkpoint_or_runtime_is_refused_at_the_mint() -
     topology: FourSparkTp4,
     intent: fx_shrunk_intent(),
     requested_profile: fx_derived_profile(),
-    pool: fx_pool(),
-    deductions: fx_deductions(),
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
     ranks: fx_four_even_ranks()) {
     ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "does not name this checkpoint x runtime x topology")
     ArmMemorySubjectReady { subject: _ } => false
@@ -419,8 +425,8 @@ test fn w_a_receipt_for_another_checkpoint_or_runtime_is_refused_at_the_mint() -
       topology: FourSparkTp4,
       intent: fx_shrunk_intent(),
       requested_profile: fx_derived_profile(),
-      pool: fx_pool(),
-      deductions: fx_deductions(),
+      host: gb10_host_class(),
+      tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
       ranks: fx_four_even_ranks()) {
       ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "does not name this checkpoint x runtime x topology")
       ArmMemorySubjectReady { subject: _ } => false
@@ -435,8 +441,8 @@ test fn w_a_rank_roster_with_a_duplicated_or_absent_index_is_refused() -> Bool {
     topology: FourSparkTp4,
     intent: fx_shrunk_intent(),
     requested_profile: fx_derived_profile(),
-    pool: fx_pool(),
-    deductions: fx_deductions(),
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
     ranks: [
       fx_rank(rank: 0, checkpoint: fx_even_checkpoint()),
       fx_rank(rank: 0, checkpoint: fx_even_checkpoint()),
@@ -452,8 +458,8 @@ test fn w_a_rank_roster_with_a_duplicated_or_absent_index_is_refused() -> Bool {
       topology: FourSparkTp4,
       intent: fx_shrunk_intent(),
       requested_profile: fx_derived_profile(),
-      pool: fx_pool(),
-      deductions: fx_deductions(),
+      host: gb10_host_class(),
+      tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
       ranks: [
         fx_rank(rank: 0, checkpoint: fx_even_checkpoint()),
         fx_rank(rank: 1, checkpoint: fx_even_checkpoint()),
@@ -475,11 +481,11 @@ test fn w_all_open_terms_with_the_right_rank_count_is_never_proved() -> Bool {
     topology: FourSparkTp4,
     intent: fx_shrunk_intent(),
     requested_profile: fx_derived_profile(),
-    pool: fx_pool(),
-    deductions: ArmSupplyDeductions {
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: fx_pool(), deductions: ArmSupplyDeductions {
       host_os_control_reserve: ComponentBoundOpen { obligation: "fx-open" as NonEmptyStr },
       foreign_residency: ComponentBoundOpen { obligation: "fx-open" as NonEmptyStr },
-    }) {
+    })) {
     ArmMemorySubjectReady { subject: subject } =>
       match arm_memory_fit_verdict(subject: subject) {
         ArmMemoryFitUnestablished { obligations: os } =>
@@ -504,8 +510,8 @@ test fn w_rank_upper_bounds_that_cannot_hold_the_checkpoint_refuse_to_prove() ->
     topology: FourSparkTp4,
     intent: fx_shrunk_intent(),
     requested_profile: fx_derived_profile(),
-    pool: fx_pool(),
-    deductions: fx_deductions(),
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
     ranks: [
       fx_rank(rank: 0, checkpoint: tiny),
       fx_rank(rank: 1, checkpoint: tiny),
@@ -531,13 +537,13 @@ test fn w_the_shrunk_fully_receipted_intent_is_proved() -> Bool {
     topology: FourSparkTp4,
     intent: fx_shrunk_intent(),
     requested_profile: fx_derived_profile(),
-    pool: fx_pool(),
-    deductions: fx_deductions(),
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
     ranks: fx_four_even_ranks()) {
     ArmMemorySubjectRefused { cause: _ } => false
     ArmMemorySubjectReady { subject: subject } =>
       match arm_memory_fit_verdict(subject: subject) {
-        ArmMemoryFitProved { rank: r, phase: p, headroom_bytes: h } =>
+        ArmMemoryFitProved { rank: r, tier: _, phase: p, headroom_bytes: h } =>
           r == 0 && p == ArmPhasePeakServing && byte_size_count(b: h) == 17867063952
         _ => false
       }
@@ -547,14 +553,14 @@ test fn w_the_shrunk_fully_receipted_intent_is_proved() -> Bool {
 test fn w_the_same_subject_without_one_receipt_is_unestablished() -> Bool {
   let loader_open = ArmRankDemand {
     rank: 0,
-    checkpoint_residency: fx_even_checkpoint(),
-    loader_transform: ComponentBoundOpen { obligation: "fx-open" as NonEmptyStr },
-    runtime_fixed: fx_ceiling(component_kind: "RuntimeFixedAllocationBound" as NonEmptyStr, gib: 2),
-    collective_workspace: fx_ceiling(component_kind: "CollectiveWorkspaceBound" as NonEmptyStr, gib: 1),
-    activation_workspace: fx_ceiling(component_kind: "ActivationWorkspaceBound" as NonEmptyStr, gib: 2),
-    graph_capture: fx_ceiling(component_kind: "GraphCaptureBound" as NonEmptyStr, gib: 1),
-    kv_cache: fx_kv_bound(),
-    fragmentation_allowance: fx_ceiling(component_kind: "AllocatorFragmentationBound" as NonEmptyStr, gib: 1),
+    checkpoint_residency: placed_in(tier: gb10_memory_tier(), bound: fx_even_checkpoint()),
+    loader_transform: placed_in(tier: gb10_memory_tier(), bound: ComponentBoundOpen { obligation: "fx-open" as NonEmptyStr }),
+    runtime_fixed: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "RuntimeFixedAllocationBound" as NonEmptyStr, gib: 2)),
+    collective_workspace: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "CollectiveWorkspaceBound" as NonEmptyStr, gib: 1)),
+    activation_workspace: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "ActivationWorkspaceBound" as NonEmptyStr, gib: 2)),
+    graph_capture: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "GraphCaptureBound" as NonEmptyStr, gib: 1)),
+    kv_cache: placed_in(tier: gb10_memory_tier(), bound: fx_kv_bound()),
+    fragmentation_allowance: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "AllocatorFragmentationBound" as NonEmptyStr, gib: 1)),
   }
   let ranks = [loader_open, fx_rank(rank: 1, checkpoint: fx_even_checkpoint()), fx_rank(rank: 2, checkpoint: fx_even_checkpoint()), fx_rank(rank: 3, checkpoint: fx_even_checkpoint())]
   match arm_memory_fit_subject_with_rank_demands(
@@ -563,8 +569,8 @@ test fn w_the_same_subject_without_one_receipt_is_unestablished() -> Bool {
     topology: FourSparkTp4,
     intent: fx_shrunk_intent(),
     requested_profile: fx_derived_profile(),
-    pool: fx_pool(),
-    deductions: fx_deductions(),
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
     ranks: ranks) {
     ArmMemorySubjectRefused { cause: _ } => false
     ArmMemorySubjectReady { subject: subject } =>
@@ -589,8 +595,8 @@ test fn w_the_worst_rank_decides_the_verdict() -> Bool {
     topology: FourSparkTp4,
     intent: fx_shrunk_intent(),
     requested_profile: fx_derived_profile(),
-    pool: fx_pool(),
-    deductions: fx_deductions(),
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
     ranks: [
       fx_rank(rank: 0, checkpoint: surcharge),
       fx_rank(rank: 1, checkpoint: fx_even_checkpoint()),
@@ -600,7 +606,7 @@ test fn w_the_worst_rank_decides_the_verdict() -> Bool {
     ArmMemorySubjectRefused { cause: _ } => false
     ArmMemorySubjectReady { subject: subject } =>
       match arm_memory_fit_verdict(subject: subject) {
-        ArmMemoryFitRefused { rank: r, phase: _, demand_lower: d, supply_upper: _, cause: c } =>
+        ArmMemoryFitRefused { rank: r, tiers: _, phase: _, demand_lower: d, supply_upper: _, cause: c } =>
           r == 0
             && byte_size_count(b: d) == 132070244352
             && string_contains(s: c as String, pattern: "checkpoint-residency")
@@ -617,14 +623,14 @@ test fn w_the_envelope_refuses_at_the_first_engine_admitted_phase() -> Bool {
     how: fx_how(text: "fixture: mandatory per-rank demand between the decided envelope's most generous reading and the pool's most generous reading" as NonEmptyStr))
   let terms = ArmRankDemand {
     rank: 0,
-    checkpoint_residency: between,
-    loader_transform: fx_ceiling(component_kind: "CheckpointRankResidencyBound" as NonEmptyStr, gib: 1),
-    runtime_fixed: fx_ceiling(component_kind: "RuntimeFixedAllocationBound" as NonEmptyStr, gib: 2),
-    collective_workspace: fx_ceiling(component_kind: "CollectiveWorkspaceBound" as NonEmptyStr, gib: 1),
-    activation_workspace: fx_ceiling(component_kind: "ActivationWorkspaceBound" as NonEmptyStr, gib: 2),
-    graph_capture: fx_ceiling(component_kind: "GraphCaptureBound" as NonEmptyStr, gib: 1),
-    kv_cache: fx_kv_bound(),
-    fragmentation_allowance: fx_ceiling(component_kind: "AllocatorFragmentationBound" as NonEmptyStr, gib: 1),
+    checkpoint_residency: placed_in(tier: gb10_memory_tier(), bound: between),
+    loader_transform: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "CheckpointRankResidencyBound" as NonEmptyStr, gib: 1)),
+    runtime_fixed: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "RuntimeFixedAllocationBound" as NonEmptyStr, gib: 2)),
+    collective_workspace: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "CollectiveWorkspaceBound" as NonEmptyStr, gib: 1)),
+    activation_workspace: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "ActivationWorkspaceBound" as NonEmptyStr, gib: 2)),
+    graph_capture: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "GraphCaptureBound" as NonEmptyStr, gib: 1)),
+    kv_cache: placed_in(tier: gb10_memory_tier(), bound: fx_kv_bound()),
+    fragmentation_allowance: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "AllocatorFragmentationBound" as NonEmptyStr, gib: 1)),
   }
   match arm_memory_fit_subject_with_rank_demands(
     checkpoint: Glm53NativeFp8,
@@ -632,8 +638,8 @@ test fn w_the_envelope_refuses_at_the_first_engine_admitted_phase() -> Bool {
     topology: FourSparkTp4,
     intent: fx_shrunk_intent(),
     requested_profile: fx_derived_profile(),
-    pool: fx_pool(),
-    deductions: fx_deductions(),
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
     ranks: [
       terms,
       fx_rank(rank: 1, checkpoint: fx_even_checkpoint()),
@@ -643,7 +649,7 @@ test fn w_the_envelope_refuses_at_the_first_engine_admitted_phase() -> Bool {
     ArmMemorySubjectRefused { cause: _ } => false
     ArmMemorySubjectReady { subject: subject } =>
       match arm_memory_fit_verdict(subject: subject) {
-        ArmMemoryFitRefused { rank: r, phase: p, demand_lower: d, supply_upper: s, cause: c } =>
+        ArmMemoryFitRefused { rank: r, tiers: _, phase: p, demand_lower: d, supply_upper: s, cause: c } =>
           r == 0
             && p == ArmPhaseProfiling
             && byte_size_count(b: d) == 123480309760
@@ -657,19 +663,19 @@ test fn w_the_envelope_refuses_at_the_first_engine_admitted_phase() -> Bool {
 // ── WITNESS 9: PHASES KEEP TRANSIENTS IN THEIR PHASE ────────────────────────────────────────────
 test fn w_the_loader_transient_is_charged_only_in_its_phases() -> Bool {
   let rd = fx_rank(rank: 0, checkpoint: fx_even_checkpoint())
-  let model_upper = match demand_for_phase(rd: rd, phase: ArmPhaseModelLoad).upper {
+  let model_upper = match demand_for_phase(rv: ArmRowView { rank_demand: rd, tier: gb10_memory_tier() }, phase: ArmPhaseModelLoad).upper {
     Absent => 0
     Present { value: b } => byte_size_count(b: b)
   }
-  let idle_upper = match demand_for_phase(rd: rd, phase: ArmPhaseIdleServing).upper {
+  let idle_upper = match demand_for_phase(rv: ArmRowView { rank_demand: rd, tier: gb10_memory_tier() }, phase: ArmPhaseIdleServing).upper {
     Absent => 0
     Present { value: b } => byte_size_count(b: b)
   }
-  let loader_upper = match demand_for_phase(rd: rd, phase: ArmPhaseLoaderTransform).upper {
+  let loader_upper = match demand_for_phase(rv: ArmRowView { rank_demand: rd, tier: gb10_memory_tier() }, phase: ArmPhaseLoaderTransform).upper {
     Absent => 0
     Present { value: b } => byte_size_count(b: b)
   }
-  let overlap_upper = match demand_for_phase(rd: rd, phase: ArmPhaseRestartOverlap).upper {
+  let overlap_upper = match demand_for_phase(rv: ArmRowView { rank_demand: rd, tier: gb10_memory_tier() }, phase: ArmPhaseRestartOverlap).upper {
     Absent => 0
     Present { value: b } => byte_size_count(b: b)
   }
@@ -686,8 +692,8 @@ test fn w_an_unmodeled_pool_is_unestablished_not_refused() -> Bool {
     topology: FourSparkTp4,
     intent: fx_shrunk_intent(),
     requested_profile: fx_derived_profile(),
-    pool: ArmPoolUnbounded { obligation: "fx-no-pool-reading: no byte producer has modeled this pool" as NonEmptyStr },
-    deductions: fx_deductions(),
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: ArmPoolUnbounded { obligation: "fx-no-pool-reading: no byte producer has modeled this pool" as NonEmptyStr }, deductions: fx_deductions()),
     ranks: fx_four_even_ranks()) {
     ArmMemorySubjectRefused { cause: _ } => false
     ArmMemorySubjectReady { subject: subject } =>
@@ -829,7 +835,7 @@ test fn w_refused_refuses_the_experiment_too() -> Bool {
   match arm_memory_launch_gate(
     intent: ArmBoundedExperiment,
     verdict: ArmMemoryFitRefused {
-      rank: 1, phase: ArmPhaseModelLoad, demand_lower: fx_gib(1), supply_upper: fx_gib(1),
+      rank: 1, tiers: [gb10_memory_tier()], phase: ArmPhaseModelLoad, demand_lower: fx_gib(1), supply_upper: fx_gib(1),
       cause: "fx-refusal" as NonEmptyStr },
     experiment: none) {
     Present { value: c } => string_contains(s: c as String, pattern: "even a bounded experiment refuses")
@@ -846,11 +852,11 @@ test fn w_unestablished_refuses_the_experiment_without_a_typed_plan() -> Bool {
       Present { value: _ } => false
       Absent => true
     })
-    && (match arm_memory_launch_gate(intent: ArmBoundedExperiment, verdict: ArmMemoryFitProved { rank: 0, phase: ArmPhaseIdleServing, headroom_bytes: fx_gib(1) }, experiment: none) {
+    && (match arm_memory_launch_gate(intent: ArmBoundedExperiment, verdict: ArmMemoryFitProved { rank: 0, tier: gb10_memory_tier(), phase: ArmPhaseIdleServing, headroom_bytes: fx_gib(1) }, experiment: none) {
       Present { value: _ } => false
       Absent => true
     })
-    && (match arm_memory_launch_gate(intent: ArmNormalServing, verdict: ArmMemoryFitProved { rank: 0, phase: ArmPhaseIdleServing, headroom_bytes: fx_gib(1) }, experiment: none) {
+    && (match arm_memory_launch_gate(intent: ArmNormalServing, verdict: ArmMemoryFitProved { rank: 0, tier: gb10_memory_tier(), phase: ArmPhaseIdleServing, headroom_bytes: fx_gib(1) }, experiment: none) {
       Present { value: _ } => false
       Absent => true
     })
@@ -956,7 +962,7 @@ fn fx_measured_receipt(rank: Nat, component: ArmMemoryComponent, observed_gib: N
     observed: fx_gib(observed_gib),
     receipt: fx_receipt(kind: "fx-peak-over-runs" as NonEmptyStr),
   }
-  ArmComponentReceipt { rank: rank, component: component, class: arm_classify_measurement(m: m) }
+  ArmComponentReceipt { rank: rank, tier: gb10_memory_tier(), component: component, class: arm_classify_measurement(m: m) }
 }
 
 fn fx_observation_receipt(rank: Nat, component: ArmMemoryComponent, observed_gib: Nat) -> ArmComponentReceipt {
@@ -970,7 +976,7 @@ fn fx_observation_receipt(rank: Nat, component: ArmMemoryComponent, observed_gib
     observed: fx_gib(observed_gib),
     receipt: fx_receipt(kind: "fx-single-run-observation" as NonEmptyStr),
   }
-  ArmComponentReceipt { rank: rank, component: component, class: arm_classify_measurement(m: m) }
+  ArmComponentReceipt { rank: rank, tier: gb10_memory_tier(), component: component, class: arm_classify_measurement(m: m) }
 }
 
 fn join_subject(receipts: List<ArmComponentReceipt>) -> ArmMemorySubjectMint {
@@ -980,8 +986,8 @@ fn join_subject(receipts: List<ArmComponentReceipt>) -> ArmMemorySubjectMint {
     topology: FourSparkTp4,
     intent: fx_shrunk_intent(),
     requested_profile: fx_derived_profile(),
-    pool: fx_pool(),
-    deductions: fx_deductions(),
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
     receipts: receipts)
 }
 
@@ -1004,14 +1010,14 @@ test fn w_a_measured_receipt_discharges_exactly_its_one_term() -> Bool {
       let rank0 = first(filter(subject.ranks, r => r.rank == 0))
       let rank1 = first(filter(subject.ranks, r => r.rank == 1))
       (match rank0 {
-        Present { value: rd } => match rd.graph_capture {
+        Present { value: rd } => match rd.graph_capture.held.bound {
           ComponentBoundCeiling { bytes: b, receipt: _ } => byte_size_count(b: b) == 1073741824
           _ => false
         }
         Absent => false
       })
         && (match rank1 {
-          Present { value: rd } => match rd.graph_capture {
+          Present { value: rd } => match rd.graph_capture.held.bound {
             ComponentBoundOpen { obligation: _ } => true
             _ => false
           }
@@ -1035,8 +1041,8 @@ test fn w_an_observation_receipt_discharges_nothing() -> Bool {
     topology: FourSparkTp4,
     intent: fx_shrunk_intent(),
     requested_profile: fx_derived_profile(),
-    pool: fx_pool(),
-    deductions: fx_deductions())
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()))
   length(obligations_of(mint: observed)) == length(obligations_of(mint: bare))
     && length(obligations_of(mint: observed)) > 0
 }
@@ -1059,8 +1065,8 @@ test fn w_the_join_refuses_a_second_receipt_an_absent_rank_and_foreign_provenanc
       topology: FourSparkTp4,
       intent: fx_shrunk_intent(),
       requested_profile: fx_derived_profile(),
-      pool: fx_pool(),
-      deductions: fx_deductions(),
+      host: gb10_host_class(),
+      tiers: fx_tiers(pool: fx_pool(), deductions: fx_deductions()),
       receipts: [fx_measured_receipt(rank: 0, component: ArmGraphCapture, observed_gib: 1)]) {
       ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "does not name this checkpoint x runtime x topology")
       ArmMemorySubjectReady { subject: _ } => false
@@ -1074,7 +1080,7 @@ test fn w_the_joined_bound_participates_in_falsification() -> Bool {
       match first(filter(subject.ranks, r => r.rank == 0)) {
         Absent => false
         Present { value: rd } =>
-          match arm_readback_observation(component: ArmGraphCapture, predicted: rd.graph_capture, observed: fx_gib(2), receipt: "fx-readback-after-join" as NonEmptyStr) {
+          match arm_readback_observation(component: ArmGraphCapture, predicted: rd.graph_capture.held.bound, observed: fx_gib(2), receipt: "fx-readback-after-join" as NonEmptyStr) {
             ArmMemoryModelFalsified { component: _, predicted_bound: _, observed: _, receipt: _ } => true
             ArmObservationConsistent { component: _, predicted_bound: _, observed: _, receipt: _ } => false
           }
@@ -1233,7 +1239,7 @@ fn fx_wet_checkpoint_receipt(r: FxWetRank) -> ArmComponentReceipt {
     observed: fx_wet_ceiling_bytes(centi: r.weights_centi_gib),
     receipt: fx_wet_receipt(kind: "CheckpointRankResidencyBound" as NonEmptyStr, host: r.host, rank: r.rank, line: fx_wet_worker_line(r: r)),
   }
-  ArmComponentReceipt { rank: r.rank, component: ArmCheckpointResidency, class: arm_classify_measurement(m: m) }
+  ArmComponentReceipt { rank: r.rank, tier: gb10_memory_tier(), component: ArmCheckpointResidency, class: arm_classify_measurement(m: m) }
 }
 
 fn fx_wet_graph_receipt(r: FxWetRank) -> ArmComponentReceipt {
@@ -1251,7 +1257,7 @@ fn fx_wet_graph_receipt(r: FxWetRank) -> ArmComponentReceipt {
       fx_ckpt_wire(), " x ", fx_rt_wire(), " x ", fx_tp_wire(),
     ], "") as NonEmptyStr,
   }
-  ArmComponentReceipt { rank: r.rank, component: ArmGraphCapture, class: arm_classify_measurement(m: m) }
+  ArmComponentReceipt { rank: r.rank, tier: gb10_memory_tier(), component: ArmGraphCapture, class: arm_classify_measurement(m: m) }
 }
 
 // THE KV RECEIPT IS THE HEAD INVENTORY, NOT A LAYOUT RECEIPT: it vouches capacity in TOKENS for
@@ -1276,7 +1282,7 @@ fn fx_wet_kv_receipt(r: FxWetRank) -> ArmComponentReceipt {
       fx_ckpt_wire(), " x ", fx_rt_wire(), " x ", fx_tp_wire(),
     ], "") as NonEmptyStr,
   }
-  ArmComponentReceipt { rank: r.rank, component: ArmKvCache, class: arm_classify_measurement(m: m) }
+  ArmComponentReceipt { rank: r.rank, tier: gb10_memory_tier(), component: ArmKvCache, class: arm_classify_measurement(m: m) }
 }
 
 // THE ACTIVATION RECEIPT CARRIES THE NAMED 262K PREFILL OBLIGATION on its receipt text: the
@@ -1301,7 +1307,7 @@ fn fx_wet_activation_receipt(r: FxWetRank) -> ArmComponentReceipt {
       fx_ckpt_wire(), " x ", fx_rt_wire(), " x ", fx_tp_wire(),
     ], "") as NonEmptyStr,
   }
-  ArmComponentReceipt { rank: r.rank, component: ArmActivationWorkspace, class: arm_classify_measurement(m: m) }
+  ArmComponentReceipt { rank: r.rank, tier: gb10_memory_tier(), component: ArmActivationWorkspace, class: arm_classify_measurement(m: m) }
 }
 
 fn fx_wet_bundle() -> List<ArmComponentReceipt> {
@@ -1372,8 +1378,8 @@ fn fx_wet_join(receipts: List<ArmComponentReceipt>) -> ArmMemorySubjectMint {
     topology: FourSparkTp4,
     intent: fx_wet_intent(),
     requested_profile: fx_wet_profile(),
-    pool: fx_wet_pool(),
-    deductions: fx_wet_deductions(),
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: fx_wet_pool(), deductions: fx_wet_deductions()),
     receipts: receipts)
 }
 
@@ -1386,7 +1392,7 @@ test fn w_the_wet_bundle_joins_and_discharges_checkpoint_graph_and_kv() -> Bool 
       let rank3 = first(filter(subject.ranks, r => r.rank == 3))
       (match rank0 {
         Present { value: rd } =>
-          match rd.checkpoint_residency {
+          match rd.checkpoint_residency.held.bound {
             ComponentBoundCeiling { bytes: b, receipt: _ } => byte_size_count(b: b) == 82699595285
             _ => false
           }
@@ -1394,7 +1400,7 @@ test fn w_the_wet_bundle_joins_and_discharges_checkpoint_graph_and_kv() -> Bool 
       })
         && (match rank1 {
           Present { value: rd } =>
-            match rd.graph_capture {
+            match rd.graph_capture.held.bound {
               ComponentBoundCeiling { bytes: b, receipt: _ } => byte_size_count(b: b) == 0
               _ => false
             }
@@ -1402,7 +1408,7 @@ test fn w_the_wet_bundle_joins_and_discharges_checkpoint_graph_and_kv() -> Bool 
         })
         && (match rank3 {
           Present { value: rd } =>
-            match rd.kv_cache {
+            match rd.kv_cache.held.bound {
               ComponentBoundCeiling { bytes: b, receipt: _ } => byte_size_count(b: b) == 18296560681
               _ => false
             }
@@ -1459,7 +1465,7 @@ test fn w_the_262k_prefill_workspace_is_present_and_named() -> Bool {
       ArmMemorySubjectRefused { cause: _ } => false
       ArmMemorySubjectReady { subject: subject } =>
         all(subject.ranks, rb =>
-          match rb.activation_workspace {
+          match rb.activation_workspace.held.bound {
             ComponentBoundOpen { obligation: _ } => true
             _ => false
           })
@@ -1545,8 +1551,8 @@ test fn w_the_join_refuses_duplicates_foreign_ranks_and_foreign_provenance_on_th
       topology: FourSparkTp4,
       intent: fx_wet_intent(),
       requested_profile: fx_wet_profile(),
-      pool: fx_wet_pool(),
-      deductions: fx_wet_deductions(),
+      host: gb10_host_class(),
+      tiers: fx_tiers(pool: fx_wet_pool(), deductions: fx_wet_deductions()),
       receipts: fx_wet_bundle()) {
       ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "does not name this checkpoint x runtime x topology")
       ArmMemorySubjectReady { subject: _ } => false
@@ -1566,7 +1572,7 @@ fn fx_wet_rank4_receipt() -> ArmComponentReceipt {
     observed: fx_wet_ceiling_bytes(centi: fx_wet_tp0.weights_centi_gib),
     receipt: fx_wet_receipt(kind: "CheckpointRankResidencyBound" as NonEmptyStr, host: fx_wet_tp0.host, rank: 4, line: fx_wet_worker_line(r: fx_wet_tp0)),
   }
-  ArmComponentReceipt { rank: 4, component: ArmCheckpointResidency, class: arm_classify_measurement(m: m) }
+  ArmComponentReceipt { rank: 4, tier: gb10_memory_tier(), component: ArmCheckpointResidency, class: arm_classify_measurement(m: m) }
 }
 
 // ── WITNESS 18: THE UNIFIED PROOF SUBJECT NAMES ITS SEVEN AXES ────────────────────────────────────
@@ -2417,8 +2423,8 @@ fn fx_launch_wall_subject_mint() -> ArmMemorySubjectMint {
     topology: FourSparkTp4,
     intent: fx_launch_wall_intent(),
     requested_profile: fx_launch_wall_profile(),
-    pool: gb10_pool_bound(),
-    deductions: arm_experiment_kvplan_v2_2026_09_26_launch_wall_deductions(pool_high: fx_pool_high),
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: gb10_pool_bound(), deductions: arm_experiment_kvplan_v2_2026_09_26_launch_wall_deductions(pool_high: fx_pool_high)),
     ranks: arm_experiment_kvplan_v2_2026_09_26_launch_wall_ranks())
 }
 
@@ -2443,14 +2449,14 @@ test fn w_the_launch_wall_subject_mints_with_every_carry_named() -> Bool {
     ArmMemorySubjectReady { subject: subject } =>
       length(subject.ranks) == 4
         && all(subject.ranks, rb =>
-          match rb.checkpoint_residency {
+          match rb.checkpoint_residency.held.bound {
             ComponentBoundExact { bytes: b, how: h } =>
               byte_size_count(b: b) == 83237158776
                 && string_contains(s: h as String, pattern: "DERIVED EXACT by the TP4 placement projection")
             _ => false
           })
         && all(subject.ranks, rb =>
-          match rb.loader_transform {
+          match rb.loader_transform.held.bound {
             ComponentBoundCeiling { bytes: b, receipt: r } =>
               byte_size_count(b: b) > 0
                 && string_contains(s: r as String, pattern: "page cache")
@@ -2458,37 +2464,37 @@ test fn w_the_launch_wall_subject_mints_with_every_carry_named() -> Bool {
             _ => false
           })
         && all(subject.ranks, rb =>
-          match rb.fragmentation_allowance {
+          match rb.fragmentation_allowance.held.bound {
             ComponentBoundOpen { obligation: o } => string_contains(s: o as String, pattern: "churn")
             _ => false
           })
         && all(subject.ranks, rb =>
-          match rb.collective_workspace {
+          match rb.collective_workspace.held.bound {
             ComponentBoundInterval { lower: l, upper: _, how: h } =>
               byte_size_count(b: l) == 0 && string_contains(s: h as String, pattern: "discharged by inclusion")
             _ => false
           })
         && (match first(filter(subject.ranks, rb => rb.rank == 0)) {
           Present { value: r0 } =>
-            (match r0.checkpoint_residency {
+            (match r0.checkpoint_residency.held.bound {
               ComponentBoundExact { bytes: b, how: _ } => byte_size_count(b: b) == 83237158776
               _ => false
             })
-              && (match r0.runtime_fixed {
+              && (match r0.runtime_fixed.held.bound {
                 ComponentBoundInterval { lower: l, upper: u, how: _ } =>
                   byte_size_count(b: l) == 17825792 && byte_size_count(b: u) == 106681602
                 _ => false
               })
-              && (match r0.activation_workspace {
+              && (match r0.activation_workspace.held.bound {
                 ComponentBoundInterval { lower: _, upper: u, how: _ } => byte_size_count(b: u) == 14779376601
                 _ => false
               })
-              && (match r0.graph_capture {
+              && (match r0.graph_capture.held.bound {
                 ComponentBoundInterval { lower: l, upper: u, how: _ } =>
                   byte_size_count(b: l) == 53687091 && byte_size_count(b: u) == 59055801
                 _ => false
               })
-              && (match r0.kv_cache {
+              && (match r0.kv_cache.held.bound {
                 ComponentBoundExact { bytes: b, how: _ } => byte_size_count(b: b) == 13766049792
                 _ => false
               })
@@ -2496,11 +2502,11 @@ test fn w_the_launch_wall_subject_mints_with_every_carry_named() -> Bool {
         })
         && (match first(filter(subject.ranks, rb => rb.rank == 3)) {
           Present { value: r3 } =>
-            (match r3.checkpoint_residency {
+            (match r3.checkpoint_residency.held.bound {
               ComponentBoundExact { bytes: b, how: _ } => byte_size_count(b: b) == 83237158776
               _ => false
             })
-              && (match r3.activation_workspace {
+              && (match r3.activation_workspace.held.bound {
                 ComponentBoundInterval { lower: _, upper: u, how: _ } => byte_size_count(b: u) == 7735630235
                 _ => false
               })
@@ -2573,7 +2579,7 @@ test fn w_the_composite_observation_still_discharges_no_placement_term() -> Bool
     && (match fx_launch_wall_subject_mint() {
       ArmMemorySubjectRefused { cause: _ } => false
       ArmMemorySubjectReady { subject: subject } =>
-        all(subject.ranks, rb => match rb.checkpoint_residency { ComponentBoundOpen { obligation: _ } => false _ => true })
+        all(subject.ranks, rb => match rb.checkpoint_residency.held.bound { ComponentBoundOpen { obligation: _ } => false _ => true })
     })
 }
 
@@ -2607,13 +2613,13 @@ test fn w_the_launch_wall_refuses_a_toy_pool() -> Bool {
     topology: FourSparkTp4,
     intent: fx_launch_wall_intent(),
     requested_profile: fx_launch_wall_profile(),
-    pool: toy_pool,
-    deductions: arm_experiment_kvplan_v2_2026_09_26_launch_wall_deductions(pool_high: byte_size(count: 2147483647)),
+    host: gb10_host_class(),
+    tiers: fx_tiers(pool: toy_pool, deductions: arm_experiment_kvplan_v2_2026_09_26_launch_wall_deductions(pool_high: byte_size(count: 2147483647))),
     ranks: arm_experiment_kvplan_v2_2026_09_26_launch_wall_ranks()) {
     ArmMemorySubjectRefused { cause: _ } => false
     ArmMemorySubjectReady { subject: subject } =>
       match arm_memory_fit_verdict(subject: subject) {
-        ArmMemoryFitRefused { rank: r, phase: _, demand_lower: dl, supply_upper: _, cause: c } =>
+        ArmMemoryFitRefused { rank: r, tiers: _, phase: _, demand_lower: dl, supply_upper: _, cause: c } =>
           r == 4
             && byte_size_count(b: dl) == 81872814081
             && string_contains(s: c as String, pattern: "at least one rank must hold at least")
@@ -2792,17 +2798,17 @@ test fn w_the_projection_census_and_conservation_hold_exact() -> Bool {
 test fn w_the_projection_places_evenly_and_the_residue_pins_the_composite_spread() -> Bool {
   let ranks = arm_experiment_kvplan_v2_2026_09_26_launch_wall_ranks()
   length(ranks) == 4
-    && all(ranks, rb => match rb.checkpoint_residency {
+    && all(ranks, rb => match rb.checkpoint_residency.held.bound {
       ComponentBoundExact { bytes: b, how: _ } => byte_size_count(b: b) == 83237158776
       _ => false
     })
     && (match first(filter(ranks, rb => rb.rank == 1)) {
       Present { value: r1 } =>
-        (match r1.runtime_fixed {
+        (match r1.runtime_fixed.held.bound {
           ComponentBoundInterval { lower: _, upper: u, how: _ } => byte_size_count(b: u) == 3274219983
           _ => false
         })
-          && (match r1.collective_workspace {
+          && (match r1.collective_workspace.held.bound {
             ComponentBoundInterval { lower: _, upper: u, how: _ } => byte_size_count(b: u) == 3274219983
             _ => false
           })
@@ -2810,11 +2816,11 @@ test fn w_the_projection_places_evenly_and_the_residue_pins_the_composite_spread
     })
     && (match first(filter(ranks, rb => rb.rank == 3)) {
       Present { value: r3 } =>
-        (match r3.runtime_fixed {
+        (match r3.runtime_fixed.held.bound {
           ComponentBoundInterval { lower: _, upper: u, how: _ } => byte_size_count(b: u) == 5260642358
           _ => false
         })
-          && (match r3.collective_workspace {
+          && (match r3.collective_workspace.held.bound {
             ComponentBoundInterval { lower: l, upper: u, how: _ } => byte_size_count(b: l) == 0 && byte_size_count(b: u) == 5260642358
             _ => false
           })
@@ -2889,7 +2895,7 @@ test fn w_the_loader_receipts_mint_from_the_executed_bracket() -> Bool {
     && (match fx_launch_wall_subject_mint() {
       ArmMemorySubjectRefused { cause: _ } => false
       ArmMemorySubjectReady { subject: subject } =>
-        all(subject.ranks, rb => match rb.loader_transform { ComponentBoundOpen { obligation: _ } => false _ => true })
+        all(subject.ranks, rb => match rb.loader_transform.held.bound { ComponentBoundOpen { obligation: _ } => false _ => true })
     })
 }
 
@@ -2948,7 +2954,7 @@ test fn w_the_liveness_standing_blocks_the_whole_arm_proof() -> Bool {
     shape: fx_prefill_shape(),
     ranks: fx_prefill_v2_ranks(),
     pool_carve_bytes: fx_prefill_v2_pool_carve_bytes)
-  let proved_memory_arm = ArmMemoryFitProved { rank: 0, phase: ArmPhaseIdleServing, headroom_bytes: byte_size(count: 1) }
+  let proved_memory_arm = ArmMemoryFitProved { rank: 0, tier: gb10_memory_tier(), phase: ArmPhaseIdleServing, headroom_bytes: byte_size(count: 1) }
   (match arm_memory_fit_whole_standing(cache: cache, prefill: prefill, arm: proved_memory_arm, serving_liveness: arm_experiment_2026_09_27_serving_liveness(), subject_length: token_count(count: 262144)) {
     ArmMemoryWholeStanding { cache_verdict: _, prefill_verdict: _, arm_verdict: _, serving_liveness: _, open_obligations: os } =>
       any(os, o => string_contains(s: o as String, pattern: "serving-liveness-fit: six-seat full-window concurrency is unestablished"))
@@ -2990,7 +2996,7 @@ test fn w_the_five_seat_interim_protocol_is_named() -> Bool {
     && (match fx_launch_wall_subject_mint() {
       ArmMemorySubjectRefused { cause: _ } => false
       ArmMemorySubjectReady { subject: subject } =>
-        all(subject.ranks, rb => match rb.fragmentation_allowance {
+        all(subject.ranks, rb => match rb.fragmentation_allowance.held.bound {
           ComponentBoundOpen { obligation: o } => string_contains(s: o as String, pattern: "NEVER RAN")
           _ => false
         })

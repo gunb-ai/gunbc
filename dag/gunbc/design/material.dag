@@ -15,6 +15,7 @@ import gunbc.design.interaction_cause {
 }
 import extdeps.languages.css.properties { CssPropertyName, Transition, Animation, css_property_wire }
 import extdeps.languages.css.selectors { SelectorSubject, selector_subject_wire }
+import extdeps.languages.css.media_queries { MediaCondition, css_media_rule_wire, reduced_motion }
 // Layer 2 of the site stack: materials, themes, scales. Register laws living here as CONSTRUCTION.
 // ChromaByArea: a Material carries its AreaClass; saturation ceilings are per-area. GlareEnvelope
 // (operator seventh pass, 2026-07-20: the bright saturated cyan read as low-taste gamer blue): a
@@ -262,6 +263,14 @@ type TriggerShape
   | PseudoElementOfSubject { name: String }
   | ContainerHas { container: String, target: String }
 
+// A MediaRule is a static rule that applies only while its condition holds, serialized in place as
+// `@media <condition> { <selector> { ... } }` -- so authored order is cascade order, and a rule
+// placed after the unconditioned rule for the same selector overrides it under the condition. It
+// carries DECLARATIONS ONLY, by construction: a response or an ambient cycle under a condition is
+// not writable, because transitions and keyframes are emitted by the carrier and cycle passes
+// below, outside any rule, and a conditioned transition would silently lose its condition there.
+// The condition is a typed extdeps.languages.css.media_queries MediaCondition; there is no raw
+// query-text arm.
 type BuildRule
   = StaticRule { selector: SelectorSubject, decls: List<CssDecl> }
   | ResponseRule {
@@ -274,6 +283,7 @@ type BuildRule
       response_decls: List<CssDecl>,
     }
   | AmbientRule { selector: SelectorSubject, cycle: MotionCycle, timing: TimingToken, repeat: AmbientRepeat }
+  | MediaRule { condition: MediaCondition, selector: SelectorSubject, decls: List<CssDecl> }
 
 fn response_base_selector(subject: SelectorSubject, shape: TriggerShape) -> String {
   match shape {
@@ -322,6 +332,8 @@ fn serialize_rule(rule: BuildRule) -> String {
     StaticRule { selector, decls } => css_block(selector: selector_subject_wire(s: selector), decls: decls)
     AmbientRule { selector, cycle, timing, repeat } =>
       css_block(selector: selector_subject_wire(s: selector), decls: [decl(prop: Animation, value: ambient_animation_value(cycle: cycle, timing: timing, repeat: repeat))])
+    MediaRule { condition, selector, decls } =>
+      css_media_rule_wire(condition: condition, body: css_block(selector: selector_subject_wire(s: selector), decls: decls))
     ResponseRule { subject, shape, trigger, transition_props: _, timing: _, base_decls, response_decls } => {
       let hot = css_block(
         selector: response_hot_selector(subject: subject, shape: shape, trigger: trigger),
@@ -401,6 +413,7 @@ fn base_transition_carriers(rules: List<BuildRule>) -> List<TransitionCarrier> {
   fold(rules, init: [], f: (acc, r) => match r {
     StaticRule { selector: _, decls: _ } => acc
     AmbientRule { selector: _, cycle: _, timing: _, repeat: _ } => acc
+    MediaRule { condition: _, selector: _, decls: _ } => acc
     ResponseRule { subject, shape, trigger: _, transition_props, timing, base_decls: _, response_decls: _ } =>
       carrier_add_item(
         carriers: acc,
@@ -414,6 +427,7 @@ fn hot_transition_carriers(rules: List<BuildRule>) -> List<TransitionCarrier> {
   fold(rules, init: [], f: (acc, r) => match r {
     StaticRule { selector: _, decls: _ } => acc
     AmbientRule { selector: _, cycle: _, timing: _, repeat: _ } => acc
+    MediaRule { condition: _, selector: _, decls: _ } => acc
     ResponseRule { subject, shape, trigger, transition_props, timing, base_decls: _, response_decls: _ } => {
       let base_selector = response_base_selector(subject: subject, shape: shape)
       let redundant = match carrier_named(carriers: base, selector: base_selector) {
@@ -468,6 +482,7 @@ fn cycle_add_once(cycles: List<MotionCycle>, c: MotionCycle) -> List<MotionCycle
 fn ambient_cycles(rules: List<BuildRule>) -> List<MotionCycle> {
   fold(rules, init: [], f: (acc, r) => match r {
     StaticRule { selector: _, decls: _ } => acc
+    MediaRule { condition: _, selector: _, decls: _ } => acc
     ResponseRule { subject: _, shape: _, trigger: _, transition_props: _, timing: _, base_decls: _, response_decls: _ } => acc
     AmbientRule { selector: _, cycle, timing: _, repeat: _ } => cycle_add_once(cycles: acc, c: cycle)
   })
@@ -476,6 +491,7 @@ fn ambient_cycles(rules: List<BuildRule>) -> List<MotionCycle> {
 fn ambient_selectors(rules: List<BuildRule>) -> List<String> {
   fold(rules, init: [], f: (acc, r) => match r {
     StaticRule { selector: _, decls: _ } => acc
+    MediaRule { condition: _, selector: _, decls: _ } => acc
     ResponseRule { subject: _, shape: _, trigger: _, transition_props: _, timing: _, base_decls: _, response_decls: _ } => acc
     AmbientRule { selector, cycle: _, timing: _, repeat: _ } => add_selector_once(selectors: acc, s: selector_subject_wire(s: selector))
   })
@@ -505,10 +521,8 @@ fn reduced_motion_block(rules: List<BuildRule>) -> String {
   if selectors.length() == 0 && stills.length() == 0 {
     ""
   } else {
-    join([
-      "@media (prefers-reduced-motion: reduce) { ",
-      join(concat(map(selectors, s => css_block(selector: s, decls: [decl(prop: Transition, value: "none")])), stills), " "),
-      " }",
-    ], "")
+    css_media_rule_wire(
+      condition: reduced_motion,
+      body: join(concat(map(selectors, s => css_block(selector: s, decls: [decl(prop: Transition, value: "none")])), stills), " "))
   }
 }

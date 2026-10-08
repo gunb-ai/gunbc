@@ -103,6 +103,10 @@ test fn w_frontier_covers_the_rows_that_have_been_dropped_or_must_not_be_consume
       decl_name: "mtjade1_managed_bmc_secret_standing",
     )
     && jade_frontier_covers(
+      module_path: "gunbc.machine_intake_mtjade1_access_observation",
+      decl_name: "read_mtjade1_rmedia_general_residue",
+    )
+    && jade_frontier_covers(
       module_path: "gunbc.machine_intake_mtjade1_fan_standing",
       decl_name: "mtjade1_first_post_fan_capture",
     )

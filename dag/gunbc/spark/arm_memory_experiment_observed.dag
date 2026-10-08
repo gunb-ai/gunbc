@@ -47,7 +47,7 @@ import gunbc.spark.arm_memory_fit {
   ArmWetGraphAttributionUnestablished, ArmWetBindingAdmission,
   ArmWetReceiptBinding, arm_admit_wet_binding,
   ArmRankCacheSupply,
-  ArmRankDemand, ArmSupplyDeductions,
+  ArmRankDemand, ArmSupplyDeductions, gb10_memory_tier, placed_in,
   ArmLoaderTransform, ArmFragmentationAllowance,
   ArmMemoryExperimentAdmission, ArmMemoryExperimentAdmitted, ArmMemoryExperimentRefused,
   ArmServingLivenessVerdict, ArmServingLivenessProved, ArmServingLivenessRefused, ArmServingLivenessUnestablished,
@@ -1080,14 +1080,14 @@ fn arm_experiment_kvplan_v2_2026_09_26_fragmentation_obligation() -> NonEmptyStr
 fn arm_experiment_kvplan_v2_2026_09_26_launch_wall_rank(r: ArmExperimentEnvelopeDerivedArenaReading) -> ArmRankDemand {
   ArmRankDemand {
     rank: r.rank,
-    checkpoint_residency: arm_experiment_kvplan_v2_2026_09_26_checkpoint_projected(),
-    loader_transform: arm_experiment_kvplan_v2_2026_09_26_loader_carry(rank: r.rank, host: r.host),
-    runtime_fixed: arm_experiment_kvplan_v2_2026_09_26_runtime_fixed_carry(r),
-    collective_workspace: arm_experiment_kvplan_v2_2026_09_26_collective_carry(r),
-    activation_workspace: arm_experiment_kvplan_v2_2026_09_26_activation_carry(r),
-    graph_capture: arm_experiment_kvplan_v2_2026_09_26_graph_carry(r),
-    kv_cache: arm_experiment_kvplan_v2_2026_09_26_kv_carry(),
-    fragmentation_allowance: ComponentBoundOpen { obligation: arm_experiment_kvplan_v2_2026_09_26_fragmentation_obligation() },
+    checkpoint_residency: placed_in(tier: gb10_memory_tier(), bound: arm_experiment_kvplan_v2_2026_09_26_checkpoint_projected()),
+    loader_transform: placed_in(tier: gb10_memory_tier(), bound: arm_experiment_kvplan_v2_2026_09_26_loader_carry(rank: r.rank, host: r.host)),
+    runtime_fixed: placed_in(tier: gb10_memory_tier(), bound: arm_experiment_kvplan_v2_2026_09_26_runtime_fixed_carry(r)),
+    collective_workspace: placed_in(tier: gb10_memory_tier(), bound: arm_experiment_kvplan_v2_2026_09_26_collective_carry(r)),
+    activation_workspace: placed_in(tier: gb10_memory_tier(), bound: arm_experiment_kvplan_v2_2026_09_26_activation_carry(r)),
+    graph_capture: placed_in(tier: gb10_memory_tier(), bound: arm_experiment_kvplan_v2_2026_09_26_graph_carry(r)),
+    kv_cache: placed_in(tier: gb10_memory_tier(), bound: arm_experiment_kvplan_v2_2026_09_26_kv_carry()),
+    fragmentation_allowance: placed_in(tier: gb10_memory_tier(), bound: ComponentBoundOpen { obligation: arm_experiment_kvplan_v2_2026_09_26_fragmentation_obligation() }),
   }
 }
 
