@@ -13,7 +13,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemReadOutcome, FilesystemReadRefused, FilesystemReadSucceeded,
 }
 import extdeps.languages.json.emit {
-  serialize_json, json_object, json_kv, json_string, JsonValue,
+  serialize_json, json_object, json_kv, json_string, JsonValue, JsonKeyValue,
 }
 import extdeps.languages.json.parse {
   parse_json_document, json_field_string, json_document_gap_text,
@@ -87,21 +87,21 @@ fn principal_profile_json(profile: PrincipalProfile) -> String {
   ], profile_name_members(name: profile.name)), concat(profile_email_members(email: profile.email), profile_picture_members(picture: profile.picture)))))
 }
 
-fn profile_name_members(name: String?) -> List<JsonValue> {
+fn profile_name_members(name: String?) -> List<JsonKeyValue> {
   match name {
     Present { value: n } => [ json_kv(key: "name", value: json_string(s: n)) ]
     Absent => []
   }
 }
 
-fn profile_email_members(email: Email?) -> List<JsonValue> {
+fn profile_email_members(email: Email?) -> List<JsonKeyValue> {
   match email {
     Present { value: e } => [ json_kv(key: "email", value: json_string(s: e as String)) ]
     Absent => []
   }
 }
 
-fn profile_picture_members(picture: Uri?) -> List<JsonValue> {
+fn profile_picture_members(picture: Uri?) -> List<JsonKeyValue> {
   match picture {
     Present { value: u } => [ json_kv(key: "picture", value: json_string(s: uri_wire(uri: u) as String)) ]
     Absent => []
