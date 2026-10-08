@@ -431,12 +431,32 @@ data asrock_altrad8ud_bmc_3_22_00_release: FirmwareReleaseRow = FirmwareReleaseR
     scheme: Https
     locator: "www.asrockrack.com/general/productdetail.asp?Model=ALTRAD8UD-1L2T"
   },
-  image_bytes: byte_size(count: 29056000),
-  image_digest: Absent,
+  image_bytes: byte_size(count: 29060210),
+  image_digest: Present {
+    value: sha256_digest(
+      hex: "0c1f458c396aff76ae0259509ea05c53eef57809fa202721875586792fa807bb",
+    ),
+  },
   release_notes: "1. A password change is enforced upon the first login to the WebUI  2. Improved BMC web information  3. Enhanced BMC system compatibility",
   prerequisite: NoFirmwarePrerequisite,
   authority: asrock_altrad8ud_download_authority,
 }
+
+// The push member inside the 03.22.00 distribution zip: a static-layout OpenBMC image
+// (u-boot, kernel, rofs, rwfs, each RSA-SHA256 signed) whose MANIFEST declares
+// purpose BMC, version 3.22.00, BuildId 20260217040008, MachineName altrad8ud-1l2t.
+// The zip's own bytes are the release row's image_digest; these are the bytes the
+// UpdateService consumes. Measured 2026-10-08 and pushed to srv13, which then
+// reported BMC image 3.22.00 in its firmware inventory.
+data asrock_altrad8ud_bmc_3_22_00_push_artifact_name: NonEmptyStr = "altrad8ud-1l2t_3.22.00.static.mtd.tar"
+
+data asrock_altrad8ud_bmc_3_22_00_push_artifact_bytes: ByteSize = byte_size(count: 29347840)
+
+data asrock_altrad8ud_bmc_3_22_00_push_artifact_digest: Digest = sha256_digest(
+  hex: "cb8b8e727174b8383f90f36e967838c46105bd42bc76cc08c4ac1383a88ca9de",
+)
+
+data asrock_altrad8ud_bmc_3_22_00_manifest_purpose: NonEmptyStr = "xyz.openbmc_project.Software.Version.VersionPurpose.BMC"
 
 data asrock_altrad8ud_firmware_release_catalog: List<FirmwareReleaseRow> = [
   asrock_altrad8ud_bios_3_10_instant_flash_release,
