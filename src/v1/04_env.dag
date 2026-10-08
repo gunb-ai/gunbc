@@ -602,6 +602,9 @@ fn merge_type_env_cache_guarded(
   import_path: String,
   conflicts: List<TypeEnvCacheMergeConflict>
 ) -> GuardedTypeEnvCacheMerge {
+  // Binding forks are ledgered from each peer import's TypeEnv chain
+  // (`ledger_peer_import_binding_forks` in union_parent_type_env_caches), not by flattening
+  // cache.str_bindings here. `import_path` is unused on this cache-only merge.
   let _import_path = import_path
   GuardedTypeEnvCacheMerge {
     cache: TypeEnvCache {
@@ -673,11 +676,22 @@ fn str_bindings_from_bindings(bindings: Map<Int, TypeBinding>) -> Map<String, Ty
 
 // v1 PURPOSE-TEST ADMISSION (gunbc.v1_maintenance_standing v1_seed_standing): a non-empty
 // ancestry_str_bindings is a COMPLETE materialized overlay (miss does not walk). An empty
-// overlay is the parent chain: last parent wins, matching import-union later-wins then kernel
-// (scope_parents = imports ++ [kernel]). Serves the v2 self-host floor by not retaining a
-// per-module flatten of shared ancestry.
+// overlay walks the parent chain. Direct-selected names are each import parent's own
+// str_bindings (interface locals), last-wins, before any transitive walk — so a later
+// import's leaked homonym cannot beat an earlier import's own export (#6663 x #6686).
+// Then last-wins on the remaining chain (imports then kernel). Serves the floor by not
+// retaining a per-module flatten of shared ancestry.
 fn lookup_binding_on_chain(env: TypeEnv, name: String) -> TypeBinding? {
   lookup_binding_on_chain_seen(env: env, name: name, seen: empty_map()).binding
+}
+
+fn last_wins_parent_locals(parents: List<TypeEnv>, name: String) -> TypeBinding? {
+  fold(parents, init: none, f: (acc, parent) =>
+    match map_get(parent.str_bindings, name) {
+      Present { value: binding } => Present { value: binding }
+      Absent => acc
+    }
+  )
 }
 
 fn lookup_binding_on_chain_seen(env: TypeEnv, name: String, seen: Map<String, Bool>) -> ChainBindingWalk {
@@ -689,13 +703,17 @@ fn lookup_binding_on_chain_seen(env: TypeEnv, name: String, seen: Map<String, Bo
         Present { value: binding } => ChainBindingWalk { binding: Present { value: binding }, seen: seen }
         Absent =>
           if (env.ancestry_str_bindings |> map_keys |> count) == 0 {
-            fold(env.parents, init: ChainBindingWalk { binding: none, seen: seen }, f: (st, parent) =>
-              let nxt = lookup_binding_on_chain_seen(env: parent, name: name, seen: st.seen)
-              match nxt.binding {
-                Present { value: binding } => ChainBindingWalk { binding: Present { value: binding }, seen: nxt.seen }
-                Absent => ChainBindingWalk { binding: st.binding, seen: nxt.seen }
-              }
-            )
+            match last_wins_parent_locals(parents: env.parents, name: name) {
+              Present { value: binding } => ChainBindingWalk { binding: Present { value: binding }, seen: seen }
+              Absent =>
+                fold(env.parents, init: ChainBindingWalk { binding: none, seen: seen }, f: (st, parent) =>
+                  let nxt = lookup_binding_on_chain_seen(env: parent, name: name, seen: st.seen)
+                  match nxt.binding {
+                    Present { value: binding } => ChainBindingWalk { binding: Present { value: binding }, seen: nxt.seen }
+                    Absent => ChainBindingWalk { binding: st.binding, seen: nxt.seen }
+                  }
+                )
+            }
           } else {
             match map_get(env.ancestry_str_bindings, name) {
               Present { value: binding } => ChainBindingWalk { binding: Present { value: binding }, seen: seen }

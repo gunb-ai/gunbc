@@ -4422,8 +4422,13 @@ mod fixture_closure_union_tests {
                 "{} cache.str_bindings must be locals, not a merged overlay",
                 m.type_env.module_path
             );
-            let flat = flatten_parent_chain(&m.type_env, true);
-            for (name, binding) in flat.iter() {
+            let mut expected = flatten_parent_chain(&m.type_env, true);
+            for parent in m.type_env.parents.iter() {
+                for (k, v) in parent.str_bindings.iter() {
+                    expected.insert(k.clone(), v.clone());
+                }
+            }
+            for (name, binding) in expected.iter() {
                 let got = crate::v1_compiler_infer_env::lookup_binding_on_chain(
                     m.type_env.clone(),
                     name.clone(),
@@ -4431,7 +4436,7 @@ mod fixture_closure_union_tests {
                 assert_eq!(
                     got.as_ref().map(|b| b.name.as_str()),
                     Some(binding.name.as_str()),
-                    "chain vs last-wins flatten diverged on {} in {}",
+                    "chain vs direct-then-last-wins diverged on {} in {}",
                     name,
                     m.type_env.module_path
                 );
@@ -4552,6 +4557,67 @@ mod fixture_closure_union_tests {
             .expect("looked Foo field");
         assert_eq!(looked_field, last_field);
         assert_ne!(looked_field, first_field);
+    }
+
+    /// Direct-selected export of an earlier import beats a homonym leaked through a later
+    /// import's ancestry (#6663 x #6686). Full last-wins flatten of the parent chain would
+    /// take the leak.
+    #[test]
+    fn earlier_direct_export_beats_later_transitive_leak() {
+        let a = Rc::new(v1_compiler_compile::SourceFile {
+            path: "chain_a.dag".to_string(),
+            content: "module chain.a\ntype Foo = { a: Int }\n".to_string(),
+        });
+        let c = Rc::new(v1_compiler_compile::SourceFile {
+            path: "chain_c.dag".to_string(),
+            content: "module chain.c\ntype Foo = { c: Int }\n".to_string(),
+        });
+        let b = Rc::new(v1_compiler_compile::SourceFile {
+            path: "chain_b.dag".to_string(),
+            content: "module chain.b\nimport chain.c { Foo }\ntype Bar = { x: Int }\n".to_string(),
+        });
+        let user = Rc::new(v1_compiler_compile::SourceFile {
+            path: "chain_user.dag".to_string(),
+            content: "module chain.user\nimport chain.a { Foo }\nimport chain.b { Bar }\nfn use_foo(x: Foo) -> Int { x.a }\n".to_string(),
+        });
+        let resolved =
+            v1_compiler_compile::compile_to_resolved(Rc::new(im::vector![a, c, b, user]));
+        assert!(
+            resolved.diagnostics.is_empty(),
+            "direct-over-leak must typecheck: {:?}",
+            resolved.diagnostics
+        );
+        let graph = resolved.graph.clone().expect("resolved graph");
+        let user_mod = graph
+            .modules
+            .iter()
+            .find(|m| m.type_env.module_path == "chain.user")
+            .expect("user module");
+        let looked = crate::v1_compiler_infer_env::lookup_binding_on_chain(
+            user_mod.type_env.clone(),
+            "Foo".to_string(),
+        )
+        .expect("Foo");
+        let field = looked
+            .resolved
+            .children
+            .iter()
+            .next()
+            .map(|ch| ch.name.as_str())
+            .expect("Foo field");
+        assert_eq!(
+            field, "a",
+            "later leak through chain.b must not beat chain.a's Foo"
+        );
+        let leak_flatten = flatten_parent_chain(&user_mod.type_env, true);
+        let leak_field = leak_flatten
+            .get("Foo")
+            .and_then(|b| b.resolved.children.iter().next().map(|ch| ch.name.as_str()))
+            .expect("flatten Foo");
+        assert_eq!(
+            leak_field, "c",
+            "full last-wins flatten must be the leak (control that the overlay is doing work)"
+        );
     }
 }
 
