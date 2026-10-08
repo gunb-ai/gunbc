@@ -130,42 +130,42 @@ type HealthReadResponse {
   success: Bool
 }
 
-fn health_redfish_read(bmc_host: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr, read: FleetHealthRedfishRead) -> HealthReadResponse
+fn health_redfish_read(bmc_host: NonEmptyStr, netrc: NonEmptyStr, read: FleetHealthRedfishRead) -> HealthReadResponse
 {
   match read {
     ReadManager => {
-      r = redfish.Http.GetManager(bmc_host: bmc_host, manager_id: "bmc", username: username, password: password)
+      r = redfish.Http.GetManager(bmc_host: bmc_host, manager_id: "bmc", netrc_file: netrc)
       return match r {
         RestAnswered { answer: body } => HealthReadResponse { body: body, success: true }
-        RestRefused { refusal: refusal } => HealthReadResponse { body: concat("refused: ", refusal.body), success: false }
+        RestRefused { refusal: refusal } => HealthReadResponse { body: match refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c }, success: false }
       }
     }
     ReadChassisThermal { chassis_id: c } => {
-      r = redfish.Http.GetChassisThermal(bmc_host: bmc_host, chassis_id: c, username: username, password: password)
+      r = redfish.Http.GetChassisThermal(bmc_host: bmc_host, chassis_id: c, netrc_file: netrc)
       return match r {
         RestAnswered { answer: body } => HealthReadResponse { body: body, success: true }
-        RestRefused { refusal: refusal } => HealthReadResponse { body: concat("refused: ", refusal.body), success: false }
+        RestRefused { refusal: refusal } => HealthReadResponse { body: match refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c }, success: false }
       }
     }
     ReadChassisSensors { chassis_id: c } => {
-      r = redfish.Http.GetChassisSensors(bmc_host: bmc_host, chassis_id: c, username: username, password: password)
+      r = redfish.Http.GetChassisSensors(bmc_host: bmc_host, chassis_id: c, netrc_file: netrc)
       return match r {
         RestAnswered { answer: body } => HealthReadResponse { body: body, success: true }
-        RestRefused { refusal: refusal } => HealthReadResponse { body: concat("refused: ", refusal.body), success: false }
+        RestRefused { refusal: refusal } => HealthReadResponse { body: match refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c }, success: false }
       }
     }
     ReadChassisSensor { chassis_id: c, sensor_id: s } => {
-      r = redfish.Http.GetChassisSensor(bmc_host: bmc_host, chassis_id: c, sensor_id: s, username: username, password: password)
+      r = redfish.Http.GetChassisSensor(bmc_host: bmc_host, chassis_id: c, sensor_id: s, netrc_file: netrc)
       return match r {
         RestAnswered { answer: body } => HealthReadResponse { body: body, success: true }
-        RestRefused { refusal: refusal } => HealthReadResponse { body: concat("refused: ", refusal.body), success: false }
+        RestRefused { refusal: refusal } => HealthReadResponse { body: match refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c }, success: false }
       }
     }
     ReadSystemEventLog => {
-      r = redfish.Http.GetSystemEventLogEntries(bmc_host: bmc_host, username: username, password: password)
+      r = redfish.Http.GetSystemEventLogEntries(bmc_host: bmc_host, netrc_file: netrc)
       return match r {
         RestAnswered { answer: body } => HealthReadResponse { body: body, success: true }
-        RestRefused { refusal: refusal } => HealthReadResponse { body: concat("refused: ", refusal.body), success: false }
+        RestRefused { refusal: refusal } => HealthReadResponse { body: match refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c }, success: false }
       }
     }
   }
@@ -203,13 +203,13 @@ fn telemetry_surface(telemetry: BmcTelemetryProfile, firmware: BmcFirmwareVersio
   }
 }
 
-fn read_json(bmc_host: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr, read: FleetHealthRedfishRead, what: String) -> ObservationAttempt<String, NonEmptyStr>
+fn read_json(bmc_host: NonEmptyStr, netrc: NonEmptyStr, read: FleetHealthRedfishRead, what: String) -> ObservationAttempt<String, NonEmptyStr>
 {
-  let r = health_redfish_read(bmc_host: bmc_host, username: username, password: password, read: read)
+  let r = health_redfish_read(bmc_host: bmc_host, netrc: netrc, read: read)
   return if r.success { ObservationEstablished { observed: r.body } } else { ObservationRefused { cause: concat("the Redfish ", what, " read failed: ", r.body) as NonEmptyStr } }
 }
 
-fn sample_sensor_collection(bmc_host: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr, chassis_id: NonEmptyStr, ids: List<NonEmptyStr>) -> ObservationAttempt<List<RedfishTelemetryPoint>, NonEmptyStr>
+fn sample_sensor_collection(bmc_host: NonEmptyStr, netrc: NonEmptyStr, chassis_id: NonEmptyStr, ids: List<NonEmptyStr>) -> ObservationAttempt<List<RedfishTelemetryPoint>, NonEmptyStr>
 {
   let empty: List<RedfishTelemetryPoint> = []
   let initial: ObservationAttempt<List<RedfishTelemetryPoint>, NonEmptyStr> = ObservationEstablished { observed: empty }
@@ -234,18 +234,18 @@ fn sample_sensor_collection(bmc_host: NonEmptyStr, username: NonEmptyStr, passwo
   }
 }
 
-fn sample_telemetry(bmc_host: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr, chassis_id: NonEmptyStr, surface: RedfishThermalTelemetrySurface) -> ObservationAttempt<List<RedfishTelemetryPoint>, NonEmptyStr>
+fn sample_telemetry(bmc_host: NonEmptyStr, netrc: NonEmptyStr, chassis_id: NonEmptyStr, surface: RedfishThermalTelemetrySurface) -> ObservationAttempt<List<RedfishTelemetryPoint>, NonEmptyStr>
 {
   match surface {
-    RedfishLegacyChassisThermal => match read_json(bmc_host: bmc_host, username: username, password: password, read: ReadChassisThermal { chassis_id: chassis_id }, what: "Thermal") {
+    RedfishLegacyChassisThermal => match read_json(bmc_host: bmc_host, netrc: netrc, read: ReadChassisThermal { chassis_id: chassis_id }, what: "Thermal") {
       ObservationRefused { cause } => return ObservationRefused { cause: cause }
       ObservationEstablished { observed: body } => return redfish_thermal_points(body: body)
     }
-    RedfishThermalSubsystemSensorCollection => match read_json(bmc_host: bmc_host, username: username, password: password, read: ReadChassisSensors { chassis_id: chassis_id }, what: "Sensors collection") {
+    RedfishThermalSubsystemSensorCollection => match read_json(bmc_host: bmc_host, netrc: netrc, read: ReadChassisSensors { chassis_id: chassis_id }, what: "Sensors collection") {
       ObservationRefused { cause } => return ObservationRefused { cause: cause }
       ObservationEstablished { observed: body } => match redfish_member_ids(body: body) {
         ObservationRefused { cause } => return ObservationRefused { cause: cause }
-        ObservationEstablished { observed: ids } => return sample_sensor_collection(bmc_host: bmc_host, username: username, password: password, chassis_id: chassis_id, ids: ids)
+        ObservationEstablished { observed: ids } => return sample_sensor_collection(bmc_host: bmc_host, netrc: netrc, chassis_id: chassis_id, ids: ids)
       }
     }
     RedfishDualThermalSurface => return ObservationRefused { cause: "the catalogued surface serves both Thermal and Sensors; which one is authoritative for this image is not modeled" }

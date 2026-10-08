@@ -64,8 +64,8 @@ fn bmc_intake_first_contact() -> CliWireResponse
     }
     RestRefused { refusal: refusal } =>
       CliWirePrintable {
-        bytes: concat("host unreachable: ", refusal.body),
-        exit: exit_failure(reason: concat("host unreachable: ", refusal.body) as String),
+        bytes: concat("host unreachable: ", match refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c }),
+        exit: exit_failure(reason: concat("host unreachable: ", match refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c }) as String),
       }
   }
 }

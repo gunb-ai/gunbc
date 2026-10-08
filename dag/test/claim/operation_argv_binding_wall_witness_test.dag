@@ -202,11 +202,10 @@ test fn operation_argv_previously_unbindable_operation_now_materializes() -> Boo
       "GetSystem",
       [
         operation_argv_bind_text(name: "bmc_host", text: "srv4-bmc"),
-        operation_argv_bind_text(name: "username", text: "root"),
-        operation_argv_bind_text(name: "password", text: "0penBmc#")
+        operation_argv_bind_text(name: "netrc_file", text: "/run/bmc/srv4.netrc")
       ]
     )
-  ) == "curl --fail-with-body -sS -k -u root:0penBmc# https://srv4-bmc/redfish/v1/Systems/system"
+  ) == "curl --fail-with-body -sS -k --netrc-file /run/bmc/srv4.netrc https://srv4-bmc/redfish/v1/Systems/system"
 }
 
 test fn operation_argv_RED_redfish_credential_names_are_refused_not_injected() -> Bool {

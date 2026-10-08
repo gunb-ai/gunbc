@@ -1,6 +1,6 @@
 module gunbc.tools.bmc_read_telemetry
 
-import extdeps.transports.rest { RestResult }
+import extdeps.transports.rest { RestResult, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 
 
 fn bmc_read_telemetry() -> ProcessExit
@@ -22,24 +22,21 @@ fn bmc_read_telemetry() -> ProcessExit
               let bmc = host_v as NonEmptyStr
               let netrc_file = netrc_v as NonEmptyStr
               let chassis = asrock_altrad8ud_redfish_chassis_id
-              let username = "root" as NonEmptyStr
-              let password = "0penBmc#" as NonEmptyStr
 
-              system_result = redfish.Http.GetSystem(bmc_host: bmc, username: username, password: password)
+              system_result = redfish.Http.GetSystem(bmc_host: bmc, netrc_file: netrc_file)
               return match system_result {
                 RestAnswered { answer: system_body } => {
                   sensors_result = redfish.Http.GetChassisSensors(
                     bmc_host: bmc,
                     chassis_id: chassis,
-                    username: username,
-                    password: password
+                    netrc_file: netrc_file
                   )
                   return match sensors_result {
                     RestAnswered { answer: sensors_body } => ExitSuccess
-                    RestRefused { refusal: refusal } => exit_failure(reason: refusal.body)
+                    RestRefused { refusal: refusal } => exit_failure(reason: match refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c })
                   }
                 }
-                RestRefused { refusal: refusal } => exit_failure(reason: refusal.body)
+                RestRefused { refusal: refusal } => exit_failure(reason: match refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c })
               }
             }
         }

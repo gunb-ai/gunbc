@@ -21,8 +21,8 @@ test fn http_client_get_roundtrip_by_real_execution() -> Bool {
   let got = http.Client.Get(url: concat("file://", path) as NonEmptyStr)
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   return match got {
-    RestAnswered { body: body } => dir.success && wrote.success && body == http_client_get_fixture_body
-    RestRefusal { cause: _ } => false
+    RestAnswered { answer: body } => dir.success && wrote.success && body == http_client_get_fixture_body
+    RestRefused { refusal: _ } => false
   }
 }
 
@@ -32,7 +32,7 @@ test fn http_client_get_missing_target_red_control_by_real_execution() -> Bool {
   let got = http.Client.Get(url: concat("file://", missing) as NonEmptyStr)
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   return match got {
-    RestAnswered { body: _ } => false
-    RestRefusal { cause: _ } => dir.success
+    RestAnswered { answer: _ } => false
+    RestRefused { refusal: _ } => dir.success
   }
 }

@@ -41,9 +41,8 @@ fn bmc_first_contact() -> ProcessExit
   }
   resp = redfish.Http.GetSystem(
     bmc_host: bmc,
-    username: openbmc_factory_login.username as String,
-    password: openbmc_factory_login.published_password
+    netrc_file: bmc_onboard_netrc_path as NonEmptyStr
   )
 
-  return if resp is RestAnswered { answer: _ } { ExitSuccess } else { exit_failure(reason: resp.refusal.body) }
+  return if resp is RestAnswered { answer: _ } { ExitSuccess } else { exit_failure(reason: match resp.refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c }) }
 }

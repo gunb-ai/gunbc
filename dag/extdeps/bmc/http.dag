@@ -105,7 +105,7 @@ fn write_netrc_outcome(host: String, account: String, password: String) -> Netrc
 // LANE A DISSOLUTION (argv anemia -> transport rest):
 // The service config endpoint uses the per-call bmc_host input via string concatenation.
 // Each operation declares `transport rest` with:
-//   - method, path (relative, interpolated, prefixed with /redfish/v1/), auth_basic (modeled dissolution of netrc/-u),
+//   - method, path (relative, interpolated, prefixed with /redfish/v1/), netrc_file input (modeled dissolution of --netrc-file),
 //   - tls: InsecureAcceptAnyCert (modeled dissolution of curl -k),
 //   - response arms (modeled dissolution of --fail-with-body + exit code handling).
 // The curl argv is now derived by realization, not hand-spelled per row.
@@ -116,18 +116,19 @@ service redfish.Http {
     endpoint: "https://" + bmc_host
   }
   
-  // Credentials are resolved from netrc by caller and passed as auth_basic inputs.
-  // The caller passes username/password from the netrc file; auth_basic uses those resolved credentials.
+  // Credentials are resolved from netrc by the realization. The netrc_file input
+  // provides the path to the netrc file; realization emits curl --netrc-file.
+  // No credentials appear in argv.
 
   operation GetServiceRoot {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String }
     readonly
     transport rest {
       method: GET,
       path: "/redfish/v1/",
-      auth_basic: { username: username, password: password },
+      netrc_file: netrc_file,
       tls: InsecureAcceptAnyCert
     }
     response {
@@ -157,13 +158,13 @@ service redfish.Http {
 
   operation GetManagers {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String }
     readonly
     transport rest {
       method: GET,
       path: "/redfish/v1/Managers",
-      auth_basic: { username: username, password: password },
+      netrc_file: netrc_file,
       tls: InsecureAcceptAnyCert
     }
     response {
@@ -176,13 +177,13 @@ service redfish.Http {
 
   operation GetManager {
     requires Network
-    input { bmc_host: NonEmptyStr, manager_id: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, manager_id: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String }
     readonly
     transport rest {
       method: GET,
       path: "/redfish/v1/Managers/{manager_id}",
-      auth_basic: { username: username, password: password },
+      netrc_file: netrc_file,
       tls: InsecureAcceptAnyCert
     }
     response {
@@ -195,13 +196,13 @@ service redfish.Http {
 
   operation GetSystem {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String }
     readonly
     transport rest {
       method: GET,
       path: "/redfish/v1/Systems/system",
-      auth_basic: { username: username, password: password },
+      netrc_file: netrc_file,
       tls: InsecureAcceptAnyCert
     }
     response {
@@ -214,13 +215,13 @@ service redfish.Http {
 
   operation GetChassisSensors {
     requires Network
-    input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String }
     readonly
     transport rest {
       method: GET,
       path: "/redfish/v1/Chassis/{chassis_id}/Sensors",
-      auth_basic: { username: username, password: password },
+      netrc_file: netrc_file,
       tls: InsecureAcceptAnyCert
     }
     response {
@@ -233,13 +234,13 @@ service redfish.Http {
 
   operation GetPower {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String }
     readonly
     transport rest {
       method: GET,
       path: "/redfish/v1/Chassis/Self/Power",
-      auth_basic: { username: username, password: password },
+      netrc_file: netrc_file,
       tls: InsecureAcceptAnyCert
     }
     response {
@@ -252,13 +253,13 @@ service redfish.Http {
 
   operation GetThermal {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String }
     readonly
     transport rest {
       method: GET,
       path: "/redfish/v1/Chassis/Self/Thermal",
-      auth_basic: { username: username, password: password },
+      netrc_file: netrc_file,
       tls: InsecureAcceptAnyCert
     }
     response {
@@ -271,13 +272,13 @@ service redfish.Http {
 
   operation GetChassisThermal {
     requires Network
-    input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String }
     readonly
     transport rest {
       method: GET,
       path: "/redfish/v1/Chassis/{chassis_id}/Thermal",
-      auth_basic: { username: username, password: password },
+      netrc_file: netrc_file,
       tls: InsecureAcceptAnyCert
     }
     response {
@@ -290,13 +291,13 @@ service redfish.Http {
 
   operation GetChassisSensor {
     requires Network
-    input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, sensor_id: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, sensor_id: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String }
     readonly
     transport rest {
       method: GET,
       path: "/redfish/v1/Chassis/{chassis_id}/Sensors/{sensor_id}",
-      auth_basic: { username: username, password: password },
+      netrc_file: netrc_file,
       tls: InsecureAcceptAnyCert
     }
     response {
@@ -309,13 +310,13 @@ service redfish.Http {
 
   operation GetSystemEventLogEntries {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String }
     readonly
     transport rest {
       method: GET,
       path: "/redfish/v1/Systems/system/LogServices/EventLog/Entries",
-      auth_basic: { username: username, password: password },
+      netrc_file: netrc_file,
       tls: InsecureAcceptAnyCert
     }
     response {
@@ -328,12 +329,12 @@ service redfish.Http {
 
   operation CreateAccount {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr, request_body_file: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, request_body_file: NonEmptyStr }
     output { body: String }
     transport rest {
       method: POST,
       path: "/redfish/v1/AccountService/Accounts",
-      auth_basic: { username: username, password: password },
+      netrc_file: netrc_file,
       tls: InsecureAcceptAnyCert,
       body: { from_file: request_body_file }
     }
@@ -347,12 +348,12 @@ service redfish.Http {
 
   operation SetAccountPassword {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr, account_id: NonEmptyStr, request_body_file: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, account_id: NonEmptyStr, request_body_file: NonEmptyStr }
     output { body: String }
     transport rest {
       method: PATCH,
       path: "/redfish/v1/AccountService/Accounts/{account_id}",
-      auth_basic: { username: username, password: password },
+      netrc_file: netrc_file,
       tls: InsecureAcceptAnyCert,
       body: { from_file: request_body_file }
     }
@@ -366,12 +367,12 @@ service redfish.Http {
 
   operation SetBootSourceOverride {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr, system_id: NonEmptyStr, request_body_file: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, system_id: NonEmptyStr, request_body_file: NonEmptyStr }
     output { body: String }
     transport rest {
       method: PATCH,
       path: "/redfish/v1/Systems/{system_id}",
-      auth_basic: { username: username, password: password },
+      netrc_file: netrc_file,
       tls: InsecureAcceptAnyCert,
       body: { from_file: request_body_file }
     }
@@ -385,12 +386,12 @@ service redfish.Http {
 
   operation ResetSystem {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr, system_id: NonEmptyStr, request_body_file: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, system_id: NonEmptyStr, request_body_file: NonEmptyStr }
     output { body: String }
     transport rest {
       method: POST,
       path: "/redfish/v1/Systems/{system_id}/Actions/ComputerSystem.Reset",
-      auth_basic: { username: username, password: password },
+      netrc_file: netrc_file,
       tls: InsecureAcceptAnyCert,
       body: { from_file: request_body_file }
     }
@@ -405,13 +406,13 @@ service redfish.Http {
 
   operation GetResourceByPath {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr, odata_path: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, odata_path: NonEmptyStr }
     output { body: String }
     readonly
     transport rest {
       method: GET,
       path: "{odata_path}",
-      auth_basic: { username: username, password: password },
+      netrc_file: netrc_file,
       tls: InsecureAcceptAnyCert
     }
     response {

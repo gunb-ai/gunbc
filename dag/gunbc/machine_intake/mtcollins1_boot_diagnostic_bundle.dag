@@ -2163,7 +2163,7 @@ type RedfishGet
   = RedfishGot { body: String, left: Int }
   | RedfishGetFailed { cause: BmcReadCause, left: Int }
 
-fn redfish_get(username: NonEmptyStr, password: NonEmptyStr, path: NonEmptyStr, left: Int, not_reached: String) -> RedfishGet
+fn redfish_get(username: NonEmptyStr, password: String, path: NonEmptyStr, left: Int, not_reached: String) -> RedfishGet
 {
   let at = clock_now_probed_at_or_unknown()
   match redfish_budget_refusal(url: mtcollins1_redfish_url(path: path as String), at: at, left: left, not_reached: not_reached) {
@@ -2172,13 +2172,12 @@ fn redfish_get(username: NonEmptyStr, password: NonEmptyStr, path: NonEmptyStr, 
   }
   let r = redfish.Http.GetResourceByPath(
     bmc_host: mtcollins1_endpoint.host,
-    username: username,
-    password: password,
+    netrc_file: (concat("machine ", mtcollins1_endpoint.host as String, " login ", username as String, " password ", password) as NonEmptyStr),
     odata_path: path,
   )
   return match r {
     RestAnswered { answer: body } => RedfishGot { body: body, left: left - 1 }
-    RestRefused { refusal: refusal } => RedfishGetFailed { cause: concat("GetResourceByPath failed: ", refusal.body), left: left - 1 }
+    RestRefused { refusal: refusal } => RedfishGetFailed { cause: concat("GetResourceByPath failed: ", match refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c }), left: left - 1 }
   }
 }
 
@@ -2188,7 +2187,7 @@ type CollectionFetch
 
 fn fetch_collection_pages(
   username: NonEmptyStr,
-  password: NonEmptyStr,
+  password: String,
   collection: NonEmptyStr,
   page: NonEmptyStr,
   pages_left: Int,
@@ -2224,7 +2223,7 @@ fn fetch_collection_pages(
   }
 }
 
-fn fetch_collection(username: NonEmptyStr, password: NonEmptyStr, collection: NonEmptyStr, left: Int) -> CollectionFetch
+fn fetch_collection(username: NonEmptyStr, password: String, collection: NonEmptyStr, left: Int) -> CollectionFetch
 {
   fetch_collection_pages(username: username, password: password, collection: collection, page: collection, pages_left: mtcollins1_boot_collection_page_bound, left: left, read: [])
 }
@@ -2241,7 +2240,7 @@ type MemberBodiesFetch
   = MemberBodiesFetched { bodies: List<MemberBody>, left: Int }
   | MemberBodiesFailed { cause: BmcReadCause, left: Int }
 
-fn fetch_member_bodies(username: NonEmptyStr, password: NonEmptyStr, links: List<NonEmptyStr>, left: Int) -> MemberBodiesFetch
+fn fetch_member_bodies(username: NonEmptyStr, password: String, links: List<NonEmptyStr>, left: Int) -> MemberBodiesFetch
 {
   let empty: List<MemberBody> = []
   fold(links, init: MemberBodiesFetched { bodies: empty, left: left }, f: (acc, link) => match acc {
@@ -2254,7 +2253,7 @@ fn fetch_member_bodies(username: NonEmptyStr, password: NonEmptyStr, links: List
   })
 }
 
-fn read_memory_members(username: NonEmptyStr, password: NonEmptyStr, collection: NonEmptyStr, links: List<NonEmptyStr>, left: Int) -> MemoryFold
+fn read_memory_members(username: NonEmptyStr, password: String, collection: NonEmptyStr, links: List<NonEmptyStr>, left: Int) -> MemoryFold
 {
   match fetch_member_bodies(username: username, password: password, links: links, left: left) {
     MemberBodiesFailed { cause: c, left: l } => MemoryFold { reading: MembersUnread { cause: c }, left: l }
@@ -2262,7 +2261,7 @@ fn read_memory_members(username: NonEmptyStr, password: NonEmptyStr, collection:
   }
 }
 
-fn read_processor_members(username: NonEmptyStr, password: NonEmptyStr, collection: NonEmptyStr, links: List<NonEmptyStr>, left: Int) -> ProcessorFold
+fn read_processor_members(username: NonEmptyStr, password: String, collection: NonEmptyStr, links: List<NonEmptyStr>, left: Int) -> ProcessorFold
 {
   match fetch_member_bodies(username: username, password: password, links: links, left: left) {
     MemberBodiesFailed { cause: c, left: l } => ProcessorFold { reading: MembersUnread { cause: c }, left: l }
@@ -2284,7 +2283,7 @@ fn same_origin_or_none(link: String?) -> NonEmptyStr? {
   }
 }
 
-fn read_processors(username: NonEmptyStr, password: NonEmptyStr, system: NonEmptyStr, link: String?, left: Int) -> ProcessorFold
+fn read_processors(username: NonEmptyStr, password: String, system: NonEmptyStr, link: String?, left: Int) -> ProcessorFold
 {
   match same_origin_or_none(link: link) {
     Absent => ProcessorFold { reading: MembersUnread { cause: link_absent_cause(system: system, property: "Processors") }, left: left }
@@ -2296,7 +2295,7 @@ fn read_processors(username: NonEmptyStr, password: NonEmptyStr, system: NonEmpt
   }
 }
 
-fn read_memory(username: NonEmptyStr, password: NonEmptyStr, system: NonEmptyStr, link: String?, left: Int) -> MemoryFold
+fn read_memory(username: NonEmptyStr, password: String, system: NonEmptyStr, link: String?, left: Int) -> MemoryFold
 {
   match same_origin_or_none(link: link) {
     Absent => MemoryFold { reading: MembersUnread { cause: link_absent_cause(system: system, property: "Memory") }, left: left }
@@ -2351,7 +2350,7 @@ fn mtcollins1_systems_link(root_body: String, at: NonEmptyStr) -> ObservationAtt
 // THE SYSTEM IS READ, NOT ASSUMED: the Systems collection must name exactly one member, whose own
 // Memory and Processors links name the collections read next. Zero or several systems is a typed
 // reading, since picking one would be a guess about which system the attempt booted.
-fn read_inventory(username: NonEmptyStr, password: NonEmptyStr) -> InventoryReading
+fn read_inventory(username: NonEmptyStr, password: String) -> InventoryReading
 {
   let at = clock_now_probed_at_or_unknown()
   match redfish_get(username: username, password: password, path: mtcollins1_redfish_service_root_path, left: mtcollins1_boot_redfish_read_budget, not_reached: "the service root and every inventory read after it") {
@@ -2364,7 +2363,7 @@ fn read_inventory(username: NonEmptyStr, password: NonEmptyStr) -> InventoryRead
   }
 }
 
-fn read_inventory_from_systems(username: NonEmptyStr, password: NonEmptyStr, systems_path: NonEmptyStr, left: Int, at: NonEmptyStr) -> InventoryReading
+fn read_inventory_from_systems(username: NonEmptyStr, password: String, systems_path: NonEmptyStr, left: Int, at: NonEmptyStr) -> InventoryReading
 {
   match fetch_collection(username: username, password: password, collection: systems_path, left: left) {
     CollectionFetchFailed { cause: c, left: _ } => inventory_unread(cause: c)
