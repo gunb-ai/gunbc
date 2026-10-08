@@ -48,7 +48,7 @@ import gunbc.durable_cas_file_store { KeepAllGenerations, KeepGenerationWindow, 
   admit_cas_attempt_for_derived_payload, file_compare_and_set, file_compare_and_set_retained,
   observe_cas_slot_state, observe_cas_slot_state_retained,
   cas_verify_named_window_head, cas_probe_as_observation, cas_key_is_slot_addressable,
-  cas_key_not_slot_addressable_detail, ProbedNamedWindowHeadMoved,
+  cas_key_not_slot_addressable_detail, NamedWindowVerified, NamedWindowHeadMoved,
 }
 
 // THE TAGS ARE NAMED ONCE AND THE BODY IS DERIVED FROM THE TAG THAT MATCHED.
@@ -168,8 +168,8 @@ fn observe_file_hold_windowed_at(root: NonEmptyStr, key: NonEmptyStr, generation
     HoldObservationUnavailable { cause: CasUnreadableReadRefused { detail: cas_key_not_slot_addressable_detail } }
   } else {
     match cas_verify_named_window_head(root: root, key: key, generation: generation) {
-      ProbedNamedWindowHeadMoved { generation: g } => HoldNamedWindowHeadMoved { generation: g }
-      p => hold_observation_of_cas(observed: cas_probe_as_observation(probe: p))
+      NamedWindowHeadMoved { generation: g } => HoldNamedWindowHeadMoved { generation: g }
+      NamedWindowVerified { probe: p } => hold_observation_of_cas(observed: cas_probe_as_observation(probe: p))
     }
   }
 }

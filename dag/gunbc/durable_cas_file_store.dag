@@ -307,7 +307,6 @@ type CasSlotProbe
   | ProbedUnreadable { generation: CasGeneration, kind: FilesystemFailureKind }
   | ProbedReadKindUnrecognized { generation: CasGeneration, observed: String }
   | ProbedWindowHeadUnsettled { attempts: Int }
-  | ProbedNamedWindowHeadMoved { generation: CasGeneration }
 
 // One generation read, classified: present with its content, absent, or a typed refusal.
 type CasGenerationRead
@@ -641,8 +640,6 @@ fn cas_probe_as_observation(probe: CasSlotProbe) -> CasSlotObservation<NonEmptyS
     ProbedAbsent => CasObservedReadable { readable: CasReadableAbsent }
     ProbedAbsenceUnestablished { cause: c } => CasObservedUnreadable { cause: cas_absence_unestablished(cause: c) }
     ProbedWindowHeadUnsettled { attempts: a } => CasObservedUnreadable { cause: cas_window_head_unsettled(attempts: a) }
-    ProbedNamedWindowHeadMoved { generation: _ } =>
-      CasObservedUnreadable { cause: CasUnreadableObservationBoundExceeded { bound: 1 } }
     ProbedHead { generation: h, value: v } =>
       CasObservedReadable { readable: cas_head_as_readable(generation: h, value: v) }
   }
@@ -712,37 +709,31 @@ fn observe_cas_slot_state_windowed(root: NonEmptyStr, key: NonEmptyStr, window: 
 // its successor reads absent. Those two reads are Filesystem.Read of cas_file_slot_path, O(1) in
 // the store's object count. A successor that is present means the head moved; an absent named
 // generation is not this head. The observation is never guessed.
-fn cas_verify_named_window_head(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration) -> CasSlotProbe
+// Named verify is not a CasSlotProbe: G+1 present is a moved head, not an observation-budget
+// exhaustion, and CasSlotProbe's Unsettled arm is the eight-pass list-and-verify bound. Folding the
+// two together is the meaning-fork DESIGN section 3 names; the hold consumer maps HeadMoved itself.
+type CasNamedWindowVerify
+  = NamedWindowVerified { probe: CasSlotProbe }
+  | NamedWindowHeadMoved { generation: CasGeneration }
+
+fn cas_verify_named_window_head(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration) -> CasNamedWindowVerify
   admit_callers: [
-    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "observe_cas_slot_state_windowed_at"),
     decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "observe_file_hold_windowed_at"),
   ]
 {
   match cas_read_generation(root: root, key: key, generation: generation) {
-    GenerationRefused { probe: p } => p
-    GenerationAbsent => ProbedAbsent
+    GenerationRefused { probe: p } => NamedWindowVerified { probe: p }
+    GenerationAbsent => NamedWindowVerified { probe: ProbedAbsent }
     GenerationPresent { content: c } =>
       match cas_generation_successor(g: generation) {
-        CasSuccessorExhausted { head: _ } => ProbedHead { generation: generation, value: c }
+        CasSuccessorExhausted { head: _ } => NamedWindowVerified { probe: ProbedHead { generation: generation, value: c } }
         CasSuccessorGeneration { generation: next } =>
           match cas_read_generation(root: root, key: key, generation: next) {
-            GenerationRefused { probe: p } => p
-            GenerationAbsent => ProbedHead { generation: generation, value: c }
-            GenerationPresent { content: _ } => ProbedNamedWindowHeadMoved { generation: generation }
+            GenerationRefused { probe: p } => NamedWindowVerified { probe: p }
+            GenerationAbsent => NamedWindowVerified { probe: ProbedHead { generation: generation, value: c } }
+            GenerationPresent { content: _ } => NamedWindowHeadMoved { generation: generation }
           }
       }
-  }
-}
-
-fn observe_cas_slot_state_windowed_at(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration) -> CasSlotObservation<NonEmptyStr>
-  admit_callers: [
-    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "observe_file_hold_windowed_at"),
-  ]
-{
-  if !cas_key_is_slot_addressable(key: key) {
-    CasObservedUnreadable { cause: CasUnreadableReadRefused { detail: cas_key_not_slot_addressable_detail } }
-  } else {
-    cas_probe_as_observation(probe: cas_verify_named_window_head(root: root, key: key, generation: generation))
   }
 }
 
@@ -992,8 +983,6 @@ fn cas_owner_only_failed_publication(
       }
     ProbedWindowHeadUnsettled { attempts: a } =>
       CasStoreRefused { cause: CasSlotObservationRefused { cause: cas_window_head_unsettled(attempts: a) } }
-    ProbedNamedWindowHeadMoved { generation: _ } =>
-      CasStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableObservationBoundExceeded { bound: 1 } } }
   }
 }
 
@@ -1033,8 +1022,6 @@ fn cas_compare_and_set_outcome(
       CasStoreRefused { cause: CasSlotObservationRefused { cause: cas_absence_unestablished(cause: c) } }
     ProbedWindowHeadUnsettled { attempts: a } =>
       CasStoreRefused { cause: CasSlotObservationRefused { cause: cas_window_head_unsettled(attempts: a) } }
-    ProbedNamedWindowHeadMoved { generation: _ } =>
-      CasStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableObservationBoundExceeded { bound: 1 } } }
     ProbedAbsent =>
       match attempt.expected {
         ExpectSlotAbsent =>
