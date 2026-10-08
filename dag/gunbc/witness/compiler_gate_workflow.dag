@@ -71,7 +71,7 @@ module gunbc.compiler_gate_workflow
 // then witnesses.yml is emitted by gunbc.witness_floor_workflow again and this module is deleted.
 
 import std.measure { Minute, minute, minute_count }
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.optional { Present, Absent }
 import v2.std.algebra { list_map, filter, length }
 import std.algebra { list_append }
@@ -80,7 +80,7 @@ import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, ya
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
   Workflow, Job, Step, UsesStep, RunStep,
-  WorkflowPermissions, PermRead,
+  WorkflowPermissions, PermRead, PermWrite,
   RunnerSpec, HostedRunner, SelfHosted, RunsOnExpression,
   github_event_name_pull_request,
   github_event_name_merge_group
@@ -147,7 +147,15 @@ import gunbc.heal_workflow { heal_same_repository_clause, heal_not_dependabot_cl
 import gunbc.fleet_workflow_steps {
   ci_cache_cargo_step, ci_release_bins_lookup_step, ci_release_bins_cache_step,
   ci_release_bins_upload_step, ci_release_bins_download_step, gunbc_ci_aux_step_timeout_minutes,
+  ci_wif_auth_step_with_id,
 }
+import gunbc.native_product_federation {
+  native_product_read_service_account, native_product_write_service_account, native_product_write_provider_resource,
+}
+import gunbc.auth.github_gcp_federation { github_wif_provider_resource }
+import gunbc.cli_invoke { gunbc_run_invocation_words_with_functions, invocation_words_bare, release_bin_rel_path, gunbc_bin_name }
+import extdeps.exec.program { uncataloged_program }
+import extdeps.exec.command { argv_command, shell_command_render }
 import gunbc.fleet_release_bins_key {
   release_bins_outcome_script_for, release_bins_consumer_key_check_script_for,
   release_bins_key_expression, release_bins_key_step_id, release_bins_outcome_step_id,
@@ -424,6 +432,17 @@ data compiler_gate_permissions: WorkflowPermissions = WorkflowPermissions {
   issues: none,
   actions: none,
   id_token: none
+}
+
+// THE EMIT-BUILD JOB ALONE MAY MINT AN OIDC TOKEN: the shared native product store's credentialed
+// restore (pull requests) and save (merge queue) federate through it. Every other job keeps
+// id_token unset, so the grant is the narrowest that serves the store.
+data compiler_gate_native_permissions: WorkflowPermissions = WorkflowPermissions {
+  contents: Present { value: PermRead },
+  pull_requests: none,
+  issues: none,
+  actions: none,
+  id_token: Present { value: PermWrite }
 }
 
 // THE REQUIRED STATUS MUST READ EVERY LANE, OR A LANE IS MERELY WAITED ON.
@@ -1054,7 +1073,8 @@ fn compiler_gate_emit_build_step(row: EmittedSubjectBuildRow) -> Step {
         kv(
           key: native_fault_experiment_env_name,
           value: yaml_string(s: join(["${{ github.event_name == 'pull_request' && '", native_fault_experiment_skip_value, "' || '", native_fault_experiment_run_value, "' }}"], ""))
-        )
+        ),
+        kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: join(["${{ steps.", compiler_gate_native_read_wif_id, ".outputs.access_token }}"], "")))
       ]
     },
     working_directory: none,
@@ -1127,14 +1147,91 @@ fn compiler_gate_emit_build_subject_bound_steps() -> List<CompilerGateBoundStep>
 // merge_group-only federation (`gunbc.native_product_shared_store`); until that restore is wired the
 // store is empty and every run builds cold. The product key carries the toolchain axis, so the root
 // needs no toolchain segment.
-// THE STORE EXISTS ONLY FOR PULL REQUESTS. The required run on the merge queue's composed revision is
-// the proof of the sha that lands, so it builds its own compiler: with the root unset the seed reads
-// and writes nothing (GUNBC_NATIVE_CACHE_ROOT unset is "no store"). A per-host entry is verified only
-// against its own manifest, which whoever wrote it controls, and a pull request's job runs code the
-// pull request chose; letting the queue read what a pull request could have written would let the
-// merge gate pass on a compiler it never built. A pull request's own reuse stays inside that trust.
+// THE QUEUE'S PROOF STILL BUILDS ITS OWN COMPILER. The root is bound on pull requests (restore, then
+// reuse) and on the merge queue (the seed publishes into the empty private root after a completed
+// red, and the save step uploads it). The queue's instrument steps are given no token, so the seed's
+// restore is skipped there and the lookup finds the empty private directory: the merge gate never
+// passes on a compiler it did not build. Reads and writes are different credentials on different
+// events (gunbc.native_product_federation).
 fn compiler_gate_native_cache_condition() -> String {
-  join(["github.event_name == '", github_event_name_pull_request, "'"], "")
+  join(["github.event_name == '", github_event_name_pull_request, "' || github.event_name == '", github_event_name_merge_group, "'"], "")
+}
+
+// A fork pull request is issued no id-token, so it has no credential and builds cold.
+fn compiler_gate_native_read_condition() -> String {
+  join(["github.event_name == '", github_event_name_pull_request, "' && github.event.pull_request.head.repo.full_name == github.repository"], "")
+}
+
+fn compiler_gate_native_write_condition() -> String {
+  join(["github.event_name == '", github_event_name_merge_group, "'"], "")
+}
+
+data compiler_gate_native_read_wif_id: String = "native_read_wif"
+
+data compiler_gate_native_write_wif_id: String = "native_write_wif"
+
+data compiler_gate_native_read_auth_step_name: String = "WIF auth (OIDC -> native-product-read, pull requests)"
+
+data compiler_gate_native_write_auth_step_name: String = "WIF auth (OIDC -> native-product-write, merge queue)"
+
+data compiler_gate_native_save_step_name: String = "Save admitted native products to the shared store"
+
+fn compiler_gate_native_wif_step(name: String, id: String, provider_resource: String, service_account: String, condition: String) -> Step {
+  match ci_wif_auth_step_with_id(name: name, id: id, provider_resource: provider_resource, service_account: service_account) {
+    UsesStep { name: n, id: i, uses: u, with: w, env: e, if_condition: _, continue_on_error: _, timeout_minutes: t } =>
+      UsesStep { name: n, id: i, uses: u, with: w, env: e, if_condition: Present { value: condition }, continue_on_error: Present { value: true }, timeout_minutes: t }
+    other => other
+  }
+}
+
+fn compiler_gate_native_read_auth_step() -> Step {
+  compiler_gate_native_wif_step(
+    name: compiler_gate_native_read_auth_step_name,
+    id: compiler_gate_native_read_wif_id,
+    provider_resource: github_wif_provider_resource(),
+    service_account: native_product_read_service_account as String,
+    condition: compiler_gate_native_read_condition(),
+  )
+}
+
+fn compiler_gate_native_write_auth_step() -> Step {
+  compiler_gate_native_wif_step(
+    name: compiler_gate_native_write_auth_step_name,
+    id: compiler_gate_native_write_wif_id,
+    provider_resource: native_product_write_provider_resource(),
+    service_account: native_product_write_service_account as String,
+    condition: compiler_gate_native_write_condition(),
+  )
+}
+
+// THE SAVE IS THE ENTRY'S OWN `gunbc run`, DERIVED AS ARGV rather than spelled: it uploads every
+// admitted entry of the job-private store (only a merge_group run with a completed red publishes one)
+// create-only, and runs only on the queue, after the instruments, with the write federation's token.
+fn compiler_gate_native_save_command() -> String {
+  shell_command_render(command: argv_command(
+    program: uncataloged_program(invocation: release_bin_rel_path(bin_name: gunbc_bin_name) as NonEmptyStr),
+    arguments: invocation_words_bare(words: gunbc_run_invocation_words_with_functions(
+      source_roots: ["dag", "src/v2"],
+      entry: "dag/gunbc/native_product_shared_transfer.dag",
+      functions: ["native_product_save_wet"],
+      claim_run: false,
+      arguments: [],
+    )),
+  ))
+}
+
+fn compiler_gate_native_save_step() -> Step {
+  RunStep {
+    name: Present { value: compiler_gate_native_save_step_name },
+    id: none,
+    run: concat(compiler_gate_native_save_command(), "\n"),
+    shell: none,
+    env: Present { value: [kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: join(["${{ steps.", compiler_gate_native_write_wif_id, ".outputs.access_token }}"], "")))] },
+    working_directory: none,
+    if_condition: Present { value: join(["success() && ", compiler_gate_native_write_condition()], "") },
+    continue_on_error: Present { value: true },
+    timeout_minutes: Present { value: 10 }
+  }
 }
 
 // Hand-authored two-line shell (scaffold): dissolves when the restore step of the shared native
@@ -1173,6 +1270,8 @@ fn compiler_gate_emit_build_native_cache_root_bound_step() -> CompilerGateBoundS
 fn compiler_gate_emit_build_prelude_bound_steps() -> List<CompilerGateBoundStep> {
   concat(compiler_gate_fleet_head_bound_steps(), [
     compiler_gate_emit_build_native_cache_root_bound_step(),
+    CompilerGateBoundStep { step: compiler_gate_native_read_auth_step(), role: capability_neutral, step_name: compiler_gate_native_read_auth_step_name },
+    CompilerGateBoundStep { step: compiler_gate_native_write_auth_step(), role: capability_neutral, step_name: compiler_gate_native_write_auth_step_name },
     CompilerGateBoundStep {
       step: witness_floor_build_step(
         step_name: compiler_gate_build_step_name,
@@ -1191,7 +1290,10 @@ fn compiler_gate_emit_build_prelude_bound_steps() -> List<CompilerGateBoundStep>
 
 fn compiler_gate_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
   concat(
-    concat(compiler_gate_emit_build_prelude_bound_steps(), compiler_gate_emit_build_subject_bound_steps()),
+    concat(
+      concat(compiler_gate_emit_build_prelude_bound_steps(), compiler_gate_emit_build_subject_bound_steps()),
+      [CompilerGateBoundStep { step: compiler_gate_native_save_step(), role: consumes_only(capabilities: [CargoCapability]), step_name: compiler_gate_native_save_step_name }],
+    ),
     [CompilerGateBoundStep {
       step: compiler_gate_emit_build_notice_step(),
       role: capability_neutral,
@@ -1229,7 +1331,7 @@ fn compiler_gate_emit_build_job() -> Job {
     timeout_minutes: Present { value: compiler_gate_emit_build_timeout_minutes },
     continue_on_error: none,
     concurrency: none,
-    permissions: Present { value: compiler_gate_permissions }
+    permissions: Present { value: compiler_gate_native_permissions }
   }
 }
 

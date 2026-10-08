@@ -278,7 +278,7 @@ pub(super) fn restore_from_shared_store(
     workspace: &Path,
 ) {
     let event = std::env::var("GITHUB_EVENT_NAME").unwrap_or_default();
-    if event != "pull_request" && event != "merge_group" {
+    if event != "pull_request" {
         return;
     }
     if std::env::var("WIF_ACCESS_TOKEN")
