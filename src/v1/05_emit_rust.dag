@@ -17452,34 +17452,26 @@ fn emit_capability_method(cap_node: Node, shared_types: Set<String>, env: TypeEn
   concat(items.async_prefix, items.func_keyword, " ", emit_ident(name: authored_name(env: env, node: cap_node), target: Rust), "(", all_params, ") -> Result<", ret, ", Box<dyn std::error::Error>>;")
 }
 
-// A CALL IS A REFERENCE TO ANOTHER DECLARATION, SPELLED WITH ARGUMENTS.
+// THE JSON PATH IS ADMITTED BY ITS DOMAIN, NOT BY THE ABSENCE OF A DISQUALIFIER.
 //
-// This predicate answers one question -- does this `data` initializer reference another
-// declaration -- and `emit_data_def` uses it to choose between the JSON serializer (which can
-// render only literals) and `emit_typed_expr` (which can render anything). An `ExprVar` was
-// already answered `true` for exactly the right reason: a bare name is a reference. An
-// `ExprCall` is the same reference with an argument list attached, and it fell through `_` to
-// `false`, sending `data d: R = mk(..)` to a serializer that cannot represent a call. The
-// serializer then refused with `unsupported mock expression`, so the failure surfaced one layer
-// below the judgment that caused it.
-//
-// The match was TOTAL AT THE LEVEL EXAMINED AND BLIND ONE LEVEL DOWN: exhaustive over
-// `expr_data`, no arm missing, nothing for a reviewer or a wildcard-free lens to catch -- the
-// `_` carried the payload. It was wrong by this function's own definition, not incomplete.
-//
-// WHY NOTHING THAT WORKS TODAY MOVES: the JSON branch is guarded by record-shaped-type AND
-// no-cross-refs, and every row currently on it emitted successfully, which by construction means
-// its initializer holds no call. Measured at the time of the repair: 34 rows on the JSON path
-// across the seed, none affected; 9 rows refused, all of them `PrimitiveIdentity` in
-// `std.primitive_projection` -- the first rows in the seed closure's history to satisfy both
-// conditions at once, which is why the defect stood this long unasked.
-fn data_value_has_cross_refs(value: Node) -> Bool {
+// emit_data_def chooses between the JSON serializer emit_data_value_json, which can spell
+// exactly a LITERAL TREE -- scalar literals, list and record literals whose elements are literal
+// trees, a negated literal -- and emit_typed_expr, which renders any typed expression. The guard
+// used to ask a narrower question, "does the value name another declaration" (a bare name; then a
+// call, added after `data d: R = mk(..)` surfaced as a refusal), so every OTHER non-literal form
+// on a record-shaped type -- a `"x" as NonEmptyStr` brand cast, an operator, a conditional --
+// reached the serializer and came out as compile_error!("unsupported mock expression"): a refusal
+// one layer below the choice that caused it. The disqualifier list grew one form per incident,
+// and the `_ => false` arm carried the defect each time; the predicate it approximated was always
+// the serializer's own domain, which is what is asked now. A row inside the domain is unchanged:
+// a literal tree never named another declaration.
+fn data_value_is_json_literal_tree(value: Node) -> Bool {
   match value.expr_data {
-    ExprVar { binding_kind: _ } => true
-    ExprCall { call_semantics: _, descent_evidence: _ } => true
-    ExprListLit => value.children |> any(c => data_value_has_cross_refs(value: c))
+    ExprLiteral { value: _ } => true
+    ExprListLit => value.children |> all(c => data_value_is_json_literal_tree(value: c))
     ExprRecordLit { parent_enum: _ } =>
-      value.children |> any(f => data_value_has_cross_refs(value: field_init_node_value(n: f)))
+      value.children |> all(f => data_value_is_json_literal_tree(value: field_init_node_value(n: f)))
+    ExprUnaryOp { op: Neg } => data_value_is_json_literal_tree(value: unaryop_operand(texpr: value))
     _ => false
   }
 }
@@ -17646,7 +17638,7 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
     }
   } else if match value.expr_data { ExprElaboratedLiteral { value: _, elaboration: _ } => true _ => false } {
     concat("            ", emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
-  } else if has_nested_records_node(n: type_node, source_indices: scope.type_env.source_indices) && !data_value_has_cross_refs(value: value) && !data_row_type_forbids_deserialize(type_node: type_node, emit_info: emit_info, source_indices: scope.type_env.source_indices) {
+  } else if has_nested_records_node(n: type_node, source_indices: scope.type_env.source_indices) && data_value_is_json_literal_tree(value: value) && !data_row_type_forbids_deserialize(type_node: type_node, emit_info: emit_info, source_indices: scope.type_env.source_indices) {
     match emit_data_value_json(value: value, source_indices: scope.type_env.source_indices, variant_wire: emit_info.data_variant_wire_spellings) {
       Refused { reason: r } => concat("            compile_error!(\"", escape_string_literal_body(s: r), "\")")
       Emitted { json: json_str } => concat("            serde_json::from_str(\"", escape_string_literal_body(s: json_str), "\")\n",
