@@ -1,6 +1,7 @@
 module gunbc.bmc_dry_realization
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { list_snoc_item }
 import std.measure { Second, second }
 import v2.std.operation_argv { OperationRef }
 import v2.std.operation_realization {
@@ -161,9 +162,9 @@ fn bmc_dry_realization(identity: NonEmptyStr, initial: BmcWorld, epoch: Second) 
     identity: identity,
     initial: initial,
     epoch: epoch,
-    bindings: list_append(
-      bmc_bindings(get: fn(w) { w }, put: fn(w, next) { next }),
-      virtual_delay_binding(at: sleep_delay_seconds_operation, seconds_input: "seconds"),
+    bindings: list_snoc_item(
+      xs: bmc_bindings(get: fn(w) { w }, put: fn(w, next) { next }),
+      item: virtual_delay_binding(at: sleep_delay_seconds_operation, seconds_input: "seconds"),
     ),
     advance: bmc_advance,
   }

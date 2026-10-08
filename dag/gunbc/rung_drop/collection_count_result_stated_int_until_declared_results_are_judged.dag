@@ -27,8 +27,8 @@ data collection_count_result_stated_int_until_declared_results_are_judged: RungD
     temporary: Mitigatable,
     reason: ReplacementStaged { replacement: "collection_count_shape returns std.nat Nat (the template every other size row carries), with integer literals at the consuming positions elaborating at Nat" },
     population: [
-      "v2.std.node: the 13 bare count( sites (sizes of edge and child lists), bound to collection_count_shape",
-      "v2.std.node_query: the 3 bare count( sites, bound to collection_count_shape",
+      "v2.std.node: every bare count( call site (sizes of edge and child lists), each bound to collection_count_shape by the collection roster",
+      "v2.std.node_query: every bare count( call site, each bound to collection_count_shape by the collection roster",
       "every other bare count( call in src/v2 that binds to collection_count_shape (a bare head no in-scope declaration claims), each typed Int rather than Nat",
       "the SEED's method typing: v1.compiler 04_method reads algebra_templates_for_profile, which includes free_monoid_collection_templates, so a seed method-form count (`xs |> count`, `xs.count()`) over a FreeMonoid is typed by this row's Int (review 76274). The seed grounds std.nat Nat to the kernel integer (gunbc.structural_realization_bindings kernel_grounding_rows), so the REALIZED type of that result is unchanged; the declared type is what is narrowed",
     ],
