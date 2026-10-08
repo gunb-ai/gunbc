@@ -676,6 +676,10 @@ fn raw_tree_of_text(text: String) -> RawTreeStanding {
   raw_tree_of_text_validated(text: text, plan: argv_word_construction_parse_plan())
 }
 
+fn argv_word_construction_module_sites(path: String) -> ArgvWordsModuleStanding {
+  argv_word_construction_module_sites_with_plan(path: path, plan: argv_word_construction_parse_plan())
+}
+
 // ------------------------------------------------------------------ module entry
 
 type ArgvWordsModuleStanding
