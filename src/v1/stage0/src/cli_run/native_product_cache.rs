@@ -278,7 +278,7 @@ pub(super) fn restore_from_shared_store(
     workspace: &Path,
 ) {
     let event = std::env::var("GITHUB_EVENT_NAME").unwrap_or_default();
-    if event != "pull_request" {
+    if event != "pull_request" && event != "merge_group" {
         return;
     }
     if std::env::var("WIF_ACCESS_TOKEN")
@@ -286,7 +286,7 @@ pub(super) fn restore_from_shared_store(
         .unwrap_or(true)
     {
         eprintln!(
-            "v2-native-route: native product SHARED-RESTORE-SKIPPED key={} — no workload identity              in this run (fork pull request or federation not wired); building cold",
+            "v2-native-route: native product NativeProductRestoreUnavailable cause=auth key={} — no workload identity in this run (fork pull request, failed auth step or federation not provisioned); counted as a MISS, building cold",
             key.digest
         );
         return;
@@ -295,7 +295,7 @@ pub(super) fn restore_from_shared_store(
         Ok(e) => e,
         Err(e) => {
             eprintln!(
-                "v2-native-route: native product SHARED-RESTORE-FAILED key={} — current_exe: {e}",
+                "v2-native-route: native product NativeProductRestoreUnavailable cause=current_exe key={} — {e}; counted as a MISS, building cold",
                 key.digest
             );
             return;
@@ -327,12 +327,12 @@ pub(super) fn restore_from_shared_store(
                 .find(|l| !l.starts_with("[pre-entry]") && !l.trim().is_empty())
                 .unwrap_or("no reason reported");
             eprintln!(
-                "v2-native-route: native product SHARED-RESTORE-MISS key={} — {reason}",
+                "v2-native-route: native product NativeProductRestoreUnavailable cause=transfer key={} — {reason}; counted as a MISS, building cold",
                 key.digest
             )
         }
         Err(e) => eprintln!(
-            "v2-native-route: native product SHARED-RESTORE-FAILED key={} — spawn: {e}",
+            "v2-native-route: native product NativeProductRestoreUnavailable cause=spawn key={} — {e}; counted as a MISS, building cold",
             key.digest
         ),
     }

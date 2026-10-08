@@ -1143,22 +1143,23 @@ fn compiler_gate_emit_build_subject_bound_steps() -> List<CompilerGateBoundStep>
 // request's job could plant a self-consistent entry (verify-on-read checks an entry against its own
 // manifest, which its writer controls) that a later job would serve as a HIT. A private directory is
 // empty at job start, so the only filler is the credentialed shared-store restore, whose writer is the
-// merge_group-only federation (`gunbc.native_product_shared_store`); until that restore is wired the
+// merge_group-only federation (`gunbc.native_product_shared_store`); until the federations are provisioned the
 // store is empty and every run builds cold. The product key carries the toolchain axis, so the root
 // needs no toolchain segment.
-// THE QUEUE'S PROOF STILL BUILDS ITS OWN COMPILER. The root is bound on pull requests (restore, then
-// reuse) and on the merge queue (the seed publishes into the empty private root after a completed
-// red, and the save step uploads it). The queue's instrument steps are given no token, so the seed's
-// restore is skipped there and the lookup finds the empty private directory: the merge gate never
-// passes on a compiler it did not build. Reads and writes are different credentials on different
-// events (gunbc.native_product_federation).
+// THE ROOT IS BOUND ON PULL REQUESTS AND ON THE MERGE QUEUE: both restore into it through the read
+// federation, the queue's seed publishes into it after a completed red on a miss, and the save step
+// uploads that. A restore that cannot run is a typed, counted MISS in the seed's log
+// (NativeProductRestoreUnavailable, with its cause), never a silent slow build.
 fn compiler_gate_native_cache_condition() -> String {
   join(["github.event_name == '", github_event_name_pull_request, "' || github.event_name == '", github_event_name_merge_group, "'"], "")
 }
 
+// THE READ CREDENTIAL IS GIVEN TO SAME-REPOSITORY PULL REQUESTS AND TO THE MERGE QUEUE. The queue runs
+// reviewed, composed code and the store is writable only by the queue's own write federation, so a
+// restored product there is one a queue run published; the key still names every input of the product.
 // A fork pull request is issued no id-token, so it has no credential and builds cold.
 fn compiler_gate_native_read_condition() -> String {
-  join(["github.event_name == '", github_event_name_pull_request, "' && github.event.pull_request.head.repo.full_name == github.repository"], "")
+  join(["(github.event_name == '", github_event_name_pull_request, "' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == '", github_event_name_merge_group, "'"], "")
 }
 
 fn compiler_gate_native_write_condition() -> String {
