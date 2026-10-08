@@ -78,6 +78,7 @@ import v2.std.diagnostic {
   Rejected,
   outcome_with_diagnostics
 }
+import v2.compiler.primitive_authority { primitive_authority_path }
 import v2.compiler.fold_lowering { FoldRealization, FoldRealizesDeclaration, FoldRealizesRosterOperation, collection_roster_primitive_call_row_optional, fold_family_realization }
 import v2.std.qualified_name {
   QualifiedName,
@@ -2230,9 +2231,26 @@ fn resolve_atom_unscoped(ctx: ResolveContext, n: Node, identity: Symbol, pending
         Absent =>
           match collection_roster_primitive_call_row_optional(head: identity) {
             Present { value: r } => resolve_atom_bound(ctx: ctx, n: n, path: declaration_ref_path(r: r.row), pending: pending)
-            Absent => resolve_atom_unbound(ctx: ctx, n: n, identity: identity, pending: pending)
+            Absent => resolve_atom_primitive_authority(ctx: ctx, n: n, identity: identity, pending: pending)
           }
       }
+  }
+}
+
+// THE LAST TIER: a free kernel primitive binds to its std.primitives contract row (v2.compiler.primitive_authority),
+// asked only after the frame, the imports, the indexed declarations, the kernel types and the collection roster
+// have all declined the name, so an ordinary declaration (a local fn, an imported v2.std.algebra any/filter) always
+// wins. A canonical symbol is not a primitive and keeps its own answer. A name no authority declares stays the
+// typed resolve_reason_unbound_symbol refusal.
+fn resolve_atom_primitive_authority(ctx: ResolveContext, n: Node, identity: Symbol, pending: Diagnostics) -> Outcome<Node> {
+  if namespace_has_canonical_symbol(namespace: ctx.namespace, name: identity) {
+    resolve_atom_unbound(ctx: ctx, n: n, identity: identity, pending: pending)
+  } else {
+    let path = primitive_authority_path(head: identity)
+    match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: path) {
+      Present { value: _ } => resolve_atom_bound(ctx: ctx, n: n, path: path, pending: pending)
+      Absent => resolve_atom_unbound(ctx: ctx, n: n, identity: identity, pending: pending)
+    }
   }
 }
 

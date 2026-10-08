@@ -73,6 +73,7 @@ import v2.std.qualified_name { QualifiedName, declaration_reference_node, declar
 import v2.std.node_query { BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, declared_field_from_edge, find_labeled_child }
 import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
 import v2.std.grammar { node_atom_identity_optional }
+import v2.compiler.primitive_authority { primitive_authority_path_is }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_member_formal }
 import v2.std.node { LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, Ambiguous, Found, NotMarkedReference, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_signature_order_edge, match_arm_pattern_edge, resolved_reference_body_kind, edge_label_of, MatchArmBodyEdge, MatchArmPatternEdge, production_edge_label }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
@@ -4445,6 +4446,33 @@ fn infer_gather_application_row_on_entries(
   kinds: List<RosterKindIndex>,
   resolved: ResolvedTree,
 ) -> InferGatherFoldAcc {
+  if infer_application_callee_is_primitive_authority(node: node) {
+    match infer_primitive_without_signature_refusal(node: node) {
+      Rejected { diagnostics: r } =>
+        infer_gather_fold_acc_failed(
+          node: node,
+          pending: rejected_with_pending(pending: pending, rejected: r),
+          await_branch_row: false,
+          await_match_row: false,
+          await_loop_row: false,
+          await_transform_row: false,
+          children_remaining: 0
+        )
+      Accepted { value: _, diagnostics: _ } => infer_gather_application_row_on_arguments(node: node, entries: entries, pending: pending, partials: partials, kinds: kinds, resolved: resolved)
+    }
+  } else {
+    infer_gather_application_row_on_arguments(node: node, entries: entries, pending: pending, partials: partials, kinds: kinds, resolved: resolved)
+  }
+}
+
+fn infer_gather_application_row_on_arguments(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  pending: Diagnostics,
+  partials: List<Node>,
+  kinds: List<RosterKindIndex>,
+  resolved: ResolvedTree,
+) -> InferGatherFoldAcc {
   match infer_application_argument_inhabitance(node: node, entries: entries, declarations: resolved.resolved_declarations) {
     Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
@@ -4588,6 +4616,30 @@ fn infer_diagnostics_none(d: Diagnostics) -> Bool {
     None => true
     Some { diagnostics: _ } => false
   }
+}
+
+// A CALL WHOSE HEAD RESOLVED TO A std.primitives CONTRACT ROW (v2.compiler.primitive_authority) has a name and a
+// cost row but NO declared type signature: those live in the seed's builtin_function_registry, with no .dag
+// authority. Typing it as unknown and accepting would be silent wrongness (DESIGN §5), so it is REFUSED, typed
+// and located at the callee, until a .dag signature authority for primitives exists. The refusal is asked at call-head
+// position only (asked before argument binding, which would otherwise refuse the row as a non-arrow): a plain data reference to a *_contract row is an ordinary PrimitiveContract value.
+fn infer_application_callee_is_primitive_authority(node: Node) -> Bool {
+  match infer_application_callee_use(node: node) {
+    Absent => false
+    Present { value: callee } =>
+      match declaration_reference_path_optional(node: callee) {
+        Absent => false
+        Present { value: path } => primitive_authority_path_is(path: path)
+      }
+  }
+}
+
+fn infer_primitive_without_signature_refusal(node: Node) -> Outcome<InferredFacts> {
+  let at = match infer_application_callee_use(node: node) {
+    Present { value: callee } => callee
+    Absent => node
+  }
+  outcome_rejected(Diagnostic { reason: ^infer_reason_primitive_without_declared_signature_authority, at: node_locus(node: at), correction: Unavailable { reason: CorrectionNotModeled } })
 }
 
 // arguments_decided: argument inhabitance returned no counted-undecidable obligation. Arrow
