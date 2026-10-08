@@ -824,7 +824,8 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // gunbc#13511 (kernel-value join): the ONE real-path inhabitance of v2.test.claim.compiler.generic_closure_outcome_construct_probe,
 // gbo_a_kernel_literal_inhabits_an_alias_of_the_corpus_int_holds (red with the join deleted and with input-only recognition). Its own-frame eval steps are
 // re-derived by claim_batch --hermetic --entry src/v2/test/claim/compiler/generic_closure_outcome_construct_probe_test.dag
-// --functions gbo_a_kernel_literal_inhabits_an_alias_of_the_corpus_int_holds (receipt: BuildBuddy 36e48268, pinned 41afbbbb).
+// --functions gbo_a_kernel_literal_inhabits_an_alias_of_the_corpus_int_holds (receipt: BuildBuddy a63835e8, pinned
+// 46da0c8fa0; red with the join deleted, BuildBuddy 50c58a76, and with input-only recognition, BuildBuddy 2002ea86).
 // Trigger: shared_precondition_re_derived_once_per_claim_frame, as above.
 data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
