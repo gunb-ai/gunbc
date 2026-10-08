@@ -43,12 +43,11 @@ import tools.emit_host_fixtures {
   ts_signed_i32_le_byte_count
 }
 import gunbc.node_http_server_emit { gunbhub_node_http_server_source }
-import v2.std.orchestration { EnvBinding }
 import extdeps.posix.process
 import extdeps.posix.signal
 import extdeps.http.client
 import extdeps.tools.sleep
-import extdeps.tools.env { env_prefixed_args }
+import extdeps.tools.env { env_prefixed_args, env_chdir_flag }
 import extdeps.numeric.base16
 import std.content_hash { content_hash_atom }
 import v2.std.collection { list_at_optional }
@@ -275,13 +274,17 @@ fn run_node_http_serve_smoke() -> Bool {
       let server_js = Filesystem.Write(path: concat(dir.path, "/server.js"), content: gunbhub_node_http_server_source())
       let spawn = posix.Process.StartDetached(
         program: "env" as NonEmptyStr,
-        arguments: env_prefixed_args(
-          bindings: [
-            { name: "HOST", value: "127.0.0.1" },
-            { name: "PORT", value: to_string(port) }
-          ],
-          command_argv: ["node", concat(dir.path, "/server.js")]
-        ),
+        arguments: concat([
+          env_chdir_flag as String,
+          dir.path,
+          env_prefixed_args(
+            bindings: [
+              { name: "HOST", value: "127.0.0.1" },
+              { name: "PORT", value: to_string(port) }
+            ],
+            command_argv: ["node", concat(dir.path, "/server.js")]
+          )
+        ]),
         stdout_file: concat(dir.path, "/server.stdout.log") as NonEmptyStr,
         stderr_file: concat(dir.path, "/server.stderr.log") as NonEmptyStr
       )
