@@ -1,0 +1,41 @@
+module test.claim.workspace_host_supply_refusal_witness
+
+import std.types { Bool }
+import gunbc.fleet_host_identity { operator_host_183527, operator_host_3dde7f, operator_host_srv1 }
+import gunbc.workspace_allocation_supply { workspace_host_supply_refusal, workspace_local_host_is }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ENROLLED CAX GUESTS HAVE NO MICROVM SUPPLY, AND THE FABRIC PATH SAYS WHY. Read off the
+// production enrollment rows, so removing the guests' backing or the provider fact makes this red: the
+// refusal names the cited offer whose nested-virtualization fact forbids the path.
+test fn provider_guests_refuse_microvm_supply_on_the_cited_offer() -> Bool {
+  let cheryl = match workspace_host_supply_refusal(host: operator_host_183527) {
+    Present { value: r } => string_contains(s: r as String, pattern: "extdeps.cloud.hetzner.cax41_catalog")
+    Absent => false
+  }
+  let virginia = match workspace_host_supply_refusal(host: operator_host_3dde7f) {
+    Present { value: r } => string_contains(s: r as String, pattern: "nested virtualization")
+    Absent => false
+  }
+  cheryl && virginia
+}
+
+// The control: an owned host is not refused here; its supply is decided by observation as before.
+test fn owned_host_is_not_refused_by_provider_fact() -> Bool {
+  match workspace_host_supply_refusal(host: operator_host_srv1) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// The local host is joined through the allocated hostname: srv1 answers to "srv1"; the CAX guest
+// answers to its drawn name, NOT to its identity's spelling or the provider's display name.
+test fn local_host_join_reads_the_allocated_hostname() -> Bool {
+  workspace_local_host_is(host: operator_host_srv1, kernel_hostname: "srv1")
+    && workspace_local_host_is(host: operator_host_183527, kernel_hostname: "cheryl")
+    && !workspace_local_host_is(host: operator_host_183527, kernel_hostname: "host-183527")
+    && !workspace_local_host_is(host: operator_host_183527, kernel_hostname: "ubuntu-32gb-nbg1-1")
+    && !workspace_local_host_is(host: operator_host_srv1, kernel_hostname: "")
+}

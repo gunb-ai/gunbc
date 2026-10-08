@@ -114,6 +114,18 @@ fn entitlement_divergence(entitlement: GuestEntitlement, observation: GuestObser
   }
 }
 
+// THE PROVIDER'S ANSWER ALONE, for a consumer that must refuse before anything is observed -- the
+// fabric supply path refuses a guest's microVM supply on this, before it probes a single cell.
+// Absent means the provider does not forbid it (or the host is not a provider guest); the
+// observation, where one is taken, still decides that case.
+fn provider_microvm_refusal(backing: HostBacking) -> MicroVmExecutionRefusal? {
+  match backing {
+    OwnedMachine { provisioning: _ } => none
+    ProviderGuest { route: _, entitlement: e, resource: _ } =>
+      if e.nested_virtualization { none } else { Present { value: ProviderForbidsNestedVirtualization { offer: e.offer } } }
+  }
+}
+
 fn adopt_observed_guest(
   host: HostIdentity,
   resource_id: NonEmptyStr,
