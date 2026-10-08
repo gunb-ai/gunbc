@@ -29,6 +29,7 @@ import gunbc.spark.pair_serving_authority_log {
   pair_authority_event_wire_text, pair_authority_event_decode, authority_eq, authority_wire,
   AuthorityFold, AuthorityUnestablished, AuthorityFolded, AuthorityFoldRefused, authority_fold, AuthorityTransitionRecord, transitions_by, authority_write_intent, AuthorityWriteIntent, event_write_intent, write_intent_eq, CancelledPreparation, cancellation_gap,
   RecordedFabricGroup, RecordedLiveGroup, RecordedRetiredGroupA, parse_recorded_group, recorded_group_wire,
+  RecordedAuthority, RecordedLiveAuthority, RecordedRetiredGroupAAuthority, Finalized,
   PlacementFold, PlacementFolded, PlacementFoldRefused, placement_fold, PlacementPreparationRecord, AppendClaimed, Prepared, Aborted, group_live_commitment, group_fenced_hosts, same_host_set,
 }
 
@@ -851,5 +852,54 @@ test fn a_chain_with_group_a_history_then_group_b_events_folds_and_group_b_decid
         && same_host_set(a: group_fenced_hosts(preps: ps, group: FabricGroupB {}), b: [alw_host(s: "srv9")])
         && (match parse_fabric_group(wire: recorded_group_wire(r: RecordedRetiredGroupA)) { Absent => true  Present { value: _ } => false })
         && (match parse_recorded_group(wire: "group-a") { Present { value: RecordedRetiredGroupA } => true  _ => false })
+  }
+}
+
+// A FULL RETIRED SAGA, AS D0'S GROUP A RELEASE WROTE IT, THEN A GROUP B EVENT -- every event through the
+// real codec (encoded, then decoded back) before the fold reads it. The retired intent carries retired
+// states; the chain folds; the retired preparation ends Finalized as history; Group B's fence is exactly
+// its own host.
+fn alw_through_codec(id: String, e: ChainEvent<PairAuthorityEvent>) -> ChainEnvelope<PairAuthorityEvent>? {
+  match pair_authority_event_decode(text: pair_authority_event_wire_text(event: e)) {
+    EventDecoded { event: back } => Present { value: alw_env(id: id, e: back) }
+    _ => none
+  }
+}
+
+fn alw_retired_intent() -> AuthorityWriteIntent {
+  AuthorityWriteIntent {
+    group: RecordedRetiredGroupA, expected_head: HeadAbsent, actor: "witness" as NonEmptyStr,
+    previous: none, next: RecordedRetiredGroupAAuthority { state: "released-to-fleet" as NonEmptyStr },
+    operation: "d0-release" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none,
+  }
+}
+
+fn alw_retired_ref() -> PlacementPreparationRef {
+  PlacementPreparationRef { id: "a1" as EventId, group: RecordedRetiredGroupA, previous_hosts: [] as List<HostIdentity>, next_hosts: [alw_host(s: "srv5")], operation: "d0-release" as NonEmptyStr }
+}
+
+test fn a_full_retired_group_a_saga_then_group_b_folds_through_the_real_codec() -> Bool {
+  let prep = ChainEvent { partition: host_placement_partition, parent: none, recorded_at: 100, actor: "witness" as NonEmptyStr, payload: PlacementPrepared { operation: "d0-release" as NonEmptyStr, group: RecordedRetiredGroupA, previous_hosts: [] as List<HostIdentity>, next_hosts: [alw_host(s: "srv5")] } }
+  let claim = ChainEvent { partition: host_placement_partition, parent: Present { value: "a1" as EventId }, recorded_at: 110, actor: "witness" as NonEmptyStr, payload: PlacementAppendClaimed { preparation: "a1" as EventId, intent: alw_retired_intent() } }
+  let fin = ChainEvent { partition: host_placement_partition, parent: Present { value: "a2" as EventId }, recorded_at: 120, actor: "witness" as NonEmptyStr, payload: PlacementFinalized { preparation: alw_retired_ref(), authority_event: "ga-auth-1" as EventId } }
+  let b = alw_prepare(parent: Present { value: "a3" as EventId }, group: FabricGroupB {}, previous: [] as List<HostIdentity>, next: [alw_host(s: "srv9")], at: 200)
+  match alw_through_codec(id: "a1", e: prep) {
+    Absent => false
+    Present { value: e1 } => match alw_through_codec(id: "a2", e: claim) {
+      Absent => false
+      Present { value: e2 } => match alw_through_codec(id: "a3", e: fin) {
+        Absent => false
+        Present { value: e3 } => match alw_through_codec(id: "b1", e: b) {
+          Absent => false
+          Present { value: e4 } => match placement_fold(oldest_first: [e1, e2, e3, e4]) {
+            PlacementFoldRefused { at_event: _, reason: _ } => false
+            PlacementFolded { effects: _, preparations: ps } =>
+              length(ps) == 2
+                && same_host_set(a: group_fenced_hosts(preps: ps, group: FabricGroupB {}), b: [alw_host(s: "srv9")])
+                && any(ps, r => (r.id as String) == "a1" && (match r.state { Finalized { authority_event: _, finalized_by: _, intent: _ } => true  _ => false }))
+          }
+        }
+      }
+    }
   }
 }

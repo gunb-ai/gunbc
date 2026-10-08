@@ -354,6 +354,55 @@ fn same_recorded(a: RecordedFabricGroup, b: RecordedFabricGroup) -> Bool {
   recorded_group_wire(r: a) == recorded_group_wire(r: b)
 }
 
+// THE SAME RETIREMENT ONE LEVEL DOWN: an authority-write intent carries the authority states it moves
+// between, and a Group A intent (D0's release saga claimed its append on this partition) carries Group A
+// states. So an intent's previous and next are RecordedAuthority: a live writer mints only
+// RecordedLiveAuthority; a retired Group A state keeps its state word as history and nothing else, so it
+// has no hosts to fence, no realization to launch and no shape any live API accepts.
+type RecordedAuthority
+  = RecordedLiveAuthority { authority: PairServingGroupAuthority }
+  | RecordedRetiredGroupAAuthority { state: NonEmptyStr }
+
+fn recorded_authority_eq(a: RecordedAuthority, b: RecordedAuthority) -> Bool {
+  match a {
+    RecordedLiveAuthority { authority: x } => match b { RecordedLiveAuthority { authority: y } => authority_eq(a: x, b: y)  RecordedRetiredGroupAAuthority { state: _ } => false }
+    RecordedRetiredGroupAAuthority { state: s1 } => match b { RecordedLiveAuthority { authority: _ } => false  RecordedRetiredGroupAAuthority { state: s2 } => (s1 as String) == (s2 as String) }
+  }
+}
+
+fn optional_recorded_authority_eq(a: RecordedAuthority?, b: RecordedAuthority?) -> Bool {
+  match a {
+    Absent => match b { Absent => true  Present { value: _ } => false }
+    Present { value: x } => match b { Absent => false  Present { value: y } => recorded_authority_eq(a: x, b: y) }
+  }
+}
+
+fn recorded_authority_members(prefix: String, r: RecordedAuthority) -> List<JsonKeyValue> {
+  match r {
+    RecordedLiveAuthority { authority: a } => authority_members(prefix: prefix, a: a)
+    RecordedRetiredGroupAAuthority { state: st } =>
+      [kv(prefix: prefix, key: "state", value: st as String), kv(prefix: prefix, key: "group", value: recorded_retired_group_a_wire)]
+  }
+}
+
+fn recorded_authority_decode(doc: JsonValue, prefix: String) -> RecordedAuthority? {
+  match member_string(doc: doc, key: join([prefix, "group"], "")) {
+    Absent => none
+    Present { value: gw } =>
+      if gw == recorded_retired_group_a_wire {
+        match member_nonempty(doc: doc, key: join([prefix, "state"], "")) {
+          Absent => none
+          Present { value: st } => Present { value: RecordedRetiredGroupAAuthority { state: st } }
+        }
+      } else {
+        match authority_decode(doc: doc, prefix: prefix) {
+          Absent => none
+          Present { value: a } => Present { value: RecordedLiveAuthority { authority: a } }
+        }
+      }
+  }
+}
+
 fn hosts_union(a: List<HostIdentity>, b: List<HostIdentity>) -> List<HostIdentity> {
   concat(a, filter(b, h => !any(a, x => host_identity_eq(a: x, b: h))))
 }
@@ -387,8 +436,8 @@ type AuthorityWriteIntent {
   group: RecordedFabricGroup
   expected_head: HeadExpectation
   actor: NonEmptyStr
-  previous: PairServingGroupAuthority?
-  next: PairServingGroupAuthority
+  previous: RecordedAuthority?
+  next: RecordedAuthority
   operation: NonEmptyStr
   lifecycle: ContentHash?
   grant: LeaseGrant?
@@ -396,7 +445,7 @@ type AuthorityWriteIntent {
 }
 
 fn authority_write_intent(group: FabricGroup, head: HeadExpectation, actor: NonEmptyStr, previous: PairServingGroupAuthority?, next: PairServingGroupAuthority, operation: NonEmptyStr, lifecycle: ContentHash?, grant: LeaseGrant?, entry_state: ContentHash?) -> AuthorityWriteIntent {
-  AuthorityWriteIntent { group: recorded_group(g: group), expected_head: head, actor: actor, previous: previous, next: next, operation: operation, lifecycle: lifecycle, grant: grant, entry_state: entry_state }
+  AuthorityWriteIntent { group: recorded_group(g: group), expected_head: head, actor: actor, previous: match previous { Absent => none  Present { value: p } => Present { value: RecordedLiveAuthority { authority: p } } }, next: RecordedLiveAuthority { authority: next }, operation: operation, lifecycle: lifecycle, grant: grant, entry_state: entry_state }
 }
 
 // The intent an authority event proves, derived from the event: its parent is the head, its
@@ -413,13 +462,6 @@ fn optional_hash_eq(a: ContentHash?, b: ContentHash?) -> Bool {
   }
 }
 
-fn optional_authority_eq(a: PairServingGroupAuthority?, b: PairServingGroupAuthority?) -> Bool {
-  match a {
-    Absent => (match b { Absent => true  Present { value: _ } => false })
-    Present { value: x } => (match b { Absent => false  Present { value: y } => authority_eq(a: x, b: y) })
-  }
-}
-
 fn grant_wire(g: LeaseGrant?) -> String {
   serialize_json(v: json_object(members: grant_members(g: g)))
 }
@@ -428,8 +470,8 @@ fn write_intent_eq(a: AuthorityWriteIntent, b: AuthorityWriteIntent) -> Bool {
   same_recorded(a: a.group, b: b.group)
     && head_expectation_eq(a: a.expected_head, b: b.expected_head)
     && (a.actor as String) == (b.actor as String)
-    && optional_authority_eq(a: a.previous, b: b.previous)
-    && authority_eq(a: a.next, b: b.next)
+    && optional_recorded_authority_eq(a: a.previous, b: b.previous)
+    && recorded_authority_eq(a: a.next, b: b.next)
     && (a.operation as String) == (b.operation as String)
     && optional_hash_eq(a: a.lifecycle, b: b.lifecycle)
     && grant_wire(g: a.grant) == grant_wire(g: b.grant)
@@ -448,8 +490,8 @@ fn write_intent_members(i: AuthorityWriteIntent) -> List<JsonKeyValue> {
       kv(prefix: "intent_", key: "operation", value: i.operation as String),
     ],
     concat(
-      match i.previous { Absent => [] as List<JsonKeyValue>  Present { value: p } => authority_members(prefix: "intent_prev_", a: p) },
-      concat(authority_members(prefix: "intent_next_", a: i.next), concat(lifecycle_members(l: i.lifecycle), concat(grant_members(g: i.grant), entry_state_members(d: i.entry_state)))),
+      match i.previous { Absent => [] as List<JsonKeyValue>  Present { value: p } => recorded_authority_members(prefix: "intent_prev_", r: p) },
+      concat(recorded_authority_members(prefix: "intent_next_", r: i.next), concat(lifecycle_members(l: i.lifecycle), concat(grant_members(g: i.grant), entry_state_members(d: i.entry_state)))),
     ),
   )
 }
@@ -909,7 +951,7 @@ fn optional_hash_member(doc: JsonValue, key: String) -> OptionalHashMember {
 // nor its group present is "no previous state"; either present without a whole authority is
 // incoherent.
 type PreviousAuthorityMember
-  = PreviousAuthorityDecoded { previous: PairServingGroupAuthority? }
+  = PreviousAuthorityDecoded { previous: RecordedAuthority? }
   | PreviousAuthorityIncoherent
 
 fn previous_authority_member(doc: JsonValue) -> PreviousAuthorityMember {
@@ -918,7 +960,7 @@ fn previous_authority_member(doc: JsonValue) -> PreviousAuthorityMember {
   if !named {
     PreviousAuthorityDecoded { previous: none }
   } else {
-    match authority_decode(doc: doc, prefix: "intent_prev_") {
+    match recorded_authority_decode(doc: doc, prefix: "intent_prev_") {
       Absent => PreviousAuthorityIncoherent
       Present { value: p } => PreviousAuthorityDecoded { previous: Present { value: p } }
     }
@@ -944,7 +986,7 @@ fn write_intent_decode(doc: JsonValue) -> AuthorityWriteIntent? {
                       match previous_authority_member(doc: doc) {
                         PreviousAuthorityIncoherent => none
                         PreviousAuthorityDecoded { previous: p } =>
-                          match authority_decode(doc: doc, prefix: "intent_next_") {
+                          match recorded_authority_decode(doc: doc, prefix: "intent_next_") {
                             Absent => none
                             Present { value: n } =>
                               match optional_hash_member(doc: doc, key: "lifecycle") {
@@ -1288,6 +1330,25 @@ fn recorded_preparation_ref_refusal(carried: PlacementPreparationRef, group: Rec
   }
 }
 
+// A CLAIM'S INTENT AGAINST ITS PREPARATION, over recorded groups and recorded states. A retired intent is
+// history of a retired preparation; a live intent must carry live states (a live group naming a retired
+// state is incoherent and refuses) and is checked exactly as before.
+fn recorded_intent_ref_refusal(carried: PlacementPreparationRef, i: AuthorityWriteIntent) -> String? {
+  match i.group {
+    RecordedRetiredGroupA => recorded_preparation_ref_refusal(carried: carried, group: RecordedRetiredGroupA, previous: [] as List<HostIdentity>, next: [] as List<HostIdentity>, operation: i.operation)
+    RecordedLiveGroup { group: g } =>
+      match i.next {
+        RecordedRetiredGroupAAuthority { state: _ } => Present { value: "a live group's intent names a retired group-a state" }
+        RecordedLiveAuthority { authority: n } =>
+          match i.previous {
+            Absent => preparation_ref_refusal(carried: carried, group: g, previous: [] as List<HostIdentity>, next: committed_population(a: n), operation: i.operation)
+            Present { value: RecordedRetiredGroupAAuthority { state: _ } } => Present { value: "a live group's intent names a retired group-a previous state" }
+            Present { value: RecordedLiveAuthority { authority: p } } => preparation_ref_refusal(carried: carried, group: g, previous: committed_population(a: p), next: committed_population(a: n), operation: i.operation)
+          }
+      }
+  }
+}
+
 fn recorded_preparation_refusal(effects: List<HostEffectRecord>, preps: List<PlacementPreparationRecord>, group: RecordedFabricGroup, previous_hosts: List<HostIdentity>, next_hosts: List<HostIdentity>, at: EpochSecs) -> String? {
   match group {
     RecordedLiveGroup { group: g } => preparation_refusal(effects: effects, preps: preps, group: g, previous_hosts: previous_hosts, next_hosts: next_hosts, at: at)
@@ -1463,7 +1524,7 @@ fn placement_fold_step(acc: PlacementFold, env: ChainEnvelope<PairAuthorityEvent
               match r {
                 Absent => PlacementFoldRefused { at_event: env.id, reason: join(["an append claim names no Prepared preparation ", pr as String], "") }
                 Present { value: record } =>
-                  match recorded_preparation_ref_refusal(carried: preparation_ref_of(r: record), group: i.group, previous: intent_previous_population(i: i), next: committed_population(a: i.next), operation: i.operation) {
+                  match recorded_intent_ref_refusal(carried: preparation_ref_of(r: record), i: i) {
                     Present { value: why } => PlacementFoldRefused { at_event: env.id, reason: join(["an append claim's intent is not the write its preparation is for: ", why], "") }
                     Absent => PlacementFolded { effects: effs, preparations: map(preps, x => if (x.id as String) == (pr as String) { preparation_with_state(r: x, state: AppendClaimed { claimant: i.actor, expected_head: i.expected_head, intent: i }) } else { x }) }
                   }
@@ -1821,10 +1882,6 @@ type PlacementAppendClaim
   | PlacementAppendClaimRefused { step: String, reason: String }
 
 // The population an intent leaves: none before the establishment.
-fn intent_previous_population(i: AuthorityWriteIntent) -> List<HostIdentity> {
-  match i.previous { Absent => [] as List<HostIdentity>  Present { value: p } => committed_population(a: p) }
-}
-
 // THE CLAIM IS ITS INTENT: the claimant is the intent's actor (the event is written by it) and the
 // head it will CAS against is the intent's; the fold keeps them on the record as the intent says.
 fn placement_claim_append(store: FabricStorageBinding, preparation: EventId, intent: AuthorityWriteIntent, at: EpochSecs) -> PlacementAppendClaim {
