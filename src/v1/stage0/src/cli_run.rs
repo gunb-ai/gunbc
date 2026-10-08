@@ -3498,6 +3498,28 @@ mod cli_run_arg_channel_tests {
             "diagnostic names parameter, resolved type, and declared predicate: {err}"
         );
     }
+
+    #[test]
+    fn bind_run_args_for_entry_duplicate_or_unknown_name_refuses() {
+        let ctx = resolved_bind_probe_ctx();
+        let dup = bind_run_args_for_entry(
+            &ctx,
+            "bind_probe",
+            &[
+                ("n".to_string(), "1".to_string()),
+                ("n".to_string(), "2".to_string()),
+            ],
+        )
+        .expect_err("duplicate --arg name must refuse on the production loop");
+        assert!(dup.contains("more than once"), "{dup}");
+        let unknown =
+            bind_run_args_for_entry(&ctx, "bind_probe", &[("nope".to_string(), "1".to_string())])
+                .expect_err("unknown --arg name must refuse on the production loop");
+        assert!(
+            unknown.contains("nope") && unknown.contains("declared:"),
+            "{unknown}"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -20227,7 +20249,9 @@ pub fn bind_run_arg_specs_against_admissions(
 /// Bind `--arg` text against `entry_fn`'s resolved parameter types.
 ///
 /// No `.dag` binder exists: `gunbc.cli_dispatch_surface` owns the option as
-/// `CliTextValue` (argv is text). This seed function is the typed inhabitance.
+/// `CliTextValue` (argv is text). This seed function derives admissions from
+/// the resolved where-chain, then the one bind loop in
+/// [`bind_run_arg_specs_against_admissions`].
 pub fn bind_run_args_for_entry(
     ctx: &v1_interpreter::InterpContext,
     entry_fn: &str,
@@ -20238,36 +20262,11 @@ pub fn bind_run_args_for_entry(
     }
     let declared = v1_interpreter::declared_parameter_type_exprs(ctx, entry_fn)
         .ok_or_else(|| format!("--arg: function `{entry_fn}` is not in the loaded entry"))?;
-    let mut seen = HashSet::new();
-    let mut bound = Vec::with_capacity(specs.len());
-    for (name, text) in specs {
-        if !seen.insert(name.clone()) {
-            return Err(format!(
-                "--arg `{name}`: supplied more than once for function `{entry_fn}`"
-            ));
-        }
-        let ty = match declared.iter().find(|(n, _)| n == name) {
-            Some((_, ty)) => ty.clone(),
-            None => {
-                let known: Vec<&str> = declared.iter().map(|(n, _)| n.as_str()).collect();
-                return Err(format!(
-                    "--arg `{name}`: function `{entry_fn}` has no parameter `{name}` \
-                     (declared: {})",
-                    if known.is_empty() {
-                        "(none)".to_string()
-                    } else {
-                        known.join(", ")
-                    }
-                ));
-            }
-        };
-        let admission = cli_arg_admission_from_type_expr(ctx, ty);
-        bound.push((
-            Some(name.clone()),
-            bind_cli_arg_text(entry_fn, name, &admission, text)?,
-        ));
-    }
-    Ok(bound)
+    let admissions: Vec<(String, CliArgAdmission)> = declared
+        .into_iter()
+        .map(|(name, ty)| (name, cli_arg_admission_from_type_expr(ctx, ty)))
+        .collect();
+    bind_run_arg_specs_against_admissions(entry_fn, &admissions, specs)
 }
 
 struct ScopedRunObservation {
