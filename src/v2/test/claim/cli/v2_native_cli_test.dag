@@ -30,7 +30,7 @@ import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.std.algebra { length, list_head, HeadAbsent, HeadFound }
 import v2.std.artifact { Artifact, SourceFile }
 import extdeps.communication.medium { Lossless, Medium }
-import v2.std.cross_tree.import_model { DagTree }
+import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
 import v2.std.node { Symbol }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
@@ -476,6 +476,99 @@ test fn a_trailing_token_refusal_locates_its_fatal_in_the_file_holds() -> Bool {
         && string_contains(s: detail, pattern: "parse_g0_tokens_remain @ cli_probe_trailing_cu bytes ")
     CliUsageRefused { reason: _, detail: _ } => false
     CliEmitted { text: _, closure_size: _, refused_count: _, refusal_detail: _ } => false
+    CliDifferentialReported { text: _, observed: _, detail: _ } => false
+  }
+}
+
+data cli_dup_a_source: String = "module fixture.native_ingest.collision\n\ndata cli_dup_a_value: Int = 1\n"
+
+data cli_dup_b_source: String = "module fixture.native_ingest.collision\n\ndata cli_dup_b_value: Int = 2\n"
+
+data cli_dup_ingest: SourceRootIngest = [
+  cli_probe_read(source: cli_dup_a_source, id: ^cli_dup_a_artifact, unit: ^cli_dup_a_cu, path: "dag/collision_a.dag"),
+  cli_probe_read(source: cli_dup_b_source, id: ^cli_dup_b_artifact, unit: ^cli_dup_b_cu, path: "dag/collision_b.dag")
+]
+
+data argv_emit_collision: FreeMonoid<String> = Cons {
+  head: "emit",
+  tail: Cons {
+    head: "--entry",
+    tail: Cons {
+      head: "fixture.native_ingest.collision",
+      tail: Cons { head: "--source-root", tail: Cons { head: "dag", tail: Empty } }
+    }
+  }
+}
+
+fn cli_dup_outcome() -> CliRunOutcome {
+  v2_cli_run(
+    plan: v2_cli_parse(argv: argv_of(items: argv_emit_collision)),
+    ingest: cli_dup_ingest
+  )
+}
+
+test fn two_files_declaring_one_module_refuse_as_a_census_collision_holds() -> Bool {
+  match cli_dup_outcome() {
+    CliCensusRefused { reason: reason, detail: detail, text: _ } =>
+      reason == ^closure_census_duplicate_module
+        && string_contains(s: detail, pattern: "cli_dup_a_cu")
+        && string_contains(s: detail, pattern: "cli_dup_b_cu")
+    CliRunRefused { reason: reason, detail: detail } =>
+      reason == ^closure_census_duplicate_module
+        && string_contains(s: detail, pattern: "cli_dup_a_cu")
+        && string_contains(s: detail, pattern: "cli_dup_b_cu")
+    CliUsageRefused { reason: _, detail: _ } => false
+    CliEmitted { text: _, closure_size: _, refused_count: _, refusal_detail: _ } => false
+    CliDifferentialReported { text: _, observed: _, detail: _ } => false
+  }
+}
+
+fn cli_distinct_read(
+  source: String,
+  id: Symbol,
+  unit: Symbol,
+  path: String,
+  root: SourceRootRef
+) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: root
+  }
+}
+
+data cli_distinct_dag_source: String = "module fixture.native_ingest.dag_entry\n\ndata native_ingest_dag_entry_value: Int = 1\n"
+
+data cli_distinct_v2_source: String = "module fixture.native_ingest.v2_other\n\ndata native_ingest_v2_other_value: Int = 2\n"
+
+data cli_distinct_ingest: SourceRootIngest = [
+  cli_distinct_read(source: cli_distinct_dag_source, id: ^cli_distinct_dag_artifact, unit: ^cli_distinct_dag_cu, path: "dag/native_ingest_dag_entry.dag", root: DagTree),
+  cli_distinct_read(source: cli_distinct_v2_source, id: ^cli_distinct_v2_artifact, unit: ^cli_distinct_v2_cu, path: "src/v2/native_ingest_v2_other.dag", root: V2Tree)
+]
+
+data argv_emit_distinct: FreeMonoid<String> = Cons {
+  head: "emit",
+  tail: Cons {
+    head: "--entry",
+    tail: Cons {
+      head: "fixture.native_ingest.dag_entry",
+      tail: Cons { head: "--source-root", tail: Cons { head: "dag", tail: Empty } }
+    }
+  }
+}
+
+test fn distinct_module_paths_across_two_roots_do_not_refuse_as_a_collision_holds() -> Bool {
+  match v2_cli_run(
+    plan: v2_cli_parse(argv: argv_of(items: argv_emit_distinct)),
+    ingest: cli_distinct_ingest
+  ) {
+    CliCensusRefused { reason: reason, detail: _, text: _ } =>
+      reason != ^closure_census_duplicate_module
+    CliRunRefused { reason: reason, detail: _ } =>
+      reason != ^closure_census_duplicate_module
+    CliUsageRefused { reason: _, detail: _ } => false
+    CliEmitted { text: _, closure_size: _, refused_count: _, refusal_detail: _ } => true
     CliDifferentialReported { text: _, observed: _, detail: _ } => false
   }
 }

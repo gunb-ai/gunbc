@@ -62,6 +62,7 @@ import v2.std.diagnostic {
   bind_outcome,
   diagnostics_fatal,
   diagnostics_fatal_reason,
+  diagnostics_singleton,
   non_empty_diagnostics_append,
   node_locus,
   outcome_accepted,
@@ -77,7 +78,7 @@ import v2.std.resolution_policy { default_name_resolution_policy }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 import v2.std.grammar { ParseTree }
 import v2.std.integer { Int }
-import std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 
@@ -219,10 +220,11 @@ fn closure_ingest_step(
             o: qualified_name_from_module_node(root: census.root),
             f: fn(module_qn) {
               if closure_ingest_declares(files: acc.files, member_module: module_qn) {
-                outcome_rejected(d: closure_emission_diagnostic(
-                  reason: ^closure_census_duplicate_module,
-                  at: census.root
-                ))
+                closure_census_duplicate_module_outcome(
+                  files: acc.files,
+                  member_module: module_qn,
+                  second_root: census.root
+                )
               } else {
                 outcome_accepted(value: ClosureIngest {
                   files: list_snoc_item(xs: acc.files, item: ClosureIngestFile {
@@ -311,6 +313,51 @@ fn closure_census_index(files: FreeMonoid<ClosureIngestFile>) -> SymbolIndex {
 // population is in view, so the wall lives there (review of gunbc#12218 at 242b7af).
 fn closure_ingest_declares(files: FreeMonoid<ClosureIngestFile>, member_module: QualifiedName) -> Bool {
   fold_list(xs: files, empty: false, cons: fn(found, f) { found || f.module == member_module })
+}
+
+fn closure_ingest_first_declaring(
+  files: FreeMonoid<ClosureIngestFile>,
+  member_module: QualifiedName
+) -> Optional<ClosureIngestFile> {
+  fold_list(xs: files, empty: optional_absent(), cons: fn(found, f) {
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        if f.module == member_module {
+          optional_present(value: f)
+        } else {
+          found
+        }
+    }
+  })
+}
+
+// BOTH FILES, because a collision is a two-place fact. Locating only the second file's module
+// node left the first unnamed, and a later resolve diagnostic at an innocent token was then
+// read as the cause.
+fn closure_census_duplicate_module_diagnostics(first: Node, second: Node) -> NonEmptyDiagnostics {
+  non_empty_diagnostics_append(
+    a: diagnostics_singleton(d: closure_emission_diagnostic(reason: ^closure_census_duplicate_module, at: first)),
+    b: diagnostics_singleton(d: closure_emission_diagnostic(reason: ^closure_census_duplicate_module, at: second))
+  )
+}
+
+fn closure_census_duplicate_module_outcome(
+  files: FreeMonoid<ClosureIngestFile>,
+  member_module: QualifiedName,
+  second_root: Node
+) -> Outcome<ClosureIngest> {
+  match closure_ingest_first_declaring(files: files, member_module: member_module) {
+    Present { value: first } =>
+      Rejected {
+        diagnostics: closure_census_duplicate_module_diagnostics(
+          first: first.census.root,
+          second: second_root
+        )
+      }
+    Absent =>
+      outcome_rejected(d: closure_emission_diagnostic(reason: ^closure_census_duplicate_module, at: second_root))
+  }
 }
 
 // EXACTLY ONE FILE, OR A TYPED REFUSAL. The census makes more than one unreachable, and it is refused

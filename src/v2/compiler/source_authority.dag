@@ -483,8 +483,15 @@ fn source_ref_path(ref: SourceRef) -> String {
   ref.path
 }
 
+// Tree identity is a PATH COMPONENT, not a prefix of the walk spelling. A source root that
+// already is `src/v2` stores `src/v2/std/algebra.dag` and the old prefix test classified it.
+// The same file under a copied closure (`/tmp/copy/src/v2/std/algebra.dag`) does not start
+// with `src/`, so both dag and v2 files became DagTree and the native door resolved a real
+// token as `resolve_unbound_name_is_declared_elsewhere` instead of keeping the two trees
+// distinct. `/src/` as a directory boundary recovers that layout; a relative `src/` prefix
+// still recovers the in-repo walk.
 fn source_root_for_storage_path(path: String) -> SourceRootRef {
-  if starts_with(s: path, prefix: "src/") {
+  if starts_with(s: path, prefix: "src/") || string_contains(s: path, pattern: "/src/") {
     V2Tree
   } else {
     DagTree

@@ -1,10 +1,13 @@
 module v2.test.claim.source_root_tagging
 
-import v2.std.live_tree { LiveTreeDisposition }
-import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.compiler.source_authority {
+  DagSourceReadWitness,
+  SourceRootIngest,
+  source_root_for_storage_path,
+  source_root_set_from_ingest
+}
 import v2.std.artifact { Artifact, SourceFile }
 import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.source_authority { DagSourceReadWitness, source_root_set_from_ingest }
 import v2.std.cross_tree.import_model { DagTree, V2Tree, source_root_set_contains }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -35,6 +38,34 @@ data sr_tag_dag_read: DagSourceReadWitness = DagSourceReadWitness {
 
 data sr_tag_mixed_ingest: SourceRootIngest = [sr_tag_v2_read, sr_tag_dag_read]
 data sr_tag_v2_only_ingest: SourceRootIngest = [sr_tag_v2_read]
+
+test fn a_repo_relative_src_path_is_v2_tree() -> Bool {
+  match source_root_for_storage_path(path: "src/v2/std/algebra.dag") {
+    V2Tree => true
+    DagTree => false
+  }
+}
+
+test fn a_repo_relative_dag_path_is_dag_tree() -> Bool {
+  match source_root_for_storage_path(path: "dag/std/algebra.dag") {
+    DagTree => true
+    V2Tree => false
+  }
+}
+
+test fn a_copied_src_path_under_another_root_is_still_v2_tree() -> Bool {
+  match source_root_for_storage_path(path: "/tmp/copied-closure/src/v2/std/algebra.dag") {
+    V2Tree => true
+    DagTree => false
+  }
+}
+
+test fn a_copied_dag_path_under_another_root_is_still_dag_tree() -> Bool {
+  match source_root_for_storage_path(path: "/tmp/copied-closure/dag/std/algebra.dag") {
+    DagTree => true
+    V2Tree => false
+  }
+}
 
 test fn source_root_tag_carried_and_folded_to_grounded_set() -> Bool {
   let mixed = source_root_set_from_ingest(ingest: sr_tag_mixed_ingest)
