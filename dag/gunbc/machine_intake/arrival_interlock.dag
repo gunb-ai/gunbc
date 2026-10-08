@@ -12,7 +12,6 @@ import gunbc.durable_exclusive_hold_file_store {
   FileHoldReleasePlanned, FileHoldReleaseNotEligible,
   FileHoldReleased, FileHoldReleaseLost, FileHoldReleaseStoreUnavailable, FileHoldReleaseKeyNotSlotAddressable,
 }
-import gunbc.managed_host_unit_hold { unit_hold_store_root }
 import gunbc.machine_intake_bmc_rotation_route {
   BmcRotationRouteStanding, rotation_route_is_grounded,
 }
@@ -105,9 +104,9 @@ type ArrivalArchiveSlotRelease
   = ArrivalArchiveSlotReleased { generation: CasGeneration }
   | ArrivalArchiveSlotReleaseRefused { cause: NonEmptyStr }
 
-fn arrival_archive_slot_acquire(subject: ArrivalSubjectAdmitted, owner: DurableHoldOwnerRef) -> ArrivalArchiveSlotAcquire {
+fn arrival_archive_slot_acquire(root: NonEmptyStr, subject: ArrivalSubjectAdmitted, owner: DurableHoldOwnerRef) -> ArrivalArchiveSlotAcquire {
   let key = arrival_slot_key(subject_wire: subject.wire)
-  match file_hold_acquire(root: unit_hold_store_root, slot_key: key, requested_owner: owner) {
+  match file_hold_acquire(root: root, slot_key: key, requested_owner: owner) {
     FileHoldOccupied { slot_key: k, holder: h, generation: g } =>
       ArrivalArchiveSlotAcquireRefused { cause: arrival_slot_acquire_refusal(outcome: FileHoldOccupied { slot_key: k, holder: h, generation: g }) }
     FileHoldAcquireLost { slot_key: k } =>
@@ -125,9 +124,9 @@ fn arrival_archive_slot_acquire(subject: ArrivalSubjectAdmitted, owner: DurableH
   }
 }
 
-fn arrival_archive_slot_release(held: ArrivalArchiveSlotHeld) -> ArrivalArchiveSlotRelease {
+fn arrival_archive_slot_release(root: NonEmptyStr, held: ArrivalArchiveSlotHeld) -> ArrivalArchiveSlotRelease {
   match file_hold_release_assess(
-    root: unit_hold_store_root,
+    root: root,
     slot_key: held.slot_key,
     owner: held.owner,
     acquired_generation: held.generation,

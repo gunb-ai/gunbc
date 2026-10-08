@@ -20,6 +20,7 @@ import gunbc.machine_intake_arrival_subject {
 import gunbc.machine_intake_arrival_interlock {
   arrival_archive_slot_acquire, arrival_archive_slot_release, arrival_after_acquire,
 }
+import gunbc.managed_host_unit_hold { unit_hold_store_root }
 
 // THE ARRIVAL JOB'S WET DOOR (review 77263, review 77435, review 77746). Re-runs credential-free
 // admit so WIF cannot outrun a refused subject, then requires WorkloadIdentityToken (the minted
@@ -75,13 +76,14 @@ fn arrival_converge_under_archive_interlock(subject: ArrivalSubjectAdmitted) -> 
     ActionsVariablePresent { value: run_id } =>
       arrival_after_acquire(
         outcome: arrival_archive_slot_acquire(
+          root: unit_hold_store_root,
           subject: subject,
           owner: join(["arrival-converge:", run_id], "") as DurableHoldOwnerRef,
         ),
         body: fn() {
           arrival_wet_prefix_from_unobserved_world()
         },
-        release_fn: fn(h) { arrival_archive_slot_release(held: h) },
+        release_fn: fn(h) { arrival_archive_slot_release(root: unit_hold_store_root, held: h) },
       )
   }
 }
