@@ -1,0 +1,32 @@
+module test.claim.parse_test_parse_acceptance_census
+
+import v2.compiler.parse_acceptance_census { parse_acceptance_of_text }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CENSUS'S CLASSIFIER, EXECUTED. v2.compiler.parse_acceptance_census reads each listed path and
+// reports `accepted`, `refused <fatal reason> <start>..<end>`, or `unreadable`; everything but the read
+// is parse_acceptance_of_text, a pure function of the text. These claims supply the text (DESIGN
+// section 3: the input belongs at the interface as a supplied value) and pin the exact line the census
+// prints for each arm: an accepted module, and a refusal named by its typed reason at its byte range.
+// The read is the hand-run entry the module header names. The accepted text is the smallest module
+// with one declaration, because WHICH construct is accepted is not this claim's subject: a
+// block-headed operand accepted through this same route is held by
+// test.claim.parse_test_block_headed_operand_class
+// a_block_headed_left_operand_parses_on_the_real_module_route_holds.
+
+data census_accepted_source: String = "module p\ndata d: Int = 1\n"
+
+// The `-` that begins the last line is at bytes 45..46.
+data census_refused_source: String = "module probe.census_refused\n\ndata d: Int = x\n- 1\n"
+
+test fn the_census_reports_an_accepted_module_holds() -> Bool {
+  parse_acceptance_of_text(text: census_accepted_source, path: "probe/census_ok.dag") == "accepted"
+}
+
+test fn the_census_reports_a_refusal_by_reason_and_extent_holds() -> Bool {
+  parse_acceptance_of_text(text: census_refused_source, path: "probe/census_refused.dag")
+    == "refused parse_newline_before_dual_role_operator 45..46"
+}

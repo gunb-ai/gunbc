@@ -52,6 +52,8 @@ type TargetProducer
   | SelfHostBehavioralEquivalenceProducer
   | DependencyDemandCensusProducer
   | GenericIdentityCensusProducer
+  | InterpolationHoleCensusProducer
+  | RegenRoundCostProducer
   | NativeClaimProgramProducer { entry: String }
   | NativeServeProgramProducer { entry: String }
 
