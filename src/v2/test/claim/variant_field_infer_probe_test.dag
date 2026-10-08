@@ -704,10 +704,27 @@ fn vfp_formal_gate_reading() -> VfpReading { vfp_reading(src: vfp_formal_gate_sr
 
 fn vfp_formal_gate_concrete_reading() -> VfpReading { vfp_reading(src: vfp_formal_gate_concrete_src) }
 
+// ONE WARM NULLARY PRODUCER for both formal-gate claims (the match_binder pattern
+// mbt_program_reading uses): two claims demanding one producer put its least common ancestor at
+// the shared preparation frame, so the two fixture fills run once and each claim's own frame is
+// its field reads -- per-fixture fills measured 341,777 and 727,954 eval steps against the 72,300
+// new-witness budget on floor run 37757604769 when each claim demanded its own fill.
+type VfpFormalGatePair {
+  formal: VfpReading
+  concrete: VfpReading
+}
+
+fn vfp_formal_gate_pair() -> VfpFormalGatePair {
+  VfpFormalGatePair {
+    formal: vfp_formal_gate_reading(),
+    concrete: vfp_formal_gate_concrete_reading()
+  }
+}
+
 test fn vfp_the_formal_payload_binder_refuses_at_prepare_red() -> Bool {
-  vfp_formal_gate_reading().match_fact == ^resolve_reason_pattern_payload_formal_uninstantiated
+  vfp_formal_gate_pair().formal.match_fact == ^resolve_reason_pattern_payload_formal_uninstantiated
 }
 
 test fn vfp_the_concrete_payload_sibling_still_prepares_holds() -> Bool {
-  vfp_infers(reading: vfp_formal_gate_concrete_reading())
+  vfp_infers(reading: vfp_formal_gate_pair().concrete)
 }
