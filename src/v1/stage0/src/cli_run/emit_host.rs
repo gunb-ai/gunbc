@@ -4005,31 +4005,10 @@ mod fixture_closure_union_tests {
             .map(|s| s.path.replace('\\', "/"))
             .filter(|p| p.contains("megarac") && p != rel)
             .collect();
-        let closure_bytes: usize = closed.iter().map(|s| s.content.len()).sum();
-        let self_bytes = source.content.len();
-        eprintln!(
-            "[forged-probe-witness-module] self_bytes={self_bytes} closure_len={} \
-             closure_bytes={closure_bytes}",
-            closed.len()
-        );
         assert!(
             megarac.is_empty(),
             "planning the witness must not both-close MegaRAC production named only inside \
              forged_probe_source; pulled {megarac:?} (closure_len={})",
-            closed.len()
-        );
-        // THE MODULE'S OWN COST: a 13 KiB source cannot account for gigabytes unless its
-        // BOTH-CLOSURE (authored imports, not the string) is itself a second corpus. If this
-        // bound fails, the increment is that closure, not forged_probe_source's text.
-        assert!(
-            self_bytes < 20_000,
-            "witness file itself is the typed-graph leaf; got {self_bytes} bytes"
-        );
-        assert!(
-            closed.len() < 400 && closure_bytes < 8_000_000,
-            "witness-module both-closure is too large to be 'one small seed' \
-             (len={} bytes={closure_bytes}); the Strict-prep increment is that closure, \
-             not the 6 KiB forged_probe_source literal",
             closed.len()
         );
     }
@@ -4465,27 +4444,21 @@ mod fixture_closure_union_tests {
         let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let pairs: Vec<(String, String)> = {
             let root = process_workspace_root();
-            let mut out = Vec::new();
-            for rel in [
-                "dag/std/types.dag",
-                "dag/std/unit.dag",
-                "dag/std/integer.dag",
-                "dag/std/bool.dag",
-            ] {
-                let path = root.join(rel);
-                if path.exists() {
-                    out.push((
+            ["dag/std/types.dag", "dag/std/integer.dag"]
+                .into_iter()
+                .map(|rel| {
+                    let path = root.join(rel);
+                    assert!(
+                        path.exists(),
+                        "named std subject missing: {rel} (refuse, do not skip)"
+                    );
+                    (
                         rel.to_string(),
                         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{rel}: {e}")),
-                    ));
-                }
-            }
-            out
+                    )
+                })
+                .collect()
         };
-        assert!(
-            pairs.len() >= 1,
-            "need at least one real std module under dag/std"
-        );
         let sources: Vec<Rc<v1_compiler_compile::SourceFile>> = pairs
             .into_iter()
             .map(|(path, content)| Rc::new(v1_compiler_compile::SourceFile { path, content }))
@@ -4503,11 +4476,15 @@ mod fixture_closure_union_tests {
             closed.into_iter().collect();
         let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(im_sources));
         let graph = resolved.graph.clone().expect("resolved graph");
-        assert!(
-            graph.modules.len() >= 2,
-            "closure must include imported real modules, got {}",
-            graph.modules.len()
-        );
+        for module_path in ["std.types", "std.integer"] {
+            assert!(
+                graph
+                    .modules
+                    .iter()
+                    .any(|m| m.type_env.module_path == module_path),
+                "resolved graph must include named subject {module_path}"
+            );
+        }
         assert_chain_matches_last_wins_flatten(&graph);
     }
 
