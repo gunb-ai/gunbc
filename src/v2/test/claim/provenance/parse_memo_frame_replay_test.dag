@@ -12,7 +12,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // The expected results are stated without reference to any memo: every minted occurrence in the
 // accepted tree is distinct, every one has a span-index entry, the index holds nothing the
-// surviving path did not mint, and each terminal resolves to its own bytes. Every run goes through
+// surviving path did not mint, and the tree's terminals, in token order, each carry their own class
+// and resolve through their own id to their own bytes. Every run goes through
 // the PRODUCTION DOOR -- prepare_grammar, then parse_production_prepared over the prepared
 // analysis, the route parse_module_prepared_seeded takes -- so a door that served a capture across
 // paths again reds here.
@@ -113,17 +114,88 @@ fn parse_path_index_is_the_tree(run: ParsePathRun) -> Bool {
   length(xs: map_keys(run.index.entries)) == length(xs: parse_path_minted_ids(tree: run.tree))
 }
 
-fn parse_path_loci_contain(loci: List<Optional<Locus>>, want: Locus) -> Bool {
+// A terminal is a childless minted Atom, stamped by its token class. Each one is paired with the
+// locus ITS OWN id resolves to, in pre-order -- token order -- so the comparison below asks which
+// bytes each terminal owns, not merely whether some node owns a given range. Absent when a
+// terminal's id does not resolve to a textual locus.
+type TerminalAt {
+  class: Symbol
+  locus: Locus
+}
+
+fn parse_path_terminals(run: ParsePathRun) -> Optional<List<TerminalAt>> {
   fold_list(
-    xs: loci,
-    empty: false,
-    cons: fn(acc, l) {
-      match l {
+    xs: node_subtree_nodes(root: run.tree),
+    empty: optional_present(value: std.algebra.Empty),
+    cons: fn(acc, n) {
+      match acc {
         Absent => acc
-        Present { value: got } => acc || (got == want)
+        Present { value: terminals } =>
+          if length(xs: n.children) != 0 {
+            acc
+          } else {
+            match n.kind {
+              TypeNode { connective: Atom { identity: class } } =>
+                match n.occurrence_id {
+                  OccurrenceMinted { id: id } =>
+                    match span_index_resolve_textual_locus(index: run.index, id: id) {
+                      Holds { value: locus } =>
+                        optional_present(value: list_snoc_item(xs: terminals, item: TerminalAt { class: class, locus: locus }))
+                      Violates { diagnostic: _ } => optional_absent()
+                    }
+                  OccurrenceSynthetic => acc
+                  OccurrenceProjected { id: _, caused_by: _ } => acc
+                  OccurrencePending { caused_by: _ } => acc
+                }
+              _ => acc
+            }
+          }
       }
     }
   )
+}
+
+type TerminalCursor {
+  agrees: Bool
+  rest: List<TerminalAt>
+}
+
+// The accepted tree's terminals, in order, are exactly `want`: same count, and each one carries the
+// expected class and resolves to the expected bytes. Swapping two terminals' span records reds here
+// even though both ranges are still present in the index.
+fn parse_path_terminals_are(run: ParsePathRun, want: List<TerminalAt>) -> Bool {
+  match parse_path_terminals(run: run) {
+    Absent => false
+    Present { value: got } =>
+      let walked = fold_list(
+        xs: want,
+        empty: TerminalCursor { agrees: true, rest: got },
+        cons: fn(cursor, w) {
+          match cursor.rest {
+            Empty => TerminalCursor { agrees: false, rest: cursor.rest }
+            Cons { head: g, tail: tail } =>
+              TerminalCursor {
+                agrees: cursor.agrees && g.class == w.class && g.locus == w.locus,
+                rest: tail
+              }
+          }
+        }
+      )
+      walked.agrees && length(xs: walked.rest) == 0
+  }
+}
+
+fn expected_terminal_at(token_class: Symbol, start: Int) -> TerminalAt {
+  TerminalAt { class: token_class, locus: abandoned_locus(start: start) }
+}
+
+fn abandoned_path_terminals() -> List<TerminalAt> {
+  [
+    expected_terminal_at(token_class: ^abandoned_tok_a, start: 0),
+    expected_terminal_at(token_class: ^abandoned_tok_a, start: 1),
+    expected_terminal_at(token_class: ^abandoned_tok_b, start: 2),
+    expected_terminal_at(token_class: ^abandoned_tok_y, start: 3)
+  ]
 }
 
 fn abandoned_locus(start: Int) -> Locus {
@@ -203,13 +275,10 @@ fn abandoned_path_root() -> GrammarRoot {
 fn abandoned_run_holds(run: ParsePathRun) -> Bool {
   match parse_path_run_loci(run: run) {
     Absent => false
-    Present { value: loci } =>
+    Present { value: _ } =>
       parse_path_minted_ids_distinct(run: run)
         && parse_path_index_is_the_tree(run: run)
-        && parse_path_loci_contain(loci: loci, want: abandoned_locus(start: 0))
-        && parse_path_loci_contain(loci: loci, want: abandoned_locus(start: 1))
-        && parse_path_loci_contain(loci: loci, want: abandoned_locus(start: 2))
-        && parse_path_loci_contain(loci: loci, want: abandoned_locus(start: 3))
+        && parse_path_terminals_are(run: run, want: abandoned_path_terminals())
   }
 }
 
@@ -229,8 +298,8 @@ test fn abandoned_path_parse_carries_only_surviving_path_provenance() -> Bool {
 // ids before X (a, a, their conjunction, R's wrap) -- one more than the first -- so an X served from
 // the first attempt would carry a b whose id the surviving path has already given to R's wrap. This
 // claim was red under the memo and is the permanent regression control for its deletion (DESIGN
-// section 4b(4)): every minted occurrence in the accepted tree is distinct, and the token b resolves
-// to its own bytes, 2..3.
+// section 4b(4)): every minted occurrence in the accepted tree is distinct, the index is exactly
+// the tree's mints, and each terminal -- b among them, at 2..3 -- resolves to its own bytes.
 fn collision_path_root() -> GrammarRoot {
   GrammarRoot {
     start: ^collision_path_s,
@@ -280,9 +349,10 @@ fn collision_path_root() -> GrammarRoot {
 fn collision_run_holds(run: ParsePathRun) -> Bool {
   match parse_path_run_loci(run: run) {
     Absent => false
-    Present { value: loci } =>
+    Present { value: _ } =>
       parse_path_minted_ids_distinct(run: run)
-        && parse_path_loci_contain(loci: loci, want: abandoned_locus(start: 2))
+        && parse_path_index_is_the_tree(run: run)
+        && parse_path_terminals_are(run: run, want: abandoned_path_terminals())
   }
 }
 
@@ -351,12 +421,14 @@ fn nested_frame_tokens() -> List<Token> {
 fn nested_run_holds(run: ParsePathRun) -> Bool {
   match parse_path_run_loci(run: run) {
     Absent => false
-    Present { value: loci } =>
+    Present { value: _ } =>
       parse_path_minted_ids_distinct(run: run)
         && parse_path_index_is_the_tree(run: run)
-        && parse_path_loci_contain(loci: loci, want: abandoned_locus(start: 0))
-        && parse_path_loci_contain(loci: loci, want: abandoned_locus(start: 1))
-        && parse_path_loci_contain(loci: loci, want: abandoned_locus(start: 2))
+        && parse_path_terminals_are(run: run, want: [
+          expected_terminal_at(token_class: ^nested_tok_a, start: 0),
+          expected_terminal_at(token_class: ^nested_tok_b, start: 1),
+          expected_terminal_at(token_class: ^nested_tok_y, start: 2)
+        ])
   }
 }
 
