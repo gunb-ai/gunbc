@@ -6,7 +6,10 @@ import std.resources { Network, Filesystem }
 import std.measure { Second, second }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.systemd { SliceProperty, SystemdUnitProperty, ActiveState, systemd_unit_property_wire, SystemdSliceCgroupPath, SliceCgroupPath, SliceNameNotASlice, systemd_slice_cgroup_path }
-import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_property_argv }
+
+import extdeps.systemd.systemd_run {
+  SystemdRunProperty, SystemdRunCommandReady, SystemdRunCommandRefused, systemd_run_transient_unit_command, systemd_run_transient_retained_unit_command, systemd_run_command_argument_words,
+}
 import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point, cgroup_v2_child_path }
 
 import gunbc.runner_microvm_lifecycle {
@@ -66,11 +69,11 @@ fn wet_slice_property() -> SystemdRunProperty {
 fn start_payload(unit: NonEmptyStr, argv: List<String>) -> Bool
   uses net: Network
 {
-  systemd.SystemdRun.RunTransient(
-    unit: unit,
-    property_argv: systemd_run_property_argv(properties: [wet_slice_property()]),
-    command_argv: argv,
-  ).success
+  match systemd_run_transient_unit_command(unit: unit, properties: [wet_slice_property()], command_argv: argv) {
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command: command } =>
+      systemd.SystemdRun.RunTransient(command_argv: systemd_run_command_argument_words(command: command)).success
+  }
 }
 
 // EVERY CLAIM TEARS ITS OWN SLICE DOWN FIRST AND THEN WAITS FOR IT TO BE OBSERVABLY EMPTY.
@@ -272,7 +275,6 @@ test fn a_missing_cgroup_events_is_unobservable_and_never_empty() -> Bool
   readback_is_read_failure(r: observe_cgroup_subtree(slice: "-.slice" as NonEmptyStr))
 }
 
-
 // THE SHOW-PROPERTY PAIR, AND IT IS A DISCRIMINATOR RATHER THAN TWO READINGS.
 //
 // systemd.Systemctl.ShowProperty takes a SystemdUnitProperty and interpolates it into
@@ -402,14 +404,24 @@ fn incarnation_unit() -> NonEmptyStr {
 fn start_with_invocation(unit: NonEmptyStr, invocation: String, sleep_for: String) -> Bool
   uses net: Network
 {
-  systemd.SystemdRun.RunTransientRetained(
+  start_retained_payload(
     unit: unit,
-    property_argv: systemd_run_property_argv(properties: [
+    properties: [
       wet_slice_property(),
       attempt_invocation_env_setting(invocation_id: invocation as NonEmptyStr),
-    ]),
+    ],
     command_argv: ["/bin/sleep", sleep_for],
-  ).success
+  )
+}
+
+// Retained means the terminal state stays observable: the retained builder, and the argument
+// tail only — the transport owns the "systemd-run" head.
+fn start_retained_payload(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> Bool {
+  match systemd_run_transient_retained_unit_command(unit: unit, properties: properties, command_argv: command_argv) {
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command: command } =>
+      systemd.SystemdRun.RunTransient(command_argv: systemd_run_command_argument_words(command: command)).success
+  }
 }
 
 // THE STOP TAKES THE FIRST READING AS AN ARGUMENT SO IT CANNOT BE HOISTED ABOVE IT. Order in this

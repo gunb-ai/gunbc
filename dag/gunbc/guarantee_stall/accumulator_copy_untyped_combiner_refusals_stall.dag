@@ -20,11 +20,32 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // quadratic -- which that tree does not carry; the named callees need callee facts. A per-symbol
 // registration would transcribe per identity what the substrate should derive, and a ceiling raised to
 // today's count would make a measurement of the current tree its own oracle (DESIGN section 5).
+//
+// NO ROUTE TO AN INFERRED TREE OF THESE FILES HAS BEEN ESTABLISHED, SO THE LENS CHANGE IS NOT KNOWN TO BE
+// THE FIRST GROUNDING. Observed 2026-10-05 (keen-tern-839, on aae7da34ca), and scoped to the inputs
+// actually tried: the current-tree interpreter (v2.compiler.self_host.closure_emission
+// closure_resolve_member, then v2.compiler.refinement_discharge infer_and_discharge) over std.change's
+// six-file import closure, and the v2 native CLI over a copy of those same six files. Both refused at
+// RESOLVE, so infer did not run on them: std.change at its free kernel call concat
+// (resolve_reason_unbound_symbol), std.types at map_get (declared in v2.std.collection, which that file
+// does not import), std.algebra at Map (resolve_unbound_name_is_declared_elsewhere std.types.Map). On the
+// native CLI, small modules containing a fold also refused at resolve, anchored at a projected node of
+// the fold; that matches the class gunbc.recurring_failure_mode
+// .fold_cons_handler_binder_unbound_on_the_native_resolver, which was measured there on fold_list cons
+// handlers and is here observed on fold f: handlers of those probes only. What this establishes is that
+// no successful route to an inferred tree was found for std.change; it does not establish that none
+// exists, that these three refusals are the whole of what blocks it, or that those inputs, a copied file
+// set among them, stand for the dependency closure a production resolve would see. The closures of
+// v2.extdeps.languages.lean and v2.lens.complexity_accumulator_copy.analyze were NOT measured (runs over
+// the full source roots exceeded 900s). That they share the fold refusal is SUSPECTED, from both files
+// containing folds, and is not established. Reading a resolved tree would also need one lens arm: resolve
+// rewrites || and && to canonical-operation wire nodes (v2.compiler.resolve resolve_surface_operator_atom),
+// which lowered_transform_combiner_optional reads as Absent today.
 data accumulator_copy_untyped_combiner_refusals_stall: GuaranteeStall = GuaranteeStall {
   subject: "v2.lens.complexity_accumulator_copy.analyze refuses combiner_unregistered_carrier_reaches where a carrier reaches an operator or named callee whose copying depends on its operand type or callee declaration, which the pre-inference subject does not carry; observed over dag/std/change.dag, src/v2/extdeps/languages/lean.dag and src/v2/lens/complexity_accumulator_copy/analyze.dag, where the three offline roster ratchets are red",
   current: Mitigatable,
   ceiling: MechanicallyPreventable,
-  blocker: AwaitsOneGrounding { grounding: "the accumulator-copy lens over the inferred tree (operand types and resolved callees), proposed as its own change after gunbc#13337" },
+  blocker: AwaitsOneGrounding { grounding: "a route to an inferred tree of each of the three files: v2 resolve, then infer, admitting the canonical dependency closure of each file in its declaration context -- every module the file imports plus every dependency reference derivation adds (the reference-derived closure v2.compiler.reference_closure reference_derived_closure computes, e.g. the declarations a fold head or a kernel call resolves to), not the import list alone. No such route has been established for any of the three; the refusals observed so far on std.change are listed in the annotation and are not claimed to be the whole obstacle. The accumulator-copy lens over that tree is then buildable on it" },
   population: BoundedPopulation { members: [
       "v2.lens.complexity_accumulator_copy.analyze collect_direct_captures collect_direct_captures combiner_unregistered_carrier_reaches",
       "v2.lens.complexity_accumulator_copy.analyze collect_direct_captures collect_direct_captures combiner_unregistered_carrier_reaches (occurrence 2)",
@@ -52,5 +73,5 @@ data accumulator_copy_untyped_combiner_refusals_stall: GuaranteeStall = Guarante
       "v2.extdeps.languages.lean lean_catalog_surface_symbol lean_catalog_surface_symbol_step combiner_unregistered_carrier_reaches",
       "v2.extdeps.languages.lean lean_model_core_inhabitance_decls lean_inhabitance_decl_step combiner_unregistered_carrier_reaches"
     ] },
-  next_rung_trigger: climbs_when(capability: "v2.lens.complexity_accumulator_copy.analyze decides, from the inferred tree, whether a combiner reached by the carrier copies it -- an operator by the algebra its operand type inhabits, a named callee by its resolved declaration -- SUFFICIENT FOR every identity in this population across all three files: each is classified clean or Poly2Suspect, or still refuses for a reason the inferred tree also cannot decide, and the three ratchets go green on that decision with no ceiling raised. A per-symbol registration, a ceiling re-grounded to a count, or a roster that admits refusals by identity retires nothing")
+  next_rung_trigger: climbs_when(capability: "v2 resolve and infer accept the canonical dependency closure, in declaration context and including reference-derived dependencies, of dag/std/change.dag, src/v2/extdeps/languages/lean.dag and src/v2/lens/complexity_accumulator_copy/analyze.dag and yield an inferred tree of each, AND v2.lens.complexity_accumulator_copy.analyze decides, from the inferred tree, whether a combiner reached by the carrier copies it -- an operator by the algebra its operand type inhabits, a named callee by its resolved declaration -- SUFFICIENT FOR every identity in this population across all three files: each is classified clean or Poly2Suspect, or still refuses for a reason the inferred tree also cannot decide, and the three ratchets go green on that decision with no ceiling raised. A per-symbol registration, a ceiling re-grounded to a count, or a roster that admits refusals by identity retires nothing")
 }

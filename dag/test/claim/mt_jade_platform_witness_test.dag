@@ -80,7 +80,7 @@ import extdeps.ocp.mt_jade.platform {
   soc_pwrgd_minimum_system_clock_cycles,
   platform_sequencing_handshake_chain,
 }
-import extdeps.external_authority { external_subject_ref_eq, ExternalSubjectRef, CitedToAuthority, TranscribedUncited }
+import extdeps.external_authority { external_subject_ref_eq, ExternalSubjectRef, CitedToAuthority, ObservedByReceipt, TranscribedUncited }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -309,6 +309,7 @@ test fn w_crps_is_dual_redundant_and_inlet_names_the_owed_discriminator() -> Boo
       TranscribedUncited { read_obligation } =>
         string_contains(s: read_obligation as String, pattern: "C14 vs C20")
       CitedToAuthority { authority: _ } => false
+      ObservedByReceipt { observed: _ } => false
     }
 }
 
