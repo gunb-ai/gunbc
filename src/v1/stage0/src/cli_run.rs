@@ -3363,6 +3363,22 @@ mod cli_run_arg_channel_tests {
     }
 
     #[test]
+    fn qualified_or_branded_int_label_refuses_rather_than_matching_the_leaf() {
+        for label in ["foo.Int", "std.integer.Int", "NonEmptyStr"] {
+            let err = bind_run_arg_specs_against_declared_types(
+                "entry",
+                &declared(&[("source", label)]),
+                &[("source".into(), "2".into())],
+            )
+            .expect_err("leaf-name agreement must not inhabit a different type");
+            assert!(
+                err.contains(label) && err.contains("cannot inhabit"),
+                "diagnostic names the authored type {label}: {err}"
+            );
+        }
+    }
+
+    #[test]
     fn bool_parameter_accepts_true_false_only() {
         let got = bind_run_arg_specs_against_declared_types(
             "entry",
@@ -19840,12 +19856,6 @@ pub fn parse_run_arg_specs(raw: &[String]) -> Result<Vec<(String, String)>, Stri
         .collect()
 }
 
-fn cli_arg_declared_type_leaf(type_label: &str) -> &str {
-    let head = type_label.split('<').next().unwrap_or(type_label).trim();
-    let without_colon = head.rsplit("::").next().unwrap_or(head);
-    without_colon.rsplit('.').next().unwrap_or(without_colon)
-}
-
 fn parse_cli_decimal_int(text: &str) -> Option<i64> {
     if text.is_empty() {
         return None;
@@ -19860,24 +19870,20 @@ fn parse_cli_decimal_int(text: &str) -> Option<i64> {
     text.parse().ok()
 }
 
-/// Bind one `--arg` text value against the parameter's declared type label.
+/// Bind one `--arg` text value against the parameter's authored type label.
 ///
-/// Admitted leaves: `String` (as spelled), `Int` (decimal `i64`), `Bool`
-/// (`true`/`false` only). Any other declared type refuses rather than passing
-/// a `String`.
+/// Admitted labels are exactly `String`, `Int`, and `Bool` as written on the
+/// parameter — not the last path segment of some other type (DESIGN §4: type
+/// compatibility keys on the declaration, never a leaf name). `foo.Int`,
+/// `std.integer.Int`, and `NonEmptyStr` refuse rather than inheriting a host
+/// `Int`/`Str`.
 pub fn bind_cli_arg_text(
     function: &str,
     param: &str,
     type_label: &str,
     text: &str,
 ) -> Result<v1_interpreter::Value, String> {
-    if type_label.contains('<') || type_label.contains(',') {
-        return Err(format!(
-            "--arg `{param}`: function `{function}` declares `{param}: {type_label}`, \
-             which `gunbc run --arg` cannot inhabit; only String, Int, and Bool are admitted"
-        ));
-    }
-    match cli_arg_declared_type_leaf(type_label) {
+    match type_label {
         "String" => Ok(str_value(text)),
         "Int" => match parse_cli_decimal_int(text) {
             Some(n) => Ok(Value::Int(n)),
