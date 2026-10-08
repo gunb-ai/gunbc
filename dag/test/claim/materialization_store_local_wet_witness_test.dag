@@ -58,9 +58,7 @@ import gunbc.durable_cas_file_store { cas_file_slot_path }
 import std.durable_exclusive_hold {
   DurableHoldOwnerRef,
   HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable, HoldObservationUnavailable,
-}
-import std.durable_compare_and_set {
-  CasUnreadableMalformed, CasUnreadableContentMissing, CasUnreadableReadRefused, CasUnreadableObservationBoundExceeded,
+  HoldNamedWindowHeadMoved,
 }
 import std.fabric_blob { fabric_blob_reading_path }
 import std.cache_identity { native_module_verdict_bundle_artifact_kind, typed_module_artifact_kind }
@@ -675,13 +673,8 @@ fn hold_refusal_is_named_window_unsettled(r: LocalStoreHoldRefusal?) -> Bool {
   match r {
     Present { value: x } => match x {
       LocalStoreHoldStale { observed: o } => match o {
-        HoldObservationUnavailable { cause: c } => match c {
-          CasUnreadableReadRefused { detail: d } =>
-            d as String == "the window head moved during 1 observations and was not settled; a head is never guessed"
-          CasUnreadableMalformed { detail: _ } => false
-          CasUnreadableContentMissing { referenced: _ } => false
-          CasUnreadableObservationBoundExceeded { bound: _ } => false
-        }
+        HoldNamedWindowHeadMoved { generation: _ } => true
+        HoldObservationUnavailable { cause: _ } => false
         HoldSlotAbsent => false
         HoldSlotFree { generation: _, released_by: _ } => false
         HoldSlotHeld { generation: _, owner: _ } => false
@@ -756,8 +749,8 @@ fn pin_generation_unlink(path: String, on: Bool) -> Bool {
 // PARTIAL RECLAIM MUST NOT RE-AUTHORIZE A LEAKED HOLD. Independent deletes could remove G+1 while
 // G survived, so named verify would treat leaked G as head. Pin G against unlink, run another
 // acquire/release (the reclaim that used to punch that hole), then reuse G. commit_under observes
-// the hold first: named verify must answer Unsettled (G present, G+1 still there), mapped to
-// HoldStale via HoldObservationUnavailable, before any occupancy write. occupancy_unavailable on
+// the hold first: named verify must answer HoldNamedWindowHeadMoved (G present, G+1 still there), mapped to
+// LocalStoreHoldStale, before any occupancy write. occupancy_unavailable on
 // that path is the hold-refuse wrapper, not an occupancy fault from the pin. ioctl-set IMMUTABLE
 // must succeed (CAP_LINUX_IMMUTABLE); without it this claim is false, not vacuously green.
 test fn a_leaked_hold_stays_stale_when_reclaim_cannot_remove_its_generation_by_real_execution() -> Bool {

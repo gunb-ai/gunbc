@@ -129,10 +129,12 @@ type CasSlotObservation<T>
 //
 // THE PLACEMENT WAS PUT TO REVIEW AND RULED ON, and the ruling also corrected the NAME, which is the
 // part worth keeping. The arm stays here: an interface outcome need not be producible by every
-// realization, it needs a real producer and a stable caller-visible meaning, and a realization that
-// must discover its head under a budget supplies both (gunbc.fabric.durable_cas_fabric_storage does; the
-// file store no longer does, because its head search is total over the generation line). Moving it into the realization would either erase the typed remedy or force the whole
-// store-failure carrier to become realization-specific.
+// realization, it needs a real producer and a stable caller-visible meaning. Two producers supply
+// both: gunbc.fabric.durable_cas_fabric_storage (generation-gallop budget) and
+// gunbc.durable_cas_file_store cas_observe_window (windowed list-and-verify attempt roster). A
+// named-generation verify that finds G+1 present is not this arm -- that is a moved head, not an
+// exhausted observation budget. Moving BoundExceeded into a realization would either erase the
+// typed remedy or force the whole store-failure carrier to become realization-specific.
 //
 // But the first spelling was `CasUnreadableBeyondProbeBound`, and PROBE IS THE FILE REALIZATION'S
 // DISCOVERY METHOD while EXHAUSTED OBSERVATION CAPACITY IS THE INTERFACE FACT. Naming the interface

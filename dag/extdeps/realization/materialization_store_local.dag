@@ -85,7 +85,7 @@ import gunbc.durable_cas_file_store {
 import std.durable_exclusive_hold {
   DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldHolderReport, DurableHoldReleaseRefusal, DurableHoldRecoveryRefusal,
   HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable,
-  DurableHoldObservation, HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable, HoldObservationUnavailable,
+  DurableHoldObservation, HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable, HoldObservationUnavailable, HoldNamedWindowHeadMoved,
   durable_hold_owner_equal,
 }
 import gunbc.durable_exclusive_hold_file_store {
@@ -1218,6 +1218,7 @@ fn local_store_hold_check(held: LocalStoreFamilyHeld) -> LocalStoreHoldCheck
     HoldSlotFree { generation: _, released_by: _ } => LocalStoreHoldNotCurrent { observed: observed }
     HoldSlotUndecodable { generation: _, detail: _ } => LocalStoreHoldNotCurrent { observed: observed }
     HoldObservationUnavailable { cause: _ } => LocalStoreHoldNotCurrent { observed: observed }
+    HoldNamedWindowHeadMoved { generation: _ } => LocalStoreHoldNotCurrent { observed: observed }
   }
 }
 

@@ -13,10 +13,10 @@ import std.durable_exclusive_hold {
   DurableHoldOwnerRef, DurableHoldReleaseRef,
   DurableHoldState, DurableHoldHeld, DurableHoldFree,
   DurableHoldObservation, HoldSlotAbsent, HoldSlotFree, HoldSlotHeld,
-  HoldSlotUndecodable, HoldObservationUnavailable,
+  HoldSlotUndecodable, HoldObservationUnavailable, HoldNamedWindowHeadMoved,
   DurableHoldAcquireAssessment, HoldAcquireEligible, HoldAcquireRefused,
   DurableHoldAcquireRefusal, HoldAcquireOccupied, HoldAcquireSlotUndecodable,
-  HoldAcquireObservationUnavailable,
+  HoldAcquireObservationUnavailable, HoldAcquireNamedWindowHeadMoved,
   DurableHoldReleaseAssessment, HoldReleaseEligible, HoldReleaseRefused,
   DurableHoldReleaseRefusal, HoldReleaseSlotAbsent, HoldReleaseAlreadyFree,
   HoldReleaseHeldByAnotherOwner, HoldReleaseAgainstAnotherGeneration,
@@ -117,6 +117,7 @@ test fn a_bare_free_tag_is_not_an_acquirable_free_slot() -> Bool {
     HoldAcquireRefused { refusal: HoldAcquireSlotUndecodable { generation: g, detail: _ } } => cas_generation_count(g: g) == 3
     HoldAcquireRefused { refusal: HoldAcquireOccupied { generation: _, holder: _ } } => false
     HoldAcquireRefused { refusal: HoldAcquireObservationUnavailable { cause: _ } } => false
+    HoldAcquireRefused { refusal: HoldAcquireNamedWindowHeadMoved { generation: _ } } => false
     HoldAcquireEligible { expected: _ } => false
   }
 }
@@ -189,6 +190,7 @@ fn eh_acquire_occupied_by(a: DurableHoldAcquireAssessment, holder: String) -> Bo
     HoldAcquireRefused { refusal: HoldAcquireOccupied { generation: _, holder: h } } => (h as String) == holder
     HoldAcquireRefused { refusal: HoldAcquireSlotUndecodable { generation: _, detail: _ } } => false
     HoldAcquireRefused { refusal: HoldAcquireObservationUnavailable { cause: _ } } => false
+    HoldAcquireRefused { refusal: HoldAcquireNamedWindowHeadMoved { generation: _ } } => false
     HoldAcquireEligible { expected: _ } => false
   }
 }
@@ -215,6 +217,7 @@ test fn an_undecodable_slot_is_neither_acquirable_nor_occupied() -> Bool {
     HoldAcquireRefused { refusal: HoldAcquireSlotUndecodable { generation: g, detail: _ } } => cas_generation_count(g: g) == 2
     HoldAcquireRefused { refusal: HoldAcquireOccupied { generation: _, holder: _ } } => false
     HoldAcquireRefused { refusal: HoldAcquireObservationUnavailable { cause: _ } } => false
+    HoldAcquireRefused { refusal: HoldAcquireNamedWindowHeadMoved { generation: _ } } => false
     HoldAcquireEligible { expected: _ } => false
   }
 }
@@ -224,6 +227,7 @@ test fn an_unavailable_observation_is_not_acquirable() -> Bool {
     HoldAcquireRefused { refusal: HoldAcquireObservationUnavailable { cause: _ } } => true
     HoldAcquireRefused { refusal: HoldAcquireOccupied { generation: _, holder: _ } } => false
     HoldAcquireRefused { refusal: HoldAcquireSlotUndecodable { generation: _, detail: _ } } => false
+    HoldAcquireRefused { refusal: HoldAcquireNamedWindowHeadMoved { generation: _ } } => false
     HoldAcquireEligible { expected: _ } => false
   }
 }

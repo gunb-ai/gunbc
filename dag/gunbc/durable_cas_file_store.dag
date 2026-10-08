@@ -5,7 +5,7 @@ import std.algebra { trim }
 import std.decimal { decimal_digits_only }
 import std.list { distinct_by_key }
 import std.content_hash { ContentHash, content_hash_of_value, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
-import std.durable_compare_and_set { CasAttempt, cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_exhausted, cas_generation_first, cas_generation_count, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
+import std.durable_compare_and_set { CasAttempt, cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, CasUnreadableObservationBoundExceeded, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_exhausted, cas_generation_first, cas_generation_count, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
 import std.checked_arithmetic { int_inclusive_max }
 import v2.std.algebra { skip }
 import extdeps.access.posix { FileMode, file_mode_bits }
@@ -307,6 +307,7 @@ type CasSlotProbe
   | ProbedUnreadable { generation: CasGeneration, kind: FilesystemFailureKind }
   | ProbedReadKindUnrecognized { generation: CasGeneration, observed: String }
   | ProbedWindowHeadUnsettled { attempts: Int }
+  | ProbedNamedWindowHeadMoved { generation: CasGeneration }
 
 // One generation read, classified: present with its content, absent, or a typed refusal.
 type CasGenerationRead
@@ -513,6 +514,8 @@ fn cas_window_max_generation(generations: List<CasGeneration>) -> CasGeneration?
   })
 }
 
+// THE ONE AUTHORITY FOR THE WINDOWED OBSERVATION BOUND: the roster is the bound. Exhaustion
+// reports CasUnreadableObservationBoundExceeded { bound: count(cas_window_observation_attempts) }.
 data cas_window_observation_attempts: List<Int> = [1, 2, 3, 4, 5, 6, 7, 8]
 
 // ONE LIST-AND-VERIFY PASS. Recursion here was the unbounded arm: a window whose listed max is
@@ -577,9 +580,7 @@ fn cas_observe_retained_slot(root: NonEmptyStr, key: NonEmptyStr, retention: Cas
 }
 
 fn cas_window_head_unsettled(attempts: Int) -> CasUnreadableSlot {
-  CasUnreadableReadRefused {
-    detail: concat(concat("the window head moved during ", attempts as String), " observations and was not settled; a head is never guessed") as NonEmptyStr
-  }
+  CasUnreadableObservationBoundExceeded { bound: attempts }
 }
 
 // THE PROJECTION TAKES A HEAD, NOT A PROBE, AND THE DELETED ARM IS THE REPAIR.
@@ -640,6 +641,8 @@ fn cas_probe_as_observation(probe: CasSlotProbe) -> CasSlotObservation<NonEmptyS
     ProbedAbsent => CasObservedReadable { readable: CasReadableAbsent }
     ProbedAbsenceUnestablished { cause: c } => CasObservedUnreadable { cause: cas_absence_unestablished(cause: c) }
     ProbedWindowHeadUnsettled { attempts: a } => CasObservedUnreadable { cause: cas_window_head_unsettled(attempts: a) }
+    ProbedNamedWindowHeadMoved { generation: _ } =>
+      CasObservedUnreadable { cause: CasUnreadableObservationBoundExceeded { bound: 1 } }
     ProbedHead { generation: h, value: v } =>
       CasObservedReadable { readable: cas_head_as_readable(generation: h, value: v) }
   }
@@ -712,6 +715,7 @@ fn observe_cas_slot_state_windowed(root: NonEmptyStr, key: NonEmptyStr, window: 
 fn cas_verify_named_window_head(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration) -> CasSlotProbe
   admit_callers: [
     decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "observe_cas_slot_state_windowed_at"),
+    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "observe_file_hold_windowed_at"),
   ]
 {
   match cas_read_generation(root: root, key: key, generation: generation) {
@@ -724,7 +728,7 @@ fn cas_verify_named_window_head(root: NonEmptyStr, key: NonEmptyStr, generation:
           match cas_read_generation(root: root, key: key, generation: next) {
             GenerationRefused { probe: p } => p
             GenerationAbsent => ProbedHead { generation: generation, value: c }
-            GenerationPresent { content: _ } => ProbedWindowHeadUnsettled { attempts: 1 }
+            GenerationPresent { content: _ } => ProbedNamedWindowHeadMoved { generation: generation }
           }
       }
   }
@@ -988,6 +992,8 @@ fn cas_owner_only_failed_publication(
       }
     ProbedWindowHeadUnsettled { attempts: a } =>
       CasStoreRefused { cause: CasSlotObservationRefused { cause: cas_window_head_unsettled(attempts: a) } }
+    ProbedNamedWindowHeadMoved { generation: _ } =>
+      CasStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableObservationBoundExceeded { bound: 1 } } }
   }
 }
 
@@ -1027,6 +1033,8 @@ fn cas_compare_and_set_outcome(
       CasStoreRefused { cause: CasSlotObservationRefused { cause: cas_absence_unestablished(cause: c) } }
     ProbedWindowHeadUnsettled { attempts: a } =>
       CasStoreRefused { cause: CasSlotObservationRefused { cause: cas_window_head_unsettled(attempts: a) } }
+    ProbedNamedWindowHeadMoved { generation: _ } =>
+      CasStoreRefused { cause: CasSlotObservationRefused { cause: CasUnreadableObservationBoundExceeded { bound: 1 } } }
     ProbedAbsent =>
       match attempt.expected {
         ExpectSlotAbsent =>

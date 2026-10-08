@@ -4,7 +4,7 @@ import gunbc.workspace_commissioning_start_identity { workspace_commissioning_sn
 
 import std.types { NonEmptyStr, String, Bool }
 import std.decl_ref { decl_ref }
-import std.durable_exclusive_hold { HoldSlotHeld, HoldObservationUnavailable, HoldSlotFree, HoldSlotUndecodable }
+import std.durable_exclusive_hold { HoldSlotHeld, HoldObservationUnavailable, HoldNamedWindowHeadMoved, HoldSlotFree, HoldSlotUndecodable }
 import gunbc.build_cache_instance { runner_slot_instance_name }
 import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
 import gunbc.workspace_slot_mutation { workspace_slot_mutation_key, workspace_commissioning_mutation_owner }
@@ -39,6 +39,7 @@ fn workspace_executor_mutation_matches(record: WorkspaceExecutorRecord) -> Bool 
     HoldSlotFree { generation: _, released_by: _ } => false
     HoldSlotUndecodable { generation: _, detail: _ } => false
     HoldObservationUnavailable { cause: _ } => false
+    HoldNamedWindowHeadMoved { generation: _ } => false
   }
 }
 

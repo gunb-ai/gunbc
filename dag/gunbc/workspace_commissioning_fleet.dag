@@ -35,7 +35,7 @@ import gunbc.workspace_commissioning_executor_input { workspace_executor_install
 import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
 import gunbc.workspace_slot_mutation { workspace_slot_mutation_key }
 import gunbc.durable_exclusive_hold_file_store { observe_file_hold }
-import std.durable_exclusive_hold { HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldObservationUnavailable, HoldSlotUndecodable }
+import std.durable_exclusive_hold { HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldObservationUnavailable, HoldNamedWindowHeadMoved, HoldSlotUndecodable }
 import gunbc.workspace_slot_mutation { workspace_commissioning_mutation_owner, workspace_mutation_recovery_standing, WorkspaceMutationRecoveryReleased }
 import gunbc.runner_microvm_cell_readiness_store { read_cell_readiness_store }
 import gunbc.workspace_commissioning_apply_readback { workspace_commissioning_initial_ready, workspace_commissioning_credential_absent }
@@ -158,6 +158,7 @@ fn workspace_commissioning_basis_observe(provenance: WorkspaceCommissioningProve
                   HoldSlotFree { generation: _, released_by: _ } => false
                   HoldSlotUndecodable { generation: _, detail: _ } => false
                   HoldObservationUnavailable { cause: _ } => false
+                  HoldNamedWindowHeadMoved { generation: _ } => false
                 })
               if !committed && !initial { WorkspaceCommissioningFleetRefused { reason: "commissioning has existing history; resume its exact reviewed executor rather than minting a replacement plan" } }
               else { match resolve_network_subject(slot: slot) {

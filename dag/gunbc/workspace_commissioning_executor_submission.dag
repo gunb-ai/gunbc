@@ -4,7 +4,7 @@ import gunbc.workspace_commissioning_apply_readback { workspace_commissioning_co
 import gunbc.runner_microvm_slot_start { MicrovmInvocationWait, InvocationStillRunning, InvocationTerminated, InvocationWaitRefused, microvm_invocation_observe, microvm_unit_start_observed, MicrovmSlotStartRun, SlotStartCompleted, SlotStartWrongHost, SlotStartRefused, SlotStartAlreadyActive, SlotStartInvocationUnread, SlotStartInvocationUnchanged, SlotStartStillActiveAtBound }
 import std.types { String, NonEmptyStr, Bool }
 import std.decl_ref { decl_ref }
-import std.durable_exclusive_hold { HoldSlotHeld, HoldSlotAbsent, HoldObservationUnavailable, HoldSlotFree, HoldSlotUndecodable }
+import std.durable_exclusive_hold { HoldSlotHeld, HoldSlotAbsent, HoldObservationUnavailable, HoldNamedWindowHeadMoved, HoldSlotFree, HoldSlotUndecodable }
 import std.content_hash { content_hash_validate_lower_hex_length }
 import std.durable_compare_and_set { CasGeneration }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathKindUnrecognized, FilesystemExactPathUnreadable }
@@ -112,6 +112,7 @@ fn workspace_executor_initial_guard(slot: NonEmptyStr, plan: NonEmptyStr) -> Cas
       HoldSlotFree { generation: _, released_by: _ } => none
       HoldSlotUndecodable { generation: _, detail: _ } => none
       HoldObservationUnavailable { cause: _ } => none
+      HoldNamedWindowHeadMoved { generation: _ } => none
     }
     OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => none
     OwnershipUnread { reason: _ } => none

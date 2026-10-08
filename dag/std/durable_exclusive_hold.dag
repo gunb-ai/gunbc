@@ -70,6 +70,7 @@ type DurableHoldObservation
   | HoldSlotHeld { generation: CasGeneration, owner: DurableHoldOwnerRef }
   | HoldSlotUndecodable { generation: CasGeneration, detail: NonEmptyStr }
   | HoldObservationUnavailable { cause: CasUnreadableSlot }
+  | HoldNamedWindowHeadMoved { generation: CasGeneration }
 
 // ACQUIRE DERIVES ITS EXPECTATION FROM THE OBSERVATION -- THE FIRST AMENDMENT.
 //
@@ -91,6 +92,7 @@ type DurableHoldAcquireRefusal
   = HoldAcquireOccupied { generation: CasGeneration, holder: DurableHoldOwnerRef }
   | HoldAcquireSlotUndecodable { generation: CasGeneration, detail: NonEmptyStr }
   | HoldAcquireObservationUnavailable { cause: CasUnreadableSlot }
+  | HoldAcquireNamedWindowHeadMoved { generation: CasGeneration }
 
 type DurableHoldAcquireAssessment
   = HoldAcquireEligible { expected: CasExpectation }
@@ -107,6 +109,8 @@ fn durable_hold_acquire_assess(observed: DurableHoldObservation) -> DurableHoldA
       HoldAcquireRefused { refusal: HoldAcquireSlotUndecodable { generation: g, detail: d } }
     HoldObservationUnavailable { cause: c } =>
       HoldAcquireRefused { refusal: HoldAcquireObservationUnavailable { cause: c } }
+    HoldNamedWindowHeadMoved { generation: g } =>
+      HoldAcquireRefused { refusal: HoldAcquireNamedWindowHeadMoved { generation: g } }
   }
 }
 
@@ -155,6 +159,10 @@ fn durable_hold_release_assess(
       HoldReleaseRefused { refusal: HoldReleaseSlotUndecodable { generation: g, detail: d } }
     HoldObservationUnavailable { cause: c } =>
       HoldReleaseRefused { refusal: HoldReleaseObservationUnavailable { cause: c } }
+    HoldNamedWindowHeadMoved { generation: g } =>
+      HoldReleaseRefused {
+        refusal: HoldReleaseAgainstAnotherGeneration { acquired: acquired_generation, observed: g },
+      }
     HoldSlotHeld { generation: g, owner: holder } =>
       if !durable_hold_owner_equal(left: holder, right: owner) {
         HoldReleaseRefused { refusal: HoldReleaseHeldByAnotherOwner { generation: g, holder: holder } }
@@ -221,6 +229,8 @@ fn durable_hold_recovery_assess(observed: DurableHoldObservation, report: Durabl
       HoldRecoveryRefused { refusal: HoldRecoverySlotUndecodable { generation: g, detail: d } }
     HoldObservationUnavailable { cause: c } =>
       HoldRecoveryRefused { refusal: HoldRecoveryObservationUnavailable { cause: c } }
+    HoldNamedWindowHeadMoved { generation: g } =>
+      HoldRecoveryRefused { refusal: HoldRecoverySlotMoved { reported: report.generation, observed: g } }
     HoldSlotHeld { generation: g, owner: holder } =>
       if !durable_hold_owner_equal(left: holder, right: report.holder) {
         HoldRecoveryRefused { refusal: HoldRecoveryReportForAnotherHolder { holder: holder, reported: report.holder } }

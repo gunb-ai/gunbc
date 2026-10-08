@@ -28,7 +28,7 @@ import std.durable_compare_and_set {
   CasExpectation, ExpectSlotGeneration, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasStoreFailure, CasSlotObservationRefused,
   CasSlotObservation, CasObservedReadable, CasObservedUnreadable,
-  CasReadableAbsent, CasReadablePresent, CasGeneration,
+  CasReadableAbsent, CasReadablePresent, CasGeneration, CasUnreadableReadRefused,
 }
 import std.durable_exclusive_hold {
   DurableHoldOwnerRef, DurableHoldReleaseRef,
@@ -37,6 +37,7 @@ import std.durable_exclusive_hold {
   HoldSlotUndecodable, HoldObservationUnavailable,
   DurableHoldAcquireRefusal, HoldAcquireEligible, HoldAcquireRefused,
   HoldAcquireOccupied, HoldAcquireSlotUndecodable, HoldAcquireObservationUnavailable,
+  HoldAcquireNamedWindowHeadMoved, HoldNamedWindowHeadMoved,
   HoldReleaseEligible, HoldReleaseRefused, DurableHoldReleaseRefusal,
   durable_hold_acquire_assess, durable_hold_release_assess,
   DurableHoldHolderReport, DurableHoldRecoveryRefusal, HoldRecoveryEligible, HoldRecoveryRefused,
@@ -45,7 +46,9 @@ import std.durable_exclusive_hold {
 import gunbc.durable_cas_file_store { KeepAllGenerations, KeepGenerationWindow, CasSlotRetention,
   CasGenerationWindow, DefaultAccessCreateOnly, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
   admit_cas_attempt_for_derived_payload, file_compare_and_set, file_compare_and_set_retained,
-  observe_cas_slot_state, observe_cas_slot_state_retained, observe_cas_slot_state_windowed_at,
+  observe_cas_slot_state, observe_cas_slot_state_retained,
+  cas_verify_named_window_head, cas_probe_as_observation, cas_key_is_slot_addressable,
+  cas_key_not_slot_addressable_detail, ProbedNamedWindowHeadMoved,
 }
 
 // THE TAGS ARE NAMED ONCE AND THE BODY IS DERIVED FROM THE TAG THAT MATCHED.
@@ -161,7 +164,14 @@ fn observe_file_hold_windowed_at(root: NonEmptyStr, key: NonEmptyStr, generation
     decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_release_assess_windowed_at"),
   ]
 {
-  hold_observation_of_cas(observed: observe_cas_slot_state_windowed_at(root: root, key: key, generation: generation))
+  if !cas_key_is_slot_addressable(key: key) {
+    HoldObservationUnavailable { cause: CasUnreadableReadRefused { detail: cas_key_not_slot_addressable_detail } }
+  } else {
+    match cas_verify_named_window_head(root: root, key: key, generation: generation) {
+      ProbedNamedWindowHeadMoved { generation: g } => HoldNamedWindowHeadMoved { generation: g }
+      p => hold_observation_of_cas(observed: cas_probe_as_observation(probe: p))
+    }
+  }
 }
 
 // EVERY EFFECTFUL HOLD WRITE IS LIVE READ -> SEALED PLAN -> CAS COMMIT, AND NO
@@ -289,6 +299,7 @@ fn file_hold_acquire_retained(
           FileHoldSlotUndecodable { slot_key: slot_key, generation: g, detail: d }
         HoldAcquireObservationUnavailable { cause: c } =>
           FileHoldAcquireStoreUnavailable { slot_key: slot_key, cause: CasSlotObservationRefused { cause: c } }
+        HoldAcquireNamedWindowHeadMoved { generation: _ } => FileHoldAcquireLost { slot_key: slot_key }
       }
   }
 }
