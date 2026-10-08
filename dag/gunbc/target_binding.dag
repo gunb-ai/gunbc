@@ -4,7 +4,7 @@ import extdeps.bazel.label {
   Label, LabelCanonicalityCause, LabelCanonical, LabelNonCanonical,
   render_label, label_canonicality,
 }
-import v2.std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent }
 import std.types { String, List, NonEmptyStr }
 import std.integer { Int }
 
@@ -52,6 +52,8 @@ type TargetProducer
   | SelfHostBehavioralEquivalenceProducer
   | DependencyDemandCensusProducer
   | GenericIdentityCensusProducer
+  | InterpolationHoleCensusProducer
+  | RegenRoundCostProducer
   | NativeClaimProgramProducer { entry: String }
   | NativeServeProgramProducer { entry: String }
 

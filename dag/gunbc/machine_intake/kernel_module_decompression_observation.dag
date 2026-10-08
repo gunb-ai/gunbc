@@ -3,7 +3,7 @@ module gunbc.machine_intake_kernel_module_decompression_observation
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
 import v2.std.algebra { filter }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.linux.module_decompress { linux_module_zstd_decompress_failed_prefix, linux_module_zstd_decompress_failed_stem, ZstdErrorCode, zstd_error_code_of, zstd_error_code_name }
 import extdeps.kmod.libkmod { libkmod_insert_failed_prefix, libkmod_insert_failed_stem, libkmod_insert_failed_path_end }
 

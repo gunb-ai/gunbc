@@ -12,7 +12,7 @@ import v2.compiler.reference_conservation { ReferenceConservationSubject }
 import v2.std.type_binder { type_annotation_optional }
 import v2.extdeps.languages.dag { dag_int_literal_magnitude_node_optional, dag_node_is_int_literal_atom }
 import v2.std.node { Bind, ComputationNode, Authored, Node, Positional, node_subtree_nodes, StructuralLabel }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { ByteRange, DeclarationLocus, Extent, InvariantPortLocus, Locus, NodeLocus, SourcePortLocus, Textual, WholeFile }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

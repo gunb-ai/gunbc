@@ -14,7 +14,7 @@ import v2.extdeps.languages.dag {
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Edge, Authored, Node, Positional, well_formed, symbol_lexeme, StructuralLabel }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

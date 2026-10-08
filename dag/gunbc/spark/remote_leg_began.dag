@@ -34,8 +34,30 @@ fn remote_leg_reported_began(stdout: String) -> Bool {
   length(filter(remote_leg_lines(stdout: stdout), l => l == remote_leg_began_word)) > 0
 }
 
-// The command's own stdout, without the began-line, so a consumer reads exactly what the command
-// printed.
+// THE COMMAND'S OWN STDOUT, BYTE FOR BYTE, without the began-line (side-chat ruling on gunbc#13427).
+// Only the FIRST line that is exactly the marker is removed; every other byte -- leading and trailing
+// whitespace, blank lines, the terminal newline -- is what the command printed. An earlier revision
+// trimmed every line and the whole result, so a consumer that bounds or counts the output (a whole-file
+// read that asks for limit + 1 bytes) saw a trailing newline vanish and accepted a prefix as the whole.
+// A consumer that reads the output as ONE WORD says so through remote_stdout_as_one_word below; nothing
+// is normalized on its behalf.
 fn remote_leg_stdout_without_began(stdout: String) -> String {
-  trim(s: join(filter(remote_leg_lines(stdout: stdout), l => l != remote_leg_began_word), "\n"))
+  let first_line = join([remote_leg_began_word, "\n"], "")
+  let inner_line = join(["\n", remote_leg_began_word, "\n"], "")
+  let last_line = join(["\n", remote_leg_began_word], "")
+  if starts_with(s: stdout, prefix: first_line) { substring(s: stdout, start: length(first_line), end: length(stdout)) }
+  else if stdout == remote_leg_began_word { "" }
+  else if string_contains(s: stdout, pattern: inner_line) {
+    let parts = split(s: stdout, delimiter: inner_line)
+    join([join(parts.take(n: 1), ""), join(skip(xs: parts, n: 1), inner_line)], "\n")
+  }
+  else if ends_with(s: stdout, suffix: last_line) { substring(s: stdout, start: 0, end: length(stdout) - length(last_line)) }
+  else { stdout }
+}
+
+// STDOUT READ AS ONE WORD: a state word, a path, a count, a single line. Surrounding whitespace,
+// including the newline the command ended with, is not part of the word. The one place that reading is
+// named, so a consumer chooses it rather than inheriting it from the transport.
+fn remote_stdout_as_one_word(stdout: String) -> String {
+  trim(s: stdout)
 }

@@ -1,7 +1,7 @@
 module test.claim.spark.vllm_allocation_plan_observe_witness
 
 import std.types { Bool, String, Int, NonEmptyStr, EpochSecs }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex }
 import std.measure {
   token_count, token_count_value,

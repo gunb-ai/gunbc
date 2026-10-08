@@ -30,7 +30,7 @@ import gunbc.target_binding {
   HeadsReadingDifferentialStanding,
   CompileCleanDiagnosticCensusStanding,
 }
-import v2.std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent }
 import std.types { String, Bool, NonEmptyStr }
 import std.integer { Int }
 
@@ -547,13 +547,20 @@ fn dependency_finding(index: TargetStandingIndex, dep: Label) -> List<AggregateF
 //   argument; a list literal is already `Value::List` and is charged zero.
 //
 //   EMITTED. `rc_list_concat` takes `Rc<Vec<T>>` where `v1_rt`'s prelude binds `Vec` to
-//   `im::Vector`, so `Rc::make_mut`'s clone arm shares structure rather than copying the spine —
-//   `v1_rt` states exactly that about its own `rc_*` updates.
+//   `im::Vector` and realizes concat as an RRB `append`. This reading was WRONG when first written:
+//   the realization then extended `a` with `b` one element at a time, so a concat cost the length of
+//   its right operand, and a profile of the emitted compiler found it (gunbc.recurring_failure_mode
+//   realization_violates_its_declared_complexity_contract). The comment beside `v1_rt`'s `rc_*` ops
+//   stated the contract; nothing executed it, which is why a reading of the carrier was not enough.
+//
+// The interpreted arm the paragraph above reads is the method and `list_concat` arm; the free
+// `concat` arm then copied both operands into a fresh vector, and was repaired with the emitted one.
 //
 // So the accumulator's spine is never copied per dependency and the fold is linear in the
 // dependency count, times the vector's logarithmic node path. The finding list is also bounded by
 // the REFUSALS rather than by the dependency count, so on the satisfied path it stays empty.
-// This is a reading of the two carriers, not a measurement of a large aggregate.
+// This is a reading of the two carriers, not a measurement of a large aggregate; the scaling
+// control that measures the carrier itself is the RFM row's.
 fn aggregate_findings(
   aggregate: BuildTarget,
   index: TargetStandingIndex,

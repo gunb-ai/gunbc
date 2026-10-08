@@ -63,7 +63,7 @@ import gunbc.managed_host { ManagedHost, managed_hosts, managed_host_binding, Ma
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.github.actions_runner { ActionsRunnerLinuxArm64 }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
-import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused, systemd_run_command_argument_words }
+import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.runner_throughput_qualification_route { ephemeral_slot_unit, ephemeral_slot_labels, ephemeral_slot_command }
 import gunbc.runner.runner_jit_deregistration { JitRegistration, jit_registration_of, readback_subject_refusal, DeregistrationReadbackForAnotherSubject }
 import gunbc.runner.runner_host_unit_slot {
@@ -1378,7 +1378,7 @@ test fn witness_jit_mint_authorizes_a_managed_host_unit_slot_under_the_routes_ow
           && req.runner_group_id.value == 3
           && runner_label_sets_equal(a: map(req.labels, l => l.value as String), b: ephemeral_slot_labels(host: h.host, attempt: "q-1"))
           && match ephemeral_slot_command(unit: u.unit, desired: gunbc_runner_slot_desired(), command_argv: host_unit_slot_listener_argv()) {
-               SystemdRunCommandReady { command: c } => u.argv == systemd_run_command_argument_words(command: c)
+               SystemdRunCommandReady { command: c } => u.argv == c
                SystemdRunCommandRefused { cause: _ } => false
              }
           && match u.runner.arch { ActionsRunnerLinuxArm64 => true _ => false }

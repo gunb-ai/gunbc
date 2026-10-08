@@ -20,7 +20,7 @@ import product.spatial_world {
   World, PlacedSpace, world_rooms, WorldVariant, world_variant,
   WorldConstruction, WorldReady, WorldRefused, realize_variant,
 }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 
 // SPATIAL-5B: EDITING, AND EVERY EDIT IS A DELTA BY CONSTRUCTION.
 //

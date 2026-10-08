@@ -9,7 +9,7 @@ import gunbc.runner_microvm_attempt_bounds {
   runner_attempt_vmm_deadline, runner_attempt_vmm_kill_grace, attempt_stop_grace, attempt_force_stop_bound, attempt_unit_stop_slack,
 }
 import extdeps.systemd.unit_file { slice_memory_max, slice_memory_swap_max }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, SystemdServiceDirective, ExecStart, ServiceType, ExecMode,
   ServiceExitType, ServiceKillMode, ExitTypeMain, KillModeControlGroup, Installable, WantedBy, Description,
@@ -322,8 +322,9 @@ test fn only_a_delivered_mint_carries_a_registration_into_the_controller() -> Bo
 // (external review of gunbc#12011). A witness over the slot unit's own directives could not have
 // caught it -- those directives were all present and correct.
 //
-// So this reads the ARGV: the exact `--property=` words systemd_run_property_argv builds from the
-// same list run_jailer_in_cell passes, and requires PartOf to name this slot's supervising unit.
+// So this reads the ARGV: the exact `--property=` words systemd_run_transient_unit_command
+// projects (through systemd_run_option_words) from the same list run_jailer_in_cell passes, and
+// requires PartOf to name this slot's supervising unit.
 // The Slice word is required in the same breath because the two are a pair -- the cell placement is
 // what makes the control-group kill insufficient, so a future edit that dropped Slice would make
 // PartOf redundant rather than load-bearing, and one that dropped PartOf leaks the guest.

@@ -1,7 +1,7 @@
 module gunbc.auth.managed_host_boot_federation
 
 import std.types { Bool, List, Map, NonEmptyStr, String }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifProvider, wif_provider_resource, wif_pool_resource }
 import extdeps.cloud.gcp.iam { IamCondition, role_secretmanager_secret_accessor }

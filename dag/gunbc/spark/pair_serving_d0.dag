@@ -1,10 +1,10 @@
 module gunbc.spark.pair_serving_d0
 
-import gunbc.auth.standing_operator_grant { StandingOperatorGrant, group_a_dev_standing_grant, standing_grant_covers, StandingD0ReleaseToFleet }
+import gunbc.auth.standing_operator_grant { StandingOperatorGrant, group_a_dev_standing_grant, standing_grant_covers, StandingD0ReleaseToFleet, StandingGrantFabricGroup }
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs, Port, Timestamp }
 import std.nat { Nat }
 import std.measure { Second, second, second_count }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.list { list_cover }
@@ -39,7 +39,7 @@ import gunbc.fabric_storage_client { FabricStorageBinding }
 import std.fabric_storage { FabricStoreRefused, fabric_storage_fault_wire }
 import gunbc.host_effect { FleetSsh }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
-import gunbc.rung_drop { Standing, Retired, TypedDeclaration, AuthoredProse, RungDropStanding }
+import gunbc.rung_drop { Standing, Retired, Superseded, TypedDeclaration, AuthoredProse, RungDropStanding }
 import gunbc.rung_drop.fabric_storage_append_principal_unrefused { fabric_storage_append_principal_unrefused }
 import gunbc.rung_drop.d0_store_walls_single_lifecycle { d0_store_walls_single_lifecycle }
 import gunbc.fleet_ssh_locus { fleet_locus_ssh_target, FleetSshContextReady, FleetSshContextRefused, prepare_fleet_ssh_agent_context }
@@ -786,7 +786,7 @@ fn d0_standing_grant_for_subject(subject: D0Subject) -> StandingOperatorGrant? {
   match subject.operation {
     D0SuspendForSuccessor { successor: _, cleanup: _, term: _ } => none
     D0ReleaseToFleet { cause: _, approval: _ } =>
-      first(filter(d0_standing_grants, g => standing_grant_covers(g: g, group: subject.group, effect: StandingD0ReleaseToFleet, hosts: subject.hosts)))
+      first(filter(d0_standing_grants, g => standing_grant_covers(g: g, scope: StandingGrantFabricGroup { group: subject.group, hosts: subject.hosts }, effect: StandingD0ReleaseToFleet)))
   }
 }
 
@@ -2072,6 +2072,7 @@ data d0_release_lifecycle_escalation_id: NonEmptyStr = "d0-group-a-release-glm53
 fn d0_single_lifecycle_admits_under(standing: RungDropStanding, group: FabricGroup, escalation_id: NonEmptyStr) -> Bool {
   match standing {
     Retired { trigger_fired: _ } => false
+    Superseded { ruling: _, decision_record: _, loss_holder: _ } => false
     Standing =>
       (match group { FabricGroupA => true  FabricGroupB => false })
         && ((escalation_id as String) == (d0_single_lifecycle_escalation_id as String)
@@ -2093,6 +2094,7 @@ fn d0_store_write_wall_standing(group: FabricGroup, escalation_id: NonEmptyStr) 
 
 fn d0_store_walls_refusal() -> String? {
   match fabric_storage_append_principal_unrefused.standing {
+    Superseded { ruling: _, decision_record: _, loss_holder: h } => Present { value: join(["the fabric DB write-door drop fabric_storage_append_principal_unrefused was superseded rather than retired by its trigger, so the wall it tracked is not shown restored (its loss is held by ", h as String, "); D0 does not run on a supersession"], "") }
     Standing => Present { value: join(["the fabric DB's write door admits any tailnet member (gunbc.rung_drop fabric_storage_append_principal_unrefused stands; its trigger: ", fabric_storage_append_principal_unrefused_trigger(), "), so a writer that never passed this door could move the facts this transaction writes; D0 does not run until that drop is retired"], "") }
     Retired { trigger_fired: _ } =>
       match d0_store_operation_wall {

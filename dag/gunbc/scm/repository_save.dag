@@ -82,6 +82,11 @@ import gunbc.scm.repository_envelope {
 // obligation (DESIGN section 4b): external reality observed, typed, and admitted or refused -- not
 // a class on the ladder, so no next-rung trigger.
 //
+// `RepositorySaved.generation` is the hash of the index bytes that write just committed -- the
+// same `repository_generation_of_content` a later load or CAS observe will compute from that
+// file -- so a writer that must persist again (a seed, then a capture) forwards this rather than
+// re-encoding.
+//
 // NO WITNESS COVERS THAT FOURTH ARM AND THAT IS A LIMIT, NOT AN OVERSIGHT. Reaching it requires a
 // host write that SUCCEEDS and then reports a negative count, which no substrate-only fixture can
 // author -- this module's witness is `SubstrateInputsOnly`, and a real write refuses at the
@@ -98,7 +103,7 @@ import gunbc.scm.repository_envelope {
 // RepositoryGuardedSave beside an arm embedding RepositorySave whole, so one save vocabulary
 // serves both entries and no consumer matches an arm its route cannot construct.
 type RepositorySave
-  = RepositorySaved { path: String, written: ByteSize }
+  = RepositorySaved { path: String, written: ByteSize, generation: Fnv1a64Structural }
   | RepositorySaveRefusedByCodec { path: String, cause: RepositoryEncodeRefusal }
   | RepositoryFileUnwritable { path: String, error: String }
   | RepositoryWriteByteCountUnrepresentable { path: String, reported: Int }
@@ -216,6 +221,22 @@ type RepositoryGuardedSave
 // So the absence-authorized create derives its target from the token itself. There is no second
 // target to disagree with, which is the difference between a capability that is CONSUMED and one
 // that is merely carried past the actuation.
+fn repository_saved_from_write(path: String, content: String, bytes_written: Int) -> RepositorySave {
+  if bytes_written < 0 {
+    RepositoryWriteByteCountUnrepresentable { path: path, reported: bytes_written }
+  } else {
+    RepositorySaved {
+      path: path,
+      written: byte_size(count: nat_magnitude(a: bytes_written)),
+      generation: repository_generation_of_content(content: content),
+    }
+  }
+}
+
+fn repository_generation_expected_after_save(generation: Fnv1a64Structural) -> RepositoryGenerationExpectation {
+  GenerationExpected(generation)
+}
+
 fn create_repository_at_absence(
   absence: FilesystemEstablishedAbsence,
   repo: RepositoryEnvelope,
@@ -228,13 +249,12 @@ fn create_repository(path: String, repo: RepositoryEnvelope) -> RepositorySave {
     RepositoryEncodeRefused { cause: cause } =>
       RepositorySaveRefusedByCodec { path: path, cause: cause }
     RepositoryEncoded { value: v } => {
-      let write = Filesystem.WriteCreateNew(path: path, content: serialize_json(v: v))
+      let content = serialize_json(v: v)
+      let write = Filesystem.WriteCreateNew(path: path, content: content)
       if !write.success {
         RepositoryFileUnwritable { path: path, error: write.error }
-      } else if write.bytes_written < 0 {
-        RepositoryWriteByteCountUnrepresentable { path: path, reported: write.bytes_written }
       } else {
-        RepositorySaved { path: path, written: byte_size(count: nat_magnitude(a: write.bytes_written)) }
+        repository_saved_from_write(path: path, content: content, bytes_written: write.bytes_written)
       }
     }
   }
@@ -245,13 +265,12 @@ fn save_repository(path: String, repo: RepositoryEnvelope) -> RepositorySave {
     RepositoryEncodeRefused { cause: cause } =>
       RepositorySaveRefusedByCodec { path: path, cause: cause }
     RepositoryEncoded { value: v } => {
-      let write = Filesystem.Write(path: path, content: serialize_json(v: v))
+      let content = serialize_json(v: v)
+      let write = Filesystem.Write(path: path, content: content)
       if !write.success {
         RepositoryFileUnwritable { path: path, error: write.error }
-      } else if write.bytes_written < 0 {
-        RepositoryWriteByteCountUnrepresentable { path: path, reported: write.bytes_written }
       } else {
-        RepositorySaved { path: path, written: byte_size(count: nat_magnitude(a: write.bytes_written)) }
+        repository_saved_from_write(path: path, content: content, bytes_written: write.bytes_written)
       }
     }
   }
@@ -409,13 +428,12 @@ fn persist_sharded_repository(path: String, plan: ShardedSavePlan, v: JsonValue)
         Present { value: detail } =>
           RepositoryFileUnwritable { path: path, error: detail }
         Absent => {
-          let write = Filesystem.Write(path: path, content: serialize_json(v: v))
+          let content = serialize_json(v: v)
+          let write = Filesystem.Write(path: path, content: content)
           if !write.success {
             RepositoryFileUnwritable { path: path, error: write.error }
-          } else if write.bytes_written < 0 {
-            RepositoryWriteByteCountUnrepresentable { path: path, reported: write.bytes_written }
           } else {
-            RepositorySaved { path: path, written: byte_size(count: nat_magnitude(a: write.bytes_written)) }
+            repository_saved_from_write(path: path, content: content, bytes_written: write.bytes_written)
           }
         }
       }

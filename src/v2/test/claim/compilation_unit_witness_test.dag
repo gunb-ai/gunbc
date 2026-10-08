@@ -37,7 +37,7 @@ import v2.std.compilers.compilation_unit {
   resolve_member_interfaces,
 }
 import v2.std.collection { empty_map, map_insert }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 import v2.std.node {
   Arrow,
   Atom,

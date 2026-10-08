@@ -18,6 +18,7 @@ module gunbc.scm.write_spine
 // that decision and does not re-derive it, so an `add` of one path can never delete the paths nobody
 // touched.
 
+import gunbc.scm.intake { CaptureWork }
 import std.types { String, NonEmptyStr, Int, List }
 import gunbc.scm.object_store {
   ObjectId,
@@ -42,6 +43,7 @@ import gunbc.scm.repository_envelope {
 import gunbc.scm.ordinary_commit {
   AncestralCommitMint, AncestralCommitMinted, AncestralCommitAllocatorInvalid,
   mint_ancestral_commit,
+  mint_ancestral_capture,
 }
 import gunbc.scm.staging {
   StagingRefusal, EffectiveCandidate,
@@ -262,14 +264,35 @@ type CommittableStage sole_constructor {
 }
 
 fn commit_staged(repository: RepositoryEnvelope, message: String) -> StagedCommit {
+  commit_staged_recording(repository: repository, message: message, work: none)
+}
+
+// THE SAME VERB FOR A CAPTURE: the stage is frozen exactly as commit_staged freezes it, and the commit
+// additionally records the unit of work it captured (gunbc.scm.intake CommitWork), which a corrective
+// supersession is later bound to. A capture is a delta against a base, so a repository with no
+// selected base has nothing for one to descend from and the route refuses: a root commit carrying
+// work is a role gunbc.scm.repository_envelope admit_capture refuses, and this makes it unwritable
+// here rather than refused later.
+type StagedCapture
+  = StagedCaptureCommitted(StagedCommit)
+  | StagedCaptureWithoutBase
+
+fn commit_staged_capture(repository: RepositoryEnvelope, message: String, work: CaptureWork) -> StagedCapture {
+  match repository.checked_out {
+    Absent => StagedCaptureWithoutBase
+    Present { value: _ } => StagedCaptureCommitted(commit_staged_recording(repository: repository, message: message, work: Present { value: work }))
+  }
+}
+
+fn commit_staged_recording(repository: RepositoryEnvelope, message: String, work: CaptureWork?) -> StagedCommit {
   match stage_standing(repository: repository) {
     StageStandingRefused { cause: c } => StagedCommitCandidateRefused { cause: c }
     NoCandidateAndNoBase => StagedCommitNothingToFreeze
     StageMatchesBase { candidate: _ } => StagedCommitNothingToFreeze
     StageWithNoBase { candidate: _, change: change } =>
-      commit_admitted_stage(change: change, message: message)
+      commit_admitted_stage(change: change, message: message, work: work)
     StageDiffersFromBase { candidate: _, committed: _, change: change } =>
-      commit_admitted_stage(change: change, message: message)
+      commit_admitted_stage(change: change, message: message, work: work)
   }
 }
 
@@ -302,7 +325,7 @@ fn commit_staged(repository: RepositoryEnvelope, message: String) -> StagedCommi
 // walk; external review corrected it. The per-entry cost is inherent to the question -- there is no way
 // to know a source resolves without asking the store -- and it is paid at publication, which is where
 // it buys something.
-fn commit_admitted_stage(change: FreezableChange, message: String) -> StagedCommit {
+fn commit_admitted_stage(change: FreezableChange, message: String, work: CaptureWork?) -> StagedCommit {
   match observe_corpus_source_completeness(
     store: change.basis.subject.repository.store,
     entries: change.entries,
@@ -312,6 +335,7 @@ fn commit_admitted_stage(change: FreezableChange, message: String) -> StagedComm
       freeze_committable(
         committable: CommittableStage { basis: change.basis },
         message: message,
+        work: work,
       )
   }
 }
@@ -332,8 +356,12 @@ fn commit_admitted_stage(change: FreezableChange, message: String) -> StagedComm
 // honest. Neither half is optional: leaving the checkout behind would make the next `add` inherit from
 // the OLD snapshot, and leaving the stage in place would make the next commit freeze the same manifest
 // again under a new identity.
-fn freeze_committable(committable: CommittableStage, message: String) -> StagedCommit {
-  match mint_ancestral_commit(basis: committable.basis, message: message) {
+fn freeze_committable(committable: CommittableStage, message: String, work: CaptureWork?) -> StagedCommit {
+  let minted = match work {
+    Absent => mint_ancestral_commit(basis: committable.basis, message: message)
+    Present { value: w } => mint_ancestral_capture(basis: committable.basis, message: message, work: w)
+  }
+  match minted {
     AncestralCommitAllocatorInvalid { next_ordinal: n } =>
       StagedCommitAllocatorInvalid { next_ordinal: n }
     AncestralCommitMinted(minted) =>

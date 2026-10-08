@@ -10,6 +10,9 @@ import extdeps.linux.procfs
 import extdeps.posix.getconf
 import extdeps.crypto.hash
 import extdeps.nvidia.system_management_interface
+import extdeps.tools.stat
+import extdeps.tools.coreutils_head
+import std.measure { ByteSize, byte_size_count }
 import gunbc.host_effect {
   HostEffectTransport,
   LocalShell,
@@ -112,6 +115,8 @@ type HostOperation =
   | SystemctlStatus { unit: NonEmptyStr }
   | SystemctlStop { unit: NonEmptyStr }
   | SystemctlStart { unit: NonEmptyStr }
+  | SystemctlRestart { unit: NonEmptyStr }
+  | SystemctlResetFailed { unit: NonEmptyStr }
   | SystemctlMaskNow { unit: NonEmptyStr }
   | SystemctlShowProperty { unit: NonEmptyStr, property: SystemdUnitProperty }
   | SystemctlShowUserProperty { unit: NonEmptyStr, property: SystemdUnitProperty }
@@ -129,6 +134,8 @@ type HostOperation =
   | ProcfsReadNetTcp6
   | GetconfClockTicksPerSecond
   | Sha256SumFile { path: NonEmptyStr }
+  | StatFileType { path: NonEmptyStr }
+  | HeadBytes { path: NonEmptyStr, count: ByteSize }
   | NvidiaSmiQueryComputeApps
 
 // THE OUTCOME IS DELIBERATELY NOT SshSessionExecResult. Three of the four legs produce one, but
@@ -165,6 +172,14 @@ fn host_operation_invocation(operation: HostOperation) -> BoundOperationInvocati
     )
     SystemctlStart { unit: u } => bind_operation_invocation(
       at: systemctl_operation_ref(operation: "Start"),
+      bindings: [operation_argv_bind_text(name: "unit", text: u as String)],
+    )
+    SystemctlRestart { unit: u } => bind_operation_invocation(
+      at: systemctl_operation_ref(operation: "Restart"),
+      bindings: [operation_argv_bind_text(name: "unit", text: u as String)],
+    )
+    SystemctlResetFailed { unit: u } => bind_operation_invocation(
+      at: systemctl_operation_ref(operation: "ResetFailedUnit"),
       bindings: [operation_argv_bind_text(name: "unit", text: u as String)],
     )
     SystemctlMaskNow { unit: u } => bind_operation_invocation(
@@ -275,6 +290,22 @@ fn host_operation_invocation(operation: HostOperation) -> BoundOperationInvocati
       },
       bindings: [operation_argv_bind_text(name: "path", text: p as String)],
     )
+    StatFileType { path: p } => bind_operation_invocation(
+      at: OperationRef {
+        path: stat_operation_path,
+        service: stat_operation_service,
+        operation: "FileType",
+      },
+      bindings: [operation_argv_bind_text(name: "path", text: p as String)],
+    )
+    HeadBytes { path: p, count: n } => bind_operation_invocation(
+      at: OperationRef {
+        path: head_operation_path,
+        service: head_operation_service,
+        operation: "Bytes",
+      },
+      bindings: [operation_argv_bind_text(name: "path", text: p as String), operation_argv_bind_text(name: "count", text: to_string(byte_size_count(b: n)))],
+    )
     NvidiaSmiQueryComputeApps => bind_operation_invocation(
       at: OperationRef {
         path: nvidia_smi_operation_path,
@@ -349,6 +380,14 @@ fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
       let result = systemd.Systemctl.Start(unit: u)
       HostOperationObserved { stdout: result.stdout, success: result.success, stderr: result.stderr }
     }
+    SystemctlRestart { unit: u } => {
+      let result = systemd.Systemctl.Restart(unit: u)
+      HostOperationObserved { stdout: result.stdout, success: result.success, stderr: result.stderr }
+    }
+    SystemctlResetFailed { unit: u } => {
+      let result = systemd.Systemctl.ResetFailedUnit(unit: u)
+      HostOperationObserved { stdout: "", success: result.success, stderr: result.stderr }
+    }
     SystemctlMaskNow { unit: u } => {
       let result = systemd.Systemctl.MaskNow(unit: u)
       HostOperationObserved { stdout: result.stdout, success: result.success, stderr: result.stderr }
@@ -416,6 +455,14 @@ fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
     Sha256SumFile { path: p } => {
       let result = crypto.Sha256Sum.File(path: p as String)
       HostOperationObserved { stdout: result.line, success: result.success, stderr: Present { value: result.stderr } }
+    }
+    StatFileType { path: p } => {
+      let result = stat.File.FileType(path: p as String)
+      HostOperationObserved { stdout: result.file_type, success: result.success, stderr: Present { value: result.stderr } }
+    }
+    HeadBytes { path: p, count: n } => {
+      let result = coreutils.Head.Bytes(path: p, count: to_string(byte_size_count(b: n)) as NonEmptyStr)
+      HostOperationObserved { stdout: result.text, success: result.success, stderr: Present { value: result.stderr } }
     }
     NvidiaSmiQueryComputeApps => {
       let result = nvidia_smi.Smi.QueryComputeApps()
@@ -497,6 +544,10 @@ data getconf_operation_path: String = "dag/extdeps/posix/getconf.dag"
 data getconf_operation_service: String = "posix.Getconf"
 data sha256sum_operation_path: String = "dag/extdeps/crypto/hash.dag"
 data sha256sum_operation_service: String = "crypto.Sha256Sum"
+data stat_operation_path: String = "dag/extdeps/tools/stat.dag"
+data stat_operation_service: String = "stat.File"
+data head_operation_path: String = "dag/extdeps/tools/coreutils_head.dag"
+data head_operation_service: String = "coreutils.Head"
 data nvidia_smi_operation_path: String = "dag/extdeps/nvidia/system_management_interface.dag"
 data nvidia_smi_operation_service: String = "nvidia_smi.Smi"
 

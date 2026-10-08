@@ -542,7 +542,14 @@ fn unit_termination_decide(o: UnitObservations) -> UnitTermination {
   let population = unit_population(control_group: o.control_group, events: o.events)
   match population {
     PopulationOccupied { detail: d } => UnitPopulated { detail: d }
-    _ =>
+    PopulationEmpty { detail: _ } => unit_termination_unconfirmed(o: o, population: population)
+    PopulationUnknown { detail: _ } => unit_termination_unconfirmed(o: o, population: population)
+  }
+}
+
+// The cgroup is not confirmed-occupied: the termination is decided from the manager's record and
+// the attempt's completion, with the population's own reading as the located detail.
+fn unit_termination_unconfirmed(o: UnitObservations, population: UnitPopulation) -> UnitTermination {
       if o.load_state.queried && trim(s: o.load_state.value) == unit_load_state_absent_wire {
         UnitAbsentAuthoritatively { detail: join(["LoadState=", unit_load_state_absent_wire, ", so the manager has no record of this unit"], "") }
       } else if !o.attempt_completed {
@@ -557,7 +564,7 @@ fn unit_termination_decide(o: UnitObservations) -> UnitTermination {
           PopulationEmpty { detail: pd } =>
             UnitAttemptCompleted {
               detail: join([
-                "systemd-run --wait returned success under ", compute_kill_mode_property as String, "=", compute_kill_mode_value as String,
+                "systemd-run --wait returned success under ", compute_kill_mode_property as String, "=", compute_kill_mode_value() as String,
                 " and ", pd,
               ], ""),
             }
@@ -565,7 +572,6 @@ fn unit_termination_decide(o: UnitObservations) -> UnitTermination {
           PopulationOccupied { detail: _ } => unit_termination_completed_unread(population: population)
         }
       }
-  }
 }
 
 // A completed wait whose population is not a confirmed-empty cgroup: the termination is not established.
@@ -619,7 +625,14 @@ data unit_result_success_wire: String = "success"
 fn unit_lifecycle_decide(o: UnitLifecycleObservations) -> UnitLifecycle {
   match o.population {
     PopulationOccupied { detail: d } => UnitStillRunning { detail: d }
-    _ =>
+    PopulationEmpty { detail: _ } => unit_lifecycle_unpopulated(o: o)
+    PopulationUnknown { detail: _ } => unit_lifecycle_unpopulated(o: o)
+  }
+}
+
+// The cgroup is not confirmed-occupied, so the unit's lifecycle is decided from the manager's
+// load state, active state and result alone.
+fn unit_lifecycle_unpopulated(o: UnitLifecycleObservations) -> UnitLifecycle {
       if !o.load_state.queried {
         UnitLifecycleUnknown { detail: "the user manager could not be queried for this unit's load state" }
       } else if trim(s: o.load_state.value) == unit_load_state_absent_wire {
@@ -639,7 +652,6 @@ fn unit_lifecycle_decide(o: UnitLifecycleObservations) -> UnitLifecycle {
       } else {
         UnitTerminatedFailure { detail: join(["ActiveState=", unit_active_state_inactive_wire, ", Result=", trim(s: o.result.value)], "") }
       }
-  }
 }
 
 // THE UNIT NAME COMES FROM THE ATTEMPT RECORD (criterion 2). This fold takes the name it is given
@@ -1631,7 +1643,18 @@ type UnitEnding
 
 fn compute_unit_ending(summary: SystemdRunWaitSummary) -> UnitEnding {
   match summary.result {
-    ServiceResultRead { result: r } => match r { ServiceResultOomKill => EndingOomKill  _ => EndingNotOomKill }
+    ServiceResultRead { result: r } => match r {
+    ServiceResultSuccess => EndingNotOomKill
+    ServiceResultProtocol => EndingNotOomKill
+    ServiceResultTimeout => EndingNotOomKill
+    ServiceResultExitCode => EndingNotOomKill
+    ServiceResultSignal => EndingNotOomKill
+    ServiceResultCoreDump => EndingNotOomKill
+    ServiceResultWatchdog => EndingNotOomKill
+    ServiceResultStartLimitHit => EndingNotOomKill
+    ServiceResultResources => EndingNotOomKill
+    ServiceResultOomKill => EndingOomKill
+}
     ServiceResultUnrecognized { wire } => EndingUnclassifiable { cause: join(["the manager reported a result this corpus does not recognize: ", wire], "") }
     ServiceResultNotReported { absence } => EndingUnclassifiable { cause: summary_absence_wire(a: absence) }
     ServiceResultFormatNotGrounded { standing } => EndingUnclassifiable { cause: summary_format_standing_wire(s: standing) }
@@ -1665,7 +1688,18 @@ fn compute_failed_unit_outcome(summary: SystemdRunWaitSummary, identity: String,
 // refuses upstream and never reaches here.
 fn compute_summary_is_oom_kill(summary: SystemdRunWaitSummary) -> Bool {
   match summary.result {
-    ServiceResultRead { result: r } => match r { ServiceResultOomKill => true  _ => false }
+    ServiceResultRead { result: r } => match r {
+    ServiceResultSuccess => false
+    ServiceResultProtocol => false
+    ServiceResultTimeout => false
+    ServiceResultExitCode => false
+    ServiceResultSignal => false
+    ServiceResultCoreDump => false
+    ServiceResultWatchdog => false
+    ServiceResultStartLimitHit => false
+    ServiceResultResources => false
+    ServiceResultOomKill => true
+}
     ServiceResultUnrecognized { wire: _ } => false
     ServiceResultNotReported { absence: _ } => false
     ServiceResultFormatNotGrounded { standing: _ } => false

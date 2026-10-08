@@ -9,8 +9,9 @@ import extdeps.github.actions_runner {
 }
 import gunbc.managed_host { ManagedHostBinding, ManagedHostBindingStanding, ManagedHostBound }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
+import extdeps.exec.command { ArgvCommand }
 import extdeps.systemd.systemd_run {
-  SystemdRunCommandReady, SystemdRunCommandRefused, SystemdRunOptionWordsRefusedCause, systemd_run_command_argument_words,
+  SystemdRunCommandReady, SystemdRunCommandRefused, SystemdRunOptionWordsRefusedCause,
 }
 import gunbc.runner_throughput_qualification_route { ephemeral_slot_unit, ephemeral_slot_command, ephemeral_slot_labels }
 
@@ -26,7 +27,9 @@ import gunbc.runner_throughput_qualification_route { ephemeral_slot_unit, epheme
 // unchanged rather than a re-coined cause. No mtcollins1_* module is named here; mtcollins1 reaches
 // this fold as the gunbc.managed_host managed_hosts row and nothing else.
 //
-// The unit, its systemd-run argv and its labels are the qualification route's own derivations
+// The unit, its systemd-run command (the full typed ArgvCommand -- program head included, so a
+// launch seam reading this field gets exactly the invocation the route stages, not a headless
+// tail it would have to re-head) and its labels are the qualification route's own derivations
 // (gunbc.runner_throughput_qualification_route ephemeral_slot_unit / ephemeral_slot_command /
 // ephemeral_slot_labels), so the slot the mint registers is by construction the slot the route
 // stages -- one spelling of the attempt label, not two.
@@ -42,7 +45,7 @@ type HostUnitSlot sole_constructor {
   workflow: NonEmptyStr
   unit: NonEmptyStr
   labels: List<String>
-  argv: List<String>
+  argv: ArgvCommand
   runner: ActionsRunnerBinaryArtifact
 }
 
@@ -84,7 +87,7 @@ fn host_unit_slot_for(host: ManagedHostBindingStanding, attempt: NonEmptyStr, wo
                   workflow: workflow,
                   unit: unit,
                   labels: ephemeral_slot_labels(host: b.host.host, attempt: attempt),
-                  argv: systemd_run_command_argument_words(command: command),
+                  argv: command,
                   runner: artifact,
                 },
               }
