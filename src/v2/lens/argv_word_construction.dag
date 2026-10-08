@@ -1,8 +1,9 @@
 module v2.lens.argv_word_construction
 
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
-import v2.compiler.parse { grammar_validate_for_parse, parse_production }
+import v2.compiler.parse { grammar_validate_for_parse, parse_production, ValidatedGrammarRoot }
 import v2.compiler.tokenize { tokenize }
+import v2.std.compilers.lexing { LexRules }
 import v2.extdeps.languages.dag {
   dag_language_model,
   parse_production_emitted_identity_optional,
@@ -632,25 +633,47 @@ type RawTreeStanding
 
 // The raw parse, without normalize: the same tokenize/validate/parse chain as
 // v2.lens.text_string_importer_census's raw_tree_of_text.
-fn raw_tree_of_text(text: String) -> RawTreeStanding {
+// The parse plan: the language model, its locus and its grammar validation are the SAME fact for
+// every module the census walks -- deriving them per module re-pays the model derivation for each
+// file (measured: ~120s fixed per invocation at the current model size, x every module, which is
+// hours over a root). Derive the plan ONCE per walk and thread it. The plan is a closed sum so a
+// refusal at derivation time is carried, not silently widened into a per-module refusal.
+type ArgvWordsParsePlan
+  = ArgvWordsParsePlanReady { lex: LexRules, validated: ValidatedGrammarRoot }
+  | ArgvWordsParsePlanNotEstablished { cause: SourceAnalysisNotEstablishedCause }
+
+fn argv_word_construction_parse_plan() -> ArgvWordsParsePlan {
   let lm = dag_language_model()
   let at = invariant_port_locus(port: ^argv_word_construction_port, invariant: ^argv_word_construction_source_invariant)
   match lm.grammar {
-    VoidGrammar => RawTreeNotEstablished { cause: LanguageGrammarUnavailable }
+    VoidGrammar => ArgvWordsParsePlanNotEstablished { cause: LanguageGrammarUnavailable }
     ModeledGrammar { root: root } =>
       match grammar_validate_for_parse(root: root, at: at) {
-        Rejected { diagnostics: _ } => RawTreeNotEstablished { cause: LanguageGrammarRejected }
-        Accepted { value: validated, diagnostics: _ } =>
-          match tokenize(text: text, file: ^argv_word_construction_subject, rules: lm.lex) {
-            Rejected { diagnostics: _ } => RawTreeNotEstablished { cause: SourceTokenizationRejected }
-            Accepted { value: stream, diagnostics: _ } =>
-              match parse_production(tokens: token_stream_remaining(stream: stream), validated: validated, production_name: validated.root.start) {
-                Rejected { diagnostics: _ } => RawTreeNotEstablished { cause: SourceParseRejected }
-                Accepted { value: artifact, diagnostics: _ } => RawTreeEstablished { root: artifact.tree }
-              }
+        Rejected { diagnostics: _ } => ArgvWordsParsePlanNotEstablished { cause: LanguageGrammarRejected }
+        Accepted { value: validated, diagnostics: _ } => ArgvWordsParsePlanReady { lex: lm.lex, validated: validated }
+      }
+  }
+}
+
+fn raw_tree_of_text_validated(text: String, plan: ArgvWordsParsePlan) -> RawTreeStanding {
+  match plan {
+    ArgvWordsParsePlanNotEstablished { cause: c } => RawTreeNotEstablished { cause: c }
+    ArgvWordsParsePlanReady { lex: lex, validated: validated } =>
+      match tokenize(text: text, file: ^argv_word_construction_subject, rules: lex) {
+        Rejected { diagnostics: _ } => RawTreeNotEstablished { cause: SourceTokenizationRejected }
+        Accepted { value: stream, diagnostics: _ } =>
+          match parse_production(tokens: token_stream_remaining(stream: stream), validated: validated, production_name: validated.root.start) {
+            Rejected { diagnostics: _ } => RawTreeNotEstablished { cause: SourceParseRejected }
+            Accepted { value: artifact, diagnostics: _ } => RawTreeEstablished { root: artifact.tree }
           }
       }
   }
+}
+
+// The single-file reading: one module, so the derivation is paid once per call, which is what the
+// per-file callers (claims, the fixture dump) already account for.
+fn raw_tree_of_text(text: String) -> RawTreeStanding {
+  raw_tree_of_text_validated(text: text, plan: argv_word_construction_parse_plan())
 }
 
 // ------------------------------------------------------------------ module entry
@@ -661,13 +684,14 @@ type ArgvWordsModuleStanding
 
 // The census read of ONE module file, end to end: read, raw parse, tree query, facts, sites. The
 // read folds through filesystem_read_outcome (the module's modeled read fold), so refusal and
-// content cannot be conflated at this site.
-fn argv_word_construction_module_sites(path: String) -> ArgvWordsModuleStanding {
+// content cannot be conflated at this site. The parse plan arrives threaded -- the walk derives it
+// once, not per module.
+fn argv_word_construction_module_sites_with_plan(path: String, plan: ArgvWordsParsePlan) -> ArgvWordsModuleStanding {
   let read = Filesystem.Read(path: path)
   match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
     FilesystemReadRefused { error: e } => ArgvWordsModuleRefused { path: path, reason: concat("read refused: ", e) }
     FilesystemReadSucceeded { content: text } =>
-      match raw_tree_of_text(text: text) {
+      match raw_tree_of_text_validated(text: text, plan: plan) {
         RawTreeNotEstablished { cause: c } => ArgvWordsModuleRefused { path: path, reason: concat("raw parse not established: ", source_cause_name(c: c)) }
         RawTreeEstablished { root: root } =>
           match argv_word_construction_sites_of_facts(module_file: path, facts: facts_of(root: root)) {
@@ -693,8 +717,9 @@ fn source_cause_name(c: SourceAnalysisNotEstablishedCause) -> String {
 // member declaration. Run from outside the repository over the discovered paths; CI's verifier
 // lane owns the corpus-scale recount, the session runner never runs it locally.
 fn argv_word_construction_for_paths(paths: List<String>, out: String) -> ProcessExit {
+  let plan = argv_word_construction_parse_plan()
   let folded = fold_list(xs: paths, empty: Empty, cons: fn(acc, p) {
-    match argv_word_construction_module_sites(path: p) {
+    match argv_word_construction_module_sites_with_plan(path: p, plan: plan) {
       ArgvWordsModuleRefused { path: rp, reason: r } => Cons { head: concat(concat(concat("REFUSED\t", rp), "\t"), r), tail: acc }
       ArgvWordsModuleEstablished { path: _, sites: sites } => fold_list(xs: sites, empty: acc, cons: fn(acc2, s) { Cons { head: site_line(s: s), tail: acc2 } })
     }
