@@ -456,9 +456,6 @@ type CasSlotRetention
   = KeepAllGenerations
   | KeepGenerationWindow { window: CasGenerationWindow }
 
-// A window read that keeps observing a moving head stops here and refuses with the attempt count.
-data cas_window_observation_attempt_bound: Int = 8
-
 // "<digits>" -> the generation it names; none for anything else, for zero, and for a value past the
 // Int maximum. The multiplication is pre-checked (std.checked_arithmetic: check before, never after).
 fn cas_generation_of_digits(s: String) -> CasGeneration? {
@@ -561,7 +558,7 @@ fn cas_observe_window(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotProbe
     Absent => cas_observe_window_once(root: root, key: key)
   }) {
     Present { value: p } => p
-    Absent => ProbedWindowHeadUnsettled { attempts: cas_window_observation_attempt_bound }
+    Absent => ProbedWindowHeadUnsettled { attempts: count(cas_window_observation_attempts) }
   }
 }
 
