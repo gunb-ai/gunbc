@@ -26,9 +26,13 @@ import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopula
 // actually tried: the current-tree interpreter (v2.compiler.self_host.closure_emission
 // closure_resolve_member, then v2.compiler.refinement_discharge infer_and_discharge) over std.change's
 // six-file import closure, and the v2 native CLI over a copy of those same six files. Both refused at
-// RESOLVE, so infer did not run on them: std.change at its free kernel call concat
-// (resolve_reason_unbound_symbol), std.types at map_get (declared in v2.std.collection, which that file
-// does not import), std.algebra at Map (resolve_unbound_name_is_declared_elsewhere std.types.Map). On the
+// RESOLVE, so infer did not run on them. Measured by a native-CLI census on aae7da34ca-descendant main
+// (stub each first unbound head, re-emit): std.change first refuses at the free call any (change.dag),
+// then at Present (no import of std.optional); concat is NOT a refusal, #13207's collection roster row binds
+// it. std.types refuses at map_get, map_insert, enumerate, filter, first, none, map_contains_key,
+// sorted_map_keys, replace and string_contains; std.algebra refuses at Map (resolve_unbound_name_is_declared_elsewhere
+// std.types.Map; std.algebra cannot import std.types, which imports it), empty_map, map_insert and List.
+// map_get is not importable from v2.std.collection (cycle, and a different outcome contract from the kernel one).
 // native CLI, small modules containing a fold also refused at resolve, anchored at a projected node of
 // the fold; that matches the class gunbc.recurring_failure_mode
 // .fold_cons_handler_binder_unbound_on_the_native_resolver, which was measured there on fold_list cons
