@@ -2879,6 +2879,19 @@ fn compose_optional_layers(outer: Cardinality, inner: Cardinality) -> Cardinalit
   }
 }
 
+// Carry the outer node's layers onto a transformed inner that may already hold the same fact.
+// Independent wraps use compose; this must not stack a copied flag on itself.
+fn preserve_optional_layers(outer: Cardinality, inner: Cardinality) -> Cardinality {
+  match outer {
+    Required => inner
+    CardOptional { layers: o } =>
+      match inner {
+        Required => CardOptional { layers: o }
+        CardOptional { layers: _ } => inner
+      }
+  }
+}
+
 fn peel_optional_layer_cardinality(c: Cardinality) -> Cardinality {
   match c {
     Required => Required
@@ -2909,6 +2922,10 @@ fn peel_optional_layer(n: Node) -> Node {
 
 fn compose_optional_cardinality_onto_node(outer: Node, inner: Node) -> Node {
   node_with_cardinality(n: inner, c: compose_optional_layers(outer: outer.return_cardinality, inner: inner.return_cardinality))
+}
+
+fn preserve_outer_optional_cardinality(outer: Node, inner: Node) -> Node {
+  node_with_cardinality(n: inner, c: preserve_optional_layers(outer: outer.return_cardinality, inner: inner.return_cardinality))
 }
 
 fn module_path_segments(path: String) -> List<String> {

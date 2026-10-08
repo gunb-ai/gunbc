@@ -88,7 +88,7 @@ import v1.std.core { Unmarked, declaration_provenance_of,
   binop_left, binop_right,
   make_transport_node, local_transport_node,
   Text, Interpolation,
-  with_optional_cardinality, with_required_cardinality, compose_optional_cardinality_onto_node,
+  with_optional_cardinality, with_required_cardinality, preserve_outer_optional_cardinality,
   no_span, NewlineIndex,
   unit_type, bool_type, string_type, int_type, float_type, none_type,
   error_type,
@@ -1460,7 +1460,7 @@ fn explicit_return_conformance_diags(declared: Node, body_typed: Node, scope: In
 data explicit_return_conformance_note: String = "An EARLY return is a second exit from the same declaration and must meet the same declared type as the last expression. The conformance wall first checked only the body's final inferred type, so `fn f(cond: Bool) -> Int { if cond { return \"wrong\" } 1 }` compiled clean — the block's value is the trailing 1, which conforms, and the wrong-typed exit was never compared against anything (codex review 45472, confirmed by execution: exit 0 before, a located TypeMismatch after). The check reuses declared_type_conformance_diags rather than minting a second relation, so the early exit is judged by exactly the ground-kernel-scalar and ground-element-collection discipline the trailing expression is judged by, and it widens with that gate rather than beside it. THE WALK STOPS AT A LAMBDA BOUNDARY, and it did not at first. A `return` inside a nested lambda belongs to the LAMBDA's callable return type, not the enclosing declaration's, so recursing through ExprLambda checked it against the wrong declaration and refused correct code — a fabricated refusal, which §5 forbids exactly as it forbids a fabricated success, and the mirror image of the hole this fn was added to close (codex review 45481, confirmed by execution: a lambda returning String inside a fn declared -> Int refused with expected Primitive(Int) got Primitive(String)). Every callable boundary is a new declaration and its returns are judged against it, not against whatever encloses it. THE WALKER'S OWN DISPOSITION, distinct from the lambda-coverage trigger below and asked for separately (codex review 45580): it is the seed's, not this function's. Self-recursive `children |> flat_map` collection is the v1 seed's only traversal idiom (collect_type_names_from_node, named_type_vars_in_node, collect_value_ref_names and siblings). THE POPULATION IS NAMED BY ITS INSTRUMENT AND NOT TRANSCRIBED: grep the literal idiom under src/v1 to re-derive it, and note the grep is LEXICAL while `self-recursive` and `only traversal idiom` are SEMANTIC properties — so it bounds the literal-occurrence population, and the recursion claim is read off the sites rather than off the count. This clause previously carried a site count and a module list, and both were wrong. NO SUPERSEDED FIGURE IS RESTATED HERE, not even as history: a wrong number quoted inside the sentence announcing its removal is still a number in a live authority, it decays exactly as the original did, and it gets cited as though this row had measured it. The before-and-after belongs in the PR that made the correction. Nothing edited this note; the tree moved underneath it, which is the decay mode §3 gives for a positional citation and the reason the 2026-08-24 ruling forbids transcribing an instrument's output. The argument never needed the number: what makes this the seed's idiom rather than a new shape is that EVERY collector recurses itself, and that is true at whatever the instrument measures next — a clause whose force depends on a figure it cannot keep current was overstating its own evidence. And there is no shared v1 walker to route through, because each collector recurses itself. Nor is there a canonical fold to reach for: fold_node and node_query are v2 substrate, no v1 seed module imports v2, and v1 COMPILES v2, so routing seed inference through v2's fold inverts the bootstrap. DESIGN's fold_node line is scoped to the 7 v2 stages. So this is one more instance of an idiom the seed uses everywhere rather than a new shape beside it, and its trigger is the one every sibling carries: the v1 seed shrinks to zero at v2 self-host and they dissolve together. Generalizing a shared collector for this one call site alone would ADD a shape rather than remove one; the dissolution that is real is the seed's. That reasoning was recorded on where_refinement_receiver_peel_note for the same class and NOT here, which is why it had to be found twice — a disposition stated on one carrier and omitted from its sibling is not stated. Lambda returns are consequently NOT yet judged here — the lambda's own declared return is not threaded to this post-pass — which is a narrowing, stated rather than implied, and it dissolves when the walk carries each callable's declared return rather than only infer_item's."
 
 fn declared_return_type_node(item: Node) -> Node {
-  compose_optional_cardinality_onto_node(outer: item, inner: resolved_type(n: item))
+  preserve_outer_optional_cardinality(outer: item, inner: resolved_type(n: item))
 }
 
 fn conformance_ground_kernel_scalar(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -1930,7 +1930,7 @@ fn field_substitution_carrier(sf: Node, source_indices: Map<String, NewlineIndex
   let te = field_node_type_expr(n: sf)
   if field_type_expr_is_stripped_placeholder(te: te, source_indices: source_indices) {
     match sf.inferred {
-      Present { value: Resolved { node: rt } } => compose_optional_cardinality_onto_node(outer: sf, inner: rt)
+      Present { value: Resolved { node: rt } } => preserve_outer_optional_cardinality(outer: sf, inner: rt)
       _ => te
     }
   } else { te }
@@ -7297,7 +7297,7 @@ fn inferred_or_error(result: InferredNode?, fallback_message: String, fallback_s
 fn resolve_pattern_subject(scope: InferScope, scrutinee_subject: PatternSubject) -> PatternSubject {
   match scrutinee_subject {
     PatternResolved { node: scrutinee_type } =>
-      pattern_subject_from_node(n: compose_optional_cardinality_onto_node(outer: scrutinee_type, inner: resolve_scrutinee_type_node(env: scope.type_env, n: scrutinee_type)))
+      pattern_subject_from_node(n: preserve_outer_optional_cardinality(outer: scrutinee_type, inner: resolve_scrutinee_type_node(env: scope.type_env, n: scrutinee_type)))
     PatternDynamic { span: dynamic_span } =>
       PatternDynamic { span: dynamic_span }
     PatternLookupBlocked =>
@@ -10937,7 +10937,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     let field_declared_type = match struct_fields |> filter(sf => authored_name_at(source_indices: scope.type_env.source_indices, node: sf) == fi_name) |> first {
       Present { value: sf } =>
         let ft = match sf.inferred {
-          Present { value: Resolved { node: rt } } => compose_optional_cardinality_onto_node(outer: sf, inner: rt)
+          Present { value: Resolved { node: rt } } => preserve_outer_optional_cardinality(outer: sf, inner: rt)
           _ => field_node_type_expr(n: sf)
         }
         Present { value: ft }
@@ -14026,7 +14026,7 @@ fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: 
   match n.inferred {
     Present { value: TypeVariable { id: tv_id } } =>
       match map_get(subst, tv_id) {
-        Present { value: c } => if type_node_label(n: c, source_indices: source_indices) == tv_id { n } else { compose_optional_cardinality_onto_node(outer: n, inner: c) }
+        Present { value: c } => if type_node_label(n: c, source_indices: source_indices) == tv_id { n } else { preserve_outer_optional_cardinality(outer: n, inner: c) }
         Absent => n
       }
     _ =>
@@ -14034,7 +14034,7 @@ fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: 
   let is_bare = n.children |> count == 0 && n.connective == NoConnective && n.params |> count == 0
   if is_bare {
     match map_get(subst, nm) {
-      Present { value: c } => compose_optional_cardinality_onto_node(outer: n, inner: c)
+      Present { value: c } => preserve_outer_optional_cardinality(outer: n, inner: c)
       Absent => n
     }
   } else {
@@ -16222,7 +16222,7 @@ fn bind_local_func_conformance(func_env: ResolvedFuncEnv, env: TypeEnv, module_n
           ResolvedFormal {
             parameter_identity: param_node_name_at(n: p, source_indices: env.source_indices),
             declared_type: declared_type,
-            declaration_bound_conformance: compose_optional_cardinality_onto_node(
+            declaration_bound_conformance: preserve_outer_optional_cardinality(
               outer: declared_type,
               inner: peel_nominal_alias_identity(n: declared_type, env: env, module_name: module_name)),
             substitution_basis: declaration_substitution_basis(n: declared_type, env: env, generic_names: generic_names)

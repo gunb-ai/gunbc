@@ -5315,6 +5315,16 @@ pub fn compose_optional_layers(outer: Cardinality, inner: Cardinality) -> Cardin
     }
 }
 
+pub fn preserve_optional_layers(outer: Cardinality, inner: Cardinality) -> Cardinality {
+    match outer {
+        Cardinality::Required => inner,
+        Cardinality::CardOptional { layers: o } => match inner {
+            Cardinality::Required => Cardinality::CardOptional { layers: o },
+            Cardinality::CardOptional { .. } => inner,
+        },
+    }
+}
+
 pub fn peel_optional_layer_cardinality(c: Cardinality) -> Cardinality {
     match c {
         Cardinality::Required => Cardinality::Required,
@@ -5381,11 +5391,17 @@ pub fn compose_optional_cardinality_onto_node(outer: Rc<Node>, inner: Rc<Node>) 
 }
 
 pub fn join_optional_cardinality(left: Cardinality, right: Cardinality) -> Cardinality {
-    compose_optional_layers(left, right)
+    preserve_optional_layers(left, right)
 }
 
 pub fn preserve_outer_optional_cardinality(outer: Rc<Node>, inner: Rc<Node>) -> Rc<Node> {
-    compose_optional_cardinality_onto_node(outer, inner)
+    node_with_cardinality(
+        inner.clone(),
+        preserve_optional_layers(
+            outer.return_cardinality.clone(),
+            inner.return_cardinality.clone(),
+        ),
+    )
 }
 
 pub fn module_path_segments(path: String) -> Rc<Vec<String>> {

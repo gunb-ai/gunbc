@@ -34,7 +34,7 @@ import v1.std.core { Unmarked,
   make_transport_node, local_transport_node,
   is_local_transport, transport_request_body,
   is_kernel_type, is_container_type,
-  with_optional_cardinality, with_required_cardinality, compose_optional_layers, compose_optional_cardinality_onto_node,
+  with_optional_cardinality, with_required_cardinality, preserve_outer_optional_cardinality, preserve_optional_layers,
   Connective, Conj, Disj, Arrow, NoConnective,
   CardOptional, cardinality_is_optional, no_span,
   unit_type, string_type,
@@ -268,7 +268,7 @@ fn with_authored_identity(identity: Node, structural: Node) -> Node {
   Node {
     occurrence_identity: OccurrenceSynthetic, name: structural.name, ident: structural.ident, span: structural.span, ident_span: identity.ident_span,
     children: structural.children, connective: structural.connective, params: structural.params,
-    inferred: structural.inferred, return_cardinality: compose_optional_layers(outer: identity.return_cardinality, inner: structural.return_cardinality),
+    inferred: structural.inferred, return_cardinality: preserve_optional_layers(outer: identity.return_cardinality, inner: structural.return_cardinality),
     uses: structural.uses, body: structural.body, transport: structural.transport,
     properties: structural.properties, type_annotation: structural.type_annotation,
     is_self_recursive: structural.is_self_recursive, has_non_tail_self_call: structural.has_non_tail_self_call,
@@ -292,7 +292,7 @@ fn preserve_nominal_brand_on_resolve(
     && (!is_transparent_primitive_alias_rhs(structural: structural, source_indices: source_indices)
       || is_kernel_type(name: qualified_last_segment(name: brand_name))) {
     with_authored_identity(identity: identity, structural: structural)
-  } else { compose_optional_cardinality_onto_node(outer: identity, inner: structural) }
+  } else { preserve_outer_optional_cardinality(outer: identity, inner: structural) }
 }
 
 // A TYPE-PARAMETER REFERENCE IS NOT A NOMINAL ALIAS, AND IT IS KNOWN BY ITS MARK, NOT ITS SPELLING
@@ -485,11 +485,11 @@ fn substitute_type_slots_scoped(n: Node, slot_bindings: Map<String, Node>, decl_
       _ => none
     }
   } else { none }
-  if tv_slot != none { return compose_optional_cardinality_onto_node(outer: n, inner: tv_slot.value) }
+  if tv_slot != none { return preserve_outer_optional_cardinality(outer: n, inner: tv_slot.value) }
   let is_slot = n.children |> count == 0 && n.connective == NoConnective && n.body == none && n.inferred == none
   if is_slot {
     match map_get(slot_bindings, authored_name_at(source_indices: source_indices, node: n)) {
-      Present { value: concrete } => compose_optional_cardinality_onto_node(outer: n, inner: concrete)
+      Present { value: concrete } => preserve_outer_optional_cardinality(outer: n, inner: concrete)
       Absent => n
     }
   } else {

@@ -1424,7 +1424,13 @@ pub fn map_lookup_result_type(
         == "Map".to_string())
     {
         match product_field_result_type(field.clone()) {
-            Some(raw) => Some(crate::v1_std_core::with_optional_cardinality(raw.clone())),
+            Some(raw) => Some(
+                if crate::v1_std_core::cardinality_is_optional(raw.return_cardinality.clone()) {
+                    raw.clone()
+                } else {
+                    crate::v1_std_core::with_optional_cardinality(raw.clone())
+                },
+            ),
             std::option::Option::None => std::option::Option::None,
         }
     } else {
