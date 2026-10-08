@@ -219,23 +219,23 @@ fn closure_ingest_step(
           bind_outcome(
             o: qualified_name_from_module_node(root: census.root),
             f: fn(module_qn) {
-              if closure_ingest_declares(files: acc.files, member_module: module_qn) {
-                closure_census_duplicate_module_outcome(
-                  files: acc.files,
-                  member_module: module_qn,
-                  second_root: census.root
-                )
-              } else {
-                outcome_accepted(value: ClosureIngest {
-                  files: list_snoc_item(xs: acc.files, item: ClosureIngestFile {
-                    module: module_qn,
-                    parse_tree: artifact.tree,
-                    census: census,
-                    source_root: read.source_root
-                  }),
-                  index: source_root_index_insert(index: acc.index, module: module_qn, root: read.source_root),
-                  alloc: artifact.alloc
-                })
+              match closure_ingest_first_declaring(files: acc.files, member_module: module_qn) {
+                Present { value: first } =>
+                  closure_census_duplicate_module_outcome(
+                    first: first,
+                    second_root: census.root
+                  )
+                Absent =>
+                  outcome_accepted(value: ClosureIngest {
+                    files: list_snoc_item(xs: acc.files, item: ClosureIngestFile {
+                      module: module_qn,
+                      parse_tree: artifact.tree,
+                      census: census,
+                      source_root: read.source_root
+                    }),
+                    index: source_root_index_insert(index: acc.index, module: module_qn, root: read.source_root),
+                    alloc: artifact.alloc
+                  })
               }
             }
           )
@@ -311,10 +311,6 @@ fn closure_census_index(files: FreeMonoid<ClosureIngestFile>) -> SymbolIndex {
 // would refuse a duplicate too (resolve_duplicate_module_name), but each member is resolved in a
 // context holding only itself, so that wall cannot fire here; the census is where the whole
 // population is in view, so the wall lives there (review of gunbc#12218 at 242b7af).
-fn closure_ingest_declares(files: FreeMonoid<ClosureIngestFile>, member_module: QualifiedName) -> Bool {
-  fold_list(xs: files, empty: false, cons: fn(found, f) { found || f.module == member_module })
-}
-
 fn closure_ingest_first_declaring(
   files: FreeMonoid<ClosureIngestFile>,
   member_module: QualifiedName
@@ -343,20 +339,14 @@ fn closure_census_duplicate_module_diagnostics(first: Node, second: Node) -> Non
 }
 
 fn closure_census_duplicate_module_outcome(
-  files: FreeMonoid<ClosureIngestFile>,
-  member_module: QualifiedName,
+  first: ClosureIngestFile,
   second_root: Node
 ) -> Outcome<ClosureIngest> {
-  match closure_ingest_first_declaring(files: files, member_module: member_module) {
-    Present { value: first } =>
-      Rejected {
-        diagnostics: closure_census_duplicate_module_diagnostics(
-          first: first.census.root,
-          second: second_root
-        )
-      }
-    Absent =>
-      outcome_rejected(d: closure_emission_diagnostic(reason: ^closure_census_duplicate_module, at: second_root))
+  Rejected {
+    diagnostics: closure_census_duplicate_module_diagnostics(
+      first: first.census.root,
+      second: second_root
+    )
   }
 }
 
