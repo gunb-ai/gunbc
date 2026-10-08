@@ -72,8 +72,7 @@ service http.Client {
     readonly
     transport rest {
       method: GET,
-      path: "{url}",
-      tls: InsecureAcceptAnyCert
+      path: "{url}"
     }
     response {
       2xx => String
@@ -89,9 +88,7 @@ service http.Client {
     readonly
     transport rest {
       method: GET,
-      path: "{url}",
-      tls: InsecureAcceptAnyCert,
-      timeout_seconds: http_client_localhost_max_time_flag()
+      path: "{url}"
     }
     response {
       2xx => String
@@ -110,9 +107,7 @@ service http.Client {
     readonly
     transport rest {
       method: GET,
-      path: "{url}",
-      tls: InsecureAcceptAnyCert,
-      timeout_seconds: http_client_localhost_max_time_flag()
+      path: "{url}"
     }
     response {
       2xx => String
@@ -126,14 +121,12 @@ service http.Client {
 
   operation GetWithin {
     requires Network
-    input { url: NonEmptyStr, max_seconds: NonEmptyStr }
+    input { url: NonEmptyStr }
     output { body: String }
     readonly
     transport rest {
       method: GET,
-      path: "{url}",
-      tls: InsecureAcceptAnyCert,
-      timeout_seconds: max_seconds
+      path: "{url}"
     }
     response {
       2xx => String
@@ -147,14 +140,13 @@ service http.Client {
 
   operation GetWithinUnixSocket {
     requires Network
-    input { socket: NonEmptyStr, url: NonEmptyStr, max_seconds: NonEmptyStr }
+    input { socket: NonEmptyStr, url: NonEmptyStr }
     output { body: String }
     readonly
     transport rest {
       method: GET,
       path: "{url}",
-      tls: InsecureAcceptAnyCert,
-      timeout_seconds: max_seconds
+      unix_socket: socket
     }
     response {
       2xx => String
@@ -168,14 +160,12 @@ service http.Client {
 
   operation StatusWithin {
     requires Network
-    input { url: NonEmptyStr, max_seconds: NonEmptyStr }
+    input { url: NonEmptyStr }
     output { status: String }
     readonly
     transport rest {
       method: GET,
-      path: "{url}",
-      tls: InsecureAcceptAnyCert,
-      timeout_seconds: max_seconds
+      path: "{url}"
     }
     response {
       2xx => String
@@ -189,7 +179,7 @@ service http.Client {
 
   operation GetQueryStdinWithin {
     requires Network
-    input { url: NonEmptyStr, query: String, connect_seconds: NonEmptyStr, max_seconds: NonEmptyStr }
+    input { url: NonEmptyStr, query: String }
     output {
       success: Bool
       body: String
@@ -198,7 +188,7 @@ service http.Client {
     transport rest {
       method: GET,
       path: "{url}",
-      tls: InsecureAcceptAnyCert
+      query: query
     }
     response {
       2xx => String
@@ -212,7 +202,7 @@ service http.Client {
 
   operation PostStdinWithin {
     requires Network
-    input { url: NonEmptyStr, request_body: String, connect_seconds: NonEmptyStr, max_seconds: NonEmptyStr }
+    input { url: NonEmptyStr, request_body: String }
     output {
       exit_code: Int
       success: Bool
@@ -222,7 +212,7 @@ service http.Client {
     transport rest {
       method: POST,
       path: "{url}",
-      tls: InsecureAcceptAnyCert
+      body: { json: request_body }
     }
     response {
       2xx => String
@@ -236,7 +226,7 @@ service http.Client {
 
   operation PostStdinWithinUnixSocket {
     requires Network
-    input { socket: NonEmptyStr, url: NonEmptyStr, request_body: String, connect_seconds: NonEmptyStr, max_seconds: NonEmptyStr }
+    input { socket: NonEmptyStr, url: NonEmptyStr, request_body: String }
     output {
       exit_code: Int
       success: Bool
@@ -246,7 +236,8 @@ service http.Client {
     transport rest {
       method: POST,
       path: "{url}",
-      tls: InsecureAcceptAnyCert
+      unix_socket: socket,
+      body: { json: request_body }
     }
     response {
       2xx => String
@@ -260,13 +251,13 @@ service http.Client {
 
   operation PostJsonFromFile {
     requires Network
-    input { url: NonEmptyStr, request_body_file: NonEmptyStr, max_seconds: NonEmptyStr }
+    input { url: NonEmptyStr, request_body_file: NonEmptyStr }
     output { body: String }
     readonly
     transport rest {
       method: POST,
       path: "{url}",
-      tls: InsecureAcceptAnyCert,
+      headers: { "Content-Type": "application/json" },
       body: { from_file: request_body_file }
     }
     response {
@@ -277,13 +268,13 @@ service http.Client {
   }
 
   operation PostFormFromFile {
-    input { url: NonEmptyStr, request_body_file: NonEmptyStr, max_seconds: NonEmptyStr }
+    input { url: NonEmptyStr, request_body_file: NonEmptyStr }
     output { body: String }
     readonly
     transport rest {
       method: POST,
       path: "{url}",
-      tls: InsecureAcceptAnyCert,
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: { from_file: request_body_file }
     }
     response {
@@ -302,8 +293,7 @@ service http.Client {
     output { success: Bool }
     transport rest {
       method: GET,
-      path: "{url}",
-      tls: InsecureAcceptAnyCert
+      path: "{url}"
     }
     response {
       2xx => String
@@ -314,14 +304,13 @@ service http.Client {
 
   operation GetFollowRedirectsBoundedWithHeaderFile {
     requires Network
-    input { url: NonEmptyStr, max_seconds: NonEmptyStr, accept: NonEmptyStr, header_file: NonEmptyStr }
+    input { url: NonEmptyStr, accept: NonEmptyStr, header_file: NonEmptyStr }
     output { body: String }
     readonly
     transport rest {
       method: GET,
       path: "{url}",
-      tls: InsecureAcceptAnyCert,
-      timeout_seconds: max_seconds
+      headers: { "Accept": accept }
     }
     response {
       2xx => String
@@ -335,7 +324,7 @@ service http.Client {
 
   operation Probe {
     requires Network
-    input { url: NonEmptyStr, connect_time: Second, max_time: Second }
+    input { url: NonEmptyStr }
     output {
       status: String
       answered: Bool
@@ -344,9 +333,7 @@ service http.Client {
     readonly
     transport rest {
       method: GET,
-      path: "{url}",
-      tls: InsecureAcceptAnyCert,
-      timeout_seconds: http_client_max_time_flag(max_time: max_time)
+      path: "{url}"
     }
     response {
       2xx => String
