@@ -97,7 +97,7 @@ Loader-tier consumers (`extend_with_bare_reference_closure`, compile-clean impor
 | --- | --- | --- |
 | `layer_import_facts()` edge source | `extract_import_paths` per file | transitional union per §3.1; terminal reference-only per §3.2 |
 | `reference_resolution_facts` pool | (n/a) | **`witness_layer_roots` pool** + `std_roots ∪ extdeps_roots` importer scope — qualified targets like `v2.compiler.*` resolve against the full witness-layer census, same split as module-graph selection adjacency |
-| `layer` field assignment | scan-root constant (`LAYER_STD` / `LAYER_EXTDEPS`) | **`layer_prefix_from_dotted_qualified_name(importer_module)`** — authority: `v2.std.cross_tree.resolution`; **host mirror** (`CLI_RUN_LAYER_PREFIX_FROM_DOTTED_MODULE_SCAFFOLD_MARKER`) until builtin routes through `.dag` |
+| `layer` field assignment | scan-root constant (`LAYER_STD` / `LAYER_EXTDEPS`) | **`layer_prefix_from_dotted_qualified_name(importer_module)`** — authority: `v2.std.layer`; **host mirror** (`CLI_RUN_LAYER_PREFIX_FROM_DOTTED_MODULE_SCAFFOLD_MARKER`) until builtin routes through `.dag` |
 | `import_module` field semantics | import-line target | **resolved target module** (reference or import — same string shape) |
 | Importer module resolution | implicit from path prefix | `extract_module_path(content)` per file (already required by reference producer) |
 
@@ -192,7 +192,7 @@ These call `layer_import_facts_live` / `layer_import_facts` and inherit the repo
 | --- | --- |
 | `reference_resolution_facts` scaffold | **ready** — landed, interpreter-registered |
 | `reference_edges_as_import_facts(strict)` | **ready** — tier contract documented |
-| `layer_prefix_from_dotted_qualified_name` | **ready** — `v2.std.cross_tree.resolution` |
+| `layer_prefix_from_dotted_qualified_name` | **ready** — `v2.std.layer` |
 | PR-5b import-line strip | **parallel** — Phase 1 must land before strip reaches gate scan roots, or gate goes blind on those files |
 | Namespace terminal step 5 | **gates** Phase 3 — import grammar deletion |
 | `realization_vocabulary_containment` / `meta_exec_confinement` | **coupled** — inherit producer; no separate migration |

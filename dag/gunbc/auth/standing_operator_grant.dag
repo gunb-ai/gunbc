@@ -5,13 +5,13 @@ import product.host_identity { HostIdentity, host_identity_eq }
 import std.list { list_member }
 import std.scoped_authorization { OperatorGrant, ScopedAuthorization, AuthorizationGranted, AuthorizationRequest, Unclaimed }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
+import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_mtjade1 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, fabric_group_wire }
-import gunbc.auth.authorization_pattern_selection { StandingDestructiveAuthorization }
+import gunbc.auth.authorization_pattern_selection { StandingDestructiveAuthorization, InterlockedBy, InterlockPending }
 
 // ── A STANDING OPERATOR GRANT, COMMITTED AS A RULING ───────────────────────────────────────────
 //
-// WHAT THIS IS. An operator ruling that authorizes a bounded set of effects over a bounded set of hosts
+// WHAT THIS IS. An operator ruling that authorizes a bounded set of effects over a bounded scope
 // from the moment it was given, with no per-effect approval -- carried as a reviewable row in the source,
 // never relayed at run time and never written into the authority log by hand. It is the same standing
 // the selection already models for the Mt. Collins controller (gunbc.auth.authorization_pattern_selection
@@ -19,22 +19,31 @@ import gunbc.auth.authorization_pattern_selection { StandingDestructiveAuthoriza
 // effect it covers and the interlock the effect is conditional on. That ruling discharges the
 // per-instance witness obligation, which is exactly why no new pattern arm is needed here -- with the
 // witness discharged, the selection's own fold prefers the run's scoped identity over a per-effect tap,
-// and this row adds only what that type does not carry: the group, the exact hosts and the closed set of
-// effects, so a consumer can ask whether ONE effect on ONE host is inside the ruling.
+// and this row adds only what that type does not carry: the scope (a fabric group, or one named host),
+// the exact hosts and the closed set of effects, so a consumer can ask whether ONE effect on ONE host
+// is inside the ruling. Scope is not FabricGroup: an mtjade1 grant has no fabric group.
 //
 // WHAT IT IS NOT. It is not a capability that skips any wall but the approval: the consumer still takes
 // its claim, its fresh readings and its readback. And it does not widen: a group, a host or an effect
 // outside the row is not covered, and the consumer falls back to the per-effect approval it always had.
 //
 // THE EFFECTS ARE ONLY THOSE A GATE CONSUMES (DESIGN §3c, review 74624). D0's release is consumed here
-// (gunbc.spark.pair_serving_d0_door d0_gate). ArmLaunch is a declared frontier: its consumer is the
-// launch gate's released-group arm, gunbc.spark.group_arm_launch group_arm_released_launch_causes, which
-// lands in gunbc#13040 (stacked on this change). HostEffectRecover is a declared frontier with the same
-// consumer PR: the dispatched recovery of a dead lane's host-effect claim on a Group A host
-// (gunbc.spark.host_commitment's release, which settles only after a fresh quiescence read of the host --
-// never on a claim's term alone; ruling of valiant-crab-775, 2026-10-03). The image, checkpoint and teardown
-// effects the ruling also covers are NOT rows: nothing gates them on a grant (they are fenced by the
-// per-host claim), and an effect row nothing reads would pre-authorize what no wall asks about.
+// (gunbc.spark.pair_serving_d0_door d0_gate). ArmLaunch is consumed by gunbc.spark.group_arm_launch
+// group_arm_released_launch_causes. HostEffectRecover is consumed by gunbc.spark.standing_host_effect_recover
+// recover_covering_grant. The image, checkpoint and teardown effects the Group A ruling also covers are
+// NOT rows: nothing gates them on a grant (they are fenced by the per-host claim), and an effect row
+// nothing reads would pre-authorize what no wall asks about.
+//
+// MTJADE1 LIVE OPS (operator ruling 2026-10-06, msg_7402f8df-7917-4b24-bb86-c4e7d51991f7) names BMC
+// reads/writes, boots, and firmware qualification. Those classes are a declared frontier: the first
+// consuming gate lands in gunbc#13497 (stern-ibex-771 route A -- bindable fleet-converge principal,
+// effect arm in the same closure as the secret/cell fetch) and must call standing_grant_covers for a
+// named arm -- O1c-3's BmcSecure authorization discharge, managed_host_boot admission/authorization,
+// or MegaRAC per-build operation evidence / admit_megarac_host_at_current_build. The prior-life archive
+// is a BMC read (it writes only our store) and has no grant arm. The mtjade1 grant's effects list is
+// empty until that change lands the arm. The interlock is InterlockPending until a consuming gate names
+// a hold: that state refuses to discharge irreversibility, so a bindable boot under this row does not
+// select federation.
 type StandingGrantEffect
   = StandingD0ReleaseToFleet
   | StandingArmLaunch
@@ -48,14 +57,42 @@ fn standing_grant_effect_wire(e: StandingGrantEffect) -> NonEmptyStr {
   }
 }
 
+// A GRANT BOUNDS EITHER A FABRIC GROUP AND ITS HOSTS, OR ONE NAMED HOST. Group A is the first;
+// mtjade1 is the second. Hosts live in the arm: a host-scoped grant does not restate its host in a
+// parallel list. Coverage still requires every requested host to be in the grant's derived hosts.
+type StandingGrantScope
+  = StandingGrantFabricGroup { group: FabricGroup, hosts: List<HostIdentity> }
+  | StandingGrantHost { host: HostIdentity }
+
 type StandingOperatorGrant {
   identity: NonEmptyStr
   principal: NonEmptyStr
   ruled_at: Timestamp
   ruling: StandingDestructiveAuthorization
-  group: FabricGroup
-  hosts: List<HostIdentity>
+  scope: StandingGrantScope
   effects: List<StandingGrantEffect>
+}
+
+fn standing_grant_hosts(g: StandingOperatorGrant) -> List<HostIdentity> {
+  match g.scope {
+    StandingGrantFabricGroup { group: _, hosts: hs } => hs
+    StandingGrantHost { host: h } => [h]
+  }
+}
+
+fn standing_grant_scope_matches(g: StandingOperatorGrant, scope: StandingGrantScope) -> Bool {
+  match g.scope {
+    StandingGrantFabricGroup { group: granted, hosts: _ } =>
+      match scope {
+        StandingGrantFabricGroup { group: asked, hosts: _ } => (fabric_group_wire(g: granted) as String) == (fabric_group_wire(g: asked) as String)
+        StandingGrantHost { host: _ } => false
+      }
+    StandingGrantHost { host: granted } =>
+      match scope {
+        StandingGrantHost { host: asked } => host_identity_eq(a: granted, b: asked)
+        StandingGrantFabricGroup { group: _, hosts: _ } => false
+      }
+  }
 }
 
 // THE GROUP A DEVELOPMENT GRANT. The words are the operator's, given directly in the parent session on
@@ -71,24 +108,48 @@ data group_a_dev_standing_grant: StandingOperatorGrant = StandingOperatorGrant {
   ruling: StandingDestructiveAuthorization {
     ruling_text: "Operator ruling 2026-10-03, given directly in valiant-crab-775's session and relayed by dashboard message msg_2940687d: 'you have my permission to use group A however you want from now on.' The approval broker and app are a separate lane and will not be set up now. Scope as relayed: FabricGroupA hosts srv5-srv8; the D0 release-to-fleet plus the GLM staircase's host effects (image produce and distribute, checkpoint materialize, arm launch and teardown), and, per valiant-crab-775 on 2026-10-03, recovering a dead lane's host-effect claim on a Group A host after a fresh quiescence read. Group B is outside it." as NonEmptyStr,
     effect_subject: "Group A development effects: the D0 release-to-fleet of Group A's pair-serving authority and the GLM-5.3-Flash staircase's host effects on srv5-srv8" as NonEmptyStr,
-    interlock: decl_ref(module_path: "gunbc.spark.pair_serving_d0", decl_name: "d0_claim_grant"),
+    interlock: InterlockedBy { hold: decl_ref(module_path: "gunbc.spark.pair_serving_d0", decl_name: "d0_claim_grant") },
   },
-  group: FabricGroupA,
-  hosts: [operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8],
+  scope: StandingGrantFabricGroup { group: FabricGroupA, hosts: [operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8] },
   effects: [StandingD0ReleaseToFleet, StandingArmLaunch, StandingHostEffectRecover],
 }
 
-// COVERAGE IS AN IDENTITY JOIN: the group is the grant's, the effect is one of its effects, and EVERY host
+// THE MTJADE1 LIVE-OPS GRANT. The words are the operator's, given directly in eager-gull-22's session
+// on 2026-10-06 and relayed by dashboard message msg_7402f8df-7917-4b24-bb86-c4e7d51991f7: "live operations
+// on mtjade1 are authorized whenever, indefinitely. That covers BMC reads and writes (history archive,
+// login/credential change), boots, and firmware qualification on Mt. Jade, with no per-run approval
+// needed. Scope is mtjade1 only; mtcollins1 wet steps still need their own go-ahead." Quote unchanged.
+// Effects list empty: no consuming gate has landed (O1c-3 BmcSecure discharge, managed_host_boot
+// authorization, MegaRAC current-build admission). The prior-life archive is not an arm.
+data mtjade1_live_standing_grant: StandingOperatorGrant = StandingOperatorGrant {
+  identity: "mtjade1-live-standing-grant-2026-10-06" as NonEmptyStr,
+  principal: "operator" as NonEmptyStr,
+  ruled_at: "2026-10-06T00:00:00Z",
+  ruling: StandingDestructiveAuthorization {
+    ruling_text: "Operator ruling 2026-10-06, given directly in eager-gull-22's session and relayed by dashboard message msg_7402f8df-7917-4b24-bb86-c4e7d51991f7: 'live operations on mtjade1 are authorized whenever, indefinitely. That covers BMC reads and writes (history archive, login/credential change), boots, and firmware qualification on Mt. Jade, with no per-run approval needed. Scope is mtjade1 only; mtcollins1 wet steps still need their own go-ahead.'" as NonEmptyStr,
+    effect_subject: "mtjade1 live operations: BMC credential/login writes, boots, and MegaRAC firmware qualification -- effect rows only as consuming gates land" as NonEmptyStr,
+    interlock: InterlockPending { obligation: "consuming gates (O1c-3 BmcSecure authorization discharge, managed_host_boot admission, MegaRAC current-build admission) have not named a hold" as NonEmptyStr },
+  },
+  scope: StandingGrantHost { host: operator_host_mtjade1 },
+  effects: [] as List<StandingGrantEffect>,
+}
+
+// COVERAGE IS AN IDENTITY JOIN: the scope is the grant's, the effect is one of its effects, and EVERY host
 // the effect touches is one of its hosts (a host outside the roster is outside the ruling, however few).
 // An empty host list touches nothing a ruling could cover, so it is not covered.
 // SUBSET, NOT SET EQUALITY: std.list list_cover is equality in both directions, and using it here made an
 // effect on ONE granted host (a host-effect recovery on srv7) uncovered while all four passed -- found by
 // the recovery's witness (2026-10-03). Every effect host must be granted; the effect need not touch all.
-fn standing_grant_covers(g: StandingOperatorGrant, group: FabricGroup, effect: StandingGrantEffect, hosts: List<HostIdentity>) -> Bool {
-  (fabric_group_wire(g: g.group) as String) == (fabric_group_wire(g: group) as String)
+fn standing_grant_covers(g: StandingOperatorGrant, scope: StandingGrantScope, effect: StandingGrantEffect) -> Bool {
+  standing_grant_scope_matches(g: g, scope: scope)
     && any(g.effects, e => (standing_grant_effect_wire(e: e) as String) == (standing_grant_effect_wire(e: effect) as String))
-    && length(hosts) != 0
-    && all(hosts, h => list_member(xs: g.hosts, x: h, eq: fn(a, b) { host_identity_eq(a: a, b: b) }))
+    && match scope {
+      StandingGrantFabricGroup { group: _, hosts: requested } =>
+        length(requested) != 0
+          && all(requested, h => list_member(xs: standing_grant_hosts(g: g), x: h, eq: fn(a, b) { host_identity_eq(a: a, b: b) }))
+      StandingGrantHost { host: h } =>
+        list_member(xs: standing_grant_hosts(g: g), x: h, eq: fn(a, b) { host_identity_eq(a: a, b: b) })
+    }
 }
 
 // THE GRANT A CONSUMER ACTS UNDER, MINTED OVER THE EXACT REQUEST: its scopes, subject and intent are the
