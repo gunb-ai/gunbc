@@ -1,0 +1,8 @@
+subject: mtjade1 BMC 192.168.1.246
+GET /redfish/v1/Managers/Self during J1 probe 2026-10-06T18:46:26Z from srv1
+credential: factory admin, password redacted (file outside repo)
+--- argv:
+curl -sk -m20 -u admin:<redacted> -w \nHTTP_CODE:%{http_code} https://192.168.1.246/redfish/v1/Managers/Self
+notes:
+- raw curl output with HTTP_CODE trailer is artifacts/bmc/mtjade1-readonly-probe-192.168.1.246-20261006T184626Z/redfish_Managers_Self.json
+- this file is that JSON document with the trailer removed so AccessDiscover can parse one document

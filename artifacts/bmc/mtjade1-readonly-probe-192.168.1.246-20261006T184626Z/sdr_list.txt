@@ -1,0 +1,152 @@
+Event_log        | 0x00              | ok
+FAN3_1_Speed     | 5000 RPM          | ok
+FAN3_1_Failure   | 0x00              | ok
+FAN3_1_Presence  | 0x00              | ok
+TS1_Temp         | 29 degrees C      | ok
+TS2_Temp         | 29 degrees C      | ok
+TS4_Temp         | 28 degrees C      | ok
+TS3_Temp         | 29 degrees C      | ok
+TS6_Temp         | 32 degrees C      | ok
+TS5_Temp         | 33 degrees C      | ok
+S0_SOC_Temp      | 49 degrees C      | ok
+S0_SOC_VRD_Temp  | 33 degrees C      | ok
+S0_DIMM_VRD_Temp | 34 degrees C      | ok
+S0_Core_VRD_Temp | 30 degrees C      | ok
+S0_DIMMG0_Temp   | 29 degrees C      | ok
+S0_CPU_Pwr       | 34 Watts          | ok
+S0_MEM_Pwr       | 1.60 Watts        | ok
+Watchdog2        | 0x00              | ok
+S0_CPU_VCORE     | 1.02 Volts        | ok
+S0_DIMM_VR1_Volt | 1.23 Volts        | ok
+S0_DIMM_VR2_Volt | 1.23 Volts        | ok
+S0_DIMM_DDR_Volt | 1.23 Volts        | ok
+S0_CPU_PROC_HOT  | 0x00              | ok
+S0_Memory_Status | 0x00              | ok
+S0_ACPI_State    | 0x01              | ok
+S0_0V8_VDDC_SOC  | 0.79 Volts        | ok
+S0_0V75_PCP      | 1.02 Volts        | ok
+S0_1V2_VDDQ0123  | 1.23 Volts        | ok
+S0_0V6_VTT0123   | 0.62 Volts        | ok
+S0_2V5_VPP0123   | 2.49 Volts        | ok
+S0_1V2_VDDQ4567  | 1.23 Volts        | ok
+S0_0V6_VTT4567   | 0.62 Volts        | ok
+S0_2V5_VPP4567   | 2.48 Volts        | ok
+S0_0V85_RCA      | 0.92 Volts        | ok
+S0_1V8_VDDH      | 1.77 Volts        | ok
+S0_1V5_VDDH      | 1.49 Volts        | ok
+S0_1V8_SOC       | 1.74 Volts        | ok
+S0_1V8_PCP       | 1.78 Volts        | ok
+S0_3V3_SOC       | 3.26 Volts        | ok
+Sys_Boot_Restart | 0x00              | ok
+S0_DIMM_VR1_Pwr  | 1.17 Watts        | ok
+S0_DIMM_VR2_Pwr  | 0 Watts           | ok
+S0_SoC_Error     | 0x00              | ok
+S0_PCIE_Status   | 0x00              | ok
+S1_0V8_VDDC_SOC  | 0.79 Volts        | ok
+S1_0V75_PCP      | 1.02 Volts        | ok
+S1_1V2_VDDQ0123  | 1.23 Volts        | ok
+S1_0V6_VTT0123   | 0.61 Volts        | ok
+S1_2V5_VPP0123   | 2.48 Volts        | ok
+S1_1V2_VDDQ4567  | 1.23 Volts        | ok
+S1_0V6_VTT4567   | 0.61 Volts        | ok
+S1_2V5_VPP4567   | 2.49 Volts        | ok
+S1_0V85_RCA      | 0.92 Volts        | ok
+S1_1V8_VDDH      | 1.78 Volts        | ok
+S1_1V5_VDDH      | 1.49 Volts        | ok
+S1_1V8_SOC       | 1.77 Volts        | ok
+S1_1V8_PCP       | 1.77 Volts        | ok
+S1_3V3_SOC       | 3.28 Volts        | ok
+3V3_SB           | 3.26 Volts        | ok
+VBAT_RTC         | 3.13 Volts        | ok
+S1_ACPI_State    | 0x01              | ok
+S1_DIMM_VRD_Temp | 34 degrees C      | ok
+S1_Core_VRD_Temp | 31 degrees C      | ok
+S1_DIMM_VR2_Pwr  | 0 Watts           | ok
+S1_DIMM_DDR_Volt | 1.23 Volts        | ok
+S1_MEM_Pwr       | 0 Watts           | ok
+S1_DIMM_VR1_Pwr  | 0 Watts           | ok
+S1_SoC_Error     | 0x00              | ok
+S1_SOC_VRD_Temp  | 36 degrees C      | ok
+S1_DIMM_VR1_Volt | 1.23 Volts        | ok
+S1_DIMM_VR2_Volt | 1.23 Volts        | ok
+S1_SOC_Temp      | 57 degrees C      | ok
+S1_PCIE_Status   | 0x00              | ok
+S1_CPU_Pwr       | 42 Watts          | ok
+S1_CPU_VCORE     | 1.01 Volts        | ok
+S1_Memory_Status | 0x00              | ok
+S1_DIMMG0_Temp   | 30 degrees C      | ok
+S1_CPU_PROC_HOT  | 0x00              | ok
+FAN4_1_Failure   | 0x00              | ok
+FAN4_1_Presence  | 0x00              | ok
+FAN4_1_Speed     | 5000 RPM          | ok
+ChassisIntrusion | 0x00              | ok
+S0_CPU_Status    | 0x00              | ok
+S1_CPU_Status    | 0x00              | ok
+FAN3_2_Failure   | 0x00              | ok
+FAN3_2_Speed     | 4800 RPM          | ok
+FAN3_2_Presence  | 0x00              | ok
+FAN4_2_Failure   | 0x00              | ok
+FAN4_2_Speed     | 4700 RPM          | ok
+FAN4_2_Presence  | 0x00              | ok
+FAN7_1_Failure   | 0x00              | ok
+FAN6_2_Failure   | 0x00              | ok
+FAN6_2_Speed     | 4700 RPM          | ok
+FAN5_2_Failure   | 0x00              | ok
+FAN6_1_Presence  | 0x00              | ok
+FAN5_1_Failure   | 0x00              | ok
+FAN8_2_Speed     | 4700 RPM          | ok
+FAN6_2_Presence  | 0x00              | ok
+FAN5_2_Presence  | 0x00              | ok
+FAN5_1_Speed     | 5000 RPM          | ok
+FAN8_1_Speed     | 5000 RPM          | ok
+FAN6_1_Failure   | 0x00              | ok
+FAN7_2_Speed     | 4800 RPM          | ok
+FAN8_1_Failure   | 0x00              | ok
+FAN7_2_Failure   | 0x00              | ok
+FAN5_2_Speed     | 4700 RPM          | ok
+FAN7_1_Presence  | 0x00              | ok
+FAN5_1_Presence  | 0x00              | ok
+FAN8_1_Presence  | 0x00              | ok
+FAN7_2_Presence  | 0x00              | ok
+FAN7_1_Speed     | 5000 RPM          | ok
+FAN8_2_Presence  | 0x00              | ok
+FAN8_2_Failure   | 0x00              | ok
+FAN6_1_Speed     | 5000 RPM          | ok
+PSU1_POUT        | 0 Watts           | ok
+PSU1_TEMP        | 32 degrees C      | ok
+PSU1_FAN_SPEED   | 0 RPM             | ok
+PSU2_FAN_SPEED   | 5500 RPM          | ok
+PSU2_TEMP        | 39 degrees C      | ok
+PSU2_POUT        | 120 Watts         | ok
+Total_Power      | 120 Watts         | ok
+S1_RCA_VR_Pwr    | 4.80 Watts        | ok
+S1_RCA_VR_Temp   | 34 degrees C      | ok
+S1_RCA_VR_Volt   | 0.90 Volts        | ok
+S0_RCA_VR_Volt   | 0.90 Volts        | ok
+S0_RCA_VR_Pwr    | 4.80 Watts        | ok
+S0_RCA_VR_Temp   | 31 degrees C      | ok
+S1_SOC_TDP       | 210 Watts         | ok
+S0_SOC_TDP       | 210 Watts         | ok
+S0_SOC_Volt      | 0.78 Volts        | ok
+S1_SOC_Volt      | 0.78 Volts        | ok
+S0_DIMM_VR1_Curr | 0.96 Amps         | ok
+S1_Core_VRD_Curr | 2.48 Amps         | ok
+S1_DIMM_VR1_Curr | 0 Amps            | ok
+S1_SOC_VRD_Curr  | 4 Amps            | ok
+S1_DIMM_VR2_Curr | 0 Amps            | ok
+S0_RCA_VRD_Curr  | 6 Amps            | ok
+S0_DIMM_VR2_Curr | 0 Amps            | ok
+S0_Core_VRD_Curr | 18.96 Amps        | ok
+S0_SOC_VRD_Curr  | 2.96 Amps         | ok
+S1_RCA_VRD_Curr  | 6 Amps            | ok
+NVMeBP_MaxTemp   | 0 degrees C       | ok
+OCP_Temp         | no reading        | ns
+NVMeM2_MaxTemp   | 0 degrees C       | ok
+S0_DIMM_HOT      | 0x00              | ok
+S1_DIMM_HOT      | 0x00              | ok
+S0_VR_ErrStatus  | 0x00              | ok
+S1_VR_ErrStatus  | 0x00              | ok
+S0_Refresh_Rate  | 0x00              | ok
+S1_Refresh_Rate  | 0x00              | ok
+S0_PCIE_HP       | 0x00              | ok
+S1_PCIE_HP       | 0x00              | ok

@@ -20,11 +20,14 @@ data instrument_artifact_stopped_existing_while_cited: RecurringFailureMode = Re
     "CEILING: mechanically preventable. The published-output set of the required workflow is derivable from its emitter, and the artifact names its consumers cite are declarations (gunbc.witness_floor_workflow required_floor_claim_cost_artifact_name), so the join between cited artifacts and emitted upload steps is decidable at emission.",
 
     "NEXT-RUNG TRIGGER, A CAPABILITY: an emission-time join that refuses when an artifact-name declaration consumed by a production fold or rostered as an instrument has no upload step in the emitted required workflow -- sufficient that removing an upload, or replacing the job that carried it, reds the generated-artifact phase. One shared bound-step function (required_floor_claim_cost_upload_bound_step) keeps this one artifact's two step lists from parting again; it does not discover the next one.",
+    "RECEIPT, 2026-10-05 (snappy-stag-806): THE ADMISSION ROSTER IS RESTORED, AND IT IS RESTORED WITH A READER. required_floor_disposition.tsv is again published as `required-floor-disposition`, bound by name in both step lists through gunbc.witness_floor_workflow required_floor_disposition_upload_bound_step, the way the claim-cost upload already is. Its executing consumer is tools.gate_closure_decline_census_instrument gate_closure_decline_census, the population census of witness_outside_gate_closure_falsified_by_other_file. The expected-red roster join, long-home storage agreement and cross-claim demand uploads remain unrepaired members of this class.",
   ],
   evidence: [
     DeclarationRef { module_path: "gunbc.witness_floor_workflow", decl_name: "required_floor_claim_cost_upload_bound_step", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.witness_floor_workflow", decl_name: "required_floor_claim_cost_artifact_name", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.compiler_gate_workflow", decl_name: "compiler_gate_floor_measurement_bound_steps", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.floor_cost_distribution", decl_name: "parse_claim_cost_tsv", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.witness_floor_workflow", decl_name: "required_floor_disposition_upload_bound_step", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.gate_closure_decline_census", decl_name: "gate_closure_declined_identities", field: WholeDeclaration },
   ],
 }

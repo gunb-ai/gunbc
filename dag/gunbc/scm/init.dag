@@ -219,7 +219,7 @@ fn initialize_repository_at(
 // beside this function hold red.
 fn init_outcome_of_save(save: RepositorySave) -> ScmInitOutcome {
   match save {
-    RepositorySaved { path: p, written: w } => ScmInitialized { path: p, written: w }
+    RepositorySaved { path: p, written: w, generation: _ } => ScmInitialized { path: p, written: w }
     RepositorySaveRefusedByCodec { path: _, cause: _ } => ScmInitWriteRefused { save: save }
     RepositoryFileUnwritable { path: _, error: _ } => ScmInitWriteRefused { save: save }
     RepositoryWriteByteCountUnrepresentable { path: _, reported: _ } =>

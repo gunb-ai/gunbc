@@ -1023,7 +1023,7 @@ fn taskbar_attention_attr(view: WorkRowView) -> List<Attribute> {
     LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => []
     CompletedWork { outcome: _, evidence: _, obligations: _ } => []
     NoActiveWork => []
-    ActivityUnobservable { reason } => [ el_class("p", "issue-observation-unavailable", [ txt(concat("Work observation unavailable: ", reason)) ]) ]
+    ActivityUnobservable { reason: _ } => []
   }
 }
 
