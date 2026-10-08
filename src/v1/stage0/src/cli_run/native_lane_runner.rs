@@ -101,7 +101,7 @@ const MALFORMED_MATERIALIZED_PATH: &str = "target/v2-native-lane/malformed-contr
 /// the text not Rust (gunbc.recurring_failure_mode closure_emit_renders_an_arrow_without_its_body).
 /// So an exit 0 now has to carry the declaration's NAME and its VALUE in text a Rust compiler
 /// ACCEPTS; anything less is that class returning, not an emission.
-const WELL_FORMED_CONTROL_ROOT: &str = "fixtures/native_cli_door";
+const WELL_FORMED_CONTROL_ROOT: &str = "fixtures/native_cli_door/dag";
 const CLI_DOOR_ENTRY_MODULE: &str = "fixture.native_cli_door.door_probe";
 const CLI_DOOR_EMITTED_WITNESS: &str = "native_cli_door_probe_value";
 const CLI_DOOR_EMITTED_VALUE: &str = "606060";

@@ -7,7 +7,7 @@ module fixture.native_cli_door.door_probe
 // walked through, which DESIGN section 5 names as specification-without-execution: a green that
 // establishes the closure typechecks and nothing about whether the program runs. This file is the
 // argv the built binary is handed so that it does run: `emit --entry
-// fixture.native_cli_door.door_probe --source-root fixtures/native_cli_door`.
+// fixture.native_cli_door.door_probe --source-root fixtures/native_cli_door/dag`.
 //
 // IT HAS NO IMPORTS, for the same reason `fixture.closure.rustc_green_probe` has none: the
 // admission's subject resolves against the validated roots the ingest produced, so a module whose
@@ -17,7 +17,8 @@ module fixture.native_cli_door.door_probe
 //
 // IT IS ITS OWN DIRECTORY AND NOT A FILE IN AN EXISTING FIXTURE ROOT, because the CLI's source
 // root is walked RECURSIVELY for every `.dag` file under it; sharing a directory would make the
-// control's ingest a function of what some other fixture's author adds next to it.
+// control's ingest a function of what some other fixture's author adds next to it. The walk
+// argument is the dag tree (`.../dag`), not a parent of mixed trees.
 //
 // THE DECLARATION'S NAME AND VALUE ARE WHAT THE CONTROL READS. v2 lowers this `data` declaration to
 // a named member whose body is the literal, and the door renders it through the Rust target's
