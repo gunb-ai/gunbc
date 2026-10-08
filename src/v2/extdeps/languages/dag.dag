@@ -1,6 +1,6 @@
 module v2.extdeps.languages.dag
 import std.coercion { unicode_scalar_unfold }
-import std.types { List, NonEmptyStr }
+import std.types { List }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 import v2.std.model_core { AlgebraInhabitanceDecl, bool_model_core }
 import v2.std.algebra_structure_signature { boolean_algebra_node, ordered_ring_node }
@@ -214,7 +214,7 @@ import v2.std.diagnostic {
 }
 import std.algebra { Empty, list_append, list_snoc_item }
 import std.decl_ref { decl_ref }
-import std.dissolution { DissolutionCondition, retires_dissolution, unbound_dissolution }
+import std.dissolution { DissolutionCondition, retires_dissolution }
 import v2.std.integer {
   decimal_digits_to_magnitude,
   integer_decimal_magnitude_node,
@@ -7610,10 +7610,9 @@ fn namespace_graft_node_is_conj(node: Node) -> Bool {
 // would re-create the one-Named-Conj level the fill misreads.
 data namespace_graft_module_body_identity: Symbol = ^namespace_graft_module_body
 
-// A MODULE SURFACE is identified by what the node IS, never by a guess from its children's
-// shapes: the parse/emit production identity dag_surface_module, the graft body's producer
-// stamp namespace_graft_module_body_identity, the dag_surface_module_header production edge,
-// or a synthetic Atom whose identity is dag_surface_module (the diagnosis's locus).
+// A MODULE SURFACE is identified by what the node IS: parse/emit production identity
+// dag_surface_module, the graft body's producer stamp, or a synthetic Atom whose
+// identity is dag_surface_module. A header child edge is not identity (review 77909).
 fn dag_node_is_module_surface(node: Node) -> Bool {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } =>
@@ -7622,21 +7621,10 @@ fn dag_node_is_module_surface(node: Node) -> Bool {
       match node_atom_identity_optional(node: node) {
         Present { value: id } =>
           (id == ^dag_surface_module) || (id == namespace_graft_module_body_identity)
-        Absent => namespace_graft_has_module_header(root: node)
+        Absent => false
       }
   }
 }
-
-// 🟡 Owner: v2.extdeps.languages.dag (one identity authority for module surface / fn-decl /
-// record Conj). Lane: compile-door lens skip (#13560). Dissolve when every module/fn shell
-// carries parse or graft identity (no namespace_graft_has_module_header fallback) and
-// #13513 member_kinds classifies DeclaredFnMember so skip is the channel, not a Node.kind
-// walk. Until then these matches read declared identity; they do not guess from children.
-data dag_namespace_member_identity_predicate_disposition: String = "🟡 owner=v2.extdeps.languages.dag lane=#13560 trigger=stamped shells + member_kinds DeclaredFnMember"
-
-data dag_namespace_member_identity_predicate_dissolve_on: DissolutionCondition = unbound_dissolution(
-  description: "🟡 dissolve-on: dag_node_is_module_surface / dag_node_is_record_field_carrier / dag_node_is_namespace_member_target — dissolve when every module and fn shell carries parse or graft identity (namespace_graft_has_module_header unused) and ResolvedTree.member_kinds classifies DeclaredFnMember so the skip is that channel, never a connective-shape guess." as NonEmptyStr
-)
 
 // THE RECORD-FIELD CARRIER PREDICATE the unit-modeling and lifecycle-carrier lenses share.
 // A Conj is a record-field carrier unless THIS NODE is a module surface. A sibling that

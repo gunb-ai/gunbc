@@ -27,7 +27,12 @@ import v2.test.lens_common.infer_fixture {
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node_query { binder_edge }
-import v2.extdeps.languages.dag { dag_node_is_record_field_carrier }
+import v2.extdeps.languages.dag {
+  dag_grammar_atom,
+  dag_node_is_module_surface,
+  dag_node_is_record_field_carrier,
+  dag_surface_edge_label
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -246,6 +251,40 @@ data computation_shaped_member_root: Node = Node {
 
 test fn a_computation_shaped_record_field_is_still_member_not_a_binder() -> Bool {
   match unit_modeling_gate(node: computation_shaped_member_root) {
+    Rejected { diagnostics: r } => r.head.reason == ^member_not_a_binder
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+data unstamped_conj_with_module_header_edge: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: dag_surface_edge_label(edge: ^dag_surface_module_header),
+      target: dag_grammar_atom(id: ^dag_surface_module_header)
+    },
+    Edge {
+      label: Authored { name: ^x },
+      target: Node {
+        kind: TypeNode { connective: Atom { identity: ^Text } },
+        children: [],
+        occurrence_id: OccurrenceSynthetic
+      }
+    }
+  ],
+  occurrence_id: OccurrenceSynthetic
+}
+
+test fn an_unstamped_conj_is_not_a_module_surface_just_because_it_has_a_header_edge() -> Bool {
+  dag_node_is_module_surface(node: unstamped_conj_with_module_header_edge) == false
+}
+
+test fn an_unstamped_conj_with_a_header_edge_is_still_a_record_field_carrier() -> Bool {
+  dag_node_is_record_field_carrier(node: unstamped_conj_with_module_header_edge)
+}
+
+test fn an_unstamped_header_edge_conj_still_refuses_member_not_a_binder() -> Bool {
+  match unit_modeling_gate(node: unstamped_conj_with_module_header_edge) {
     Rejected { diagnostics: r } => r.head.reason == ^member_not_a_binder
     Accepted { value: _, diagnostics: _ } => false
   }
