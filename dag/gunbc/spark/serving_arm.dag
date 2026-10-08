@@ -405,9 +405,9 @@ data deepseek_v41_flash_row: ServingCheckpointRow = ServingCheckpointRow {
   },
   resident_beyond_weights: PageCacheFromNonKvHeadroom {
     reason: "the file-backed Engram row stores are served through the page cache, which on a GB10 is the same unified pool as the weights; the side-chat stress model puts the resident working set at about 19 to 46 GiB per rank from x2 to x16 concurrency, and the launch deliberately leaves its non-KV headroom for it rather than charging it as zero or as the whole table" as NonEmptyStr,
-    confirmed_by: "gunbc.spark.v41_capacity_measurement v41_engram_resident_bets, judged against v41_after_requests_resident: each rank's mincore residency over its Engram files after requests at each staircase concurrency" as NonEmptyStr,
+    confirmed_by: "UNCONFIRMED: the staircase that would have measured each rank's mincore residency over its Engram files (gunbc.spark.v41_capacity_measurement) was deleted with Group A on 2026-10-07 before it ran; no other producer exists" as NonEmptyStr,
   },
-  provenance: "repo, revision, architecture class, quantization and the weight byte population are extdeps.deepseek.deepseek_v4_1_flash, read from the Hub at that revision; the placement is the directory gunbc.spark.v41_checkpoint_materialize installs and verifies on srv5..srv8. NOT launched on this fleet: no engine has loaded this checkpoint here" as NonEmptyStr,
+  provenance: "repo, revision, architecture class, quantization and the weight byte population are extdeps.deepseek.deepseek_v4_1_flash, read from the Hub at that revision; the placement is the pinned Hub-cache snapshot directory; the materialization that installed and verified it on Group A (gunbc.spark.v41_checkpoint_materialize) was deleted with Group A on 2026-10-07, and no retained host holds it. NOT launched on this fleet: no engine has loaded this checkpoint here" as NonEmptyStr,
 }
 
 fn serving_checkpoint_row(c: ServingCheckpoint) -> ServingCheckpointRow? {
