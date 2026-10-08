@@ -27,8 +27,9 @@ fn par_primitives_peer(rows: String) -> DagSourceReadWitness {
   bla_source(src: rows, artifact: bla_q_artifact, cu: ^body_let_annotation_q_cu)
 }
 
-data par_reverse_row: String = "module std.primitives\n\ndata reverse_contract: Int = 0\n"
-data par_any_row: String = "module std.primitives\n\ndata any_contract: Int = 0\n"
+data par_reverse_row: String = "module std.primitives\n\ntype PrimitiveContract {\n  name: String\n}\n\ndata reverse_contract: PrimitiveContract = {\n  name: \"reverse\"\n}\n"
+data par_any_row: String = "module std.primitives\n\ntype PrimitiveContract {\n  name: String\n}\n\ndata any_contract: PrimitiveContract = {\n  name: \"any\"\n}\n"
+data par_disagreeing_row: String = "module std.primitives\n\ntype PrimitiveContract {\n  name: String\n}\n\ndata reverse_contract: PrimitiveContract = {\n  name: \"rewind\"\n}\n"
 
 fn par_reason(o: Outcome<ResolvedTree>) -> Symbol {
   match o {
@@ -58,11 +59,11 @@ test fn par_local_fn_wins_over_primitive() -> Bool {
   )) == ^accepted
 }
 
-// (3) CONTROL: an imported ordinary declaration whose name equals a contract row's (any, as v2.std.algebra any) wins.
+// (3) CONTROL: with std.primitives indexed AND holding any_contract, an imported ordinary `any` (as v2.std.algebra any) still wins.
 test fn par_imported_ordinary_fn_wins_over_primitive() -> Bool {
   par_reason(o: bla_assemble_with_peers(
     p_src: "module p\n\nimport q { any }\n\nfn f(x: Int) -> Int {\n  any(x)\n}\n",
-    peers: [bla_source(src: "module q\n\nfn any(x: Int) -> Int {\n  x\n}\n", artifact: bla_r_artifact, cu: ^body_let_annotation_r_cu)]
+    peers: [par_primitives_peer(rows: par_any_row), bla_source(src: "module q\n\nfn any(x: Int) -> Int {\n  x\n}\n", artifact: bla_r_artifact, cu: ^body_let_annotation_r_cu)]
   )) == ^accepted
 }
 
@@ -85,3 +86,12 @@ test fn par_census_names_map_to_their_contract_identity() -> Bool {
   }) && !primitive_authority_path_is(path: qualified_name_from_dotted_string(dotted: "v2.std.algebra.any"))
 }
 
+
+// (6) IDENTITY JOIN: the row is joined on its own name field. A row declared reverse_contract whose name field says
+// "rewind" is neither bound for `reverse` nor silently accepted: resolve refuses with the typed variant.
+test fn par_row_whose_name_field_disagrees_is_refused() -> Bool {
+  par_reason(o: bla_assemble_with_peers(
+    p_src: "module p\n\nfn f(x: Int) -> Int {\n  reverse(x)\n}\n",
+    peers: [par_primitives_peer(rows: par_disagreeing_row)]
+  )) == ^resolve_reason_primitive_row_name_disagrees
+}
