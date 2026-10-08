@@ -1225,7 +1225,7 @@ fn floor_expected_red_chunk_shell_dag_live_deploy_install_owned() -> List<String
 // steps to sudo_elevate_argv typed privileged argv; when the arm passes, this roster's
 // self-emptying arm names it for removal (DESIGN 4b(4)).
 fn floor_expected_red_chunk_shell_dag_live_deploy_restart_tailscale() -> List<String> {
-  Cons { head: "test.claim.shell.shell_dag_live_deploy_restart_tailscale_witness_test.tree_sync_restart_step_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_live_deploy_restart_tailscale_witness_test.tailscale_serve_apply_step_renders_no_shell_control_word", tail: Empty {} } }
+  Cons { head: "test.claim.shell.shell_dag_live_deploy_restart_tailscale_witness_test.tree_sync_restart_step_renders_no_shell_control_word", tail: Empty {} }
 }
 
 fn floor_expected_red_chunk_live_tree_admission() -> List<String> {

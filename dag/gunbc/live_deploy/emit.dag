@@ -64,7 +64,6 @@ import extdeps.tailscale.serve {
 }
 import extdeps.systemd.systemctl {
   systemctl_disable_now_argv,
-  systemctl_restart_argv,
   systemctl_show_load_state_argv,
 }
 import extdeps.systemd { systemd_unit_load_state_not_found_wire }
@@ -224,7 +223,6 @@ import gunbc.live_deploy.operations {
   install_directory_owned_command,
   install_file_owned_command,
 }
-import gunbc.live_deploy.intent { live_deploy_unit_status_tail_command }
 import v2.std.orchestration {
   Pipeline, PipelineStep,
   Do, If, Run, Comment, Let, ExprCmdSubst,
@@ -1287,26 +1285,13 @@ fn repository_convergence_readback_command(
 // error code' — never carries WHY: the actual ExecStart failure (the rsync exit) lives only in the
 // unit's own journal, unreachable from this refusal (DESIGN 5 — a stopped, typed, but unlocated
 // line, the same gap #7038 closed for gunbc-roadmap.service's async ServiceNotReady). This restart
-// is SYNCHRONOUS, ahead of that poll-based unit_diagnosis capture entirely (GunbcSourceTree upsert
-// runs before the SystemdUnit member), so it needs its own capture rather than waiting on one that
-// never runs. Reuses the single unit-status-tail authority (live_deploy_unit_status_tail_command,
-// gunbc.live_deploy.intent) the roadmap-unit capture already owns — no second diagnosis format. On
-// failure the tail is appended to stderr and the step still fails (exit 1): a diagnosis, never an
-// escape hatch (DESIGN 5 forbids proceeding as if the refusal had not fired).
+// THE RESTART IS A SINGLE TYPED PRIVILEGED ARGV — the restart argv itself (systemctl restart)
+// is the operation; diagnosis is captured separately in the realization layer via
+// gunbc.systemctl_status_read (UnitStatusCapture: exit code and stdout as structured data),
+// not as appended shell text. This eliminates ||, &&, ;, set -e, 2>/dev/null shell control words
+// from the rendered step surface.
 fn tree_sync_restart_step_with_diagnosis(spec: DeploymentSpec) -> PipelineStep {
-  let restart_argv = sudo_elevate_argv(command: systemctl_restart_argv(unit: spec.names.tree_sync_unit_name))
-  let restart_cmd = shell_command_text_of_argv(argv: restart_argv)
-  let diagnosis_cmd = live_deploy_unit_status_tail_command(unit: spec.names.tree_sync_unit_name)
-  If {
-    cond: ExitZero { run: Run { command: restart_cmd, env: Empty, redirect: Absent, capture: Absent } },
-    then_: Pipeline { steps: Empty, on_failure: FailFast },
-    else_: Present { value: Pipeline {
-      steps: [
-        Do { run: Run { command: join([diagnosis_cmd, " >&2; exit 1"], ""), env: Empty, redirect: Absent, capture: Absent } }
-      ],
-      on_failure: FailFast,
-    } }
-  }
+  deploy_effect(inv: systemctl_restart_effect(unit: spec.names.tree_sync_unit_name))
 }
 
 // THE IDEMPOTENCE GUARD IS DELETED, AND ITS REMOVAL IS THE POINT. The apply used to wrap the serve
