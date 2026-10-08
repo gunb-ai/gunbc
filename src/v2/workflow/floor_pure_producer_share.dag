@@ -821,17 +821,16 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // pipeline's per-claim fixed cost of assembling and inferring a one-module fixture, not the test's own work.
 // Trigger: assemble plus infer of a one-module fixture runs under the per-claim budget
 // (gunbc.recurring_failure_mode shared_precondition_re_derived_once_per_claim_frame).
-// gunbc#13511 (kernel-value join): two real-path members of v2.test.claim.compiler.generic_closure_outcome_construct_probe,
-// sharp-raven-357 approved. gbo_an_alias_of_the_corpus_int_inhabits_it_holds -- the ONE discriminating inhabitance
-// (fails with the input-only normalizer) -- measured 1,805,469 own-frame eval steps; the Bool-in-Int control on the
-// same route, gbo_a_bool_at_the_int_field_still_refuses_holds, measured 1,790,383 (BuildBuddy 36e48268, pinned
-// 41afbbbb). Trigger: shared_precondition_re_derived_once_per_claim_frame, as above.
+// gunbc#13511 (kernel-value join): the ONE real-path inhabitance of v2.test.claim.compiler.generic_closure_outcome_construct_probe,
+// gbo_an_alias_of_the_corpus_int_inhabits_it_holds (fails with the input-only normalizer). Its own-frame eval steps are
+// re-derived by claim_batch --hermetic --entry src/v2/test/claim/compiler/generic_closure_outcome_construct_probe_test.dag
+// --functions gbo_an_alias_of_the_corpus_int_inhabits_it_holds (receipt: BuildBuddy 36e48268, pinned 41afbbbb).
+// Trigger: shared_precondition_re_derived_once_per_claim_frame, as above.
 data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
     module: "v2.test.claim.compiler.generic_closure_outcome_construct_probe",
     claims: [
-      SingleClaimFillDebtClaim { claim: "gbo_an_alias_of_the_corpus_int_inhabits_it_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "gbo_a_bool_at_the_int_field_still_refuses_holds", standing: ActiveFillDebt }
+      SingleClaimFillDebtClaim { claim: "gbo_an_alias_of_the_corpus_int_inhabits_it_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {

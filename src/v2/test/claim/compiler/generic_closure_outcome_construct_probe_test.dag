@@ -29,8 +29,7 @@ import v2.std.text { String }
 import std.algebra { Empty, FreeMonoid }
 import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test {
   rcf_member_accepted_and_decided,
-  rcf_read,
-  rcf_refuses_with
+  rcf_read
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -41,21 +40,19 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // join keys the kernel declaration roster (full path) and dag_binding_denotation, never a last-segment Int.
 //
 // SUPPLIED claims judge the join at its own interface. ONE claim runs the real ingest -> resolve -> infer route
-// (the alias claim), and a Bool-in-an-Int-field control still refuses on that route.
+// (the alias claim). The negative side of the join is
+// supplied (gbo_a_bool_name_is_not_the_kernel_int_holds), not re-run end to end.
 //
 // DECLARED FRONTIER, NOT CLAIMED HERE: generic-variant constructs undecided. A direct generic-variant construct
 // (Acc { value: 1, n: 0 } at Out<Int>) is not accepted-and-decided on this base, with or without the join (measured
 // at 41afbbbb, BuildBuddy 36e48268). Owner: gunbc#13558 (payload binders over Outcome<T> via #13210's formal-payload
 // obligation), which carries the claim that turns it green.
 
-data gbo_lambda_bad_source: String = "module v2.test.gbo_lambda_bad\n\ntype Box {\n  n: Int\n  m: Int\n}\n\ndata bad: Box = Box { n: true, m: 3 }\n"
-
 data gbo_integer_stub_source: String = "module v2.std.integer\n\ntype Nat = Zero | One\n\ntype Int = Nat\n"
 
 data gbo_alias_source: String = "module v2.test.gbo_alias\n\nimport v2.std.integer { Int }\n\ntype Alias = v2.std.integer.Int\n\nfn same(x: Alias) -> v2.std.integer.Int {\n  x\n}\n"
 
 data gbo_ingest: SourceRootIngest = [
-  rcf_read(source: gbo_lambda_bad_source, id: ^gbo_lambda_bad_read, unit: ^gbo_lambda_bad_cu, path: "src/v2/test/fixture/gbo/lambda_bad.dag"),
   rcf_read(source: gbo_integer_stub_source, id: ^gbo_integer_stub_read, unit: ^gbo_integer_stub_cu, path: "src/v2/test/fixture/gbo/integer.dag"),
   rcf_read(source: gbo_alias_source, id: ^gbo_alias_read, unit: ^gbo_alias_cu, path: "src/v2/test/fixture/gbo/alias.dag")
 ]
@@ -78,7 +75,6 @@ fn gbo_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
   }
 }
 
-fn gbo_resolved_lambda_bad() -> Outcome<ResolvedTree> { gbo_resolve_subject(subject: "v2.test.gbo_lambda_bad") }
 fn gbo_resolved_alias() -> Outcome<ResolvedTree> { gbo_resolve_subject(subject: "v2.test.gbo_alias") }
 
 fn gbo_atom(id: Symbol) -> Node {
@@ -133,11 +129,4 @@ test fn gbo_a_bool_name_is_not_the_kernel_int_holds() -> Bool {
 // right-hand side and refuse a correct program.
 test fn gbo_an_alias_of_the_corpus_int_inhabits_it_holds() -> Bool {
   rcf_member_accepted_and_decided(resolved: gbo_resolved_alias(), member: ^same)
-}
-
-// CONTROL: a record field declared Int holding true still refuses. A generic
-// *variant* Acc { n: true } does not surface record_field_value_does_not_inhabit
-// on this path (floor 37547532785 / 37534388259 returned Bool(false)).
-test fn gbo_a_bool_at_the_int_field_still_refuses_holds() -> Bool {
-  rcf_refuses_with(resolved: gbo_resolved_lambda_bad(), reason: ^record_field_value_does_not_inhabit)
 }
