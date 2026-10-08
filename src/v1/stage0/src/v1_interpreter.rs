@@ -68,11 +68,11 @@ use crate::v1_std_core::{
     index_base, index_expr, is_file_transport, is_rest_transport, is_shell_transport, lambda_body,
     lambda_param_names_at, let_binding_name_at, let_body, let_value, match_arm_nodes,
     match_scrutinee, method_arg_nodes, method_receiver, param_node_default_value,
-    param_node_name_at, qualified_last_segment, record_lit_type_name_at, return_value, slice_base,
-    slice_end, slice_start, transport_stdin, type_name_compatible, unaryop_operand, CallSemantics,
-    Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle, FieldSummary, FieldValueShape,
-    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart,
-    UnaryOpKind, VarBindingKind,
+    param_node_name_at, param_node_type_expr, qualified_last_segment, record_lit_type_name_at,
+    return_value, slice_base, slice_end, slice_start, transport_stdin, type_name_compatible,
+    unaryop_operand, CallSemantics, Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle,
+    FieldSummary, FieldValueShape, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node,
+    SourceSpan, StringPart, UnaryOpKind, VarBindingKind,
 };
 
 #[path = "bounded_shell_host_drain.rs"]
@@ -7362,6 +7362,26 @@ pub fn declared_parameter_names(ctx: &InterpContext, entry_fn: &str) -> Option<V
             .params
             .iter()
             .map(|p| authored_name_at(ctx.si(), p.clone()))
+            .collect(),
+    )
+}
+
+/// Authored `(name, type-label)` pairs `entry_fn` declares, in declaration order.
+pub fn declared_parameter_type_labels(
+    ctx: &InterpContext,
+    entry_fn: &str,
+) -> Option<Vec<(String, String)>> {
+    let fn_node = ctx.lookup_fn(entry_fn)?;
+    Some(
+        fn_node
+            .params
+            .iter()
+            .map(|p| {
+                let name = authored_name_at(ctx.si(), p.clone());
+                let ty = param_node_type_expr(p.clone());
+                let label = crate::v1_compiler_infer::type_node_label(ty, ctx.si());
+                (name, label)
+            })
             .collect(),
     )
 }

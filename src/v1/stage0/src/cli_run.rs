@@ -3238,16 +3238,29 @@ mod process_workspace_root_tests {
 /// fixture spellings. Witness: `dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness_test.dag`.
 #[cfg(test)]
 mod cli_run_arg_channel_tests {
-    use super::parse_run_args;
+    use super::{bind_run_arg_specs_against_declared_types, parse_run_arg_specs};
     use crate::v1_interpreter::Value;
 
     fn spec(items: &[&str]) -> Vec<String> {
         items.iter().map(|s| s.to_string()).collect()
     }
 
+    fn declared(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+        pairs
+            .iter()
+            .map(|(n, t)| (n.to_string(), t.to_string()))
+            .collect()
+    }
+
     #[test]
     fn named_arg_parses_to_a_named_string_value() {
-        let got = parse_run_args(&spec(&["node_id=roadmap-7"])).expect("well-formed --arg");
+        let specs = parse_run_arg_specs(&spec(&["node_id=roadmap-7"])).expect("well-formed --arg");
+        let got = bind_run_arg_specs_against_declared_types(
+            "entry",
+            &declared(&[("node_id", "String")]),
+            &specs,
+        )
+        .expect("String bind");
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].0.as_deref(), Some("node_id"));
         assert!(matches!(&got[0].1, Value::Str(s) if s.as_ref() == "roadmap-7"));
@@ -3255,13 +3268,26 @@ mod cli_run_arg_channel_tests {
 
     #[test]
     fn value_may_contain_further_equals_signs() {
-        let got = parse_run_args(&spec(&["diff=a=b=c"])).expect("split on the first `=` only");
+        let specs =
+            parse_run_arg_specs(&spec(&["diff=a=b=c"])).expect("split on the first `=` only");
+        let got = bind_run_arg_specs_against_declared_types(
+            "entry",
+            &declared(&[("diff", "String")]),
+            &specs,
+        )
+        .expect("String bind");
         assert!(matches!(&got[0].1, Value::Str(s) if s.as_ref() == "a=b=c"));
     }
 
     #[test]
     fn empty_value_is_admitted_and_distinct_from_absent() {
-        let got = parse_run_args(&spec(&["flag="])).expect("empty value is a value");
+        let specs = parse_run_arg_specs(&spec(&["flag="])).expect("empty value is a value");
+        let got = bind_run_arg_specs_against_declared_types(
+            "entry",
+            &declared(&[("flag", "String")]),
+            &specs,
+        )
+        .expect("String bind");
         assert!(matches!(&got[0].1, Value::Str(s) if s.is_empty()));
     }
 
@@ -3270,7 +3296,7 @@ mod cli_run_arg_channel_tests {
     // into one.
     #[test]
     fn bare_token_without_equals_refuses() {
-        let err = parse_run_args(&spec(&["node_id"])).expect_err("no `=` must refuse");
+        let err = parse_run_arg_specs(&spec(&["node_id"])).expect_err("no `=` must refuse");
         assert!(
             err.contains("name=value"),
             "diagnostic names the form: {err}"
@@ -3279,7 +3305,7 @@ mod cli_run_arg_channel_tests {
 
     #[test]
     fn empty_parameter_name_refuses() {
-        let err = parse_run_args(&spec(&["=orphan"])).expect_err("empty name must refuse");
+        let err = parse_run_arg_specs(&spec(&["=orphan"])).expect_err("empty name must refuse");
         assert!(
             err.contains("empty parameter name"),
             "diagnostic locates the fault: {err}"
@@ -3289,9 +3315,69 @@ mod cli_run_arg_channel_tests {
     #[test]
     fn one_malformed_spec_refuses_the_whole_list() {
         assert!(
-            parse_run_args(&spec(&["ok=1", "broken", "also_ok=2"])).is_err(),
+            parse_run_arg_specs(&spec(&["ok=1", "broken", "also_ok=2"])).is_err(),
             "a partial parse would silently drop a caller's argument"
         );
+    }
+
+    #[test]
+    fn int_parameter_given_non_numeric_refuses() {
+        let err = bind_run_arg_specs_against_declared_types(
+            "belt_scm_corrective_integrate_cli",
+            &declared(&[("supersedes", "Int")]),
+            &[("supersedes".into(), "stale".into())],
+        )
+        .expect_err("non-numeric Int must refuse");
+        assert!(
+            err.contains("supersedes") && err.contains("Int") && err.contains("stale"),
+            "diagnostic names parameter, type, and value: {err}"
+        );
+    }
+
+    #[test]
+    fn int_parameter_given_decimal_two_is_int_two() {
+        let got = bind_run_arg_specs_against_declared_types(
+            "belt_scm_corrective_integrate_cli",
+            &declared(&[("supersedes", "Int")]),
+            &[("supersedes".into(), "2".into())],
+        )
+        .expect("decimal Int");
+        assert!(
+            matches!(got[0].1, Value::Int(2)),
+            "specimen: `--arg supersedes=2` must inhabit Int 2, not Str(\"2\")"
+        );
+    }
+
+    #[test]
+    fn unsupported_declared_type_refuses() {
+        let err = bind_run_arg_specs_against_declared_types(
+            "entry",
+            &declared(&[("source", "List<String>")]),
+            &[("source".into(), "a".into())],
+        )
+        .expect_err("unsupported type must refuse");
+        assert!(
+            err.contains("List<String>") && err.contains("cannot inhabit"),
+            "diagnostic names the unsupported type: {err}"
+        );
+    }
+
+    #[test]
+    fn bool_parameter_accepts_true_false_only() {
+        let got = bind_run_arg_specs_against_declared_types(
+            "entry",
+            &declared(&[("flag", "Bool")]),
+            &[("flag".into(), "true".into())],
+        )
+        .expect("Bool true");
+        assert!(matches!(got[0].1, Value::Bool(true)));
+        let err = bind_run_arg_specs_against_declared_types(
+            "entry",
+            &declared(&[("flag", "Bool")]),
+            &[("flag".into(), "yes".into())],
+        )
+        .expect_err("non-canonical Bool must refuse");
+        assert!(err.contains("true") && err.contains("false"), "{err}");
     }
 }
 
@@ -19734,29 +19820,139 @@ pub fn handle_pre_push() -> std::process::ExitCode {
 /// after a `dag run` entry returns -- the periodic dump alone races the
 /// process's natural completion and under-reports on fast runs.
 
-/// Parse repeated `--arg name=value` into the interpreter's named-argument
-/// channel (`run_in_context_with_args`, v1_interpreter.rs:1564 — already the
-/// channel `claim_executor` uses internally; `Commands::Run` simply never grew
-/// the flag, which is why every parameter-shaped value reached `.dag` entries
-/// through the process environment instead).
+/// Parse repeated `--arg name=value` into named text pairs.
 ///
 /// Named-only by construction: a `.dag` entry's parameters are named, so
 /// positional order across the CLI boundary would be an unchecked coincidence.
-/// A missing `=` refuses (§5) rather than guessing a position. Values enter as
-/// `Value::Str` — no coercion is fabricated here; a parameter wanting another
-/// type is the typed-argument follow-on, not a silent conversion.
-fn parse_run_args(raw: &[String]) -> Result<Vec<(Option<String>, v1_interpreter::Value)>, String> {
+/// A missing `=` refuses (§5) rather than guessing a position. The pairs stay
+/// text until [`bind_run_args_for_entry`], which is the typed binder: argv is
+/// always text (`CliTextValue` on the run verb); inhabiting the declared
+/// parameter type is a later, located decision — never a silent `String`.
+pub fn parse_run_arg_specs(raw: &[String]) -> Result<Vec<(String, String)>, String> {
     raw.iter()
         .map(|spec| match spec.split_once('=') {
-            Some((name, value)) if !name.is_empty() => {
-                Ok((Some(name.to_string()), str_value(value.to_string())))
-            }
+            Some((name, value)) if !name.is_empty() => Ok((name.to_string(), value.to_string())),
             Some(_) => Err(format!("--arg `{spec}`: empty parameter name before `=`")),
             None => Err(format!(
                 "--arg `{spec}`: expected `name=value` (named arguments only)"
             )),
         })
         .collect()
+}
+
+fn cli_arg_declared_type_leaf(type_label: &str) -> &str {
+    let head = type_label.split('<').next().unwrap_or(type_label).trim();
+    let without_colon = head.rsplit("::").next().unwrap_or(head);
+    without_colon.rsplit('.').next().unwrap_or(without_colon)
+}
+
+fn parse_cli_decimal_int(text: &str) -> Option<i64> {
+    if text.is_empty() {
+        return None;
+    }
+    let digits = match text.as_bytes() {
+        [b'-', rest @ ..] | [b'+', rest @ ..] => rest,
+        rest => rest,
+    };
+    if digits.is_empty() || !digits.iter().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    text.parse().ok()
+}
+
+/// Bind one `--arg` text value against the parameter's declared type label.
+///
+/// Admitted leaves: `String` (as spelled), `Int` (decimal `i64`), `Bool`
+/// (`true`/`false` only). Any other declared type refuses rather than passing
+/// a `String`.
+pub fn bind_cli_arg_text(
+    function: &str,
+    param: &str,
+    type_label: &str,
+    text: &str,
+) -> Result<v1_interpreter::Value, String> {
+    if type_label.contains('<') || type_label.contains(',') {
+        return Err(format!(
+            "--arg `{param}`: function `{function}` declares `{param}: {type_label}`, \
+             which `gunbc run --arg` cannot inhabit; only String, Int, and Bool are admitted"
+        ));
+    }
+    match cli_arg_declared_type_leaf(type_label) {
+        "String" => Ok(str_value(text)),
+        "Int" => match parse_cli_decimal_int(text) {
+            Some(n) => Ok(Value::Int(n)),
+            None => Err(format!(
+                "--arg `{param}`: function `{function}` declares `{param}: Int`, \
+                 but `{text}` is not a decimal integer"
+            )),
+        },
+        "Bool" => match text {
+            "true" => Ok(Value::Bool(true)),
+            "false" => Ok(Value::Bool(false)),
+            _ => Err(format!(
+                "--arg `{param}`: function `{function}` declares `{param}: Bool`, \
+                 but `{text}` is not `true` or `false`"
+            )),
+        },
+        _ => Err(format!(
+            "--arg `{param}`: function `{function}` declares `{param}: {type_label}`, \
+             which `gunbc run --arg` cannot inhabit; only String, Int, and Bool are admitted"
+        )),
+    }
+}
+
+/// Bind `--arg` specs against a function's declared `(name, type)` pairs.
+pub fn bind_run_arg_specs_against_declared_types(
+    function: &str,
+    declared: &[(String, String)],
+    specs: &[(String, String)],
+) -> Result<Vec<(Option<String>, v1_interpreter::Value)>, String> {
+    let mut seen = HashSet::new();
+    let mut bound = Vec::with_capacity(specs.len());
+    for (name, text) in specs {
+        if !seen.insert(name.clone()) {
+            return Err(format!(
+                "--arg `{name}`: supplied more than once for function `{function}`"
+            ));
+        }
+        let type_label = match declared.iter().find(|(n, _)| n == name) {
+            Some((_, ty)) => ty.as_str(),
+            None => {
+                let known: Vec<&str> = declared.iter().map(|(n, _)| n.as_str()).collect();
+                return Err(format!(
+                    "--arg `{name}`: function `{function}` has no parameter `{name}` \
+                     (declared: {})",
+                    if known.is_empty() {
+                        "(none)".to_string()
+                    } else {
+                        known.join(", ")
+                    }
+                ));
+            }
+        };
+        bound.push((
+            Some(name.clone()),
+            bind_cli_arg_text(function, name, type_label, text)?,
+        ));
+    }
+    Ok(bound)
+}
+
+/// Bind `--arg` text against `entry_fn`'s declared parameter types.
+///
+/// No `.dag` binder exists: `gunbc.cli_dispatch_surface` owns the option as
+/// `CliTextValue` (argv is text). This seed function is the typed inhabitance.
+pub fn bind_run_args_for_entry(
+    ctx: &v1_interpreter::InterpContext,
+    entry_fn: &str,
+    specs: &[(String, String)],
+) -> Result<Vec<(Option<String>, v1_interpreter::Value)>, String> {
+    if specs.is_empty() {
+        return Ok(Vec::new());
+    }
+    let declared = v1_interpreter::declared_parameter_type_labels(ctx, entry_fn)
+        .ok_or_else(|| format!("--arg: function `{entry_fn}` is not in the loaded entry"))?;
+    bind_run_arg_specs_against_declared_types(entry_fn, &declared, specs)
 }
 
 struct ScopedRunObservation {

@@ -62,7 +62,7 @@ pub enum Commands {
         #[arg(long)]
         claim_run: bool,
         /// Named argument for the entry function, repeatable: `--arg name=value`.
-        /// Values enter as String; a missing `=` refuses rather than guessing.
+        /// Bound against the declared parameter type (String, Int, Bool); others refuse.
         #[arg(long = "arg")]
         args: Vec<String>,
     },

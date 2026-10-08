@@ -73,7 +73,7 @@ enum RetainedCommands {
         #[arg(long)]
         claim_run: bool,
         /// Named argument for the entry function, repeatable: `--arg name=value`.
-        /// Values enter as String; a missing `=` refuses rather than guessing.
+        /// Bound against the declared parameter type (String, Int, Bool); others refuse.
         #[arg(long = "arg")]
         args: Vec<String>,
     },
@@ -1047,21 +1047,8 @@ mod tests {
 /// driver's subject.
 /// A missing `=` REFUSES with the offending spec rather than guessing a positional —
 /// the deleted handler's own rule, kept because it is right, not because it was there.
-fn decode_run_args(
-    raw: &[String],
-) -> Result<Vec<(Option<String>, v1_compiler::v1_interpreter::Value)>, String> {
-    raw.iter()
-        .map(|spec| match spec.split_once('=') {
-            Some((name, value)) if !name.is_empty() => Ok((
-                Some(name.to_string()),
-                v1_compiler::v1_interpreter::str_value(value),
-            )),
-            _ => Err(format!(
-                "--arg expects name=value, got `{spec}` (a missing `=` is refused, not \
-                 interpreted as a positional argument)"
-            )),
-        })
-        .collect()
+fn decode_run_args(raw: &[String]) -> Result<Vec<(String, String)>, String> {
+    cli_run::parse_run_arg_specs(raw)
 }
 
 /// `gunbc run` -- argv -> modeled intent -> the RETAINED resolve/eval engine -> exit code.
@@ -1421,11 +1408,19 @@ fn run_one_function(
     ctx: &v1_compiler::v1_interpreter::InterpContext,
     function: &str,
     entry_file: &str,
-    run_args: &[(Option<String>, v1_compiler::v1_interpreter::Value)],
+    run_args: &[(String, String)],
     claim_run: bool,
 ) -> Verdict {
-    match v1_compiler::v1_interpreter::run_in_context_with_args(ctx, function, run_args, !claim_run)
-    {
+    let bound = match cli_run::bind_run_args_for_entry(ctx, function, run_args) {
+        Ok(bound) => bound,
+        Err(message) => {
+            return Verdict {
+                status: 2,
+                message: Some(format!("error: {message}")),
+            };
+        }
+    };
+    match v1_compiler::v1_interpreter::run_in_context_with_args(ctx, function, &bound, !claim_run) {
         // A claim run's Bool is the verdict: false is a FAILED claim, exit 1. Outside a
         // claim run a Bool is an ordinary value and says nothing about success.
         Ok(v1_compiler::v1_interpreter::Value::Bool(false)) if claim_run => Verdict {
