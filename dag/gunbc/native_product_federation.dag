@@ -26,9 +26,10 @@ import gunbc.cloudflare.r2_origin { fabric_cache_blobs_read_secret_id, fabric_ca
 //
 // READ SIDE. The account is reachable from the repository's existing github-oidc provider, so a
 // same-repository pull request job can federate to it and read exactly one pinned secret version.
-// It deliberately is NOT fleet-cloud-convergence: that account is reachable from the same provider
-// today (gunbc.gcp.gcp_estate_adoption gcp_estate_desired_convergence_binding binds the whole
-// repository principal set), a standing finding recorded beside this change rather than widened by it.
+// It deliberately is NOT fleet-cloud-convergence: that account holds the R2 write-token accessor, so
+// it is bound only to the default-branch principal set (gunbc.gcp.gcp_estate_adoption
+// gcp_estate_desired_convergence_binding), which no pull request or queue job is a member of. This
+// account is the PR-reachable one, and holds one pinned read-only secret version.
 // Fork pull requests receive no id-token and so no credential: they build cold.
 data native_product_read_service_account: ServiceAccountEmail = "native-product-read@gunbai-secrets.iam.gserviceaccount.com"
 
