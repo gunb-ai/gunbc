@@ -204,7 +204,9 @@ fn elaborate_literal_at(
 // tree. The declaration stays the accepted inductive definition -- exhaustiveness, descent and
 // inhabitance are all judged on it -- and no realizer ever builds the unary tower.
 //
-// THE ROW NAMES THE CARRIER AND NOTHING ELSE. Which constructor is zero and which is successor is
+// THE ROW IS THE CARRIER'S ONLY ELABORATION-DISCOVERY AUTHORITY, AND ITS RANGE IS THE DECLARED
+// ADMISSION BOUND. It names the carrier and the kernel values the carrier admits (min and max,
+// below); it names no constructor. Which constructor is zero and which is successor is
 // read from the carrier's own declaration by the consumer (one nullary constructor, and one
 // constructor with exactly one field of the carrier's own type), so a row cannot disagree with
 // the declaration it is about, and a bound declaration that is NOT that shape is a refusal at the
