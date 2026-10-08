@@ -45,8 +45,6 @@ type BoardFruIdentity {
 type BoardFruUnreadCause
   = BoardAreaAbsent
   | BoardAreaFieldsUnreadable
-  | BoardCaptureUnreadable { error: String }
-  | BoardCaptureDigestMismatch { expected: String, observed: String }
 
 type BoardFruObservation
   = BoardFruRead { fru: BoardFruIdentity }

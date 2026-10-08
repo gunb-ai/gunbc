@@ -22,6 +22,21 @@ type FruCaptureGap
   | FruSubjectLinkUnobserved
   | FruBoundToAnotherLink { board_extra: String }
 
+// THE ONE DIGEST CHECK of a committed capture against the sha256 a record was authored from.
+// Every reader of a committed FRU capture asks this; a mismatch is never decoded.
+type FruCaptureDigestCheck
+  = FruCaptureDigestAgrees
+  | FruCaptureDigestDiffers { gap: FruCaptureGap }
+
+fn fru_capture_digest_check(content: String, expected_sha256: NonEmptyStr) -> FruCaptureDigestCheck {
+  let observed = sha256_hex_of_text(text: content)
+  if observed != (expected_sha256 as String) {
+    FruCaptureDigestDiffers { gap: FruCaptureDigestMismatch { expected: expected_sha256, observed: observed } }
+  } else {
+    FruCaptureDigestAgrees
+  }
+}
+
 type FruFieldRead
   = FruFieldValue { value: NonEmptyStr }
   | FruFieldGap { gap: FruFieldGapKind }

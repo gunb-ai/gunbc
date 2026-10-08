@@ -52,7 +52,7 @@ import std.algebra { trim }
 import std.decl_ref { decl_ref }
 import gunbc.board_authority_binding { mtjade1_fru_receipt, receipt_sha256_hex }
 import gunbc.ipmitool_fru_text {
-  FruCaptureGap, FruFieldGapped, FruFieldGapKind, FruCaptureUnreadable, FruCaptureDigestMismatch, FruFieldAbsent, FruFieldRepeated, FruFieldEmpty,
+  FruCaptureGap, FruCaptureDigestAgrees, FruCaptureDigestDiffers, fru_capture_digest_check, FruFieldGapped, FruFieldGapKind, FruCaptureUnreadable, FruCaptureDigestMismatch, FruFieldAbsent, FruFieldRepeated, FruFieldEmpty,
   FruSubjectLinkUnobserved, FruBoundToAnotherLink, FruFieldRead, FruFieldValue, FruFieldGap, fru_field, fru_line_key, fru_line_value,
 }
 import gunbc.secret_provision { mtjade1_bmc_gunbc_secret_ref }
@@ -477,10 +477,9 @@ fn decode_fru_fields(content: String) -> FruDecode {
 
 // THE PURE HALF: digest first, then the subject binding through Board Extra, then the fields.
 fn decode_fru_capture(content: String, expected_sha256: NonEmptyStr, link: Eui48Address?) -> FruDecode {
-  let observed = sha256_hex_of_text(text: content)
-  if observed != (expected_sha256 as String) {
-    FruRefused { gap: FruCaptureDigestMismatch { expected: expected_sha256, observed: observed } }
-  } else {
+  match fru_capture_digest_check(content: content, expected_sha256: expected_sha256) {
+  FruCaptureDigestDiffers { gap: g } => FruRefused { gap: g }
+  FruCaptureDigestAgrees =>
     match link {
       Absent => FruRefused { gap: FruSubjectLinkUnobserved }
       Present { value: l } =>

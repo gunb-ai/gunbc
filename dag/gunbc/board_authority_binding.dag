@@ -6,10 +6,10 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.content_hash { Sha256Digest }
 import extdeps.board_authority {
   BoardAuthorityBinding, BoardAuthorityLookup, BoardFruIdentity, BoardFruObservation, BoardFruRead, BoardFruNotRead,
-  BoardAreaAbsent, BoardAreaFieldsUnreadable, BoardCaptureUnreadable, BoardCaptureDigestMismatch, BoardFruReceipt,
+  BoardAreaAbsent, BoardAreaFieldsUnreadable, BoardFruReceipt,
   BoundByNameOnly, BoundByObservedEvidence, board_authority_for
 }
-import gunbc.ipmitool_fru_text { FruFieldValue, FruFieldGap, FruFieldAbsent, FruFieldRepeated, FruFieldEmpty, fru_field }
+import gunbc.ipmitool_fru_text { FruCaptureGap, FruCaptureUnreadable, FruCaptureDigestAgrees, FruCaptureDigestDiffers, fru_capture_digest_check, FruFieldValue, FruFieldGap, FruFieldAbsent, FruFieldRepeated, FruFieldEmpty, fru_field }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadRefused, FilesystemReadSucceeded, filesystem_read_outcome }
 import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
 import extdeps.ocp.mt_jade.subject { mt_jade_board_authority }
@@ -111,22 +111,27 @@ fn receipt_sha256_hex(receipt: BoardFruReceipt) -> String {
   receipt.sha256.hex as String
 }
 
-// THE DIGEST-CHECKED READ of a committed FRU capture. Content whose sha256 differs from the receipt
-// the binding row was authored from is BoardCaptureDigestMismatch, never decoded.
-fn board_fru_observation_of_capture(content: String, receipt: BoardFruReceipt) -> BoardFruObservation {
-  let observed = sha256_hex_of_text(text: content)
-  let expected = receipt_sha256_hex(receipt: receipt)
-  if observed != expected {
-    BoardFruNotRead { cause: BoardCaptureDigestMismatch { expected: expected, observed: observed } }
-  } else {
-    board_fru_observation_of_text(content: content)
+// A COMMITTED CAPTURE EITHER YIELDS A BOARD OBSERVATION OR A CAPTURE-LEVEL GAP. The gap is the one
+// gunbc.ipmitool_fru_text FruCaptureGap (unreadable file, digest mismatch) the Mt. Jade identity read
+// also uses, with the one digest check fru_capture_digest_check; the board hub carries only what the
+// FRU Board Area itself can fail to say.
+type BoardCaptureRead
+  = BoardCaptureObserved { observation: BoardFruObservation }
+  | BoardCaptureRefused { gap: FruCaptureGap }
+
+// THE DIGEST-CHECKED READ of a committed FRU capture: content whose sha256 differs from the receipt
+// the binding row was authored from is a refusal, never decoded.
+fn board_fru_observation_of_capture(content: String, receipt: BoardFruReceipt) -> BoardCaptureRead {
+  match fru_capture_digest_check(content: content, expected_sha256: receipt_sha256_hex(receipt: receipt) as NonEmptyStr) {
+    FruCaptureDigestDiffers { gap: g } => BoardCaptureRefused { gap: g }
+    FruCaptureDigestAgrees => BoardCaptureObserved { observation: board_fru_observation_of_text(content: content) }
   }
 }
 
-fn read_board_fru_observation(receipt: BoardFruReceipt) -> BoardFruObservation uses fs: std.resources.Filesystem {
+fn read_board_fru_observation(receipt: BoardFruReceipt) -> BoardCaptureRead uses fs: std.resources.Filesystem {
   let read = Filesystem.Read(path: receipt.artifact_path as String)
   match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
-    FilesystemReadRefused { error: e } => BoardFruNotRead { cause: BoardCaptureUnreadable { error: e } }
+    FilesystemReadRefused { error: e } => BoardCaptureRefused { gap: FruCaptureUnreadable { error: e } }
     FilesystemReadSucceeded { content: text } => board_fru_observation_of_capture(content: text, receipt: receipt)
   }
 }
