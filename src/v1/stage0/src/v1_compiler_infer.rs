@@ -248,7 +248,7 @@ use crate::v1_compiler_infer_types::TextNotAskedReason::{
 pub use crate::v1_compiler_infer_types::{
     bare_map_node, bare_set_node, callable_inferred, callable_return_type, child_type_node,
     emit_map_has, extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
-    infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved,
+    infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved, is_product_type,
     is_type_expr_annotation, kernel_profile_lookup, make_callable_type, make_container_type,
     method_receiver_element_node, node_is_collection, node_is_element_collection,
     node_is_keyed_collection, node_is_set_collection, node_type_compatible, node_type_deps,
@@ -285,8 +285,8 @@ use crate::v1_std_core::CompilerDiagnostic::{
     AlgebraApplicationEvidenceUnavailable, AmbiguousReference, BareNoneNotAdmittedByFieldType,
     CallArgumentDuplicate, CallArgumentNameUnknown, CallNamedArgOnFunctionValue,
     CallPositionalDeficit, CallPositionalSurplus, ConstructorCallAdmissionRefused,
-    EqualityMemberUnjudgeable, EqualityOnFunctionMember, FieldNotFound,
-    FrontierOccurrenceBudgetExceeded, InternalError, KernelMintShapeMismatch,
+    EqualityMemberUnjudgeable, EqualityOnFunctionMember, EqualityOptionalityMismatch,
+    FieldNotFound, FrontierOccurrenceBudgetExceeded, InternalError, KernelMintShapeMismatch,
     MethodExistenceFrontierAdmitted, MethodExistenceUndecided, MethodNotFound, MissingField,
     OptionalCastNotEliminated, ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred,
     SiblingOperandEffectOrderUndetermined, SoleConstructorViolation,
@@ -5125,6 +5125,22 @@ pub fn equality_operand_is_presence_literal(
     }
 }
 
+pub fn equality_operand_is_optional(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => {
+            ((rt.return_cardinality.clone() == Cardinality::CardOptional)
+                || ((crate::v1_std_core::qualified_last_segment(
+                    crate::v1_std_core::authored_name_at(source_indices.clone(), rt.clone()),
+                ) == "Optional".to_string())
+                    && ((rt.children.clone().len() as i64) == 1)))
+        }
+        _ => false,
+    }
+}
+
 pub fn equality_admission_refusal_diag(
     r: Rc<EqualityAdmissionRefusal>,
     span: Rc<SourceSpan>,
@@ -5200,18 +5216,32 @@ pub fn equality_admission_diags(
                 {
                     Rc::new(vec![])
                 } else {
-                    match equality_operand_admission(
-                        lt.clone(),
-                        scope.clone(),
-                        v1_rt::rc_empty_map::<String, bool>(),
-                        0,
-                    ) {
-                        Some(r) => Rc::new(vec![crate::v1_std_core::make_error_node(
-                            equality_admission_refusal_diag(r.clone(), span.clone()),
-                            scope.module_name.clone(),
-                        )]),
-                        std::option::Option::None => match equality_operand_admission(
-                            rt.clone(),
+                    if (equality_operand_is_optional(left_typed.clone(), source_indices.clone())
+                        != equality_operand_is_optional(
+                            right_typed.clone(),
+                            source_indices.clone(),
+                        ))
+                    {
+                        {
+                            let side = if equality_operand_is_optional(
+                                left_typed.clone(),
+                                source_indices.clone(),
+                            ) {
+                                "left".to_string()
+                            } else {
+                                "right".to_string()
+                            };
+                            Rc::new(vec![crate::v1_std_core::make_error_node(
+                                Rc::new(CompilerDiagnostic::EqualityOptionalityMismatch {
+                                    optional_side: side.clone(),
+                                    span: span.clone(),
+                                }),
+                                scope.module_name.clone(),
+                            )])
+                        }
+                    } else {
+                        match equality_operand_admission(
+                            lt.clone(),
                             scope.clone(),
                             v1_rt::rc_empty_map::<String, bool>(),
                             0,
@@ -5220,8 +5250,19 @@ pub fn equality_admission_diags(
                                 equality_admission_refusal_diag(r.clone(), span.clone()),
                                 scope.module_name.clone(),
                             )]),
-                            std::option::Option::None => Rc::new(vec![]),
-                        },
+                            std::option::Option::None => match equality_operand_admission(
+                                rt.clone(),
+                                scope.clone(),
+                                v1_rt::rc_empty_map::<String, bool>(),
+                                0,
+                            ) {
+                                Some(r) => Rc::new(vec![crate::v1_std_core::make_error_node(
+                                    equality_admission_refusal_diag(r.clone(), span.clone()),
+                                    scope.module_name.clone(),
+                                )]),
+                                std::option::Option::None => Rc::new(vec![]),
+                            },
+                        }
                     }
                 }
             }
@@ -5797,6 +5838,7 @@ pub enum InhabitanceUndecidableReason {
 pub enum InhabitanceRefusalReason {
     RefusedPayloadAtParent,
     RefusedKernelAtStructured,
+    RefusedProductCoproductHeadMismatch,
     RefusedCollectionAtEstablishedIdentity,
     RefusedDistinctProductConstructor,
     RefusedDistinctAppliedTypeArgument,
@@ -6163,13 +6205,13 @@ pub fn declared_type_inhabitance(
     reason: InhabitanceUndecidableReason::UndecidableProducedIdentityErased,
 })
                                                 } else {
-                                                    if coproduct_at_record_declared_type(
+                                                    if product_versus_coproduct_head_mismatch(
                                                         declared.clone(),
                                                         produced.clone(),
                                                         scope.clone(),
                                                     ) {
                                                         Rc::new(InhabitanceVerdict::InhabitanceRefused {
-    reason: InhabitanceRefusalReason::RefusedKernelAtStructured,
+    reason: InhabitanceRefusalReason::RefusedProductCoproductHeadMismatch,
 })
                                                     } else {
                                                         match refinement_inhabitance(declared.clone(), produced.clone(), scope.clone()) {
@@ -6393,7 +6435,7 @@ pub fn record_at_scalar_needs_identity(
     ))
 }
 
-pub fn coproduct_at_record_declared_type(
+pub fn product_versus_coproduct_head_mismatch(
     declared: Rc<Node>,
     produced: Rc<Node>,
     scope: Rc<InferScope>,
@@ -6407,8 +6449,6 @@ pub fn coproduct_at_record_declared_type(
             scope.type_env.clone().source_indices.clone(),
             produced.clone(),
         );
-        let declared_head = expected_type_head_exposure(declared.clone(), scope.clone());
-        let produced_head = expected_type_head_exposure(produced.clone(), scope.clone());
         if (application_type_names_compatible(
             declared_name.clone(),
             produced_name.clone(),
@@ -6422,11 +6462,18 @@ pub fn coproduct_at_record_declared_type(
         )) {
             false
         } else {
-            (crate::v1_compiler_type_head_exposure::type_head_exposure_is_product(
-                declared_head.clone(),
-            ) && crate::v1_compiler_type_head_exposure::type_head_exposure_is_coproduct(
-                produced_head.clone(),
-            ))
+            {
+                let declared_product = nominal_product_head_name(declared.clone(), scope.clone());
+                let produced_product = nominal_product_head_name(produced.clone(), scope.clone());
+                let declared_coproduct =
+                    nominal_coproduct_head_name(declared.clone(), scope.clone());
+                let produced_coproduct =
+                    nominal_coproduct_head_name(produced.clone(), scope.clone());
+                (((declared_product.clone() != "".to_string())
+                    && (produced_coproduct.clone() != "".to_string()))
+                    || ((declared_coproduct.clone() != "".to_string())
+                        && (produced_product.clone() != "".to_string())))
+            }
         }
     }
 }
@@ -6568,9 +6615,95 @@ pub fn nominal_product_head_name_if_declared_product(
                     scope.type_env.clone(),
                     scope.module_name.clone(),
                 );
-                if ((peeled.connective.clone() == Connective::Conj)
-                    && ((peeled.children.clone().len() as i64) > 0))
+                if (crate::v1_compiler_infer_types::is_product_type(peeled.clone())
+                    && (is_where_refinement_type(peeled.clone()) == false))
                 {
+                    name.clone()
+                } else {
+                    "".to_string()
+                }
+            }
+            std::option::Option::None => "".to_string(),
+        }
+    }
+}
+
+pub fn nominal_coproduct_head_name(n: Rc<Node>, scope: Rc<InferScope>) -> String {
+    {
+        let source_indices = scope.type_env.clone().source_indices.clone();
+        let name = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+        if (((((((name.clone() == "".to_string())
+            || (n.return_cardinality.clone() == Cardinality::CardOptional))
+            || type_node_is_callable(n.clone()))
+            || crate::std_types::is_kernel_type(name.clone()))
+            || (crate::v1_std_core::qualified_last_segment(name.clone())
+                == "Optional".to_string()))
+            || crate::v1_compiler_infer_types::node_is_element_collection(
+                n.clone(),
+                source_indices.clone(),
+            ))
+            || crate::v1_compiler_infer_types::node_is_keyed_collection(
+                n.clone(),
+                source_indices.clone(),
+            ))
+        {
+            "".to_string()
+        } else {
+            match (*expected_type_head_exposure(n.clone(), scope.clone())).clone() {
+                TypeHeadExposure::ExposedTypeHead { ref view, .. }
+                    if matches!(view.as_ref(), TypeHeadView::ApplicationHead { .. }) =>
+                {
+                    let TypeHeadView::ApplicationHead { .. } = view.as_ref() else {
+                        unreachable!()
+                    };
+                    nominal_coproduct_head_name_if_declared_coproduct(name.clone(), scope.clone())
+                }
+                TypeHeadExposure::ExposedTypeHead { ref view, .. }
+                    if matches!(
+                        view.as_ref(),
+                        TypeHeadView::CoproductHead {
+                            type_identity: _,
+                            ..
+                        }
+                    ) =>
+                {
+                    let TypeHeadView::CoproductHead {
+                        type_identity: _, ..
+                    } = view.as_ref()
+                    else {
+                        unreachable!()
+                    };
+                    nominal_coproduct_head_name_if_declared_coproduct(name.clone(), scope.clone())
+                }
+                TypeHeadExposure::OpaqueTypeHead {
+                    type_identity: _, ..
+                } => nominal_coproduct_head_name_if_declared_coproduct(name.clone(), scope.clone()),
+                _ => "".to_string(),
+            }
+        }
+    }
+}
+
+pub fn nominal_coproduct_head_name_if_declared_coproduct(
+    name: String,
+    scope: Rc<InferScope>,
+) -> String {
+    {
+        let representative = transparent_alias_representative(
+            scope.type_env.clone().symbol_index.clone(),
+            name.clone(),
+        );
+        match crate::v1_compiler_infer_env::lookup_type_by_name(
+            scope.type_env.clone(),
+            representative.clone(),
+        ) {
+            Some(decl) => {
+                let peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+                    decl.clone(),
+                    scope.type_env.clone(),
+                    scope.module_name.clone(),
+                );
+                if (peeled.connective.clone() == Connective::Disj) {
                     name.clone()
                 } else {
                     "".to_string()
@@ -6913,6 +7046,23 @@ pub fn applied_type_argument_identity_known(name: String, scope: Rc<InferScope>)
     }
 }
 
+pub fn inhabitance_refusal_position_label(
+    position: DeclaredTypePosition,
+    subject: String,
+    reason: InhabitanceRefusalReason,
+) -> String {
+    {
+        let base = declared_type_position_label(position.clone(), subject.clone());
+        match reason.clone() {
+            InhabitanceRefusalReason::RefusedProductCoproductHeadMismatch => v1_rt::concat(
+                base.clone(),
+                " [RefusedProductCoproductHeadMismatch]".to_string(),
+            ),
+            _ => base.clone(),
+        }
+    }
+}
+
 pub fn inhabitance_undecidable_reason_label(reason: InhabitanceUndecidableReason) -> String {
     match reason.clone() {
     InhabitanceUndecidableReason::UndecidableGenericFormal => "generic formal: the declared position's payload types can be type variables, so membership is not decidable from the declaration alone".to_string(),
@@ -6978,12 +7128,13 @@ pub fn declared_type_obligation_diags(
                 scope.module_name.clone(),
             )])
         }
-        InhabitanceVerdict::InhabitanceRefused { reason: _, .. } => {
+        InhabitanceVerdict::InhabitanceRefused { reason: r, .. } => {
             Rc::new(vec![crate::v1_std_core::make_error_node(
                 Rc::new(CompilerDiagnostic::DeclaredTypeNotInhabited {
-                    position: declared_type_position_label(
+                    position: inhabitance_refusal_position_label(
                         obligation.position.clone(),
                         obligation.subject.clone(),
+                        r.clone(),
                     ),
                     expected: obligation_type_shape(
                         obligation.declared.clone(),
@@ -32360,6 +32511,8 @@ pub struct UndecidableRefinementPeerChains;
 pub struct RefusedPayloadAtParent;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RefusedKernelAtStructured;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RefusedProductCoproductHeadMismatch;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RefusedCollectionAtEstablishedIdentity;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

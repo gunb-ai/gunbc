@@ -1,0 +1,152 @@
+Event_log        | DDh | ok  | 33.1 | 
+FAN3_1_Speed     | 1Dh | ok  | 29.13 | 5000 RPM
+FAN3_1_Failure   | 2Dh | ok  | 29.14 | 
+FAN3_1_Presence  | 3Dh | ok  | 29.15 | 
+TS1_Temp         | 01h | ok  | 30.1 | 29 degrees C
+TS2_Temp         | 02h | ok  | 30.2 | 29 degrees C
+TS4_Temp         | 04h | ok  | 30.4 | 28 degrees C
+TS3_Temp         | 03h | ok  | 30.3 | 29 degrees C
+TS6_Temp         | 06h | ok  | 30.6 | 32 degrees C
+TS5_Temp         | 05h | ok  | 30.5 | 33 degrees C
+S0_SOC_Temp      | 6Bh | ok  | 30.15 | 49 degrees C
+S0_SOC_VRD_Temp  | 6Ch | ok  | 30.16 | 33 degrees C
+S0_DIMM_VRD_Temp | 6Dh | ok  | 30.17 | 34 degrees C
+S0_Core_VRD_Temp | 6Eh | ok  | 30.18 | 30 degrees C
+S0_DIMMG0_Temp   | 6Fh | ok  | 30.19 | 29 degrees C
+S0_CPU_Pwr       | 70h | ok  | 19.39 | 34 Watts
+S0_MEM_Pwr       | 73h | ok  | 19.42 | 1.60 Watts
+Watchdog2        | DEh | ok  | 33.2 | 
+S0_CPU_VCORE     | 74h | ok  | 19.43 | 1.02 Volts
+S0_DIMM_VR1_Volt | 75h | ok  | 19.44 | 1.23 Volts
+S0_DIMM_VR2_Volt | 76h | ok  | 19.45 | 1.23 Volts
+S0_DIMM_DDR_Volt | 77h | ok  | 19.46 | 1.23 Volts
+S0_CPU_PROC_HOT  | 78h | ok  |  3.1 | 
+S0_Memory_Status | 96h | ok  | 32.1 | 
+S0_ACPI_State    | 7Ah | ok  | 34.1 | S0/G0: working
+S0_0V8_VDDC_SOC  | 49h | ok  | 19.9 | 0.79 Volts
+S0_0V75_PCP      | 4Ah | ok  | 19.11 | 1.02 Volts
+S0_1V2_VDDQ0123  | 4Bh | ok  | 19.13 | 1.23 Volts
+S0_0V6_VTT0123   | 4Ch | ok  | 19.15 | 0.62 Volts
+S0_2V5_VPP0123   | 4Dh | ok  | 19.17 | 2.49 Volts
+S0_1V2_VDDQ4567  | 4Eh | ok  | 19.19 | 1.23 Volts
+S0_0V6_VTT4567   | 4Fh | ok  | 19.21 | 0.62 Volts
+S0_2V5_VPP4567   | 50h | ok  | 19.23 | 2.48 Volts
+S0_0V85_RCA      | 51h | ok  | 19.25 | 0.92 Volts
+S0_1V8_VDDH      | 52h | ok  | 19.27 | 1.77 Volts
+S0_1V5_VDDH      | 53h | ok  | 19.29 | 1.49 Volts
+S0_1V8_SOC       | 54h | ok  | 19.31 | 1.74 Volts
+S0_1V8_PCP       | 55h | ok  | 19.33 | 1.77 Volts
+S0_3V3_SOC       | 56h | ok  | 19.35 | 3.26 Volts
+Sys_Boot_Restart | DCh | ok  | 34.3 | 
+S0_DIMM_VR1_Pwr  | 71h | ok  | 19.40 | 1.56 Watts
+S0_DIMM_VR2_Pwr  | 72h | ok  | 19.41 | 0 Watts
+S0_SoC_Error     | E0h | ok  | 34.4 | 
+S0_PCIE_Status   | BEh | ok  | 49.1 | 
+S1_0V8_VDDC_SOC  | 57h | ok  | 19.10 | 0.79 Volts
+S1_0V75_PCP      | 58h | ok  | 19.12 | 1.02 Volts
+S1_1V2_VDDQ0123  | 59h | ok  | 19.14 | 1.23 Volts
+S1_0V6_VTT0123   | 5Ah | ok  | 19.16 | 0.61 Volts
+S1_2V5_VPP0123   | 5Bh | ok  | 19.18 | 2.48 Volts
+S1_1V2_VDDQ4567  | 5Ch | ok  | 19.20 | 1.23 Volts
+S1_0V6_VTT4567   | 5Dh | ok  | 19.22 | 0.62 Volts
+S1_2V5_VPP4567   | 5Eh | ok  | 19.24 | 2.49 Volts
+S1_0V85_RCA      | 5Fh | ok  | 19.26 | 0.92 Volts
+S1_1V8_VDDH      | 60h | ok  | 19.28 | 1.78 Volts
+S1_1V5_VDDH      | 61h | ok  | 19.30 | 1.49 Volts
+S1_1V8_SOC       | 62h | ok  | 19.32 | 1.77 Volts
+S1_1V8_PCP       | 63h | ok  | 19.34 | 1.78 Volts
+S1_3V3_SOC       | 64h | ok  | 19.36 | 3.28 Volts
+3V3_SB           | 65h | ok  | 19.37 | 3.26 Volts
+VBAT_RTC         | 66h | ok  | 19.38 | 3.11 Volts
+S1_ACPI_State    | 8Ah | ok  | 34.2 | S0/G0: working
+S1_DIMM_VRD_Temp | 7Dh | ok  | 30.22 | 34 degrees C
+S1_Core_VRD_Temp | 7Eh | ok  | 30.23 | 31 degrees C
+S1_DIMM_VR2_Pwr  | 82h | ok  | 19.49 | 0 Watts
+S1_DIMM_DDR_Volt | 87h | ok  | 19.54 | 1.23 Volts
+S1_MEM_Pwr       | 83h | ok  | 19.50 | 0 Watts
+S1_DIMM_VR1_Pwr  | 81h | ok  | 19.48 | 0 Watts
+S1_SoC_Error     | E1h | ok  | 34.5 | 
+S1_SOC_VRD_Temp  | 7Ch | ok  | 30.21 | 36 degrees C
+S1_DIMM_VR1_Volt | 85h | ok  | 19.52 | 1.23 Volts
+S1_DIMM_VR2_Volt | 86h | ok  | 19.53 | 1.23 Volts
+S1_SOC_Temp      | 7Bh | ok  | 30.20 | 57 degrees C
+S1_PCIE_Status   | C9h | ok  | 49.3 | 
+S1_CPU_Pwr       | 80h | ok  | 19.47 | 42 Watts
+S1_CPU_VCORE     | 84h | ok  | 19.51 | 1.01 Volts
+S1_Memory_Status | A7h | ok  | 32.3 | 
+S1_DIMMG0_Temp   | 7Fh | ok  | 30.24 | 30 degrees C
+S1_CPU_PROC_HOT  | 88h | ok  |  3.3 | 
+FAN4_1_Failure   | 2Fh | ok  | 29.20 | 
+FAN4_1_Presence  | 3Fh | ok  | 29.21 | 
+FAN4_1_Speed     | 1Fh | ok  | 29.19 | 5000 RPM
+ChassisIntrusion | DBh | ok  | 23.1 | 
+S0_CPU_Status    | 79h | ok  |  3.2 | 
+S1_CPU_Status    | 89h | ok  |  3.2 | 
+FAN3_2_Failure   | 2Eh | ok  | 29.17 | 
+FAN3_2_Speed     | 1Eh | ok  | 29.16 | 4800 RPM
+FAN3_2_Presence  | 3Eh | ok  | 29.18 | 
+FAN4_2_Failure   | 30h | ok  | 29.23 | 
+FAN4_2_Speed     | 20h | ok  | 29.22 | 4700 RPM
+FAN4_2_Presence  | 40h | ok  | 29.24 | 
+FAN7_1_Failure   | 35h | ok  | 29.38 | 
+FAN6_2_Failure   | 34h | ok  | 29.35 | 
+FAN6_2_Speed     | 24h | ok  | 29.34 | 4700 RPM
+FAN5_2_Failure   | 32h | ok  | 29.29 | 
+FAN6_1_Presence  | 43h | ok  | 29.33 | 
+FAN5_1_Failure   | 31h | ok  | 29.26 | 
+FAN8_2_Speed     | 28h | ok  | 29.46 | 4700 RPM
+FAN6_2_Presence  | 44h | ok  | 29.36 | 
+FAN5_2_Presence  | 42h | ok  | 29.30 | 
+FAN5_1_Speed     | 21h | ok  | 29.25 | 5000 RPM
+FAN8_1_Speed     | 27h | ok  | 29.43 | 5000 RPM
+FAN6_1_Failure   | 33h | ok  | 29.32 | 
+FAN7_2_Speed     | 26h | ok  | 29.40 | 4800 RPM
+FAN8_1_Failure   | 37h | ok  | 29.44 | 
+FAN7_2_Failure   | 36h | ok  | 29.41 | 
+FAN5_2_Speed     | 22h | ok  | 29.28 | 4700 RPM
+FAN7_1_Presence  | 45h | ok  | 29.39 | 
+FAN5_1_Presence  | 41h | ok  | 29.27 | 
+FAN8_1_Presence  | 47h | ok  | 29.45 | 
+FAN7_2_Presence  | 46h | ok  | 29.42 | 
+FAN7_1_Speed     | 25h | ok  | 29.37 | 5000 RPM
+FAN8_2_Presence  | 48h | ok  | 29.48 | 
+FAN8_2_Failure   | 38h | ok  | 29.47 | 
+FAN6_1_Speed     | 23h | ok  | 29.31 | 5000 RPM
+PSU1_POUT        | F0h | ok  | 19.55 | 0 Watts
+PSU1_TEMP        | F3h | ok  | 19.58 | 32 degrees C
+PSU1_FAN_SPEED   | F5h | ok  | 19.60 | 0 RPM
+PSU2_FAN_SPEED   | F6h | ok  | 19.61 | 5500 RPM
+PSU2_TEMP        | F4h | ok  | 19.59 | 39 degrees C
+PSU2_POUT        | F1h | ok  | 19.56 | 120 Watts
+Total_Power      | F2h | ok  | 19.57 | 120 Watts
+S1_RCA_VR_Pwr    | 9Bh | ok  | 19.52 | 4.80 Watts
+S1_RCA_VR_Temp   | 9Dh | ok  | 30.26 | 34 degrees C
+S1_RCA_VR_Volt   | 9Ch | ok  | 19.56 | 0.90 Volts
+S0_RCA_VR_Volt   | 99h | ok  | 19.55 | 0.90 Volts
+S0_RCA_VR_Pwr    | 98h | ok  | 19.51 | 4.80 Watts
+S0_RCA_VR_Temp   | 9Ah | ok  | 30.25 | 31 degrees C
+S1_SOC_TDP       | 9Fh | ok  | 19.53 | 210 Watts
+S0_SOC_TDP       | 9Eh | ok  | 19.52 | 210 Watts
+S0_SOC_Volt      | 91h | ok  | 19.65 | 0.78 Volts
+S1_SOC_Volt      | 92h | ok  | 19.66 | 0.78 Volts
+S0_DIMM_VR1_Curr | ABh | ok  | 19.67 | 0.96 Amps
+S1_Core_VRD_Curr | AEh | ok  | 19.67 | 1.52 Amps
+S1_DIMM_VR1_Curr | B0h | ok  | 19.67 | 0 Amps
+S1_SOC_VRD_Curr  | AFh | ok  | 19.67 | 4 Amps
+S1_DIMM_VR2_Curr | B1h | ok  | 19.67 | 0 Amps
+S0_RCA_VRD_Curr  | ADh | ok  | 19.67 | 6 Amps
+S0_DIMM_VR2_Curr | ACh | ok  | 19.67 | 0 Amps
+S0_Core_VRD_Curr | A9h | ok  | 19.67 | 18.96 Amps
+S0_SOC_VRD_Curr  | AAh | ok  | 19.67 | 2.96 Amps
+S1_RCA_VRD_Curr  | B2h | ok  | 19.67 | 6 Amps
+NVMeBP_MaxTemp   | 07h | ok  | 30.7 | 0 degrees C
+OCP_Temp         | 08h | ns  | 30.8 | No Reading
+NVMeM2_MaxTemp   | 09h | ok  | 30.9 | 0 degrees C
+S0_DIMM_HOT      | A0h | ok  | 32.5 | 
+S1_DIMM_HOT      | A1h | ok  | 32.6 | 
+S0_VR_ErrStatus  | B3h | ok  | 19.82 | 
+S1_VR_ErrStatus  | B6h | ok  | 19.85 | 
+S0_Refresh_Rate  | A2h | ok  | 32.5 | 
+S1_Refresh_Rate  | A3h | ok  | 32.6 | 
+S0_PCIE_HP       | A4h | ok  | 32.7 | 
+S1_PCIE_HP       | A5h | ok  | 32.8 | 

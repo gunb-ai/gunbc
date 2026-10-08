@@ -24,6 +24,22 @@ fn violation_count(source: String, wanted: String) -> Int {
   }
 }
 
+// THE RELATION BOUNDARY, NOT THE CLASS COUNT. DeclaredTypeNotInhabited is shared by every
+// inhabitance refusal. The product-versus-coproduct arm locates its own reason on the census
+// subject; deleting RefusedProductCoproductHeadMismatch (or routing this pair through
+// RefusedKernelAtStructured) changes that subject and this helper goes red.
+fn product_coproduct_mismatch_at_parameter(source: String, parameter: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_count_at_key(
+        rows: rows,
+        diagnostic_class: "DeclaredTypeNotInhabited",
+        subject_name: concat("direct call argument for parameter '", parameter, "' [RefusedProductCoproductHeadMismatch]"),
+        blocking: true)
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
 // THE PAIR THIS FILE EXISTS FOR. std.nat Nat and test.fixture.structural_peano_nat StructuralNat
 // are both declared as the Peano coproduct (zero, and the successor of one) and they do NOT
 // realize the same way: std.nat Nat is bound to the kernel integer
@@ -127,7 +143,60 @@ test fn w_record_typed_value_at_scalar_argument_is_counted_until_identity_is_gro
 data coproduct_value_at_record_source: String = "module probe_inhabit_coproduct_at_record\nimport std.types { Int, String }\ntype Box { value: String }\ntype Choice = | ChoiceA { value: String } | ChoiceB\nfn make_choice() -> Choice { ChoiceA { value: \"forty\" } }\nfn takes_box(box: Box) -> Int { 1 }\nfn probe() -> Int { takes_box(box: make_choice()) }\n"
 
 test fn w_coproduct_typed_value_at_record_argument_is_refused() -> Bool {
-  violation_count(source: coproduct_value_at_record_source, wanted: "DeclaredTypeNotInhabited") > 0
+  product_coproduct_mismatch_at_parameter(source: coproduct_value_at_record_source, parameter: "box") > 0
+}
+
+// THE DUAL, AND THE #13198 SPECIMEN. A generic product APPLICATION (CarrierClosed<T> / Wrap<Inner>)
+// at a parameter declared as the inner coproduct was admitted: ApplicationHead is not ProductHead,
+// the declared coproduct is not a product, and declared_type_inhabitance fell through to Inhabits.
+// The actual is a CALL, not a record literal, so structured_application_site_type_mismatch cannot
+// stand in as the wall. Named argument, same as the production site.
+data generic_product_at_its_argument_coproduct_source: String = "module probe_inhabit_generic_product_at_coproduct\nimport std.types { Int, String }\ntype Inner = | InnerA { v: String } | InnerB\ntype Wrap<T> { result: T, tag: String }\nfn mk_wrap() -> Wrap<Inner> { Wrap { result: InnerA { v: \"z\" }, tag: \"c\" } }\nfn takes_inner(x: Inner) -> Int { 1 }\nfn probe() -> Int { takes_inner(x: mk_wrap()) }\n"
+
+test fn w_a_generic_product_at_the_coproduct_it_wraps_is_refused() -> Bool {
+  product_coproduct_mismatch_at_parameter(source: generic_product_at_its_argument_coproduct_source, parameter: "x") > 0
+}
+
+data unapplied_product_at_coproduct_source: String = "module probe_inhabit_product_at_coproduct\nimport std.types { Int, String }\ntype Box { value: String }\ntype Choice = | ChoiceA { value: String } | ChoiceB\nfn make_box() -> Box { Box { value: \"forty\" } }\nfn takes_choice(x: Choice) -> Int { 1 }\nfn probe() -> Int { takes_choice(x: make_box()) }\n"
+
+test fn w_an_unapplied_product_at_a_coproduct_argument_is_refused() -> Bool {
+  product_coproduct_mismatch_at_parameter(source: unapplied_product_at_coproduct_source, parameter: "x") > 0
+}
+
+data generic_product_at_matching_product_source: String = "module probe_inhabit_generic_product_ok\nimport std.types { Int, String }\ntype Inner = | InnerA { v: String } | InnerB\ntype Wrap<T> { result: T, tag: String }\nfn mk_wrap() -> Wrap<Inner> { Wrap { result: InnerA { v: \"z\" }, tag: \"c\" } }\nfn takes_wrap(x: Wrap<Inner>) -> Int { 1 }\nfn probe() -> Int { takes_wrap(x: mk_wrap()) }\n"
+
+test fn w_a_generic_product_at_its_own_declared_application_is_admitted() -> Bool {
+  violation_count(source: generic_product_at_matching_product_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+data generic_product_field_projected_source: String = "module probe_inhabit_generic_product_field\nimport std.types { Int, String }\ntype Inner = | InnerA { v: String } | InnerB\ntype Wrap<T> { result: T, tag: String }\nfn mk_wrap() -> Wrap<Inner> { Wrap { result: InnerA { v: \"z\" }, tag: \"c\" } }\nfn takes_inner(x: Inner) -> Int { 1 }\nfn probe() -> Int { takes_inner(x: mk_wrap().result) }\n"
+
+test fn w_the_inner_field_of_a_generic_product_at_that_coproduct_is_admitted() -> Bool {
+  violation_count(source: generic_product_field_projected_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+// ZERO-FIELD PRODUCT BY DECLARATION KIND, NOT CHILD COUNT. `type Wrap<T> {}` is Conj with
+// zero children; the old `count(children)>0` gate answered "" and the pair reached Inhabits.
+// The positive control is the same wrapper at its own application.
+data zero_field_product_at_coproduct_source: String = "module probe_inhabit_zero_field_product\nimport std.types { Int, String }\ntype Inner = | InnerA { v: String } | InnerB\ntype Wrap<T> {}\nfn make_wrap() -> Wrap<Inner> { Wrap {} }\nfn takes_inner(x: Inner) -> Int { 1 }\nfn probe() -> Int { takes_inner(x: make_wrap()) }\n"
+
+test fn w_a_zero_field_generic_product_at_the_coproduct_it_wraps_is_refused() -> Bool {
+  product_coproduct_mismatch_at_parameter(source: zero_field_product_at_coproduct_source, parameter: "x") > 0
+}
+
+data zero_field_product_at_matching_product_source: String = "module probe_inhabit_zero_field_product_ok\nimport std.types { Int, String }\ntype Inner = | InnerA { v: String } | InnerB\ntype Wrap<T> {}\nfn make_wrap() -> Wrap<Inner> { Wrap {} }\nfn takes_wrap(x: Wrap<Inner>) -> Int { 1 }\nfn probe() -> Int { takes_wrap(x: make_wrap()) }\n"
+
+test fn w_a_zero_field_generic_product_at_its_own_declared_application_is_admitted() -> Bool {
+  violation_count(source: zero_field_product_at_matching_product_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+// APPLIED COPRODUCT ApplicationHead. Box<T> is a product application; Choice<T> is a
+// coproduct application. Deleting the ApplicationHead arm of nominal_coproduct_head_name
+// turns this red into an admission.
+data applied_product_at_applied_coproduct_source: String = "module probe_inhabit_applied_product_at_applied_coproduct\nimport std.types { Int, String }\ntype Box<T> { value: T }\ntype Choice<T> = | ChoiceA { value: T } | ChoiceB\nfn make_box() -> Box<String> { Box { value: \"forty\" } }\nfn takes_choice(x: Choice<String>) -> Int { 1 }\nfn probe() -> Int { takes_choice(x: make_box()) }\n"
+
+test fn w_an_applied_product_at_an_applied_coproduct_argument_is_refused() -> Bool {
+  product_coproduct_mismatch_at_parameter(source: applied_product_at_applied_coproduct_source, parameter: "x") > 0
 }
 
 // The syntax contrast that exposed the application hole. The cast seam already refused the same
