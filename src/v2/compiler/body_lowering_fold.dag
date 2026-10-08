@@ -6738,7 +6738,7 @@ fn body_lower_string_template_concat(left: Node, operand: Node, cause: Node) -> 
   node_with_occurrence_id(
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: body_lower_algebra_constructor_reference(name: ^collection_concat_shape, source: node_with_occurrence_id(kind: TypeNode { connective: Atom { identity: ^concat } }, children: [], occurrence_id: occurrence)) },
+      Edge { label: Positional, target: node_with_occurrence_id(kind: TypeNode { connective: Atom { identity: ^collection_concat_shape } }, children: [], occurrence_id: occurrence) },
       Edge { label: Positional, target: left },
       Edge { label: Positional, target: operand }
     ],

@@ -78,7 +78,7 @@ import v2.std.diagnostic {
   Rejected,
   outcome_with_diagnostics
 }
-import v2.compiler.fold_lowering { FoldRealization, FoldRealizesDeclaration, FoldRealizesRosterOperation, collection_roster_primitive_call_row_optional, fold_family_realization }
+import v2.compiler.fold_lowering { FoldRealization, FoldRealizesDeclaration, FoldRealizesRosterOperation, collection_roster_primitive_call_row_by_declaration_optional, collection_roster_primitive_call_row_optional, fold_family_realization }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_from_dotted_string,
@@ -2230,7 +2230,11 @@ fn resolve_atom_unscoped(ctx: ResolveContext, n: Node, identity: Symbol, pending
         Absent =>
           match collection_roster_primitive_call_row_optional(head: identity) {
             Present { value: r } => resolve_atom_bound(ctx: ctx, n: n, path: declaration_ref_path(r: r.row), pending: pending)
-            Absent => resolve_atom_unbound(ctx: ctx, n: n, identity: identity, pending: pending)
+            Absent =>
+              match collection_roster_primitive_call_row_by_declaration_optional(decl_name: identity) {
+                Present { value: r } => resolve_atom_bound(ctx: ctx, n: n, path: declaration_ref_path(r: r.row), pending: pending)
+                Absent => resolve_atom_unbound(ctx: ctx, n: n, identity: identity, pending: pending)
+              }
           }
       }
   }

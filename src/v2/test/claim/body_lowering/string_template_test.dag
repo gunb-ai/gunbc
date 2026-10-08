@@ -24,7 +24,7 @@ import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { node_subtree_nodes, Atom, ComputationNode, Conj, Edge, Node, Positional, Symbol, Transform, TypeNode, node_synthetic, node_with_occurrence_id, symbol_lexeme }
 import v2.std.grammar { GrammarEmitTerminal, GrammarEmitClassTerminal, GrammarEmitLexemeTerminal, grammar_named_edge, node_atom_identity_optional }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -227,8 +227,8 @@ fn st_child(n: Node, index: Int) -> Optional<Node> {
   }
 }
 
-// The operator is the roster row referenced by its DECLARING path (std.algebra collection_concat_shape), a
-// spine of atoms std . algebra . collection_concat_shape -- never the bare atom `concat`, which resolve
+// The operator is the roster row, spelled by its DECLARATION name: the atom collection_concat_shape (resolve binds a
+// roster row by that name, fold_lowering collection_roster_primitive_call_row_by_declaration_optional) -- never the bare atom `concat`, which resolve
 // binds to a module's own declaration before the roster.
 fn st_count_atoms(op: Node, identity: Symbol) -> Int {
   fold(node_subtree_nodes(root: op), init: 0, f: fn(acc, n) {
