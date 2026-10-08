@@ -23,7 +23,7 @@ import gunbc.fleet_host_identity {
   operator_host_183527,
   operator_host_3dde7f,
 }
-import extdeps.census.name_frequency { census_1990_given_names_top200, census_2010_surnames_top200 }
+import gunbc.host_names_gen_z { gen_z_first_parts, gen_z_last_parts }
 
 // A HUMAN NAME HAS THREE SHAPES AND NO OTHER: a middle part exists only beside a last part, so
 // that invalid state has no constructor rather than a validator. Each part is one DNS label, and the
@@ -157,7 +157,7 @@ fn hostname_allocation_admission(
 //
 // THE TWO DRAWN ROWS (2026-10-07) are the Hetzner Cloud CAX41 guests. Their stable identities are
 // opaque (gunbc.fleet_host_identity), so nothing about provider, architecture or role is read off a
-// spelling; their names were DRAWN by draw_human_name over the Census corpus, with the entropy
+// spelling; their names were DRAWN by draw_human_name over the Gen Z naming scheme (gunbc.host_names_gen_z), with the entropy
 // recorded as the receipt of the draw.
 data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
   HostnameAllocation {
@@ -191,14 +191,14 @@ data gunbc_fleet_hostname_allocations: List<HostnameAllocation> = [
   HostnameAllocation {
     fleet_slot: operator_host_183527,
     name: DrawnHumanName {
-      name: FirstOnly { first: "cheryl" as DnsLabel },
+      name: FirstOnly { first: "vibe" as DnsLabel },
       draw: HumanNameDraw { entropy: 707054856316 },
     },
   },
   HostnameAllocation {
     fleet_slot: operator_host_3dde7f,
     name: DrawnHumanName {
-      name: FirstOnly { first: "virginia" as DnsLabel },
+      name: FirstOnly { first: "cringe" as DnsLabel },
       draw: HumanNameDraw { entropy: 821771404468 },
     },
   },
@@ -211,8 +211,8 @@ fn canonical_hostname_for_fleet_slot(fleet_slot: HostIdentity) -> DnsLabel? {
   )
 }
 
-// THE DRAW. One entropy value indexes the given-name list for the first part, the surname list for
-// the last part and the given-name list again for the middle part, so a draw fixes all three forms
+// THE DRAW. One entropy value indexes the first-part list for the first part, the last-part list for
+// the last part and the first-part list again for the middle part, so a draw fixes all three forms
 // at once and a collision lengthens the SAME name rather than re-rolling a different one. The
 // shortest form no existing host answers to is allocated -- shorter names while the fleet is small,
 // longer ones only where a collision demands it, with no fleet-size threshold anywhere. A draw whose
@@ -242,8 +242,8 @@ fn first_untaken_human_name(
 }
 
 fn draw_human_name(draw: HumanNameDraw, existing: List<HostnameAllocation>) -> HumanNameDrawOutcome {
-  let given = census_1990_given_names_top200
-  let surnames = census_2010_surnames_top200
+  let given = gen_z_first_parts
+  let surnames = gen_z_last_parts
   let n = draw.entropy
   let taken = flat_map(existing, a => allocation_selector_forms(allocation: a))
   if n < 0 {
