@@ -139,7 +139,7 @@ test fn optional_compared_with_optional_stays_admitted() -> Bool {
 }
 
 // INTERIM WALL on `list-read == Present { .. }` (scaffold, operator-approved by default via
-// escalation msg_66f62924; it dissolves when gunbc#13488's single Optional representation lands,
+// escalation msg_66f62924; it dissolves when the interpreter and the emitted program agree on one Optional value for a list read (vehicle: gunbc#13488's design, which alone does not retire it),
 // at which point the production arm is deleted and these become ordinary regression controls).
 // The four cases are sleek-carp-686's reproductions: the interpreter returns the bare element
 // from first(), so cases 1-3 answered a runtime error or a silent false while the emitted

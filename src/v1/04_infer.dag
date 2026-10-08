@@ -3464,7 +3464,8 @@ fn equality_operand_is_optional(n: Node, source_indices: Map<String, NewlineInde
 }
 
 // INTERIM WALL (scaffold, operator-approved by default via escalation msg_66f62924; dissolves when
-// gunbc#13488's single Optional representation lands, whereupon this arm is deleted and its cases
+// the interpreter and the emitted program agree on one Optional value for a list read (vehicle: gunbc#13488's
+// design, which alone does not retire it), whereupon this arm is deleted and its cases
 // become ordinary regression controls). The checker types a list read (first/last/get/index/min/max)
 // as T?, the interpreter returns the bare element, so `read == Present { .. }` is false or a
 // cross-representation error there and true on the emitted route (failure modes
