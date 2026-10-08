@@ -20,7 +20,7 @@ import gunbc.machine_intake_mtcollins1_physical_orientation { mtcollins1_placeme
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE FIGURE IS SELECTED BY BOARD AND ONLY A CITED BOARD HAS ONE. Mt. Collins resolves to its Getting
-// Started Guide figures; the Gigabyte MP72-HB0 (the Mt. Jade baseboard) and the ASRock Rack ALTRAD8UD
+// Started Guide figures; the Gigabyte MP72-HB0 (a candidate reference board, not Mt. Jade) and the ASRock Rack ALTRAD8UD
 // have no figure modeled in this repository, so each refuses on its own name.
 test fn w_only_a_board_with_a_cited_figure_selects_one() -> Bool {
   let collins = match baseboard_dimm_figure(board: AmpereMtCollins) {

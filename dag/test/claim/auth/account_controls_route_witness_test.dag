@@ -90,6 +90,7 @@ test fn logout_redirects_home_and_clears_the_session_cookie() -> Bool {
       ServeResponseHeaderLocation { location: l } => concat("location=", l as String)
       ServeResponseHeaderSetCookie { cookie: c } => if c.name == session_cookie_name && c.value == "" { "session-cookie-emptied" } else { "other-cookie" }
       ServeResponseHeaderNoStore => "no-store"
+      ServeResponseHeaderCacheImmutable { max_age_seconds: _ } => "immutable"
     }), "|") == "location=/|session-cookie-emptied"
 }
 
