@@ -33,6 +33,10 @@ import gunbc.roadmap_belt_actuate {
   BaseShaObserved, BaseShaUnobserved,
   belt_publish_base, PublishBaseDerived, PublishBaseUnderivable,
 }
+import gunbc.roadmap.roadmap_fanin {
+  fanin_correct_integration, FaninCorrected, FaninSupersessionRefused,
+  FaninIntegrated, FaninAlreadyIntegrated, FaninConflicted, FaninRefused,
+}
 import gunbc.scm.object_store { find_corpus_manifest_record, CorpusManifestFound, CorpusManifestAbsent, CorpusManifestIsAuthoredSource, CorpusManifestIsSemanticNode, scm_object_identity, authored_source_object }
 import gunbc.scm.object_table_json { object_id_key }
 import test.fixture.legacy_intake_scene {
@@ -237,4 +241,49 @@ test fn a_supersession_of_a_fresh_or_already_superseded_integration_refuses() ->
 
 fn minted_ordinal_of(r: RepositoryCommitRef) -> Int {
   minted_id_ordinal(id: r.identity)
+}
+
+fn fanin_route(scene: RepositoryEnvelope, source: Int, supersedes: Int) -> String {
+  match fanin_correct_integration(
+    repository: scene,
+    supersedes: legacy_ref(ordinal: supersedes),
+    candidate: legacy_ref(ordinal: source),
+    message: "correct",
+  ) {
+    FaninSupersessionRefused { cause } =>
+      match cause {
+        SupersessionNotAnIntegration { named: _ } => "not_an_integration"
+        SupersessionStaleIntegrationIsARoot { named: _ } => "root"
+        SupersessionNotStale { named: _ } => "not_stale"
+        SupersessionAlreadySuperseded { named: _, by: _ } => "already_superseded"
+        SupersessionSourceNotFresh { source: _ } => "source_not_fresh"
+        SupersessionSourceNotACapture { source: _ } => "not_a_capture"
+        SupersessionWorkMismatch { stale: _, source: _ } => "work_mismatch"
+        SupersessionMergeBaseRefused { refusal: _ } => "merge_base"
+      }
+    FaninCorrected(outcome) =>
+      match outcome {
+        FaninIntegrated { repository: _, head: _ } => "corrected"
+        FaninAlreadyIntegrated { head: _ } => "already"
+        FaninConflicted { conflicts: _ } => "conflicted"
+        FaninRefused { detail: _ } => "refused"
+      }
+  }
+}
+
+// THE RECAPTURE OF THE STALE ATTEMPT IS THE SOURCE fanin_correct_integration ADMITS -- the route,
+// not only the corrected tree. c5 captures work {n, 1}, the same unit the stale capture c1 recorded.
+test fn a_recapture_of_the_stale_attempts_work_is_admitted_as_the_corrective_source() -> Bool {
+  match legacy_corrective_scene() {
+    Absent => false
+    Present { value: scene } => fanin_route(scene: scene, source: 5, supersedes: 2) == "corrected"
+  }
+}
+
+// A FRESH CAPTURE OF A DIFFERENT ATTEMPT IS REFUSED AS THE SOURCE: same admission, named cause.
+test fn a_recapture_of_a_different_attempt_is_refused_as_work_mismatch() -> Bool {
+  match legacy_corrective_scene() {
+    Absent => false
+    Present { value: scene } => fanin_route(scene: scene, source: 6, supersedes: 2) == "work_mismatch"
+  }
 }
