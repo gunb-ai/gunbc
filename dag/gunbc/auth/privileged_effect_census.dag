@@ -409,7 +409,7 @@ data mtcollins1_hold_owning_roots: List<InterlockRoot> = [
 data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "dispatch_qualification_floor"),
-    hold: runner_lifecycle_operator_ruling.interlock,
+    hold: decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof"),
     refusal: site(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "dispatch_qualification_floor"),
     premise: "the dispatch takes the slot host's unit hold proof and refuses DispatchHoldForAnotherHost unless the proof's admitted host is the slot's own; the root that acquires it is the route fold the dispatch leg owes (LegAuthorityImplemented wiring_owed), so no production root is rostered yet" as NonEmptyStr,
     hold_owning_roots: [] as List<InterlockRoot>,
@@ -601,7 +601,7 @@ fn present_trigger_declarations() -> List<DeclarationRef> {
 data runner_lifecycle_operator_ruling: StandingDestructiveAuthorization = StandingDestructiveAuthorization {
   ruling_text: "Runner registration and deregistration are PRE-APPROVED. Approval moves up to the workflow dispatcher (the fleet-converge run's own authorization). There is no per-registration approval step. Classify this through gunbc.auth.authorization_pattern_selection, recording that ruling rather than a per-effect ntfy approval. (operator decision, 2026-10-03)" as NonEmptyStr,
   effect_subject: "ephemeral JIT runner lifecycle: registration and deregistration" as NonEmptyStr,
-  interlock: decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof"),
+  interlock: InterlockedBy { hold: decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof") },
 }
 
 type OperatorScopeRuling {
