@@ -6,6 +6,7 @@ import std.optional { Absent }
 import v2.compiler.self_host.closure_emission {
   ClosureEmissionLocated, ClosureMemberEmitted, ClosureMemberRefused, emit_closure_from_ingest_located,
 }
+import v2.compiler.target_carriers { emit_module_decl_separator }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_type_atom_node }
 import v2.extdeps.languages.rust { rust_target_model }
@@ -34,7 +35,7 @@ data identity_cast_source: String = "module v2.test.identity_cast\n\nfn f(x: Int
 
 data refused_cast_source: String = "module v2.test.identity_cast\n\nfn f(x: Int) -> Bool { x as Bool }\n"
 
-data identity_cast_supplied_emitted_text: String = "fn f(x: i32) -> i32 { x }"
+data identity_cast_supplied_emitted_text: String = concat("fn f(x: i32) -> i32 { x }", emit_module_decl_separator)
 
 type IdentityCastRouteVerdict
   = IdentityCastEntryEmitted { text: String, members: Int }
