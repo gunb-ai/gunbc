@@ -19,7 +19,7 @@ import extdeps.systems.types {
 import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog }
 import gunbc.spark.serving_arm {
   ServingLaunchProfile, glm53_native_launch_policy, Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, SingleSparkTp1,
-  serving_checkpoint_wire, serving_topology_wire,
+  serving_checkpoint_wire, serving_topology_wire, served_name_only,
 }
 import gunbc.spark.serving_capacity_intent {
   ServingCapacityIntent, uniform_cold_seats, profile_for_envelope, envelope_at_cold_floor,
@@ -206,7 +206,7 @@ fn tw_profile() -> ServingLaunchProfile {
     policy: glm53_native_launch_policy,
     decided_gpu_memory_basis_points: basis_point(count: 8400),
     serve_port: 30000,
-    served_alias: "glm-5.3-flash" as NonEmptyStr,
+    served_names: served_name_only(name: "glm-5.3-flash" as NonEmptyStr),
     prefix_caching: PrefixCachingExplicit { enabled: true },
   )
 }
