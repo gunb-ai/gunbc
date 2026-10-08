@@ -150,7 +150,7 @@ test fn a_protected_fabric_tree_is_converged_and_a_second_deployment_installs_no
       EffectsRefused { refusals: _ } => false
       EffectsDerived { plan } =>
         plan_mutation_count(plan: plan) == 0
-          && pipeline_steps_text(steps: owned_directory_apply_steps(spec: spec, plan: plan)) == ""
+          && all(tree, t => pipeline_steps_text(steps: owned_directory_apply_steps(spec: deploy_witness_spec_with_only_directory(spec: spec, path: owned_directory_path(t: t) as String), plan: plan)) == "")
     }
 }
 

@@ -582,7 +582,11 @@ fn owned_directory_member_of_decision(
 ) -> ObservedMember {
   match owned_directory_decide(policy: EnsureMayApply, target: target, observation: observation) {
     Noop => MemberObserved { identity: RootAt { root: DirectoryRootIdentity { path: path, standing: RootConverged } } }
-    Refuse { reason } => MemberRefusedOnHost { member: member, cause: reason as String }
+    Refuse { reason } => match observation {
+      EnsureInaccessible { reason: why } => MemberUnobservable { member: member, cause: why }
+      EnsureObserved { evidence: _ } => MemberRefusedOnHost { member: member, cause: reason as String }
+      EnsureAbsent { reason: _ } => MemberRefusedOnHost { member: member, cause: reason as String }
+    }
     Apply { plan: _ } => match observation {
       EnsureObserved { evidence } =>
         MemberObserved { identity: RootAt { root: DirectoryRootIdentity {
