@@ -411,6 +411,7 @@ jobs:
           echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
       - name: Bind job-private native product store root
         run: |-
+          # 🟡 dissolve-on: compiler_gate_native_cache_root_script — hand-authored two-line shell binding the job-private native product store root under RUNNER_TEMP. DISSOLVES WHEN the restore of the shared native product store is an emitted intent that names its job-private directory (a typed host-effect realization through v2.workflow.bash_emit bash_emit_program), so the mkdir and the GITHUB_ENV append are derived from that intent rather than spelled here.
           mkdir -p "$RUNNER_TEMP/gunbc-native-products"
           echo "GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TEMP/gunbc-native-products" >> "$GITHUB_ENV"
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
