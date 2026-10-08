@@ -13415,11 +13415,6 @@ fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Opti
     ctx.indexes.type_items.get(type_name).cloned()
 }
 
-/// First authored type declaration of `type_name` in this closure (same slot casts use).
-pub fn lookup_type_item(ctx: &InterpContext, type_name: &str) -> Option<Rc<Node>> {
-    lookup_type_item_across_modules(ctx, type_name)
-}
-
 /// RHS of a type declaration, when the item is an alias or resolved target.
 pub fn type_declaration_rhs(item: &Rc<Node>) -> Option<Rc<Node>> {
     if let Some(rhs) = item.children.iter().next().cloned() {

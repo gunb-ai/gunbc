@@ -3516,6 +3516,30 @@ mod cli_run_arg_channel_tests {
     }
 
     #[test]
+    fn isolated_std_types_nonemptystr_whose_string_is_int_refuses() {
+        let ctx = compile_ctx(vec![source(
+            "std_types.dag",
+            "module std.types\n\
+             type String = Int\n\
+             fn string_non_empty(value: String) -> Bool { true }\n\
+             type NonEmptyStr = String where string_non_empty\n\
+             fn bind_probe(n: NonEmptyStr) -> Int { n }\n",
+        )]);
+        let err = bind_run_args_for_entry(
+            &ctx,
+            "bind_probe",
+            &[("n".to_string(), "2".to_string())],
+        )
+        .expect_err(
+            "std.types NonEmptyStr whose ground is not kernel String must refuse, not Str(\"2\")",
+        );
+        assert!(
+            err.contains("cannot inhabit"),
+            "isolated std.types with type String = Int must refuse inhabitance: {err}"
+        );
+    }
+
+    #[test]
     fn same_spelling_user_int_or_nonemptystr_refuses() {
         let int_ctx = compile_ctx(vec![source(
             "probe_shadow_int.dag",
@@ -20058,10 +20082,6 @@ pub enum CliArgAdmission {
         display: String,
         predicates: Vec<String>,
     },
-    RefinedInt {
-        display: String,
-        predicates: Vec<(String, Rc<Node>)>,
-    },
     Unsupported {
         display: String,
     },
@@ -20115,40 +20135,6 @@ pub fn bind_cli_arg_text(
                 }
             }
             Ok(str_value(text))
-        }
-        CliArgAdmission::RefinedInt {
-            display,
-            predicates,
-        } => {
-            let n = match bind_cli_int(function, param, display, text)? {
-                Value::Int(n) => n,
-                _ => {
-                    return Err(format!(
-                        "--arg `{param}`: function `{function}` declares `{param}: {display}`, \
-                         but `{text}` is not a decimal integer"
-                    ));
-                }
-            };
-            for (pred, pred_node) in predicates {
-                match v1_compiler_infer::decidable_where_int_predicate_holds(
-                    pred.clone(),
-                    pred_node.clone(),
-                    n,
-                    Rc::new(im::HashMap::new()),
-                ) {
-                    Some(true) => {}
-                    Some(false) => {
-                        return Err(format!(
-                            "--arg `{param}`: function `{function}` declares `{param}: {display}`, \
-                             but `{text}` fails `{pred}`"
-                        ));
-                    }
-                    None => {
-                        return Err(cli_arg_no_inhabitance_route(function, param, display));
-                    }
-                }
-            }
-            Ok(Value::Int(n))
         }
         CliArgAdmission::Unsupported { display } => {
             Err(cli_arg_no_inhabitance_route(function, param, display))
@@ -20212,18 +20198,28 @@ fn nonempty_str_predicates_from_decl(
                 pred.clone(),
                 ctx.source_indices.clone(),
             );
-            if v1_compiler_infer::where_refinement_is_deferred_predicate(pname.clone()) {
-                continue;
-            }
-            if !v1_compiler_infer::where_refinement_is_string_literal_predicate(pname.clone()) {
+            if pname.is_empty()
+                || v1_compiler_infer::where_refinement_is_deferred_predicate(pname.clone())
+                || !v1_compiler_infer::where_refinement_is_string_literal_predicate(pname.clone())
+            {
                 return None;
             }
             preds.push(pname);
         }
         ty = ty.children.iter().next().cloned()?;
     }
-    let ground = v1_compiler_infer::type_node_label(ty, ctx.source_indices.clone());
-    if ground == "String" && preds == ["string_non_empty".to_string()] {
+    let kernel_string = match type_reference_identity(ty.clone()).as_ref() {
+        TypeReferenceIdentity::ReferenceResolvedToDeclaration { provenance }
+        | TypeReferenceIdentity::ReferenceIsTheDeclaration { provenance } => {
+            matches!(
+                provenance.as_ref(),
+                TypeDeclarationProvenance::KernelMinted { minted_name } if minted_name == "String"
+            )
+        }
+        TypeReferenceIdentity::ReferenceIsTypeVariableBinder { .. }
+        | TypeReferenceIdentity::ReferenceIdentityUnavailable { .. } => false,
+    };
+    if kernel_string && preds == ["string_non_empty".to_string()] {
         Some(preds)
     } else {
         None
@@ -20243,12 +20239,7 @@ fn cli_arg_admission_from_type_expr(
         | TypeReferenceIdentity::ReferenceIsTheDeclaration { provenance } => {
             match provenance.as_ref() {
                 TypeDeclarationProvenance::KernelMinted { minted_name } => {
-                    return cli_arg_admission_for_kernel(
-                        minted_name,
-                        display,
-                        Vec::new(),
-                        Vec::new(),
-                    );
+                    return cli_arg_admission_for_kernel(minted_name, display);
                 }
                 TypeDeclarationProvenance::CorpusDeclared { .. }
                 | TypeDeclarationProvenance::DeclarationIdentityAbsent => {}
@@ -20295,24 +20286,11 @@ fn std_types_nonempty_str_admission(
     }
 }
 
-fn cli_arg_admission_for_kernel(
-    ground: &str,
-    display: String,
-    string_preds: Vec<String>,
-    int_preds: Vec<(String, Rc<Node>)>,
-) -> CliArgAdmission {
-    match (ground, string_preds.is_empty(), int_preds.is_empty()) {
-        ("String", true, true) => CliArgAdmission::String,
-        ("Int", true, true) => CliArgAdmission::Int,
-        ("Bool", true, true) => CliArgAdmission::Bool,
-        ("String", false, true) => CliArgAdmission::RefinedString {
-            display,
-            predicates: string_preds,
-        },
-        ("Int", true, false) => CliArgAdmission::RefinedInt {
-            display,
-            predicates: int_preds,
-        },
+fn cli_arg_admission_for_kernel(ground: &str, display: String) -> CliArgAdmission {
+    match ground {
+        "String" => CliArgAdmission::String,
+        "Int" => CliArgAdmission::Int,
+        "Bool" => CliArgAdmission::Bool,
         _ => CliArgAdmission::Unsupported { display },
     }
 }
