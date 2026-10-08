@@ -45,7 +45,7 @@ import extdeps.realization.materialization_store_local {
   LocalStoreHolderUnobservable, LocalStoreHoldRecoveryRefused, LocalStoreHoldContended, LocalStoreHoldStoreUnavailable,
   LocalStoreHoldSlotUndecodable, LocalStoreHoldKeyNotAddressable, LocalStoreHoldSelfUnidentified, LocalStoreHoldWindowTooNarrow, LocalStoreHoldUnsettled,
   LocalStoreCatalogMismatch, LocalStoreCatalogInadmissible, LocalStoreSweepIncomplete, LocalStoreUnavailableCause,
-  local_store_index_window,
+  local_store_index_window, local_store_digits_int,
   LocalStoreRecordDeleteAttempt, LocalStoreRecordGone, LocalStoreRecordFileRefused, LocalStoreRecordPartsRefused, LocalStoreRecordPartsUnlisted, LocalStoreStagedPart, LocalStorePartsLookup, local_store_lookup_parts, local_store_part_name,
 }
 import gunbc.typecheck_module_store {
@@ -1344,10 +1344,21 @@ test fn a_leftover_copy_that_cannot_be_removed_leaves_the_store_unwritable_by_re
 }
 
 fn hold_slot_head_generation(root_path: String) -> Int {
-  let key = local_store_hold_key(family: native_module_verdict_bundle_artifact_kind) as String
-  fold([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24], init: 0, f: (best, n) =>
-    if Filesystem.Read(path: store_path(root_path: root_path, name: concat(concat(key, "."), n as String))).success { n } else { best }
-  )
+  let prefix = concat(local_store_hold_key(family: native_module_verdict_bundle_artifact_kind) as String, ".")
+  let listing = Filesystem.List(path: root_path)
+  match filesystem_listing_observation(directory: root_path, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectoryListed(listed) =>
+      fold(filesystem_listing_entry_names(listing: listed), init: 0, f: (best, n) =>
+        if !starts_with(s: n, prefix: prefix) { best } else {
+          match local_store_digits_int(s: substring(s: n, start: string_length(s: prefix), end: string_length(s: n))) {
+            Absent => best
+            Present { value: g } => if g > best { g } else { best }
+          }
+        }
+      )
+    FilesystemDirectoryListingRefused { directory: _, error: _ } => 0
+    FilesystemDirectorySubjectRefused { directory: _, cause: _ } => 0
+  }
 }
 
 fn session_commit_ok(c: LocalStoreCommit) -> Bool {
