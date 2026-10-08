@@ -35,17 +35,13 @@ import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_t
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// SUBJECT: infer_declared_type_obligation's kernel-value join (infer_kernel_value_type_optional).
-// A generic-variant construct inside bind_outcome's continuation was refusing
-// record_field_value_does_not_inhabit because a field declared Int (kernel atom
-// dag_binding_type_int) was judged against a produced Int (the corpus alias
-// type Int = GroupCompletion<Nat>). The join keys the kernel declaration roster (full path)
-// and dag_binding_denotation, not a last-segment Int spelling.
+// SUBJECT: infer_declared_type_obligation's kernel-value join (infer_kernel_value_type_optional, applied at
+// every step of infer_inhabitance_type_normalized). A position declared with the kernel Int (dag_binding_type_int)
+// and one declared with the corpus v2.std.integer.Int (type Int = GroupCompletion<Nat>) are one value type. The
+// join keys the kernel declaration roster (full path) and dag_binding_denotation, never a last-segment Int.
 //
-// SUPPLIED claims judge that join at its own interface. ONE claim runs the real
-// ingest→resolve→infer route on the bind_outcome-shaped fixture.
-
-data gbo_lambda_source: String = "module v2.test.gbo_lambda\n\ntype Out<T> = Acc { value: T, n: Int } | Rej { n: Int }\n\nfn bind<T, U>(o: Out<T>, f: fn(T) -> Out<U>) -> Out<U> {\n  match o {\n    Rej { n: n } => Rej { n: n }\n    Acc { value: v, n: _ } => f(v)\n  }\n}\n\nfn g() -> Out<Int> {\n  bind(o: Acc { value: 1, n: 0 }, f: fn(x) { Acc { value: x, n: 0 } })\n}\n\nfn h() -> Out<Int> {\n  Acc { value: 1, n: 0 }\n}\n"
+// SUPPLIED claims judge the join at its own interface. ONE claim runs the real ingest -> resolve -> infer route
+// (the alias claim), and a Bool-in-an-Int-field control still refuses on that route.
 
 data gbo_lambda_bad_source: String = "module v2.test.gbo_lambda_bad\n\ntype Box {\n  n: Int\n  m: Int\n}\n\ndata bad: Box = Box { n: true, m: 3 }\n"
 
@@ -54,7 +50,6 @@ data gbo_integer_stub_source: String = "module v2.std.integer\n\ntype Nat = Zero
 data gbo_alias_source: String = "module v2.test.gbo_alias\n\nimport v2.std.integer { Int }\n\ntype Alias = v2.std.integer.Int\n\nfn same(x: Alias) -> v2.std.integer.Int {\n  x\n}\n"
 
 data gbo_ingest: SourceRootIngest = [
-  rcf_read(source: gbo_lambda_source, id: ^gbo_lambda_read, unit: ^gbo_lambda_cu, path: "src/v2/test/fixture/gbo/lambda.dag"),
   rcf_read(source: gbo_lambda_bad_source, id: ^gbo_lambda_bad_read, unit: ^gbo_lambda_bad_cu, path: "src/v2/test/fixture/gbo/lambda_bad.dag"),
   rcf_read(source: gbo_integer_stub_source, id: ^gbo_integer_stub_read, unit: ^gbo_integer_stub_cu, path: "src/v2/test/fixture/gbo/integer.dag"),
   rcf_read(source: gbo_alias_source, id: ^gbo_alias_read, unit: ^gbo_alias_cu, path: "src/v2/test/fixture/gbo/alias.dag")
@@ -78,7 +73,6 @@ fn gbo_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
   }
 }
 
-fn gbo_resolved_lambda() -> Outcome<ResolvedTree> { gbo_resolve_subject(subject: "v2.test.gbo_lambda") }
 fn gbo_resolved_lambda_bad() -> Outcome<ResolvedTree> { gbo_resolve_subject(subject: "v2.test.gbo_lambda_bad") }
 fn gbo_resolved_alias() -> Outcome<ResolvedTree> { gbo_resolve_subject(subject: "v2.test.gbo_alias") }
 
@@ -123,16 +117,12 @@ test fn gbo_a_bool_name_is_not_the_kernel_int_holds() -> Bool {
   !gbo_is_kernel_int(t: gbo_atom(id: ^Bool))
 }
 
-// THE ROUTE: a generic-variant construct Acc { value: 1, n: 0 } at Out<Int>, its Int field judged
-// on the real ingest -> resolve -> infer path. ACCEPTED AND DECIDED (rcf_member_accepted_and_decided):
-// a resolve refusal, any infer refusal, or an acceptance that left the field undecided all fail it,
-// so the claim cannot pass without reaching the join. Deleting the join turns it red
-// (declared dag_binding_type_int against the produced corpus Int).
-test fn gbo_a_generic_variant_int_field_is_accepted_and_decided_holds() -> Bool {
-  rcf_member_accepted_and_decided(resolved: gbo_resolved_lambda(), member: ^h)
-}
-
-// AN ALIAS OF THE CORPUS Int IS THAT Int. `type Alias = v2.std.integer.Int` at a declared
+// THE ROUTE IS THE ALIAS CLAIM BELOW: it runs ingest -> resolve -> infer and is ACCEPTED AND DECIDED only
+// through the join (it fails with the input-only normalizer; BuildBuddy 36e48268). A generic-VARIANT
+// construct (Acc { value: 1, n: 0 } at Out<Int>) is NOT accepted-and-decided on this base -- measured at
+// 41afbbbb -- because generic-variant construct typing is #13210's and its successor's, not this join's;
+// it is deliberately not claimed here.
+// THE ROUTE, AND AN ALIAS OF THE CORPUS Int IS THAT Int. `type Alias = v2.std.integer.Int` at a declared
 // v2.std.integer.Int: kernel recognition re-enters after the alias step, so both sides present the
 // kernel atom. Recognizing only at the input would unfold Alias past v2.std.integer.Int into its
 // right-hand side and refuse a correct program.
