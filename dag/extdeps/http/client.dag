@@ -76,8 +76,6 @@ service http.Client {
     }
     response {
       2xx => String
-      4xx => String
-      5xx => String
     }
   }
 
@@ -88,12 +86,11 @@ service http.Client {
     readonly
     transport rest {
       method: GET,
-      path: "{url}"
+      path: "{url}",
+      timeout_seconds: http_client_localhost_max_time_flag()
     }
     response {
       2xx => String
-      4xx => String
-      5xx => String
     }
     mock_response {
       0 => { body: "" } "hermetic: no live HTTP endpoint; readiness probe refuses rather than fabricate a body"
@@ -107,12 +104,11 @@ service http.Client {
     readonly
     transport rest {
       method: GET,
-      path: "{url}"
+      path: "{url}",
+      timeout_seconds: http_client_localhost_max_time_flag()
     }
     response {
       2xx => String
-      4xx => String
-      5xx => String
     }
     mock_response {
       0 => { body: "" } "hermetic: no live HTTP endpoint; routed observation refuses rather than fabricate a body"
@@ -121,17 +117,16 @@ service http.Client {
 
   operation GetWithin {
     requires Network
-    input { url: NonEmptyStr }
+    input { url: NonEmptyStr, max_seconds: NonEmptyStr }
     output { body: String }
     readonly
     transport rest {
       method: GET,
-      path: "{url}"
+      path: "{url}",
+      timeout_seconds: max_seconds
     }
     response {
       2xx => String
-      4xx => String
-      5xx => String
     }
     mock_response {
       0 => { body: "" } "hermetic: no live HTTP endpoint; a bounded observation refuses rather than fabricate a body"
@@ -140,18 +135,17 @@ service http.Client {
 
   operation GetWithinUnixSocket {
     requires Network
-    input { socket: NonEmptyStr, url: NonEmptyStr }
+    input { socket: NonEmptyStr, url: NonEmptyStr, max_seconds: NonEmptyStr }
     output { body: String }
     readonly
     transport rest {
       method: GET,
       path: "{url}",
-      unix_socket: socket
+      unix_socket: socket,
+      timeout_seconds: max_seconds
     }
     response {
       2xx => String
-      4xx => String
-      5xx => String
     }
     mock_response {
       0 => { body: "" } "hermetic: no live socket; a bounded observation refuses rather than fabricate a body"
@@ -160,17 +154,16 @@ service http.Client {
 
   operation StatusWithin {
     requires Network
-    input { url: NonEmptyStr }
+    input { url: NonEmptyStr, max_seconds: NonEmptyStr }
     output { status: String }
     readonly
     transport rest {
       method: GET,
-      path: "{url}"
+      path: "{url}",
+      timeout_seconds: max_seconds
     }
     response {
       2xx => String
-      4xx => String
-      5xx => String
     }
     mock_response {
       0 => { status: "000" } "hermetic: no live HTTP endpoint; a bounded presence reading refuses rather than fabricate a status"
@@ -179,7 +172,7 @@ service http.Client {
 
   operation GetQueryStdinWithin {
     requires Network
-    input { url: NonEmptyStr, query: String }
+    input { url: NonEmptyStr, query: String, connect_seconds: NonEmptyStr, max_seconds: NonEmptyStr }
     output {
       success: Bool
       body: String
@@ -188,12 +181,11 @@ service http.Client {
     transport rest {
       method: GET,
       path: "{url}",
-      query: query
+      query: query,
+      timeout_seconds: max_seconds
     }
     response {
       2xx => String
-      4xx => String
-      5xx => String
     }
     mock_response {
       0 => { success: false, body: "" } "hermetic: no live HTTP endpoint"
@@ -202,7 +194,7 @@ service http.Client {
 
   operation PostStdinWithin {
     requires Network
-    input { url: NonEmptyStr, request_body: String }
+    input { url: NonEmptyStr, request_body: String, connect_seconds: NonEmptyStr, max_seconds: NonEmptyStr }
     output {
       exit_code: Int
       success: Bool
@@ -212,12 +204,13 @@ service http.Client {
     transport rest {
       method: POST,
       path: "{url}",
-      body: { json: request_body }
+      body: { json: request_body },
+      timeout_seconds: max_seconds
     }
     response {
-      2xx => String
-      4xx => String
-      5xx => String
+      2xx => { exit_code: 0, success: true, body: String, stderr: "" }
+      4xx => { exit_code: Int, success: false, body: String, stderr: "" }
+      5xx => { exit_code: Int, success: false, body: String, stderr: "" }
     }
     mock_response {
       0 => { exit_code: 7, success: false, body: "", stderr: "hermetic: no live HTTP endpoint" } "hermetic: a transport that never connects, so a caller answers unreachable rather than fabricating a reply"
@@ -226,7 +219,7 @@ service http.Client {
 
   operation PostStdinWithinUnixSocket {
     requires Network
-    input { socket: NonEmptyStr, url: NonEmptyStr, request_body: String }
+    input { socket: NonEmptyStr, url: NonEmptyStr, request_body: String, connect_seconds: NonEmptyStr, max_seconds: NonEmptyStr }
     output {
       exit_code: Int
       success: Bool
@@ -237,12 +230,13 @@ service http.Client {
       method: POST,
       path: "{url}",
       unix_socket: socket,
-      body: { json: request_body }
+      body: { json: request_body },
+      timeout_seconds: max_seconds
     }
     response {
-      2xx => String
-      4xx => String
-      5xx => String
+      2xx => { exit_code: 0, success: true, body: String, stderr: "" }
+      4xx => { exit_code: Int, success: false, body: String, stderr: "" }
+      5xx => { exit_code: Int, success: false, body: String, stderr: "" }
     }
     mock_response {
       0 => { exit_code: 7, success: false, body: "", stderr: "hermetic: no live socket" } "hermetic: a transport that never connects, so a caller answers unreachable rather than fabricating a reply"
@@ -251,36 +245,34 @@ service http.Client {
 
   operation PostJsonFromFile {
     requires Network
-    input { url: NonEmptyStr, request_body_file: NonEmptyStr }
+    input { url: NonEmptyStr, request_body_file: NonEmptyStr, max_seconds: NonEmptyStr }
     output { body: String }
     readonly
     transport rest {
       method: POST,
       path: "{url}",
       headers: { "Content-Type": "application/json" },
-      body: { from_file: request_body_file }
+      body: { from_file: request_body_file },
+      timeout_seconds: max_seconds
     }
     response {
       2xx => String
-      4xx => String
-      5xx => String
     }
   }
 
   operation PostFormFromFile {
-    input { url: NonEmptyStr, request_body_file: NonEmptyStr }
+    input { url: NonEmptyStr, request_body_file: NonEmptyStr, max_seconds: NonEmptyStr }
     output { body: String }
     readonly
     transport rest {
       method: POST,
       path: "{url}",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: { from_file: request_body_file }
+      body: { from_file: request_body_file },
+      timeout_seconds: max_seconds
     }
     response {
       2xx => String
-      4xx => String
-      5xx => String
     }
     mock_response {
       0 => { body: "", success: false } "hermetic: no live token endpoint; the code exchange refuses rather than fabricate a response"
@@ -297,25 +289,22 @@ service http.Client {
     }
     response {
       2xx => String
-      4xx => String
-      5xx => String
     }
   }
 
   operation GetFollowRedirectsBoundedWithHeaderFile {
     requires Network
-    input { url: NonEmptyStr, accept: NonEmptyStr, header_file: NonEmptyStr }
+    input { url: NonEmptyStr, max_seconds: NonEmptyStr, accept: NonEmptyStr, header_file: NonEmptyStr }
     output { body: String }
     readonly
     transport rest {
       method: GET,
       path: "{url}",
-      headers: { "Accept": accept }
+      headers: { "Accept": accept },
+      timeout_seconds: max_seconds
     }
     response {
       2xx => String
-      4xx => String
-      5xx => String
     }
     mock_response {
       0 => { body: "" } "hermetic: no live registry; observation refuses rather than fabricate a body"
@@ -324,7 +313,7 @@ service http.Client {
 
   operation Probe {
     requires Network
-    input { url: NonEmptyStr }
+    input { url: NonEmptyStr, connect_time: Second, max_time: Second }
     output {
       status: String
       answered: Bool
@@ -333,15 +322,15 @@ service http.Client {
     readonly
     transport rest {
       method: GET,
-      path: "{url}"
+      path: "{url}",
+      timeout_seconds: http_client_max_time_flag(max_time: max_time)
     }
     response {
-      2xx => String
-      4xx => String
-      5xx => String
+      2xx => { status: String, answered: true, exit_code: 0 }
+      4xx => { status: String, answered: false, exit_code: Int }
+      5xx => { status: String, answered: false, exit_code: Int }
     }
     mock_response {
       0 => { status: "000", answered: false, exit_code: 7 } "hermetic: no live endpoint; a probe replay records that nothing answered"
     }
   }
-}
