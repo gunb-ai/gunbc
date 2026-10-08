@@ -3,7 +3,7 @@ module gunbc.instruments.native_emission_controls
 import std.types { Bool, Int, List, NonEmptyStr, Set, String }
 import v2.std.algebra { filter, length }
 import std.list { duplicated_by_key }
-import gunbc.instruments.native_emission_controls_homonym { ControlBoxed, narrow_slot_value, narrow_slots_equal }
+import gunbc.instruments.native_emission_controls_homonym { ControlBoxed, narrow_slot_value, narrow_slots_equal, homonym_length_of }
 import std.resource_contract { Observation, Read }
 import std.integer { UInt8, UInt8Ready, UInt8OutOfRange, uint8_of_int }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -463,7 +463,8 @@ fn algebra_length_on_string_cases() -> List<NativeEmissionCase> {
   [
     NativeEmissionCase { identity: "algebra_length_of_a_string_counts_scalars", held: control_algebra_length_of_string(s: "abc") == 3 },
     NativeEmissionCase { identity: "algebra_length_of_a_string_red_is_not_another_count", held: control_algebra_length_of_string(s: "abc") != 4 },
-    NativeEmissionCase { identity: "algebra_length_of_a_list_is_unchanged", held: length(xs: ["a", "b"]) == 2 }
+    NativeEmissionCase { identity: "algebra_length_of_a_list_is_unchanged", held: length(xs: ["a", "b"]) == 2 },
+    NativeEmissionCase { identity: "algebra_length_red_a_homonym_length_is_not_scalar_count", held: homonym_length_of(s: "abc") == 99 }
   ]
 }
 
@@ -508,6 +509,7 @@ data native_emission_expected_identities: List<String> = [
   "algebra_length_of_a_string_counts_scalars",
   "algebra_length_of_a_string_red_is_not_another_count",
   "algebra_length_of_a_list_is_unchanged",
+  "algebra_length_red_a_homonym_length_is_not_scalar_count",
   "fold_constructor_init_sums_all_nonnegative",
   "fold_constructor_init_red_negative_switches_arm",
   "fold_constructor_init_red_empty_keeps_init",

@@ -1,6 +1,6 @@
 module gunbc.instruments.native_emission_controls_homonym
 
-import std.types { Bool, String }
+import std.types { Bool, Int, String }
 
 // THE SECOND DECLARER OF A LEAF, for gunbc.instruments.native_emission_controls. That module declares
 // ControlSlot<A, B>; this one declares ControlSlot<T>. One closure, one leaf, two declarations with
@@ -31,4 +31,12 @@ fn narrow_slot_value(value: String) -> String {
 
 fn narrow_slots_equal(left: String, right: String) -> Bool {
   narrow_slot(value: left) == narrow_slot(value: right)
+}
+
+// A `length` that is NOT `v2.std.algebra` `length`. Its body is a constant, so a leaf-name rewrite
+// to `v1_rt::string_length` would return 3 for "abc" and this control would go red.
+fn length(xs: String) -> Int { 99 }
+
+fn homonym_length_of(s: String) -> Int {
+  length(xs: s)
 }

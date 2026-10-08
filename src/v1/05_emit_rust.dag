@@ -12636,8 +12636,29 @@ fn lambda_argument_scope(arg: Node, scope: InferScope) -> InferScope {
 // E0308 against the host `String` at `request_field` and at every `length` of a `String` in
 // `std.scoped_authorization`. Both spellings ask whether the operand is host text, and both lower
 // to `v1_rt::string_length`.
-fn rust_emit_length_on_host_string(func: String, args: List<Node>, call_semantics: CallSemantics?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String? {
-  if func != "length" { none } else {
+// THE CALLEE IS THE DECLARATION, NOT THE LEAF. A call spelled `length` that resolves to another
+// module's function (or a local) must emit that function; rewriting by the authored name would
+// replace a byte-count or a constant with a scalar count and answer wrongly in silence.
+fn rust_call_target_is_v2_algebra_length(target: CallTargetIdentity) -> Bool {
+  match rust_call_target_declared_length(target: target) {
+    Absent => false
+    Present { value: id } =>
+      id.decl_name == "length" && id.owner_module_path == "v2.std.algebra"
+  }
+}
+
+fn rust_call_target_declared_length(target: CallTargetIdentity) -> DeclaredCallableIdentity? {
+  match target {
+    SourceDeclarationCall { owner_module_path: owner, decl_name: decl } =>
+      Present { value: DeclaredCallableIdentity { owner_module_path: owner, decl_name: decl } }
+    RuntimePrimitiveCall { primitive_name: _, projected_from: projected } => projected
+    LocallyBoundCall { name: _ } => none
+    CallableTargetUndetermined => none
+  }
+}
+
+fn rust_emit_length_on_host_string(call_target: CallTargetIdentity, func: String, args: List<Node>, call_semantics: CallSemantics?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String? {
+  if rust_call_target_is_v2_algebra_length(target: call_target) == false { none } else {
     let length_args = order_typed_call_args_from_semantics(args: args, func: func, call_semantics: call_semantics, scope: scope)
     match length_args |> first {
       Absent => none
@@ -12733,7 +12754,7 @@ fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call
     }
     return disc_result
   }
-  match rust_emit_length_on_host_string(func: func, args: args, call_semantics: call_semantics, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info) {
+  match rust_emit_length_on_host_string(call_target: call_target, func: func, args: args, call_semantics: call_semantics, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info) {
     Present { value: lowered } => return lowered
     Absent => {}
   }

@@ -26715,7 +26715,39 @@ pub fn lambda_argument_scope(arg: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferSc
     }
 }
 
+pub fn rust_call_target_is_v2_algebra_length(target: Rc<CallTargetIdentity>) -> bool {
+    match rust_call_target_declared_length(target.clone()) {
+        std::option::Option::None => false,
+        Some(id) => {
+            ((id.decl_name.clone() == "length".to_string())
+                && (id.owner_module_path.clone() == "v2.std.algebra".to_string()))
+        }
+    }
+}
+
+pub fn rust_call_target_declared_length(
+    target: Rc<CallTargetIdentity>,
+) -> Option<Rc<DeclaredCallableIdentity>> {
+    match (*target.clone()).clone() {
+        CallTargetIdentity::SourceDeclarationCall {
+            owner_module_path: owner,
+            decl_name: decl,
+            ..
+        } => Some(Rc::new(DeclaredCallableIdentity {
+            owner_module_path: owner.clone(),
+            decl_name: decl.clone(),
+        })),
+        CallTargetIdentity::RuntimePrimitiveCall {
+            projected_from: projected,
+            ..
+        } => projected.clone(),
+        CallTargetIdentity::LocallyBoundCall { name: _, .. } => std::option::Option::None,
+        CallTargetIdentity::CallableTargetUndetermined => std::option::Option::None,
+    }
+}
+
 pub fn rust_emit_length_on_host_string(
+    call_target: Rc<CallTargetIdentity>,
     func: String,
     args: Rc<Vec<Rc<Node>>>,
     call_semantics: Option<Rc<CallSemantics>>,
@@ -26725,7 +26757,7 @@ pub fn rust_emit_length_on_host_string(
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> Option<String> {
-    if (func.clone() != "length".to_string()) {
+    if (rust_call_target_is_v2_algebra_length(call_target.clone()) == false) {
         std::option::Option::None
     } else {
         {
@@ -27045,6 +27077,7 @@ pub fn emit_typed_call(
             }
         }
         match rust_emit_length_on_host_string(
+            call_target.clone(),
             func.clone(),
             args.clone(),
             call_semantics.clone(),
