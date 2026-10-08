@@ -10,6 +10,7 @@ use crate::extdeps_version::VersionComparison::{VersionCompared, VersionComparis
 pub use crate::extdeps_version::{
     ComparisonSide, VersionComparison, VersionConstraint, VersionIdentity, VersionScheme,
 };
+pub use crate::std_algebra::trim;
 pub use crate::std_algebra::Ordering;
 use crate::std_algebra::Ordering::{Equal, Greater, Less};
 pub use crate::std_integer::NonNegativeInt;
@@ -276,6 +277,83 @@ pub fn semver_compare(a: Rc<SemVerVersion>, b: Rc<SemVerVersion>) -> Ordering {
             other => other.clone(),
         },
         other => other.clone(),
+    }
+}
+
+pub fn semver_core_of_dotted(text: String) -> Option<Rc<SemVerVersion>> {
+    {
+        let parts = Rc::new(
+            crate::std_algebra::trim(text.clone())
+                .split(&".".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        );
+        if (((parts.clone().len() as i64) < 2) || ((parts.clone().len() as i64) > 3)) {
+            std::option::Option::None
+        } else {
+            match semver_dotted_part(parts.clone(), 0) {
+                std::option::Option::None => std::option::Option::None,
+                Some(major) => match semver_dotted_part(parts.clone(), 1) {
+                    std::option::Option::None => std::option::Option::None,
+                    Some(minor) => {
+                        if ((parts.clone().len() as i64) == 2) {
+                            match semver_numeric_field(Rc::new(
+                                "0".to_string()
+                                    .chars()
+                                    .map(|c| c as i64)
+                                    .collect::<Vec<_>>(),
+                            )) {
+                                std::option::Option::None => std::option::Option::None,
+                                Some(zero) => Some(Rc::new(SemVerVersion {
+                                    major: major.clone(),
+                                    minor: minor.clone(),
+                                    patch: zero.clone(),
+                                    pre_release: Rc::new(vec![]),
+                                    build: Rc::new(vec![]),
+                                })),
+                            }
+                        } else {
+                            match semver_dotted_part(parts.clone(), 2) {
+                                std::option::Option::None => std::option::Option::None,
+                                Some(patch) => Some(Rc::new(SemVerVersion {
+                                    major: major.clone(),
+                                    minor: minor.clone(),
+                                    patch: patch.clone(),
+                                    pre_release: Rc::new(vec![]),
+                                    build: Rc::new(vec![]),
+                                })),
+                            }
+                        }
+                    }
+                },
+            }
+        }
+    }
+}
+
+pub fn semver_dotted_part(parts: Rc<Vec<String>>, index: i64) -> Option<Rc<SemVerNumericField>> {
+    match parts
+        .clone()
+        .iter()
+        .cloned()
+        .skip(index.clone() as usize)
+        .next()
+    {
+        std::option::Option::None => std::option::Option::None,
+        Some(w) => semver_numeric_field(Rc::new(
+            w.clone().chars().map(|c| c as i64).collect::<Vec<_>>(),
+        )),
+    }
+}
+
+pub fn semver_minimum_of_constraint(constraint: NonEmptyStr) -> Option<Rc<SemVerVersion>> {
+    {
+        let c = crate::std_algebra::trim(constraint.clone());
+        if v1_rt::starts_with(c.clone(), ">=".to_string()) {
+            semver_core_of_dotted(v1_rt::substring(&c, 2, v1_rt::string_length(&c)))
+        } else {
+            std::option::Option::None
+        }
     }
 }
 
