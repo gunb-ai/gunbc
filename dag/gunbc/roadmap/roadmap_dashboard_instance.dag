@@ -312,6 +312,19 @@ fn dashboard_instance_child(root: FilePath, child: String) -> FilePath {
   join([root as String, "/", child], "") as FilePath
 }
 
+// THE ROADMAP EVENT WORKTREE: where gunbc.roadmap.roadmap_event_carrier checks out the event
+// branch, under the instance root. It is declared here, beside the instance's other roots, so the
+// provision plan ensures the same path the carrier writes: the carrier's `git worktree add` cannot
+// create it when the instance root is not writable by the service principal (srv1's /opt/gunbc is
+// root-owned), and every issue page then answered 503.
+fn dashboard_instance_roadmap_events_worktree_under(instance_root: FilePath) -> FilePath {
+  dashboard_instance_child(root: instance_root, child: "roadmap-events")
+}
+
+fn dashboard_instance_roadmap_events_worktree(instance: HostDashboardInstance) -> FilePath {
+  dashboard_instance_roadmap_events_worktree_under(instance_root: instance.instance_root)
+}
+
 // THE INSTANCE'S TAILNET DOOR: the unix socket its door unit serves on and tailscale serve proxies
 // to. It sits in the instance root, which the service principal owns; who may open it is not what
 // the door relies on -- the handler is handed the kernel-attested peer of every connection
@@ -1648,6 +1661,7 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
     DashboardEnsureDirectory { path: instance.instance_root },
     DashboardEnsureDirectory { path: dashboard_instance_dispatch_worktree_root(instance: instance) },
     DashboardEnsureDirectory { path: dashboard_instance_dispatch_attempt_state_root(instance: instance) },
+    DashboardEnsureDirectory { path: dashboard_instance_roadmap_events_worktree(instance: instance) },
   ], map(dashboard_auth_stores, s => DashboardEnsureDirectory {
     path: dashboard_instance_auth_store_root(instance: instance, store: s),
   })), [

@@ -22,6 +22,7 @@ import gunbc.host_layout {
   srv1_codex_bundled_executable,
 }
 import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance }
 import gunbc.roadmap_dashboard_instance {
   fleet_admitted_revision_source,
   HostDashboardInstance,
@@ -684,6 +685,24 @@ test fn the_plan_creates_every_path_it_later_verifies() -> Bool {
         path == dashboard_instance_dispatch_attempt_state_root(instance: lab)
       _ => false
     })
+}
+
+// THE EVENT WORKTREE IS PROVISIONED, stated against the CARRIER'S OWN layout rather than a
+// literal: the plan ensures exactly the directory gunbc.roadmap.roadmap_event_carrier checks the
+// event branch out into. srv1's instance root is root-owned, so with no ensure step the carrier's
+// `git worktree add` could not create it and every issue page answered 503. Both srv1 instances
+// are checked because the live one is the one that failed.
+fn plan_ensures_roadmap_events_worktree(instance: HostDashboardInstance) -> Bool {
+  any(dashboard_instance_provision_plan(instance: instance), op => match op {
+    DashboardEnsureDirectory { path } =>
+      path == roadmap_event_carrier_layout_for_instance(instance: instance).worktree
+    _ => false
+  })
+}
+
+test fn the_plan_provisions_the_roadmap_event_worktree() -> Bool {
+  plan_ensures_roadmap_events_worktree(instance: srv1_live_dashboard_instance())
+    && plan_ensures_roadmap_events_worktree(instance: srv1_lab_dashboard_instance())
 }
 
 test fn each_instance_ensures_its_own_binary_not_a_shared_one() -> Bool {
