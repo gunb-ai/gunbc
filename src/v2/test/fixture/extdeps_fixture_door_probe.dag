@@ -1,5 +1,0 @@
-module extdeps.fixture.door_probe
-
-type Flag {}
-
-fn f() -> Flag { Flag {} }
