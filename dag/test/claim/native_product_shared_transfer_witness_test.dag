@@ -1,7 +1,8 @@
 module test.claim.native_product_shared_transfer
 
 import std.types { Bool, String }
-import gunbc.native_product_shared_transfer { native_product_listing_is_exactly, native_product_store_dir }
+import gunbc.native_product_shared_transfer { native_product_listing_is_exactly, native_product_standing_for, native_product_store_dir }
+import gunbc.native_product_shared_store { ForkPullRequestRun, MergeGroupRun, SameRepoPullRequestRun, UnattributedRun }
 
 data transfer_key: String = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
@@ -21,4 +22,13 @@ test fn a_listing_with_a_traversal_or_extra_or_foreign_member_is_refused() -> Bo
 
 test fn the_store_directory_is_the_one_the_seed_commits_under() -> Bool {
   native_product_store_dir(root: "/r") == "/r/native-products"
+}
+
+test fn a_pull_request_is_attributed_by_its_head_repository() -> Bool {
+  let same = native_product_standing_for(event: "pull_request", head: "gunb-ai/gunbc", repository: "gunb-ai/gunbc") == SameRepoPullRequestRun
+  let fork = native_product_standing_for(event: "pull_request", head: "someone/gunbc", repository: "gunb-ai/gunbc") == ForkPullRequestRun
+  let unreadable = native_product_standing_for(event: "pull_request", head: "", repository: "gunb-ai/gunbc") == UnattributedRun
+  let queue = native_product_standing_for(event: "merge_group", head: "", repository: "gunb-ai/gunbc") == MergeGroupRun
+  let other = native_product_standing_for(event: "push", head: "gunb-ai/gunbc", repository: "gunb-ai/gunbc") == UnattributedRun
+  same && fork && unreadable && queue && other
 }

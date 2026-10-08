@@ -277,10 +277,9 @@ pub(super) fn restore_from_shared_store(
     key: &ProductKey,
     workspace: &Path,
 ) {
-    let event = std::env::var("GITHUB_EVENT_NAME").unwrap_or_default();
-    if event != "pull_request" && event != "merge_group" {
-        return;
-    }
+    // Only the cost gate lives here: no credential means no point loading the closure for the entry,
+    // whose `native_product_run_standing` and `select_access_token_source` own the event and
+    // credential decisions (a fork, an unattributed run and a missing token each refuse there).
     if std::env::var("WIF_ACCESS_TOKEN")
         .map(|t| t.trim().is_empty())
         .unwrap_or(true)

@@ -1073,7 +1073,8 @@ fn compiler_gate_emit_build_step(row: EmittedSubjectBuildRow) -> Step {
           key: native_fault_experiment_env_name,
           value: yaml_string(s: join(["${{ github.event_name == 'pull_request' && '", native_fault_experiment_skip_value, "' || '", native_fault_experiment_run_value, "' }}"], ""))
         ),
-        kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: join(["${{ steps.", compiler_gate_native_read_wif_id, ".outputs.access_token }}"], "")))
+        kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: join(["${{ steps.", compiler_gate_native_read_wif_id, ".outputs.access_token }}"], ""))),
+        kv(key: "GUNBC_PULL_REQUEST_HEAD_REPOSITORY", value: yaml_string(s: "${{ github.event.pull_request.head.repo.full_name }}"))
       ]
     },
     working_directory: none,

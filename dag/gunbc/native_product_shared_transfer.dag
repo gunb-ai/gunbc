@@ -38,13 +38,29 @@ data native_product_event_variable: NonEmptyStr = "GITHUB_EVENT_NAME"
 data native_product_executable_name: String = "executable"
 data native_product_manifest_name: String = "manifest.json"
 
+data native_product_head_repository_variable: NonEmptyStr = "GUNBC_PULL_REQUEST_HEAD_REPOSITORY"
+
+data native_product_repository_variable: NonEmptyStr = "GITHUB_REPOSITORY"
+
 // A fork's pull request is handed no workload identity, so the token source is unavailable and the
 // run proceeds cold; a same-repo pull request is read-only; the queue's composed revision reads and writes.
-fn native_product_run_standing() -> NativeProductRunStanding {
-  let event = actions_variable_trimmed(name: native_product_event_variable as String)
-  if event == "pull_request" { SameRepoPullRequestRun }
+// A pull request is attributed by where its head lives against the repository the run belongs to; a head
+// that cannot be read is not guessed to be this repository.
+fn native_product_standing_for(event: String, head: String, repository: String) -> NativeProductRunStanding {
+  if event == "pull_request" {
+    if head == "" || repository == "" { UnattributedRun }
+    else if head == repository { SameRepoPullRequestRun }
+    else { ForkPullRequestRun }
+  }
   else if event == "merge_group" { MergeGroupRun }
   else { UnattributedRun }
+}
+
+fn native_product_run_standing() -> NativeProductRunStanding {
+  native_product_standing_for(
+    event: actions_variable_trimmed(name: native_product_event_variable as String),
+    head: actions_variable_trimmed(name: native_product_head_repository_variable as String),
+    repository: actions_variable_trimmed(name: native_product_repository_variable as String))
 }
 
 fn native_product_store_dir(root: String) -> String {
