@@ -1,0 +1,57 @@
+module test.claim.infer_algebra_length_homonym_witness
+
+import extdeps.filesystem.filesystem_io
+import std.types { Bool, String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE SAME-LEAF CONTROL THE ACCEPTED CORPUS CANNOT CARRY. A second `fn length` under dag/ or
+// src/v2 makes every bare `length` an unimported two-declarer (floor). The specimen is therefore
+// a fixture outside those roots, compiled here through compile_dag_rust_emit_check — the same
+// isolated nested-compile shape #13459 used for a kernel-name collision that must not be
+// ingestible. The file is the authority; this module reads it.
+//
+// WHAT WOULD GO RED UNDER THE OLD LEAF PREDICATE. That predicate rewrote any host-String call
+// whose callee *leaf* was `length` to `v1_rt::string_length`. This fixture's `probe` calls a
+// `length` whose decl_name is `length` and whose owner is `algebra_length_homonym_probe`. The
+// identity gate leaves the constant body; the leaf predicate would emit `v1_rt::string_length`
+// and this exclude-list would fail.
+
+data algebra_length_homonym_probe_path: String = "fixtures/algebra_length_homonym/probe.dag"
+
+fn algebra_length_homonym_probe_source() -> String {
+  filesystem_read(path: algebra_length_homonym_probe_path).content
+}
+
+fn length_rewrite_by_authored_leaf(func: String) -> Bool {
+  func == "length"
+}
+
+fn length_rewrite_by_declaration(owner: String, decl: String) -> Bool {
+  decl == "length" && owner == "v2.std.algebra"
+}
+
+test fn a_user_length_on_host_string_is_not_emitted_as_string_length() -> Bool {
+  compile_dag_rust_emit_check(
+    algebra_length_homonym_probe_source(),
+    "src/algebra_length_homonym_probe.rs",
+    ["99"],
+    ["v1_rt::string_length"]
+  )
+}
+
+test fn the_old_leaf_predicate_would_rewrite_the_fixture_length() -> Bool {
+  length_rewrite_by_authored_leaf(func: "length")
+    && !length_rewrite_by_declaration(owner: "algebra_length_homonym_probe", decl: "length")
+    && length_rewrite_by_declaration(owner: "v2.std.algebra", decl: "length")
+}
+
+test fn algebra_length_on_host_string_still_lowers_to_string_length() -> Bool {
+  compile_dag_rust_emit_check(
+    "module algebra_length_host_probe\nimport std.types { String, Int }\nimport v2.std.algebra { length }\nfn probe(s: String) -> Int { length(xs: s) }\n",
+    "src/algebra_length_host_probe.rs",
+    ["v1_rt::string_length(&"],
+    ["v2_std_algebra::length("]
+  )
+}
