@@ -1007,6 +1007,9 @@ fn infer_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>,
 // A `let` with no declared type stays underived here and reads its value through the let-typed
 // operand walk. A reference resolve did not record is the tree disagreeing with the resolver that
 // produced it: refused, located.
+// A match-payload obligation (owed_formal) is discharged from InferBinderType rows or refused
+// located. A lambda/let declared type still uses infer_frame_instantiated: a function's own
+// formal is that parameter's type, not a free atom to leave underived (review 78144).
 fn infer_lexical_reference_facts(n: Node, resolved: ResolvedTree, instances: List<TypeVariableInstance>, binder_types: List<InferBinderType>) -> Outcome<InferredFacts> {
   match infer_descent_witness_for_node(n: n) {
     Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
@@ -1029,11 +1032,11 @@ fn infer_lexical_reference_facts(n: Node, resolved: ResolvedTree, instances: Lis
                 Absent =>
                   match binding.declared {
                     Present { value: declared } =>
-                      match infer_match_field_type_instantiated(field_type: declared, instances: instances) {
-                        Present { value: derived } =>
-                          inferred_facts_from_derived_type(node: n, derived_type: derived, descent: Holds { value: descent_proof })
-                        Absent => inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
-                      }
+                      inferred_facts_from_derived_type(
+                        node: n,
+                        derived_type: infer_frame_instantiated(declared: declared, instances: instances),
+                        descent: Holds { value: descent_proof }
+                      )
                     Absent => inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
                   }
               }
