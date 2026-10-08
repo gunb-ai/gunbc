@@ -9,19 +9,18 @@ import v2.std.diagnostic { Accepted, None, Rejected }
 import v2.std.host_run { EmitHostRunReceipt, HostLogicalRun }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, node_synthetic }
-import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.text { String }
 import v2.std.witness { Violates }
 import v2.test.claim.coercion.identity_cast_emission_route {
-  IdentityCastClosureRefused, IdentityCastEntryEmitted, IdentityCastEntryRefused,
-  identity_cast_route_admitted_holds, identity_cast_route_verdict,
+  identity_cast_supplied_emitted_text,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE ADMITTED IDENTITY CAST, BUILT AND RUN. identity_cast_route_verdict is the real door; this
-// module reads the same verdict the required-gate inhabitance already asserted, then builds and
-// runs it. The last merge-time execution of the door is
+// THE ADMITTED IDENTITY CAST, BUILT AND RUN. Native reads supplied
+// identity_cast_supplied_emitted_text so it does not demand the emit producer (fill-debt stays
+// ActiveFillDebt). The last merge-time execution of the door is
 // v2.test.claim.coercion.identity_cast_emission_route.an_admitted_identity_cast_emits_through_the_closure_route_holds,
 // not this module.
 //
@@ -46,20 +45,11 @@ fn identity_cast_native_inputs() -> Inputs {
   inputs_root_only(root: node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^identity_cast_native_probe } }, children: []))
 }
 
-// The entry member's emitted text, read from the route module's shared verdict rather than emitted a
-// second time: the text built here is the text the admission row asserted on. Absent when the route
-// did not emit exactly the entry.
+// The entry member's emitted text, supplied at this module's interface (DESIGN section 3). The
+// admission inhabitance on identity_cast_emission_route is the pairing that the closure door
+// still emits this spelling.
 fn identity_cast_native_emitted() -> Optional<String> {
-  let v = identity_cast_route_verdict()
-  if identity_cast_route_admitted_holds(v: v) {
-    match v {
-      IdentityCastEntryEmitted { text: t, members: _ } => optional_present(value: t)
-      IdentityCastEntryRefused { reason: _, members: _ } => optional_absent()
-      IdentityCastClosureRefused { reason: _ } => optional_absent()
-    }
-  } else {
-    optional_absent()
-  }
+  optional_present(value: identity_cast_supplied_emitted_text)
 }
 
 // One run of the emitted program on one argv value: true only when it exited through the logical-run
