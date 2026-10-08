@@ -341,6 +341,10 @@ type TypeEnvCache {
   variant_locals: Map<String, TypeBinding>
 }
 
+// TypeEnvCache.str_bindings is the module's own locals on a per-module cache (build_type_env).
+// Union and interface caches leave it empty: lookup walks TypeEnv.parents, not a flattened
+// cache overlay.
+
 // B1 build_type_env populates ancestry_str_bindings for import chains; lookup_binding_by_name is
 // fail-closed on miss (str_bindings then ancestry_str_bindings then intern+bindings only; 6de571f3
 // reverted in 80ab63a). flatten_visible_bindings and merge_envs are DELETED (2026-07-06 operator
@@ -416,83 +420,7 @@ fn binding_same_authority(a: TypeBinding, b: TypeBinding) -> Bool {
   }
 }
 
-data union_base_choice_note: String = "M1a base-choice (v1-run-stability-throughline §2.1, M0 receipt dup_factor=1.00): each union walks the SMALLER side's keys into the LARGER side's HAMT, so the result Rc-shares the large spine instead of freshly path-copying it key-by-key (the pre-cut accumulator was always the first parent - typically a small leaf - so every module materialized ~its whole closure's name surface fresh, across four maps). The winner is ORIENTATION-INDEPENDENT: each public union dispatches on count (O(1) on the persistent map) between an into-acc body (the pre-cut walk) and an into-overlay mirror whose conflict winner is identical (overlay-wins for str_bindings/deps_map/variant_locals, acc-wins for cycle_set_str); same-authority keys keep the retained side's copy - the span fast path declares the copies the same binding, and the whole-corpus fingerprint oracle is the drift check. Fold order stays import-order; conflict rows keep semantic roles (existing = accumulated side, incoming = overlay side) regardless of walk direction - the ledger's consumers are count/partition-grain, row order is not load-bearing."
-
-fn guarded_union_str_bindings_into_acc(
-  acc: Map<String, TypeBinding>,
-  overlay: Map<String, TypeBinding>,
-  import_path: String,
-  conflicts: List<TypeEnvCacheMergeConflict>
-) -> GuardedStrBindingsUnion {
-  fold(overlay |> map_keys, init: GuardedStrBindingsUnion { bindings: acc, conflicts: conflicts }, f: (state, name) =>
-    match map_get(overlay, name) {
-      Absent => state
-      Present { value: incoming } =>
-        match map_get(state.bindings, name) {
-          Absent => GuardedStrBindingsUnion {
-            bindings: map_insert(state.bindings, name, incoming),
-            conflicts: state.conflicts
-          }
-          Present { value: existing } =>
-            if binding_same_authority(a: existing, b: incoming) {
-              state
-            } else {
-              GuardedStrBindingsUnion {
-                bindings: map_insert(state.bindings, name, incoming),
-                conflicts: concat(state.conflicts, [TypeEnvCacheMergeConflict { name: name, import_path: import_path, existing_site: existing.resolved.span.file, incoming_site: incoming.resolved.span.file, span: incoming.resolved.span, same_tree: source_tree_of(file: existing.resolved.span.file) == source_tree_of(file: incoming.resolved.span.file) }])
-              }
-            }
-        }
-    }
-  )
-}
-
-fn guarded_union_str_bindings_into_overlay(
-  acc: Map<String, TypeBinding>,
-  overlay: Map<String, TypeBinding>,
-  import_path: String,
-  conflicts: List<TypeEnvCacheMergeConflict>
-) -> GuardedStrBindingsUnion {
-  fold(acc |> map_keys, init: GuardedStrBindingsUnion { bindings: overlay, conflicts: conflicts }, f: (state, name) =>
-    match map_get(acc, name) {
-      Absent => state
-      Present { value: accumulated } =>
-        match map_get(state.bindings, name) {
-          Absent => GuardedStrBindingsUnion {
-            bindings: map_insert(state.bindings, name, accumulated),
-            conflicts: state.conflicts
-          }
-          Present { value: incoming } =>
-            if binding_same_authority(a: accumulated, b: incoming) {
-              state
-            } else {
-              GuardedStrBindingsUnion {
-                bindings: state.bindings,
-                conflicts: concat(state.conflicts, [TypeEnvCacheMergeConflict { name: name, import_path: import_path, existing_site: accumulated.resolved.span.file, incoming_site: incoming.resolved.span.file, span: incoming.resolved.span, same_tree: source_tree_of(file: accumulated.resolved.span.file) == source_tree_of(file: incoming.resolved.span.file) }])
-              }
-            }
-        }
-    }
-  )
-}
-
-fn guarded_union_str_bindings(
-  acc: Map<String, TypeBinding>,
-  overlay: Map<String, TypeBinding>,
-  import_path: String,
-  conflicts: List<TypeEnvCacheMergeConflict>
-) -> GuardedStrBindingsUnion {
-  if (acc |> count) >= (overlay |> count) {
-    guarded_union_str_bindings_into_acc(acc: acc, overlay: overlay, import_path: import_path, conflicts: conflicts)
-  } else {
-    guarded_union_str_bindings_into_overlay(acc: acc, overlay: overlay, import_path: import_path, conflicts: conflicts)
-  }
-}
-
-type GuardedStrBindingsUnion {
-  bindings: Map<String, TypeBinding>
-  conflicts: List<TypeEnvCacheMergeConflict>
-}
+data union_base_choice_note: String = "M1a base-choice (v1-run-stability-throughline §2.1, M0 receipt dup_factor=1.00): each union walks the SMALLER side's keys into the LARGER side's HAMT, so the result Rc-shares the large spine instead of freshly path-copying it key-by-key (the pre-cut accumulator was always the first parent - typically a small leaf - so every module materialized ~its whole closure's name surface fresh, across deps_map, cycle_set_str and variant_locals). The winner is ORIENTATION-INDEPENDENT: each public union dispatches on count (O(1) on the persistent map) between an into-acc body (the pre-cut walk) and an into-overlay mirror whose conflict winner is identical (overlay-wins for deps_map/variant_locals, acc-wins for cycle_set_str); same-authority keys keep the retained side's copy - the span fast path declares the copies the same binding, and the whole-corpus fingerprint oracle is the drift check. Fold order stays import-order; conflict rows keep semantic roles (existing = accumulated side, incoming = overlay side) regardless of walk direction - the ledger's consumers are count/partition-grain, row order is not load-bearing."
 
 fn union_deps_map_into_acc(acc: Map<String, List<String>>, overlay: Map<String, List<String>>) -> Map<String, List<String>> {
   fold(overlay |> map_keys, init: acc, f: (m, name) =>
@@ -596,7 +524,7 @@ fn union_variant_locals_skip_equal(acc: Map<String, TypeBinding>, overlay: Map<S
   }
 }
 
-fn merge_type_env_cache_guarded(base: TypeEnvCache, overlay: TypeEnvCache) -> TypeEnvCache {
+fn merge_type_env_cache_skip_equal(base: TypeEnvCache, overlay: TypeEnvCache) -> TypeEnvCache {
   TypeEnvCache {
     deps_map: union_deps_map_skip_equal(acc: base.deps_map, overlay: overlay.deps_map),
     str_bindings: empty_map(),
@@ -1478,7 +1406,7 @@ fn put_inductive_field_cross(fields: Map<String, List<InductiveField>>, type_nam
 // lists SKIP (the sharing fast path - absent keys insert the incoming list Rc directly, never
 // concat-with-empty), and every list is duplicate-free by induction (local collection is
 // duplicate-free; merges never append a present fact). Genuinely new fields still append in the
-// pre-cut encounter order. Same treatment class as guarded_union_str_bindings' skip-if-equal (#6487
+// pre-cut encounter order. Same treatment class as union_deps_map_skip_equal's skip-if-equal (#6487
 // cut 2); receipts on the throughline doc.
 
 fn recursion_shape_key(shape: RecursionShape) -> String {

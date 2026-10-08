@@ -636,173 +636,10 @@ pub fn binding_same_authority(a: Rc<TypeBinding>, b: Rc<TypeBinding>) -> bool {
 pub fn union_base_choice_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "M1a base-choice (v1-run-stability-throughline §2.1, M0 receipt dup_factor=1.00): each union walks the SMALLER side's keys into the LARGER side's HAMT, so the result Rc-shares the large spine instead of freshly path-copying it key-by-key (the pre-cut accumulator was always the first parent - typically a small leaf - so every module materialized ~its whole closure's name surface fresh, across four maps). The winner is ORIENTATION-INDEPENDENT: each public union dispatches on count (O(1) on the persistent map) between an into-acc body (the pre-cut walk) and an into-overlay mirror whose conflict winner is identical (overlay-wins for str_bindings/deps_map/variant_locals, acc-wins for cycle_set_str); same-authority keys keep the retained side's copy - the span fast path declares the copies the same binding, and the whole-corpus fingerprint oracle is the drift check. Fold order stays import-order; conflict rows keep semantic roles (existing = accumulated side, incoming = overlay side) regardless of walk direction - the ledger's consumers are count/partition-grain, row order is not load-bearing.".to_string()
+            "M1a base-choice (v1-run-stability-throughline §2.1, M0 receipt dup_factor=1.00): each union walks the SMALLER side's keys into the LARGER side's HAMT, so the result Rc-shares the large spine instead of freshly path-copying it key-by-key (the pre-cut accumulator was always the first parent - typically a small leaf - so every module materialized ~its whole closure's name surface fresh, across deps_map, cycle_set_str and variant_locals). The winner is ORIENTATION-INDEPENDENT: each public union dispatches on count (O(1) on the persistent map) between an into-acc body (the pre-cut walk) and an into-overlay mirror whose conflict winner is identical (overlay-wins for deps_map/variant_locals, acc-wins for cycle_set_str); same-authority keys keep the retained side's copy - the span fast path declares the copies the same binding, and the whole-corpus fingerprint oracle is the drift check. Fold order stays import-order; conflict rows keep semantic roles (existing = accumulated side, incoming = overlay side) regardless of walk direction - the ledger's consumers are count/partition-grain, row order is not load-bearing.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
-}
-
-pub fn guarded_union_str_bindings_into_acc(
-    acc: Rc<HashMap<String, Rc<TypeBinding>>>,
-    overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
-    import_path: String,
-    conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
-) -> Rc<GuardedStrBindingsUnion> {
-    Rc::new(v1_rt::map_keys(&overlay)).iter().cloned().fold(
-        Rc::new(GuardedStrBindingsUnion {
-            bindings: acc.clone(),
-            conflicts: conflicts.clone(),
-        }),
-        |state: Rc<GuardedStrBindingsUnion>, name: String| match v1_rt::map_get(
-            &overlay,
-            name.clone(),
-        ) {
-            std::option::Option::None => state.clone(),
-            Some(incoming) => match v1_rt::map_get(&state.bindings.clone(), name.clone()) {
-                std::option::Option::None => Rc::new(GuardedStrBindingsUnion {
-                    bindings: v1_rt::rc_map_insert(
-                        state.bindings.clone(),
-                        name.clone(),
-                        incoming.clone(),
-                    ),
-                    conflicts: state.conflicts.clone(),
-                }),
-                Some(existing) => {
-                    if binding_same_authority(existing.clone(), incoming.clone()) {
-                        state.clone()
-                    } else {
-                        Rc::new(GuardedStrBindingsUnion {
-                            bindings: v1_rt::rc_map_insert(
-                                state.bindings.clone(),
-                                name.clone(),
-                                incoming.clone(),
-                            ),
-                            conflicts: v1_rt::concat(
-                                state.conflicts.clone(),
-                                Rc::new(vec![Rc::new(TypeEnvCacheMergeConflict {
-                                    name: name.clone(),
-                                    import_path: import_path.clone(),
-                                    existing_site: existing
-                                        .resolved
-                                        .clone()
-                                        .span
-                                        .clone()
-                                        .file
-                                        .clone(),
-                                    incoming_site: incoming
-                                        .resolved
-                                        .clone()
-                                        .span
-                                        .clone()
-                                        .file
-                                        .clone(),
-                                    span: incoming.resolved.clone().span.clone(),
-                                    same_tree: (source_tree_of(
-                                        existing.resolved.clone().span.clone().file.clone(),
-                                    ) == source_tree_of(
-                                        incoming.resolved.clone().span.clone().file.clone(),
-                                    )),
-                                })]),
-                            ),
-                        })
-                    }
-                }
-            },
-        },
-    )
-}
-
-pub fn guarded_union_str_bindings_into_overlay(
-    acc: Rc<HashMap<String, Rc<TypeBinding>>>,
-    overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
-    import_path: String,
-    conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
-) -> Rc<GuardedStrBindingsUnion> {
-    Rc::new(v1_rt::map_keys(&acc)).iter().cloned().fold(
-        Rc::new(GuardedStrBindingsUnion {
-            bindings: overlay.clone(),
-            conflicts: conflicts.clone(),
-        }),
-        |state: Rc<GuardedStrBindingsUnion>, name: String| match v1_rt::map_get(&acc, name.clone())
-        {
-            std::option::Option::None => state.clone(),
-            Some(accumulated) => match v1_rt::map_get(&state.bindings.clone(), name.clone()) {
-                std::option::Option::None => Rc::new(GuardedStrBindingsUnion {
-                    bindings: v1_rt::rc_map_insert(
-                        state.bindings.clone(),
-                        name.clone(),
-                        accumulated.clone(),
-                    ),
-                    conflicts: state.conflicts.clone(),
-                }),
-                Some(incoming) => {
-                    if binding_same_authority(accumulated.clone(), incoming.clone()) {
-                        state.clone()
-                    } else {
-                        Rc::new(GuardedStrBindingsUnion {
-                            bindings: state.bindings.clone(),
-                            conflicts: v1_rt::concat(
-                                state.conflicts.clone(),
-                                Rc::new(vec![Rc::new(TypeEnvCacheMergeConflict {
-                                    name: name.clone(),
-                                    import_path: import_path.clone(),
-                                    existing_site: accumulated
-                                        .resolved
-                                        .clone()
-                                        .span
-                                        .clone()
-                                        .file
-                                        .clone(),
-                                    incoming_site: incoming
-                                        .resolved
-                                        .clone()
-                                        .span
-                                        .clone()
-                                        .file
-                                        .clone(),
-                                    span: incoming.resolved.clone().span.clone(),
-                                    same_tree: (source_tree_of(
-                                        accumulated.resolved.clone().span.clone().file.clone(),
-                                    ) == source_tree_of(
-                                        incoming.resolved.clone().span.clone().file.clone(),
-                                    )),
-                                })]),
-                            ),
-                        })
-                    }
-                }
-            },
-        },
-    )
-}
-
-pub fn guarded_union_str_bindings(
-    acc: Rc<HashMap<String, Rc<TypeBinding>>>,
-    overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
-    import_path: String,
-    conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
-) -> Rc<GuardedStrBindingsUnion> {
-    if ((acc.clone().len() as i64) >= (overlay.clone().len() as i64)) {
-        guarded_union_str_bindings_into_acc(
-            acc.clone(),
-            overlay.clone(),
-            import_path.clone(),
-            conflicts.clone(),
-        )
-    } else {
-        guarded_union_str_bindings_into_overlay(
-            acc.clone(),
-            overlay.clone(),
-            import_path.clone(),
-            conflicts.clone(),
-        )
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct GuardedStrBindingsUnion {
-    pub bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
-    pub conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
 }
 
 pub fn union_deps_map_into_acc(
@@ -968,7 +805,7 @@ pub fn union_variant_locals_skip_equal(
     }
 }
 
-pub fn merge_type_env_cache_guarded(
+pub fn merge_type_env_cache_skip_equal(
     base: Rc<TypeEnvCache>,
     overlay: Rc<TypeEnvCache>,
 ) -> Rc<TypeEnvCache> {

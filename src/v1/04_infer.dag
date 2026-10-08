@@ -127,7 +127,7 @@ import v1.compiler.coercion { provenance_realizes_natively }
 import v1.compiler.infer_env {
   text_representation_by_identity, text_crossing_by_identity, host_text_into_structural_sequence, text_representations_cross, text_representation_is_text_arm, text_representation_is_unidentified,
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
-  merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
+  merge_type_env_cache_skip_equal, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
   ledger_peer_import_binding_forks,
   str_bindings_from_bindings,
   is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
@@ -14118,7 +14118,7 @@ fn union_parent_type_env_caches(
     Present { value: head } =>
       GuardedTypeEnvCacheMerge {
         cache: fold(parent_caches |> skip(1), init: head, f: (acc, overlay) =>
-          merge_type_env_cache_guarded(base: acc, overlay: overlay)
+          merge_type_env_cache_skip_equal(base: acc, overlay: overlay)
         ),
         conflicts: conflicts
       }
@@ -14345,7 +14345,7 @@ fn interface_env_surface(env: TypeEnv) -> TypeEnv {
 fn interface_cache_from_module(cache: TypeEnvCache) -> TypeEnvCache {
   TypeEnvCache {
     deps_map: cache.deps_map,
-    str_bindings: cache.str_bindings,
+    str_bindings: empty_map(),
     cycle_set_str: cache.cycle_set_str,
     variant_locals: empty_map()
   }

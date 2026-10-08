@@ -143,7 +143,7 @@ pub use crate::v1_compiler_infer_env::{
     is_recursive_type, is_recursive_type_by_name, ledger_peer_import_binding_forks,
     listed_import_required_bare_call_blocked, lookup_binding_by_name, lookup_binding_on_chain,
     lookup_type, lookup_type_by_name, lookup_type_for, merge_inductive_fields,
-    merge_type_env_cache, merge_type_env_cache_guarded, node_with_children, node_with_inferred,
+    merge_type_env_cache, merge_type_env_cache_skip_equal, node_with_children, node_with_inferred,
     put_inductive_field, put_inductive_field_cross, qualified_all_but_last,
     qualify_borrowed_inferred, qualify_borrowed_type_names, qualify_decl_reference_positions,
     str_bindings_from_bindings, symbol_index_insert, symbol_index_insert_decl,
@@ -24562,7 +24562,7 @@ pub fn union_parent_type_env_caches(
                 .fold(
                     head.clone(),
                     |acc: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>| {
-                        crate::v1_compiler_infer_env::merge_type_env_cache_guarded(
+                        crate::v1_compiler_infer_env::merge_type_env_cache_skip_equal(
                             acc.clone(),
                             overlay.clone(),
                         )
@@ -24946,7 +24946,7 @@ pub fn interface_env_surface(env: Rc<TypeEnv>) -> Rc<TypeEnv> {
 pub fn interface_cache_from_module(cache: Rc<TypeEnvCache>) -> Rc<TypeEnvCache> {
     Rc::new(TypeEnvCache {
         deps_map: cache.deps_map.clone(),
-        str_bindings: cache.str_bindings.clone(),
+        str_bindings: v1_rt::rc_empty_map(),
         cycle_set_str: cache.cycle_set_str.clone(),
         variant_locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
     })
