@@ -845,6 +845,8 @@ fn bmc_secure_bound(
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_without_authorization_refuses_after_a_real_apply"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_for_a_later_break_glass_generation_is_refused"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_another_channel_state_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_a_different_present_controller_clock_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_a_present_controller_clock_over_absent_is_refused"),
   ]
 {
   if (identity_key.run as NonEmptyStr) != (key.run as NonEmptyStr) || (identity_key.subject as NonEmptyStr) != (key.subject as NonEmptyStr) {

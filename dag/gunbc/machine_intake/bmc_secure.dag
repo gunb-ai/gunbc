@@ -3,7 +3,7 @@ module gunbc.machine_intake_bmc_secure
 import std.types { Bool, EpochMs, Int, List, Map, NonEmptyStr, String, list_length }
 import v2.std.algebra { filter }
 import std.decl_ref { decl_ref }
-import std.content_hash { ContentHash, content_hash_of_value }
+import std.content_hash { ContentHash, content_hash_of_value, content_hash_equal }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.algebra { FreeSemigroup }
 import std.goal_assessment {
@@ -1286,6 +1286,7 @@ fn observed_bmc_account_state(
 ) -> BmcAccountStateObservation
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "dry_read_bmc_account_state"),
+    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "observation_with_controller_clock"),
   ]
 {
   BmcAccountStateObservation {
@@ -1328,6 +1329,35 @@ fn observed_published_account_at_join(account: ObservedPublishedAccount) -> Publ
   }
 }
 
+fn observation_with_controller_clock(base: BmcAccountStateObservation, controller_clock: ControllerClockReading?) -> BmcAccountStateObservation
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "bmc_account_state_observation_same"),
+    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "apply_with_diverged_controller_clock"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_a_different_present_controller_clock_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_a_present_controller_clock_over_absent_is_refused"),
+  ]
+{
+  observed_bmc_account_state(
+    subject: base.subject,
+    endpoint: base.endpoint,
+    firmware: base.firmware,
+    managed: base.managed,
+    managed_user: base.managed_user,
+    attempt: base.attempt,
+    read_floor: base.read_floor,
+    managed_probe: base.managed_probe,
+    channel_census: base.channel_census,
+    census_evidence: base.census_evidence,
+    census_observed_at: base.census_observed_at,
+    published_probes: base.published_probes,
+    published_user: base.published_user,
+    published_account: base.published_account,
+    break_glass: base.break_glass,
+    break_glass_probe: base.break_glass_probe,
+    controller_clock: controller_clock,
+  )
+}
+
 fn managed_reference_same(a: ManagedCredentialReference, b: ManagedCredentialReference) -> Bool {
   a.account == b.account
     && a.role == b.role
@@ -1338,11 +1368,27 @@ fn managed_reference_same(a: ManagedCredentialReference, b: ManagedCredentialRef
 }
 
 // THE OBSERVATION IS THE PAYLOAD, NOT A START TIME. `==` is the language's structural relation on
-// this closed record: every field of BmcAccountStateObservation participates, so a new field cannot
-// fall out of the join by omitting a line. read_floor is compared as the ObserverClockInstant value,
-// not as millis-from-epoch.
+// this closed record, so a new field cannot fall out of a hand-picked list. controller_clock is
+// ControllerClockReading?: gunbc.recurring_failure_mode optional_equality_answers_by_representation
+// says interpreter `==` over Optionals can answer by representation, not value, and a record `==`
+// inherits that field. Zero the Optional, compare the rest by `==`, and match the clock explicitly.
+fn controller_clock_reading_same(left: ControllerClockReading?, right: ControllerClockReading?) -> Bool {
+  match left {
+    Absent => match right { Absent => true  Present { value: _ } => false }
+    Present { value: a } => match right {
+      Absent => false
+      Present { value: b } =>
+        (a.reported_millis as Int) == (b.reported_millis as Int)
+          && a.evidence.label == b.evidence.label
+          && content_hash_equal(left: a.evidence.digest, right: b.evidence.digest)
+    }
+  }
+}
+
 fn bmc_account_state_observation_same(a: BmcAccountStateObservation, b: BmcAccountStateObservation) -> Bool {
-  a == b
+  controller_clock_reading_same(a: a.controller_clock, b: b.controller_clock)
+    && (observation_with_controller_clock(base: a, controller_clock: none)
+      == observation_with_controller_clock(base: b, controller_clock: none))
 }
 
 // WHAT THE PHASE REQUIRES OF THE CONTROLLER: this managed generation accepted, the published
@@ -2071,6 +2117,34 @@ type BmcAccountApplication sole_constructor {
   request_receipt: EvidenceRef
   response_receipt: EvidenceRef
   applied_at: ObserverClockInstant
+}
+
+fn apply_with_diverged_controller_clock(application: BmcAccountApplication, controller_clock: ControllerClockReading?) -> BmcAccountApplication
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_a_different_present_controller_clock_is_refused"),
+  ]
+{
+  let p = application.plan
+  BmcAccountApplication {
+    plan: BmcAccountActionPlan {
+      subject: p.subject,
+      endpoint: p.endpoint,
+      firmware: p.firmware,
+      goal: p.goal,
+      diverged: observation_with_controller_clock(base: p.diverged, controller_clock: controller_clock),
+      due: p.due,
+      managed_write: p.managed_write,
+      published_write: p.published_write,
+      channel_writes: p.channel_writes,
+      planned_at: p.planned_at,
+    },
+    managed_write_completed: application.managed_write_completed,
+    published_write_completed: application.published_write_completed,
+    channel_writes_completed: application.channel_writes_completed,
+    request_receipt: application.request_receipt,
+    response_receipt: application.response_receipt,
+    applied_at: application.applied_at,
+  }
 }
 
 type BmcSecurePhaseDecision

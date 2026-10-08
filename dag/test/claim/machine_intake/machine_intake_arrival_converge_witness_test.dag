@@ -50,7 +50,8 @@ import gunbc.machine_intake_prior_life_boundary {
   mt_jade_platform_ref, prior_life_receipt_archive, prior_life_receipt_application, prior_life_receipt_boundary, prior_life_receipt_realization,
   prior_life_receipt_consumed_identity, prior_life_archive_digest, baseline_cursor_archive, baseline_cursor_sel_final_record,
 }
-import std.content_hash { content_hash_equal }
+import std.content_hash { content_hash_equal, content_hash_of_value }
+import gunbc.machine_intake_receipt { EvidenceRef }
 import test.claim.machine_intake_prior_life_boundary_witness { prior_life_minimal_dry_world }
 import gunbc.auth.standing_operator_grant {
   mtjade1_live_standing_grant, standing_grant_covers, StandingGrantHost, StandingBmcSecureAccountWrite,
@@ -84,7 +85,8 @@ import gunbc.machine_intake_arrival_converge {
 import gunbc.machine_intake_bmc_secure {
   BmcSecureGoal, BmcAccountStateObservation, dry_read_bmc_account_state, dry_apply_bmc_account_plan, plan_bmc_account_action,
   BmcAccountPlanned, BmcAccountPlanRefused, PublishedAccountRetired, ManagedCredentialReference,
-  BmcSecurePhaseNoop, BmcSecurePhaseApplied,
+  BmcSecurePhaseNoop, BmcSecurePhaseApplied, ControllerClockReading,
+  observation_with_controller_clock, apply_with_diverged_controller_clock,
   admit_stored_generation, admit_fetched_generation, dry_bmc_account_instant,
   GenerationStored, GenerationStoreRefused, GenerationFetched, GenerationFetchRefused, ManagedCredentialGenerationFetched,
 }
@@ -428,6 +430,8 @@ fn mtjade1_dry_applied_bmc(subject: MachineIntakeSubject) -> BmcSecureApplyInput
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_uncovered_grant_refuses_a_capability_for_another_request"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_for_a_later_break_glass_generation_is_refused"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_another_channel_state_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_a_different_present_controller_clock_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_a_present_controller_clock_over_absent_is_refused"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_a_foreign_bound_host_key_cannot_mint_from_this_instance_controller"),
   ]
 {
@@ -1264,6 +1268,75 @@ test fn w_bmc_secure_apply_for_a_later_break_glass_generation_is_refused() -> Bo
         StepRefused { key: _, cause: c } => match c { BmcSecureApplicationNotTheInspectedTransition => true  _ => false }
         _ => false
       }
+  }
+}
+
+fn mtjade1_controller_clock(millis: Int, label: String) -> ControllerClockReading {
+  ControllerClockReading {
+    reported_millis: millis as EpochMs,
+    evidence: EvidenceRef { label: label as NonEmptyStr, digest: content_hash_of_value(value: label) },
+  }
+}
+
+test fn w_bmc_secure_apply_of_a_different_present_controller_clock_is_refused() -> Bool {
+  let identity = step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key)
+  let prior = step_instance_key(run: run_a, step: prior_life_boundary_step_ref, subject: mtjade1_key)
+  let bmc_key = bmc_secure_apply_key()
+  match mtjade1_dry_applied_bmc(subject: mtjade1_intake_subject()) {
+    Absent => false
+    Present { value: apply } => {
+      let clock_x = mtjade1_controller_clock(millis: 1, label: "controller-clock-x")
+      let clock_y = mtjade1_controller_clock(millis: 2, label: "controller-clock-y")
+      let reading = observation_with_controller_clock(base: apply.application.plan.diverged, controller_clock: Present { value: clock_y })
+      let stamped = apply_with_diverged_controller_clock(application: apply.application, controller_clock: Present { value: clock_x })
+      match bmc_secure_bound(
+        key: bmc_key,
+        identity_key: identity,
+        identity_subject: mtjade1_intake_subject(),
+        prior_key: prior,
+        inputs: BmcSecureInputs {
+          goal: mtjade1_bmc_goal(),
+          reading: reading,
+          grant: Present { value: mtjade1_live_standing_grant },
+          apply: Present { value: BmcSecureApplyInputs { application: stamped, post_read: apply.post_read } },
+          capability: none,
+        },
+      ) {
+        StepRefused { key: _, cause: c } => match c { BmcSecureApplicationNotTheInspectedTransition => true  _ => false }
+        _ => false
+      }
+    }
+  }
+}
+
+test fn w_bmc_secure_apply_of_a_present_controller_clock_over_absent_is_refused() -> Bool {
+  let identity = step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key)
+  let prior = step_instance_key(run: run_a, step: prior_life_boundary_step_ref, subject: mtjade1_key)
+  let bmc_key = bmc_secure_apply_key()
+  match mtjade1_dry_applied_bmc(subject: mtjade1_intake_subject()) {
+    Absent => false
+    Present { value: apply } => {
+      let reading = observation_with_controller_clock(
+        base: apply.application.plan.diverged,
+        controller_clock: Present { value: mtjade1_controller_clock(millis: 1, label: "controller-clock-x") },
+      )
+      match bmc_secure_bound(
+        key: bmc_key,
+        identity_key: identity,
+        identity_subject: mtjade1_intake_subject(),
+        prior_key: prior,
+        inputs: BmcSecureInputs {
+          goal: mtjade1_bmc_goal(),
+          reading: reading,
+          grant: Present { value: mtjade1_live_standing_grant },
+          apply: Present { value: apply },
+          capability: none,
+        },
+      ) {
+        StepRefused { key: _, cause: c } => match c { BmcSecureApplicationNotTheInspectedTransition => true  _ => false }
+        _ => false
+      }
+    }
   }
 }
 
