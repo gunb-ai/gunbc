@@ -4281,7 +4281,14 @@ mod fixture_closure_union_tests {
                 target_name: "rust".to_string(),
             },
         ));
-        assert!(stderr_capture_policy_gap_service(&mk(gap.clone())).is_some());
+        // THE KEY STILL MATCHES THE REFUSAL RENDER. What emptied the population is
+        // `shell_channel_realized_by_target`: rust now realizes the three capture-
+        // accounting channels, so `rust_stderr_capture_channel_not_realized_facts`
+        // is empty and a constructed ShellChannelNotRealizedByTarget for
+        // stderr_truncated is outside the exclusion join. #13466's is_some was the
+        // gap-present control; after that realization the same fixture must stay
+        // unclassified as a gap (otherwise the union would strip a modeled Run).
+        assert!(stderr_capture_policy_gap_service(&mk(gap.clone())).is_none());
         assert!(stderr_capture_policy_gap_service(&mk(unmodeled_key)).is_none());
         assert!(stderr_capture_policy_gap_service(&mk(substring_poison)).is_none());
         assert!(stderr_capture_policy_gap_service(&mk(stdout_unrealized)).is_none());
@@ -4342,13 +4349,12 @@ mod fixture_closure_union_tests {
             &gap_row.operation_qualified,
             gap.clone(),
         );
+        // Same join as capture_gap_keys: the constructed gap fact is no longer a
+        // member of the unrealized-channel set, so the fold admits no exclusion.
         let selected = select_run_operations_excluded_for_stderr_capture_gap(&[allowed]);
-        assert_eq!(
-            selected.iter().cloned().collect::<Vec<_>>(),
-            vec![(
-                gap_row.declaring_module.to_string(),
-                gap_row.service.to_string()
-            )]
+        assert!(
+            selected.is_empty(),
+            "rust-realized capture channels must not still select WitnessBin.Run for exclusion: {selected:?}"
         );
 
         let mixed_key = crate::v1_compiler_emit::shell_emission_refusal_fact(Rc::new(
