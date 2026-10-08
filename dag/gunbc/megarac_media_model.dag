@@ -81,7 +81,6 @@ fn megarac_with_cd(world: MegaRacMediaWorld, cd: MegaRacCdRow) -> MegaRacMediaWo
 
 type MegaRacOpened {
   world: MegaRacMediaWorld
-  racsession_id: Int
   csrf_token: String
 }
 
@@ -90,7 +89,6 @@ fn megarac_open_session(world: MegaRacMediaWorld, cookie_jar: String) -> MegaRac
   let token = concat("modeled-csrf-", to_string(id))
   MegaRacOpened {
     world: megarac_with_sessions(world: world, sessions: list_snoc_item(xs: world.sessions, item: MegaRacSession { cookie_jar: cookie_jar, csrf_token: token, open: true }), next_session: id + 1),
-    racsession_id: id,
     csrf_token: token,
   }
 }
