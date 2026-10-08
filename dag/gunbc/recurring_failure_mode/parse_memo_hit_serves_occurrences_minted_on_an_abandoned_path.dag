@@ -1,0 +1,23 @@
+module gunbc.recurring_failure_mode.parse_memo_hit_serves_occurrences_minted_on_an_abandoned_path
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data parse_memo_hit_serves_occurrences_minted_on_an_abandoned_path: RecurringFailureMode = RecurringFailureMode {
+  identity: "parse_memo_hit_serves_occurrences_minted_on_an_abandoned_path" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a parsed tree in which two different nodes carry one minted occurrence id, or a node whose id resolves to another node's span. Backtracking (ordered choice, optional, repeat, not-predicate) restores the whole ParseProvenanceState, so occurrence ids are a counter along whichever path survives and a failed attempt's ids are minted again by the next attempt. The packrat table is NOT restored: it survives rejection, so a hit serves a capture whose ids were minted on another, usually abandoned, path. parse_prov_merge only advances the allocator to the larger mark, and v2.std.provenance span_index_adopt keeps an existing entry without refusal, so when the surviving path minted more ids before the memoized production than the miss path did, the served ids coincide with ids already given to other nodes.",
+    "HARM: wrong answers on the native CLI over the real roots. Some collisions survive normalization and reach the occurrence wall, which then refuses a valid file with normalize_reason_minted_occurrence_duplicated (src/v2/std/logic.dag is one); the census is total and refusing, so one such file stops every emission. Others are silent: the tree is accepted while authored tokens resolve to another node's span or to none -- in dag/test/fixture/cross_shard_seam/importee.dag the token SeamBeta resolves to a derived parser event instead of its own bytes. The census of dag + src/v2 measured both on 2026-10-08 (comparison recorded on gunbc#13557).",
+    "RUNG FOUND AT: silent -- outside the ladder. The enrolled replay witnesses covered only the harmless direction (the miss path minted more ids than the hit path), and the occurrence wall catches only collisions between structurally different nodes that survive normalization.",
+    "ATTAINABLE CEILING: structurally impossible -- with no memo nothing is served across paths, and with a memo whose allocator and span log are monotone a served id cannot have been re-minted. NEXT-RUNG TRIGGER, NAMED AS A CAPABILITY: the parse memo carrier deleted from v2.compiler.parse (ParseTableRealization entries, ParseMemoEntry, the frame/replay/adopt machinery and its seed interceptor), SUFFICIENT FOR no parse to serve a capture minted outside its own surviving path, with the colliding-grammar control below kept enrolled as a permanent regression control. Until then the parse demand is priced below the cost floor (v2.compiler.materialization_carriers parse_table_memo_cost_floor_exempt), so the production door admits no store; that is the mechanical rung, and it holds only while that roster row stands.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "v2.compiler.parse", decl_name: "parse_prov_merge"),
+    decl_ref(module_path: "v2.std.provenance", decl_name: "span_index_adopt"),
+    decl_ref(module_path: "v2.compiler.materialization_carriers", decl_name: "parse_table_memo_cost_floor_exempt"),
+    decl_ref(module_path: "v2.test.provenance.parse_memo_frame_replay", decl_name: "parse_memo_production_door_keeps_occurrences_distinct_on_a_colliding_grammar"),
+  ],
+}

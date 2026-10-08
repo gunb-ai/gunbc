@@ -24,7 +24,7 @@ import std.materialization_ladder {
   ladder_verdict_is_green,
   empty_frame_path, no_cost_floor_exemptions, no_cache_providers,
   verdict_is_accepted_single_recompute,
-  verdict_is_discharged_by,
+  verdict_is_accepted_below_cost_floor,
   verdict_is_refused_no_provider,
   verdict_is_refused_scope_too_narrow,
 }
@@ -184,11 +184,22 @@ fn parse_table_memo_demand_for(r: ParseMemoRecurrence) -> FrameDemand {
   }
 }
 
+// THE PARSE RECURRENCE IS PRICED BELOW THE COST FLOOR (operator ruling, 2026-10-08). The census
+// still finds the recurrence a discarding backtrack site makes possible, so the demand is redundant
+// and its obligation LCA is the input-driven replay frame, not shared state; the roster then prices
+// the discharge as Recompute instead of Memoize. Measured over every file of dag + src/v2 on the
+// native CLI, the memo served 0.68% of its lookups and almost all from one production, made the
+// whole-corpus parse slower rather than faster, and returned captures whose occurrence ids were
+// minted on an abandoned path, so served nodes collided with ids the surviving path had re-minted
+// (gunbc.recurring_failure_mode parse_memo_hit_serves_occurrences_minted_on_an_abandoned_path).
+// The memo carrier itself is deleted next; this row goes with it.
+data parse_table_memo_cost_floor_exempt: List<String> = [parse_table_memo_demand_identity]
+
 fn parse_table_memo_verdicts_for(r: ParseMemoRecurrence) -> List<LadderVerdict> {
   materialization_ladder(
     demands: [parse_table_memo_demand_for(r: r)],
     providers: v2_compiler_cache_providers(),
-    cost_floor_exempt: no_cost_floor_exemptions
+    cost_floor_exempt: parse_table_memo_cost_floor_exempt
   )
 }
 
@@ -203,9 +214,10 @@ fn parse_table_memo_verdicts_for(r: ParseMemoRecurrence) -> List<LadderVerdict> 
 // run here over exactly [parse_table_memo_demand_for(r)], so it always rules on this identity and
 // the Absent arm is unreachable from the parse path -- a refusal here would have to be a REFUSED
 // verdict, not a missing one. With the in-process provider both census outcomes are green:
-// recurrence Discharged (Memoize) and no recurrence AcceptedSingleRecompute (Recompute). So no
-// live parse behaviour moves; what changes is that an identity the ladder refuses now refuses the
-// prepare instead of quietly recomputing.
+// recurrence AcceptedBelowCostFloor (Recompute, by parse_table_memo_cost_floor_exempt) and no
+// recurrence AcceptedSingleRecompute (Recompute). Neither arm admits a store, so no table built
+// through prepare_grammar memoizes; an identity the ladder refuses still refuses the prepare
+// instead of quietly recomputing.
 fn parse_table_memo_materialization_for(r: ParseMemoRecurrence) -> Outcome<Materialization> {
   admitted_prescription_in(
     verdicts: parse_table_memo_verdicts_for(r: r),
@@ -452,15 +464,11 @@ fn compile_stage_memo_retention_preserved() -> Bool {
 
 // The two arms the parse demand can reach from the grammar, each read off the verdict rather
 // than off the prescription, so a verdict that changed arm while keeping the same Materialization
-// (a refusal also prescribes Memoize) cannot pass for a discharge.
-fn parse_table_memo_verdict_is_discharged_for(r: ParseMemoRecurrence) -> Bool {
+// (a refusal also prescribes Memoize) cannot pass for the priced arm.
+fn parse_table_memo_verdict_is_below_cost_floor_for(r: ParseMemoRecurrence) -> Bool {
   parse_table_memo_verdicts_for(r: r)
     |> fold(init: false, f: (acc, v) =>
-      acc || verdict_is_discharged_by(
-        v: v,
-        identity: parse_table_memo_demand_identity,
-        provider_id: extdeps.realization.parse_table_memo.parse_table_memo_id
-      )
+      acc || verdict_is_accepted_below_cost_floor(v: v, identity: parse_table_memo_demand_identity)
     )
 }
 
@@ -523,7 +531,10 @@ fn refused_scope_is_not_admitted() -> Bool {
 
 // The positive control that keeps the pair honest: the SAME fold over the SAME provider admits
 // the recurrent-grammar demand. Without this, refused_scope_is_not_admitted would also pass if
-// admitted_prescription_in simply never admitted anything.
+// admitted_prescription_in simply never admitted anything. It rules the demand with no cost-floor
+// roster, because the production door (parse_table_memo_verdicts_for) prices this recurrence below
+// the floor and so no longer reaches a store-permitting answer; the subject here is the door body,
+// not the parse's priced verdict.
 data parse_memo_one_discarding_site: ParseMemoRecurrence = ParseMemoRecurrence {
   discarding_backtrack_sites: 1,
   nullable_nonterminals: 0
@@ -531,7 +542,15 @@ data parse_memo_one_discarding_site: ParseMemoRecurrence = ParseMemoRecurrence {
 
 fn discharged_scope_admits_store() -> Bool {
   materialization_admission_admits_store(
-    a: parse_table_memo_materialization_for(r: parse_memo_one_discarding_site)
+    a: admitted_prescription_in(
+      verdicts: materialization_ladder(
+        demands: [parse_table_memo_demand_for(r: parse_memo_one_discarding_site)],
+        providers: v2_compiler_cache_providers(),
+        cost_floor_exempt: no_cost_floor_exemptions
+      ),
+      identity: parse_table_memo_demand_identity,
+      port: ^parse_table_memo_demand_port
+    )
   )
 }
 
