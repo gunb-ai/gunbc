@@ -491,6 +491,7 @@ jobs:
         env:
           GUNBC_NATIVE_FAULT_EXPERIMENT: ${{ github.event_name == 'pull_request' && 'skip_pull_request' || 'run' }}
           WIF_ACCESS_TOKEN: ${{ steps.native_read_wif.outputs.access_token }}
+          GUNBC_PULL_REQUEST_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
       - name: emit and build //gunbc/instruments:v2-native-cli
         id: emit_build_v2_native_cli
         run: |+
@@ -518,6 +519,7 @@ jobs:
         env:
           GUNBC_NATIVE_FAULT_EXPERIMENT: ${{ github.event_name == 'pull_request' && 'skip_pull_request' || 'run' }}
           WIF_ACCESS_TOKEN: ${{ steps.native_read_wif.outputs.access_token }}
+          GUNBC_PULL_REQUEST_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
       - name: Save admitted native products to the shared store
         run: |
           'target/release/gunbc' 'run' '--source-root' 'dag' '--source-root' 'src/v2' '--entry' 'dag/gunbc/native_product_shared_transfer.dag' '--function' 'native_product_save_wet'
