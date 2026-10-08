@@ -80,3 +80,12 @@ data operator_host_srv11: HostIdentity = "srv11"
 // lease table the day the fabric switch was cabled and landed on switch lane qsfp56-dd-2-3. srv12
 // is its identity slot, assigned by the same ascending-address rule.
 data operator_host_srv12: HostIdentity = "srv12"
+
+// ALTRA-BATCH-1 (operator, 2026-10-07). Four ASRock ALTRAD8UD hosts, not yet racked, named srv13-srv16
+// by the operator. Naming is not enrollment: no address, BMC endpoint, MAC or hardware row exists
+// for them until first contact observes one, and every procedure refuses a host it cannot name a
+// fact for.
+data operator_host_srv13: HostIdentity = "srv13"
+data operator_host_srv14: HostIdentity = "srv14"
+data operator_host_srv15: HostIdentity = "srv15"
+data operator_host_srv16: HostIdentity = "srv16"

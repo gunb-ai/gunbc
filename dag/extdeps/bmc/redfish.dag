@@ -5,8 +5,13 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.bmc.types { BmcGroundedHostObservations, BmcTelemetrySnapshot, FanTachSensor, RedfishMemorySummary, RedfishPowerControl, RedfishPowerState, RedfishPowerSubsystem, RedfishProcessorSummary, RedfishSensorReading, RedfishSystemInventory, TemperatureSensor }
 import std.measure { ByteSize, Gibibyte, HardwareThreadCount, gibibyte_to_byte_size, watt, watt_count }
-import std.types { Int, List, NonEmptyStr }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
+import extdeps.languages.json.parse {
+  parse_json_document, json_field, json_field_string,
+  JsonDocumentParsed, JsonDocumentUnreadable, FieldRead,
+}
+import extdeps.languages.json.emit { JsonValue, JsonArray }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -136,4 +141,54 @@ fn bmc_ground_host_observations(snapshot: BmcTelemetrySnapshot) -> BmcGroundedHo
 
 fn redfish_system_total_memory_bytes(inv: RedfishSystemInventory) -> ByteSize {
   inv.memory.total_memory_bytes
+}
+
+// DMTF REDFISH BASE MESSAGE REGISTRY, PasswordChangeRequired (DSP8011, Base 1.x): a service
+// answers an authenticated request with this message when the account's password must be changed
+// before any other access is granted, and the only admitted request is a PATCH of that account's
+// Password property. It is not an authentication failure: the credential was accepted. Observed on
+// ASRock Rack ALTRAD8UD-1L2T OpenBMC 3.22.00 (srv13, 2026-10-08) as HTTP 403 whose top-level
+// @Message.ExtendedInfo carries MessageId "Base.1.16.0.PasswordChangeRequired"; a wrong password on
+// the same service is a bare 401. The registry version varies by service, so the id is matched as
+// the "Base." registry prefix plus the ".PasswordChangeRequired" key, and the message is read from
+// either the top-level annotation (bmcweb) or the standard error object's annotation.
+type RedfishPasswordChangeVerdict
+  = RedfishPasswordChangeRequired
+  | RedfishPasswordChangeNotIndicated
+
+fn redfish_message_id_is_password_change_required(id: String) -> Bool {
+  starts_with(s: id, prefix: "Base.") && ends_with(s: id, suffix: ".PasswordChangeRequired")
+}
+
+fn redfish_extended_info_requires_password_change(holder: JsonValue) -> Bool {
+  match json_field(obj: holder, key: "@Message.ExtendedInfo") {
+    FieldRead { value: v } =>
+      match v {
+        JsonArray { elements: elements } =>
+          fold(elements, init: false, f: fn(acc, m) {
+            acc || (match json_field_string(obj: m, key: "MessageId") {
+              FieldRead { value: id } => redfish_message_id_is_password_change_required(id: id)
+              _ => false
+            })
+          })
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn redfish_password_change_verdict(body: String) -> RedfishPasswordChangeVerdict {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: _ } => RedfishPasswordChangeNotIndicated
+    JsonDocumentParsed { value: doc } =>
+      if redfish_extended_info_requires_password_change(holder: doc) {
+        RedfishPasswordChangeRequired
+      } else {
+        match json_field(obj: doc, key: "error") {
+          FieldRead { value: err } =>
+            if redfish_extended_info_requires_password_change(holder: err) { RedfishPasswordChangeRequired } else { RedfishPasswordChangeNotIndicated }
+          _ => RedfishPasswordChangeNotIndicated
+        }
+      }
+  }
 }
