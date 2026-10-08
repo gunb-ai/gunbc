@@ -1,6 +1,7 @@
 module gunbc.fleet_health_observe
 
 import extdeps.bmc.http
+import extdeps.transports.rest { RestResult }
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import std.algebra { trim }
 import std.nat { Nat, nat_range_inclusive }
@@ -134,23 +135,38 @@ fn health_redfish_read(bmc_host: NonEmptyStr, netrc: NonEmptyStr, read: FleetHea
   match read {
     ReadManager => {
       r = redfish.Http.GetManager(bmc_host: bmc_host, manager_id: "bmc", netrc_file: netrc)
-      return HealthReadResponse { body: r.body, success: r.success }
+      return match r {
+        RestAnswered { body: body } => HealthReadResponse { body: body, success: true }
+        RestRefusal { cause: cause } => HealthReadResponse { body: cause, success: false }
+      }
     }
     ReadChassisThermal { chassis_id: c } => {
       r = redfish.Http.GetChassisThermal(bmc_host: bmc_host, chassis_id: c, netrc_file: netrc)
-      return HealthReadResponse { body: r.body, success: r.success }
+      return match r {
+        RestAnswered { body: body } => HealthReadResponse { body: body, success: true }
+        RestRefusal { cause: cause } => HealthReadResponse { body: cause, success: false }
+      }
     }
     ReadChassisSensors { chassis_id: c } => {
       r = redfish.Http.GetChassisSensors(bmc_host: bmc_host, chassis_id: c, netrc_file: netrc)
-      return HealthReadResponse { body: r.body, success: r.success }
+      return match r {
+        RestAnswered { body: body } => HealthReadResponse { body: body, success: true }
+        RestRefusal { cause: cause } => HealthReadResponse { body: cause, success: false }
+      }
     }
     ReadChassisSensor { chassis_id: c, sensor_id: s } => {
       r = redfish.Http.GetChassisSensor(bmc_host: bmc_host, chassis_id: c, sensor_id: s, netrc_file: netrc)
-      return HealthReadResponse { body: r.body, success: r.success }
+      return match r {
+        RestAnswered { body: body } => HealthReadResponse { body: body, success: true }
+        RestRefusal { cause: cause } => HealthReadResponse { body: cause, success: false }
+      }
     }
     ReadSystemEventLog => {
       r = redfish.Http.GetSystemEventLogEntries(bmc_host: bmc_host, netrc_file: netrc)
-      return HealthReadResponse { body: r.body, success: r.success }
+      return match r {
+        RestAnswered { body: body } => HealthReadResponse { body: body, success: true }
+        RestRefusal { cause: cause } => HealthReadResponse { body: cause, success: false }
+      }
     }
   }
 }

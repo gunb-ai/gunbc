@@ -60,8 +60,8 @@ test fn w_retrieval_arm_agrees_with_the_transport() -> Bool {
         fidelity_losses: [],
         independence: SoleRetrieval,
       ) {
-        InformationEvidenceUnobservable { detail: _ } => probe.success
-        InformationEvidenceUnavailable { cause: _ } => !probe.success
+        InformationEvidenceUnobservable { detail: _ } => probe is RestAnswered { body: _ }
+        InformationEvidenceUnavailable { cause: _ } => probe is RestRefusal { cause: _ }
         InformationEvidenceInferred { inference: _ } => false
       }
     }

@@ -1,0 +1,54 @@
+module v2.lens.argv_anemia_coverage
+
+import v2.lens.extdeps_shape_transport_policy {
+  ExtdepsTransportKind,
+  extdeps_live_module_policy_leak_count,
+  extdeps_module_identity_resolves,
+}
+import v2.std.node { Node }
+import v2.std.qualified_name { QualifiedName }
+import v2.std.algebra { fold_list }
+
+type ArgvAnemiaCoverageVerdict
+  = Clean { unmodeled_http_ops: Int }
+  | Violations { unmodeled_http_ops: Int }
+
+fn argv_anemia_module_unmodeled_http_ops(module: QualifiedName) -> Int {
+  if extdeps_module_identity_resolves(module: module) {
+    extdeps_live_module_policy_leak_count(module: module)
+  } else { 0 }
+}
+
+fn argv_anemia_live_coverage_verdict() -> ArgvAnemiaCoverageVerdict {
+  // The lens evaluates to Violations if there are any unmodeled HTTP shell operations
+  // (operations using `transport shell` with curl argv for HTTP requests)
+  // The count is derived from the extdeps shape transport policy's policy leak count
+  // which tracks bare flag-string literals in argv arrays
+  let modules = [
+    "extdeps.bmc.http" as QualifiedName,
+    "extdeps.http.client" as QualifiedName,
+    "extdeps.tools.curl" as QualifiedName,
+    "extdeps.namecheap.client" as QualifiedName,
+  ]
+  let total = fold_list(
+    xs: modules,
+    empty: 0,
+    cons: fn(acc, m) { acc + argv_anemia_module_unmodeled_http_ops(module: m) }
+  )
+  if total > 0 {
+    Violations { unmodeled_http_ops: total }
+  } else {
+    Clean { unmodeled_http_ops: 0 }
+  }
+}
+
+fn argv_anemia_unmodeled_http_ops_count() -> Int {
+  match argv_anemia_live_coverage_verdict() {
+    Clean { unmodeled_http_ops: n } => n
+    Violations { unmodeled_http_ops: n } => n
+  }
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+}

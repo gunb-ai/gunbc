@@ -39,8 +39,8 @@ import gunbc.spark.vllm_observed {
   vllm_models_advertised_ids,
 }
 import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, harness_serving_unit_wire }
+import extdeps.transports.rest { RestResult }
 import extdeps.http.client
-import extdeps.tools.curl { curl_exit_outcome, CurlCouldNotConnect, CurlOperationTimedOut }
 import extdeps.languages.json.parse {
   JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text,
 }
@@ -71,7 +71,10 @@ data harness_front_door_probe_bound: Second = second(count: 10)
 
 fn harness_bounded_get(url: String) -> HarnessBoundedRead {
   let read = http.Client.GetWithin(url: url as NonEmptyStr, max_seconds: to_string(second_count(s: harness_front_door_probe_bound)) as NonEmptyStr)
-  HarnessBoundedRead { body: read.body, success: read.success }
+  return match read {
+    RestAnswered { body: body } => HarnessBoundedRead { body: body, success: true }
+    RestRefusal { cause: _ } => HarnessBoundedRead { body: "", success: false }
+  }
 }
 
 // PRESENCE, NOT CONTENT: whether ANY HTTP response came back within the front-door bound, and
@@ -92,9 +95,11 @@ type HarnessBoundedPresence
 
 fn harness_bounded_presence(url: String) -> HarnessBoundedPresence {
   let read = http.Client.StatusWithin(url: url as NonEmptyStr, max_seconds: to_string(second_count(s: harness_front_door_probe_bound)) as NonEmptyStr)
-  if read.success {
-    HarnessResponded { status: trim(s: read.status) }
-  } else {
+  return match read {
+    RestAnswered { status: status } => HarnessResponded { status: trim(s: status) }
+    RestRefusal { cause: _ } => HarnessTransportUnread { url: url, curl_exit: 0 }
+  }
+}
     match curl_exit_outcome(code: read.exit_code) {
       CurlCouldNotConnect => HarnessConnectFailed { url: url, curl_exit: read.exit_code }
       CurlOperationTimedOut => HarnessDeadline { url: url }

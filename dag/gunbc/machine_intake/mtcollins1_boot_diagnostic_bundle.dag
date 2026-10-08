@@ -20,6 +20,7 @@ import extdeps.bmc.ipmi
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, chassis_observation, chassis_observation_text }
 import gunbc.machine_intake_oob_boot_handoff { BootReadbackConfirmed, boot_readback_verdict }
+import extdeps.transports.rest { RestResult }
 import extdeps.bmc.http
 import extdeps.bmc.ipmi_sel { FirmwareError, FirmwareHang, FirmwareProgress }
 import extdeps.bmc.ipmi_sdr { SdrLineResult, sdr_decode_lines }
@@ -2175,10 +2176,9 @@ fn redfish_get(netrc: NonEmptyStr, path: NonEmptyStr, left: Int, not_reached: St
     odata_path: path,
     max_seconds: to_string(second_count(s: mtcollins1_boot_redfish_read_deadline)) as NonEmptyStr,
   )
-  if r.success {
-    RedfishGot { body: r.body, left: left - 1 }
-  } else {
-    RedfishGetFailed { cause: bmc_curl_read_cause(endpoint: mtcollins1_redfish_url(path: path as String), at: at, exit_code: r.exit_code, stderr: r.transport_stderr), left: left - 1 }
+  return match r {
+    RestAnswered { body: body } => RedfishGot { body: body, left: left - 1 }
+    RestRefusal { cause } => RedfishGetFailed { cause: concat("GetResourceByPath failed: ", cause), left: left - 1 }
   }
 }
 

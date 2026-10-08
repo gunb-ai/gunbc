@@ -1,5 +1,7 @@
 module gunbc.tools.bmc_read_telemetry
 
+import extdeps.transports.rest { RestResult }
+
 
 fn bmc_read_telemetry() -> ProcessExit
 {
@@ -21,21 +23,21 @@ fn bmc_read_telemetry() -> ProcessExit
               let netrc_file = netrc_v as NonEmptyStr
               let chassis = asrock_altrad8ud_redfish_chassis_id
 
-              system_resp = redfish.Http.GetSystem(bmc_host: bmc, netrc_file: netrc_file)
-              if system_resp.success == false {
-                return exit_failure(reason: system_resp.body)
+              system_result = redfish.Http.GetSystem(bmc_host: bmc, netrc_file: netrc_file)
+              return match system_result {
+                RestAnswered { body: system_body } => {
+                  sensors_result = redfish.Http.GetChassisSensors(
+                    bmc_host: bmc,
+                    chassis_id: chassis,
+                    netrc_file: netrc_file
+                  )
+                  return match sensors_result {
+                    RestAnswered { body: sensors_body } => ExitSuccess
+                    RestRefusal { cause } => exit_failure(reason: sensors_body)
+                  }
+                }
+                RestRefusal { cause } => exit_failure(reason: cause)
               }
-
-              sensors_resp = redfish.Http.GetChassisSensors(
-                bmc_host: bmc,
-                chassis_id: chassis,
-                netrc_file: netrc_file
-              )
-              if sensors_resp.success == false {
-                return exit_failure(reason: sensors_resp.body)
-              }
-
-              return ExitSuccess
             }
         }
       }

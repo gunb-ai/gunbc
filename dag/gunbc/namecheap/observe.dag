@@ -8,6 +8,7 @@ import std.decimal { decimal_digits_only }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.http.client
+import extdeps.transports.rest { RestResult }
 import extdeps.network.ipify { ipv4_echo_url }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_array, serialize_json }
 import extdeps.namecheap.client { namecheap_get_hosts }
@@ -30,8 +31,11 @@ fn namecheap_host_json(host: NamecheapObservedHost) -> JsonValue {
 // execution reader requires that numeric pin. The only provider command is getHosts.
 fn namecheap_observe_at(run_id: String, attempt: String, revision: String, observed_at: String) -> ProcessExit {
   let echo = http.Client.GetWithin(url: ipv4_echo_url, max_seconds: "15" as NonEmptyStr)
-  let egress = trim(s: echo.body)
-  if !echo.success || egress != namecheap_account_report.api_allowlist_ipv4 {
+  let egress = match echo {
+    RestAnswered { body: b } => trim(s: b)
+    RestRefusal { cause } => return exit_failure(reason: concat("egress probe refused: ", cause))
+  }
+  if egress != namecheap_account_report.api_allowlist_ipv4 {
     exit_failure(reason: "DNS controller public egress does not match the reported Namecheap allowlist; update the controller admission before retrying")
   } else {
     match fetch_secret_ref_credential(secret_ref: namecheap_api_key_secret_ref, token_source: WorkloadIdentityToken) {

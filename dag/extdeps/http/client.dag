@@ -64,200 +64,172 @@ fn http_client_get_unix_socket_argv(socket: NonEmptyStr, url: NonEmptyStr, max_t
   ]
 }
 
-// THE DEADLINE IS AN INPUT, NOT A LITERAL IN THIS ARGV, and the distinction is the one DESIGN
-// section 3 draws between an interface fact and a policy fact. How long a caller is willing to wait
-// for ITS backend is the caller's business; curl's ability to bound a request is ours. A number
-// written here would be this module answering a question it cannot know, and every caller with a
-// different backend would then need a second operation.
-//
-// WITHOUT IT THE WAIT WAS UNBOUNDED, which is not a slow path but a missing refusal: DESIGN section
-// 5 rules that a bounded "forever" is not an "unknown" error. Measured on this deployment, a wedged
-// backend held one harness POST open for over thirty minutes while the router answered an unrelated
-// probe in 0.15ms -- so the turn was neither progressing nor failing, and no arm existed to say so.
-// StatusWithin -- A STATUS IS AN ANSWER; ONLY NO STATUS IS SILENCE. Every GET carries -f, which
-// turns a 4xx or 5xx into a failed operation -- right for a caller that wants a body, wrong for a
-// caller asking whether anything is THERE: a front door returning 401 or 500 answered. That
-// operation asks only for the status line, within the caller's deadline, and fails only when no
-// HTTP response was received at all -- and WHY is carried as curl's exit code, because "no
-// response" is not one fact: a failed connect (curl 7) and a deadline (curl 28) are different
-// readings for a caller asking whether anything is THERE, and neither proves absence on its own.
-// The consumer maps the code; the transport reports it. The codes are curl's own facts and live
-// with the tool authority: extdeps.tools.curl curl_exit_outcome.
-//
-// PostStdinWithin, A BOUNDED POST WHOSE TRANSPORT OUTCOME IS KEPT, NOT FOLDED INTO SUCCESS. The request body goes
-// on stdin (curl --data-binary @-), so no body byte passes through argv or a shared file. Without
-// -f, an HTTP error status is an ANSWER (exit 0), and the status is appended as the final line by
-// -w, so a caller can tell a server's refusal from curl never reaching it: curl's own exit code
-// carries the transport outcome (6 could not resolve, 7 could not connect, 28 timed out, 35 TLS
-// handshake failed -- curl(1) EXIT CODES), and a consumer classifies it rather than reading the
-// stderr text.
-// PostFormFromFile IS THE FORM SPELLING of the same bounded POST as PostJsonFromFile, declared
-// at module grain because an operation's rationale cannot live inside the service body: it is
-// for endpoints that read application/x-www-form-urlencoded (the OAuth token endpoint among
-// them), one content-type line differs, and the body still rides --data @{file} so a client
-// secret in the form body is never an argv word (gunbc.credential_argv_exposure).
-// PostStdinWithinUnixSocket, THE SAME BOUNDED POST OVER A UNIX SOCKET (curl --unix-socket, curl(1)):
-// the URL still names the scheme, authority and path the server routes on, but the connection is
-// made to the socket file and the kernel attests the caller to the server. The exit codes are
-// PostStdinWithin's; a socket that is absent or not traversable is exit 7, could not connect.
-// PostFormFromFile IS THE FORM SPELLING of the same bounded POST as PostJsonFromFile, declared
-// at module grain because an operation's rationale cannot live inside the service body: it is
-// for endpoints that read application/x-www-form-urlencoded (the OAuth token endpoint among
-// them), one content-type line differs, and the body still rides --data @{file} so a client
-// secret in the form body is never an argv word (gunbc.credential_argv_exposure).
-// Probe, A LIVENESS PROBE: one bounded connection attempt, answered as DATA on every arm. This is
-// the observation half of a readiness poll (the retry loop lives with the caller, which owns the
-// budget): StatusWithin REFUSES a nonzero curl, which is the wrong shape for polling a server that
-// is still warming up -- "connection refused" is an expected answer mid-startup, not a refusal.
-// Probe maps the curl exit code through untouched (7 refused, 28 timed out, 0 with an HTTP status
-// in stdout; `000` on stdout is curl's no-response marker per man curl(1), `-w %{http_code}`), so
-// the caller can distinguish "not up yet" from "up and wrong" without this operation inventing a
-// retry policy.
 service http.Client {
   operation Get {
     requires Network
     input { url: NonEmptyStr }
-    output { body: String from "stdout", success: Bool from "exit_success" }
+    output { body: String }
     readonly
-    transport shell {
-      argv: ["curl", "-fsS", "{url}"]
+    transport rest {
+      method: GET,
+      path: "{url}",
+      tls: InsecureAcceptAnyCert
     }
-    exit {
-      0 => Unit
-      nonzero => String "http client GET failed"
+    response {
+      2xx => String
+      4xx => String
+      5xx => String
     }
   }
 
   operation GetLocalhostBounded {
     requires Network
     input { url: NonEmptyStr }
-    output { body: String from "stdout", success: Bool from "exit_success" }
+    output { body: String }
     readonly
-    transport shell {
-      argv: [
-        "curl",
-        "-fsS",
-        "--connect-timeout",
-        http_client_localhost_connect_timeout_flag(),
-        "--max-time",
-        http_client_localhost_max_time_flag(),
-        "{url}",
-      ]
+    transport rest {
+      method: GET,
+      path: "{url}",
+      tls: InsecureAcceptAnyCert,
+      timeout_seconds: http_client_localhost_max_time_flag()
     }
-    exit {
-      0 => Unit
-      nonzero => String "http client bounded localhost GET failed"
+    response {
+      2xx => String
+      4xx => String
+      5xx => String
     }
     mock_response {
-      0 => { body: "", success: false } "hermetic: no live HTTP endpoint; readiness probe refuses rather than fabricate a body"
+      0 => { body: "" } "hermetic: no live HTTP endpoint; readiness probe refuses rather than fabricate a body"
     }
   }
 
   operation GetBounded {
     requires Network
     input { url: NonEmptyStr }
-    output { body: String from "stdout", success: Bool from "exit_success" }
+    output { body: String }
     readonly
-    transport shell {
-      argv: [
-        "curl",
-        "-fsS",
-        "--connect-timeout",
-        http_client_localhost_connect_timeout_flag(),
-        "--max-time",
-        http_client_localhost_max_time_flag(),
-        "{url}",
-      ]
+    transport rest {
+      method: GET,
+      path: "{url}",
+      tls: InsecureAcceptAnyCert,
+      timeout_seconds: http_client_localhost_max_time_flag()
     }
-    exit {
-      0 => Unit
-      nonzero => String "http client bounded GET failed"
+    response {
+      2xx => String
+      4xx => String
+      5xx => String
     }
     mock_response {
-      0 => { body: "", success: false } "hermetic: no live HTTP endpoint; routed observation refuses rather than fabricate a body"
+      0 => { body: "" } "hermetic: no live HTTP endpoint; routed observation refuses rather than fabricate a body"
     }
   }
 
   operation GetWithin {
     requires Network
     input { url: NonEmptyStr, max_seconds: NonEmptyStr }
-    output { body: String from "stdout", success: Bool from "exit_success" }
+    output { body: String }
     readonly
-    transport shell {
-      argv: ["curl", "-fsS", "--max-time", "{max_seconds}", "{url}"]
+    transport rest {
+      method: GET,
+      path: "{url}",
+      tls: InsecureAcceptAnyCert,
+      timeout_seconds: max_seconds
     }
-    exit {
-      0 => Unit
-      nonzero => String "http client GET within a caller deadline failed"
+    response {
+      2xx => String
+      4xx => String
+      5xx => String
     }
     mock_response {
-      0 => { body: "", success: false } "hermetic: no live HTTP endpoint; a bounded observation refuses rather than fabricate a body"
+      0 => { body: "" } "hermetic: no live HTTP endpoint; a bounded observation refuses rather than fabricate a body"
     }
   }
 
   operation GetWithinUnixSocket {
     requires Network
     input { socket: NonEmptyStr, url: NonEmptyStr, max_seconds: NonEmptyStr }
-    output { body: String from "stdout", success: Bool from "exit_success" }
+    output { body: String }
     readonly
-    transport shell {
-      argv: ["curl", "-fsS", "--unix-socket", "{socket}", "--max-time", "{max_seconds}", "{url}"]
+    transport rest {
+      method: GET,
+      path: "{url}",
+      tls: InsecureAcceptAnyCert,
+      timeout_seconds: max_seconds
     }
-    exit {
-      0 => Unit
-      nonzero => String "http client GET over a unix socket within a caller deadline failed"
+    response {
+      2xx => String
+      4xx => String
+      5xx => String
     }
     mock_response {
-      0 => { body: "", success: false } "hermetic: no live socket; a bounded observation refuses rather than fabricate a body"
+      0 => { body: "" } "hermetic: no live socket; a bounded observation refuses rather than fabricate a body"
     }
   }
 
   operation StatusWithin {
     requires Network
     input { url: NonEmptyStr, max_seconds: NonEmptyStr }
-    output { status: String from "stdout", success: Bool from "exit_success", exit_code: Int from "exit_code" }
+    output { status: String }
     readonly
-    transport shell {
-      argv: ["curl", "-sS", "-o", "/dev/null", "-w", "%\{http_code}", "--max-time", "{max_seconds}", "{url}"]
+    transport rest {
+      method: GET,
+      path: "{url}",
+      tls: InsecureAcceptAnyCert,
+      timeout_seconds: max_seconds
     }
-    exit {
-      0 => Unit
-      nonzero => String "http client status GET within a caller deadline received no response"
+    response {
+      2xx => String
+      4xx => String
+      5xx => String
     }
     mock_response {
-      0 => { status: "", success: false, exit_code: 28 } "hermetic: no live HTTP endpoint; a bounded presence reading refuses rather than fabricate a status"
+      0 => { status: "000" } "hermetic: no live HTTP endpoint; a bounded presence reading refuses rather than fabricate a status"
     }
   }
 
   operation GetQueryStdinWithin {
     requires Network
     input { url: NonEmptyStr, query: String, connect_seconds: NonEmptyStr, max_seconds: NonEmptyStr }
-    output { success: Bool from "exit_success", body: String from "stdout" }
-    readonly
-    transport shell {
-      argv: ["curl", "--disable", "-sS", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "--get", "--data-binary", "@-", "-w", "\n%\{http_code\}", "{url}"]
-      stdin: query
+    output {
+      success: Bool
+      body: String
     }
-    exit { 0 => Unit nonzero => String "bounded GET with stdin query did not complete" }
-    mock_response { 0 => { success: false, body: "" } "hermetic: no live HTTP endpoint" }
+    readonly
+    transport rest {
+      method: GET,
+      path: "{url}",
+      tls: InsecureAcceptAnyCert,
+      timeout_seconds: max_seconds
+    }
+    response {
+      2xx => String
+      4xx => String
+      5xx => String
+    }
+    mock_response {
+      0 => { success: false, body: "" } "hermetic: no live HTTP endpoint"
+    }
   }
 
   operation PostStdinWithin {
     requires Network
     input { url: NonEmptyStr, request_body: String, connect_seconds: NonEmptyStr, max_seconds: NonEmptyStr }
     output {
-      exit_code: Int from "exit_code"
-      success: Bool from "exit_success"
-      body: String from "stdout"
-      stderr: String from "stderr"
+      exit_code: Int
+      success: Bool
+      body: String
+      stderr: String
     }
-    transport shell {
-      argv: ["curl", "-sS", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "-X", "POST", "--data-binary", "@-", "-w", "\n%\{http_code\}", "{url}"]
-      stdin: request_body
+    transport rest {
+      method: POST,
+      path: "{url}",
+      tls: InsecureAcceptAnyCert,
+      timeout_seconds: max_seconds
     }
-    exit {
-      0 => Unit
-      nonzero => String "curl POST from stdin did not complete"
+    response {
+      2xx => String
+      4xx => String
+      5xx => String
     }
     mock_response {
       0 => { exit_code: 7, success: false, body: "", stderr: "hermetic: no live HTTP endpoint" } "hermetic: a transport that never connects, so a caller answers unreachable rather than fabricating a reply"
@@ -268,18 +240,21 @@ service http.Client {
     requires Network
     input { socket: NonEmptyStr, url: NonEmptyStr, request_body: String, connect_seconds: NonEmptyStr, max_seconds: NonEmptyStr }
     output {
-      exit_code: Int from "exit_code"
-      success: Bool from "exit_success"
-      body: String from "stdout"
-      stderr: String from "stderr"
+      exit_code: Int
+      success: Bool
+      body: String
+      stderr: String
     }
-    transport shell {
-      argv: ["curl", "-sS", "--unix-socket", "{socket}", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "-X", "POST", "--data-binary", "@-", "-w", "\n%\{http_code\}", "{url}"]
-      stdin: request_body
+    transport rest {
+      method: POST,
+      path: "{url}",
+      tls: InsecureAcceptAnyCert,
+      timeout_seconds: max_seconds
     }
-    exit {
-      0 => Unit
-      nonzero => String "curl POST over a unix socket did not complete"
+    response {
+      2xx => String
+      4xx => String
+      5xx => String
     }
     mock_response {
       0 => { exit_code: 7, success: false, body: "", stderr: "hermetic: no live socket" } "hermetic: a transport that never connects, so a caller answers unreachable rather than fabricating a reply"
@@ -289,45 +264,37 @@ service http.Client {
   operation PostJsonFromFile {
     requires Network
     input { url: NonEmptyStr, request_body_file: NonEmptyStr, max_seconds: NonEmptyStr }
-    output { body: String from "stdout", success: Bool from "exit_success" }
+    output { body: String }
     readonly
-    transport shell {
-      argv: [
-        "curl",
-        "--fail-with-body",
-        "-sS",
-        "--max-time", "{max_seconds}",
-        "-X", "POST",
-        "{url}",
-        "-H", "Content-Type: application/json",
-        "--data", "@{request_body_file}",
-      ]
+    transport rest {
+      method: POST,
+      path: "{url}",
+      tls: InsecureAcceptAnyCert,
+      timeout_seconds: max_seconds,
+      body: { from_file: request_body_file }
     }
-    exit {
-      0 => Unit
-      nonzero => String "curl POST JSON from file failed"
+    response {
+      2xx => String
+      4xx => String
+      5xx => String
     }
   }
 
   operation PostFormFromFile {
     input { url: NonEmptyStr, request_body_file: NonEmptyStr, max_seconds: NonEmptyStr }
-    output { body: String from "stdout", success: Bool from "exit_success" }
+    output { body: String }
     readonly
-    transport shell {
-      argv: [
-        "curl",
-        "--fail-with-body",
-        "-sS",
-        "--max-time", "{max_seconds}",
-        "-X", "POST",
-        "{url}",
-        "-H", "Content-Type: application/x-www-form-urlencoded",
-        "--data", "@{request_body_file}",
-      ]
+    transport rest {
+      method: POST,
+      path: "{url}",
+      tls: InsecureAcceptAnyCert,
+      timeout_seconds: max_seconds,
+      body: { from_file: request_body_file }
     }
-    exit {
-      0 => Unit
-      nonzero => String "curl form POST from file failed"
+    response {
+      2xx => String
+      4xx => String
+      5xx => String
     }
     mock_response {
       0 => { body: "", success: false } "hermetic: no live token endpoint; the code exchange refuses rather than fabricate a response"
@@ -337,35 +304,37 @@ service http.Client {
   operation DownloadToFile {
     requires Network
     input { url: NonEmptyStr, destination: NonEmptyStr }
-    output { success: Bool from "exit_success" }
-    transport shell { argv: ["curl", "-fL", "{url}", "-o", "{destination}"] }
-    exit {
-      0 => Unit
-      nonzero => String "curl download failed"
+    output { success: Bool }
+    transport rest {
+      method: GET,
+      path: "{url}",
+      tls: InsecureAcceptAnyCert
+    }
+    response {
+      2xx => String
+      4xx => String
+      5xx => String
     }
   }
 
   operation GetFollowRedirectsBoundedWithHeaderFile {
     requires Network
     input { url: NonEmptyStr, max_seconds: NonEmptyStr, accept: NonEmptyStr, header_file: NonEmptyStr }
-    output { body: String from "stdout", success: Bool from "exit_success" }
+    output { body: String }
     readonly
-    transport shell {
-      argv: [
-        "curl",
-        "-fsSL",
-        "--max-time", "{max_seconds}",
-        "-H", "{accept}",
-        "-H", "@{header_file}",
-        "{url}",
-      ]
+    transport rest {
+      method: GET,
+      path: "{url}",
+      tls: InsecureAcceptAnyCert,
+      timeout_seconds: max_seconds
     }
-    exit {
-      0 => Unit
-      nonzero => String "http client bounded GET with header file failed"
+    response {
+      2xx => String
+      4xx => String
+      5xx => String
     }
     mock_response {
-      0 => { body: "", success: false } "hermetic: no live registry; observation refuses rather than fabricate a body"
+      0 => { body: "" } "hermetic: no live registry; observation refuses rather than fabricate a body"
     }
   }
 
@@ -373,28 +342,24 @@ service http.Client {
     requires Network
     input { url: NonEmptyStr, connect_time: Second, max_time: Second }
     output {
-      status: String from "stdout"
-      answered: Bool from "exit_success"
-      exit_code: Int from "exit_code"
+      status: String
+      answered: Bool
+      exit_code: Int
     }
     readonly
-    transport shell {
-      argv: [
-        "curl",
-        "-sS",
-        "-o", "/dev/null",
-        "-w", "%\{http_code\}",
-        "--connect-timeout", http_client_max_time_flag(max_time: connect_time),
-        "--max-time", http_client_max_time_flag(max_time: max_time),
-        "{url}",
-      ]
+    transport rest {
+      method: GET,
+      path: "{url}",
+      tls: InsecureAcceptAnyCert,
+      timeout_seconds: http_client_max_time_flag(max_time: max_time)
     }
-    exit {
-      0 => Unit
-      nonzero => Unit
+    response {
+      2xx => String
+      4xx => String
+      5xx => String
     }
     mock_response {
-      0 => { status: "", answered: false, exit_code: 7 } "hermetic: no live endpoint; a probe replay records that nothing answered"
+      0 => { status: "000", answered: false, exit_code: 7 } "hermetic: no live endpoint; a probe replay records that nothing answered"
     }
   }
 }

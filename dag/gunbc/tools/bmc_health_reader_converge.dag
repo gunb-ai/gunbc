@@ -1,6 +1,7 @@
 module gunbc.tools.bmc_health_reader_converge
 
 import extdeps.bmc.http
+import extdeps.transports.rest { RestResult }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
@@ -109,21 +110,26 @@ fn reader_login_exit(attempt: BmcLoginAttempt, rejected_prefix: String) -> Proce
 // Reads run under the administrator netrc, which the caller has already written.
 fn observe_reader_account(host: NonEmptyStr) -> ReaderAccountObservation
 {
-  accounts = redfish.Http.GetAccounts(bmc_host: host, netrc_file: bmc_onboard_netrc_path as NonEmptyStr)
-  if accounts.success == false {
-    return ReaderAccountUnreadable { cause: concat("the accounts collection could not be read: ", accounts.body) as NonEmptyStr }
-  }
-  return match reader_listed_in_accounts(body: accounts.body) {
-    ReaderListingUnreadable { cause: c } => ReaderAccountUnreadable { cause: c }
-    ReaderNotListed => ReaderAccountAbsent
-    ReaderListed => {
-      account = redfish.Http.GetAccount(bmc_host: host, netrc_file: bmc_onboard_netrc_path as NonEmptyStr, account_id: bmc_health_reader_username)
-      if account.success {
-        reader_account_from_json(body: account.body)
+  accounts_result = redfish.Http.GetAccounts(bmc_host: host, netrc_file: bmc_onboard_netrc_path as NonEmptyStr)
+  return match accounts_result {
+    RestAnswered { body: accounts_body } => {
+      if accounts_body == "" {
+        ReaderAccountUnreadable { cause: "the accounts collection returned empty body" as NonEmptyStr }
       } else {
-        ReaderAccountUnreadable { cause: concat("the listed reader account could not be read: ", account.body) as NonEmptyStr }
+        match reader_listed_in_accounts(body: accounts_body) {
+          ReaderListingUnreadable { cause: c } => ReaderAccountUnreadable { cause: c }
+          ReaderNotListed => ReaderAccountAbsent
+          ReaderListed => {
+            account_result = redfish.Http.GetAccount(bmc_host: host, netrc_file: bmc_onboard_netrc_path as NonEmptyStr, account_id: bmc_health_reader_username)
+            return match account_result {
+              RestAnswered { body: account_body } => reader_account_from_json(body: account_body)
+              RestRefusal { cause: account_cause } => ReaderAccountUnreadable { cause: concat("the listed reader account could not be read: ", account_cause) as NonEmptyStr }
+            }
+          }
+        }
       }
     }
+    RestRefusal { cause: accounts_cause } => ReaderAccountUnreadable { cause: concat("the accounts collection could not be read: ", accounts_cause) as NonEmptyStr }
   }
 }
 
@@ -190,8 +196,8 @@ fn bmc_health_reader_create(plan: BmcOnboardingPlan, credential: Secret) -> Proc
   if body_removed == false {
     return exit_failure(reason: concat("reader: the request body holding the reader password could not be removed: ", body_path as String))
   }
-  if created.success == false {
-    return exit_failure(reason: concat("reader: account POST refused: ", created.body))
+  if created is RestRefusal { cause: created_cause } {
+    return exit_failure(reason: concat("reader: account POST refused: ", created_cause))
   }
   match plan_reader_account(observation: observe_reader_account(host: host)) {
     ReaderAccountRefused { cause: c } => return exit_failure(reason: concat("reader: created, but read back as: ", c as String))
