@@ -7610,17 +7610,19 @@ fn namespace_graft_node_is_conj(node: Node) -> Bool {
 // would re-create the one-Named-Conj level the fill misreads.
 data namespace_graft_module_body_identity: Symbol = ^namespace_graft_module_body
 
+fn dag_identity_is_module_surface(id: Symbol) -> Bool {
+  (id == ^dag_surface_module) || (id == namespace_graft_module_body_identity)
+}
+
 // A MODULE SURFACE is identified by what the node IS: parse/emit production identity
 // dag_surface_module, the graft body's producer stamp, or a synthetic Atom whose
 // identity is dag_surface_module. A header child edge is not identity (review 77909).
 fn dag_node_is_module_surface(node: Node) -> Bool {
   match parse_production_emitted_identity_optional(node: node) {
-    Present { value: id } =>
-      (id == ^dag_surface_module) || (id == namespace_graft_module_body_identity)
+    Present { value: id } => dag_identity_is_module_surface(id: id)
     Absent =>
       match node_atom_identity_optional(node: node) {
-        Present { value: id } =>
-          (id == ^dag_surface_module) || (id == namespace_graft_module_body_identity)
+        Present { value: id } => dag_identity_is_module_surface(id: id)
         Absent => false
       }
   }
@@ -7632,11 +7634,7 @@ fn dag_node_is_module_surface(node: Node) -> Bool {
 // member, never widen to the container). Other connectives are not record payloads; Disj
 // arm payloads are Conjs and are judged when those Conjs are visited.
 fn dag_node_is_record_field_carrier(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Conj } => !dag_node_is_module_surface(node: node)
-    TypeNode { connective: _ } => false
-    ComputationNode { behavior: _ } => false
-  }
+  namespace_graft_node_is_conj(node: node) && !dag_node_is_module_surface(node: node)
 }
 
 fn dag_authored_name_is_parse_production_projection(name: Symbol) -> Bool {
