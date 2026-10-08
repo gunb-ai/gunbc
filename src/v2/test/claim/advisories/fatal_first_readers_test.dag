@@ -65,19 +65,21 @@ test fn grammar_coverage_stage_rejected_reports_each_chains_fatal_holds() -> Boo
       == ParseRejected { stage: "parse", reason: ^tokenize_lex_e1_unrecognized_char })
 }
 
-// THE DOOR LEDGER'S HISTOGRAM IS OF FATAL CAUSES. The three refusal chains the long claim
-// v2.test.long.compile_door_ledger's real subjects produce (determinism, error_primitives, bit) are
-// SUPPLIED here, each headed by one shared advisory: the histogram must count their fatals, and every
-// fatal must be owned. A head-grain reader counts the advisory three times and nothing else.
+// THE DOOR LEDGER'S HISTOGRAM IS OF FATAL CAUSES. Supplied chains, each headed by one shared
+// advisory: the histogram must count their fatals, and every fatal must be owned. A head-grain
+// reader counts the advisory three times and nothing else. member_not_a_binder is no longer a
+// door-frontier cause (the unit_modeling/lifecycle_carrier carrier predicate no longer judges
+// module containers as records).
 test fn door_ledger_histogram_counts_each_refusals_fatal_holds() -> Bool {
   let rows = [
     door_refused_row(path: "dag/std/determinism.dag", d: residue_headed_chain(fatal: ^resolve_reason_unbound_symbol)),
-    door_refused_row(path: "dag/std/error_primitives.dag", d: residue_headed_chain(fatal: ^member_not_a_binder)),
-    door_refused_row(path: "dag/std/bit.dag", d: residue_headed_chain(fatal: ^member_not_a_binder))
+    door_refused_row(path: "dag/std/error_primitives.dag", d: residue_headed_chain(fatal: ^tokenize_lex_e1_unrecognized_char)),
+    door_refused_row(path: "dag/std/bit.dag", d: residue_headed_chain(fatal: ^parse_g0_tokens_remain))
   ]
   ledger_refused_count(rows: rows) == 3
     && all_refused_causes_attributed(rows: rows)
-    && ledger_cause_count(rows: rows, reason: ^member_not_a_binder) == 2
+    && ledger_cause_count(rows: rows, reason: ^tokenize_lex_e1_unrecognized_char) == 1
+    && ledger_cause_count(rows: rows, reason: ^parse_g0_tokens_remain) == 1
     && ledger_cause_count(rows: rows, reason: ^resolve_reason_unbound_symbol) == 1
     && ledger_cause_count(rows: rows, reason: ^shared_advisory_head) == 0
 }

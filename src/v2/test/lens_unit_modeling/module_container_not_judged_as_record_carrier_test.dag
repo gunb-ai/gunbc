@@ -1,0 +1,133 @@
+module v2.test.lens_unit_modeling.module_container_not_judged_as_record_carrier
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.compile {
+  CompileLensSubtree,
+  required_lenses_at_grain,
+  run_required_lens_gates_on_subtree
+}
+import v2.compiler.infer { InferredTree }
+import v2.lens.lifecycle_carrier { lifecycle_carrier_gate }
+import v2.lens.unit_modeling { unit_modeling_gate }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Authored,
+  Node,
+  TypeNode,
+}
+import v2.test.lens_common.infer_fixture {
+  claim_inferred_facts,
+  claim_inferred_tree
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node_query { binder_edge }
+import v2.extdeps.languages.dag { dag_node_is_record_field_carrier }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// GREEN: a namespace Conj whose Authored member is a synthetic dag_surface_module — the exact
+// shape that used to refuse member_not_a_binder on the compile door before the carrier
+// predicate was narrowed. Door-grain mandatory_tag controls were blocked because these
+// subtree lenses ran first.
+data module_surface_atom: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^dag_surface_module } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data module_container_root: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge { label: Authored { name: ^child_mod }, target: module_surface_atom }
+  ],
+  occurrence_id: OccurrenceSynthetic
+}
+
+fn module_container_tree() -> InferredTree {
+  claim_inferred_tree(
+    root: module_container_root,
+    facts: claim_inferred_facts(
+      type_symbol: ^mod_container_type_sym,
+      algebra_symbol: ^mod_container_algebra_sym,
+      descent_symbol: ^mod_container_descent_sym
+    )
+  )
+}
+
+test fn module_container_is_not_a_record_field_carrier() -> Bool {
+  !dag_node_is_record_field_carrier(node: module_container_root)
+}
+
+test fn unit_modeling_accepts_a_module_container() -> Bool {
+  match unit_modeling_gate(node: module_container_root) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn lifecycle_carrier_accepts_a_module_container() -> Bool {
+  match lifecycle_carrier_gate(node: module_container_root) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// The door used to refuse this shape with member_not_a_binder at the module-surface child
+// before later lenses (mandatory_tag at root grain among them) ran. After the carrier
+// narrowing, that cause is gone. A later subtree lens may still refuse a different class
+// (fact_density on a bare identity Atom is a separate subject).
+test fn subtree_required_lenses_do_not_refuse_member_not_a_binder_on_a_module_container() -> Bool {
+  match run_required_lens_gates_on_subtree(
+    inferred: module_container_tree(),
+    lenses: required_lenses_at_grain(grain: CompileLensSubtree)
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: r } => r.head.reason != ^member_not_a_binder
+  }
+}
+
+data malformed_record_root: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Authored { name: ^x },
+      target: Node {
+        kind: TypeNode { connective: Atom { identity: ^Text } },
+        children: [],
+        occurrence_id: OccurrenceSynthetic
+      }
+    }
+  ],
+  occurrence_id: OccurrenceSynthetic
+}
+
+// RED: a payload Conj whose Authored member is not a binder is still refused. The carrier
+// narrowing must not swallow this wall.
+test fn a_hand_built_record_field_is_still_member_not_a_binder() -> Bool {
+  match unit_modeling_gate(node: malformed_record_root) {
+    Rejected { diagnostics: r } => r.head.reason == ^member_not_a_binder
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+data record_with_binder: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    binder_edge(
+      name: ^note,
+      type_node: Node {
+        kind: TypeNode { connective: Atom { identity: ^Text } },
+        children: [],
+        occurrence_id: OccurrenceSynthetic
+      }
+    )
+  ],
+  occurrence_id: OccurrenceSynthetic
+}
+
+test fn a_binder_payload_is_still_a_record_field_carrier() -> Bool {
+  dag_node_is_record_field_carrier(node: record_with_binder)
+}

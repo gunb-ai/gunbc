@@ -7610,6 +7610,54 @@ fn namespace_graft_node_is_conj(node: Node) -> Bool {
 // would re-create the one-Named-Conj level the fill misreads.
 data namespace_graft_module_body_identity: Symbol = ^namespace_graft_module_body
 
+// A MODULE SURFACE, as opposed to a record or payload Conj: a dag_surface_module shell, a
+// graft-stamped module body, a header-carrying pre-graft module, or the synthetic Atom the
+// diagnosis names. Record-field lenses (unit_modeling, lifecycle_carrier) must not judge these
+// as carriers of binders; their Authored members are declarations or nested modules.
+fn dag_node_is_module_surface(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      (id == ^dag_surface_module) || (id == namespace_graft_module_body_identity)
+    Absent =>
+      match node_atom_identity_optional(node: node) {
+        Present { value: id } => id == ^dag_surface_module
+        Absent => namespace_graft_has_module_header(root: node)
+      }
+  }
+}
+
+fn dag_authored_member_is_module_surface(e: Edge) -> Bool {
+  match e.label {
+    Authored { name: _ } => dag_node_is_module_surface(node: e.target)
+    StructuralLabel { label: _ } => false
+    Positional => false
+  }
+}
+
+fn dag_authored_members_include_module_surface(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      fold(node.children, init: false, f: fn(acc, e) {
+        acc || dag_authored_member_is_module_surface(e: e)
+      })
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+// THE RECORD-FIELD CARRIER PREDICATE the unit-modeling and lifecycle-carrier lenses share.
+// A payload Conj of binders is a carrier; a module shell, module body, or namespace Conj whose
+// Authored members are modules is not. Other connectives are not record payloads.
+fn dag_node_is_record_field_carrier(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      !dag_node_is_module_surface(node: node)
+        && !dag_authored_members_include_module_surface(node: node)
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
 // The one constructor of the marker node: emitted by namespace_graft_build_body_conj.
 // It is a surface identity atom, not a type denotation, so infer grounds it with the
 // grammar authority's surface-production type (dag_grammar_production_member_declared_type)
