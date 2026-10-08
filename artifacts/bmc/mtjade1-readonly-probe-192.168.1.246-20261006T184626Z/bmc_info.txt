@@ -1,0 +1,23 @@
+Device ID                 : 32
+Device Revision           : 1
+Firmware Revision         : 2.11
+IPMI Version              : 2.0
+Manufacturer ID           : 52538
+Manufacturer Name         : Ampere Computing
+Product ID                : 130 (0x0082)
+Product Name              : Unknown (0x82)
+Device Available          : yes
+Provides Device SDRs      : yes
+Additional Device Support :
+    Sensor Device
+    SDR Repository Device
+    SEL Device
+    FRU Inventory Device
+    IPMB Event Receiver
+    IPMB Event Generator
+    Chassis Device
+Aux Firmware Rev Info     : 
+    0x40
+    0x96
+    0x01
+    0x00

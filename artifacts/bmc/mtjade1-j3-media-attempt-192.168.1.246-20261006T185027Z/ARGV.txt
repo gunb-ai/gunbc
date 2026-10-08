@@ -1,0 +1,15 @@
+subject: mtjade1 BMC 192.168.1.246
+operation: J3 virtual-media attach attempt (not verified)
+credential: factory admin, password from file outside repo
+--- argv classes (redacted):
+POST https://192.168.1.246/api/session (password@file)
+GET https://192.168.1.246/api/settings/media/general|remote/images|remote/configurations
+PUT https://192.168.1.246/api/settings/media/general  (NFS bodies; password never in body)
+POST https://192.168.1.246/redfish/v1/Managers/Self/VirtualMedia/CD1/Actions/VirtualMedia.InsertMedia
+POST .../Actions/Oem/AMIVirtualMedia.EnableRMedia  RMediaState Enable|Disable
+DELETE https://192.168.1.246/api/session
+notes:
+- before_general.json is factory-empty remote media (support 0, empty path).
+- put_general.body is the one PUT that applied: NFS 192.168.1.188:/srv/bmc (HTTP 200). Later PUTs did not persist a different path.
+- insert_iso_file.body is InsertMedia NFS to srv1 ISO: HTTP 202 then task Exception code 408.
+- Attach was not verified. RMedia left Disabled. Host power was not changed. No MegaRacVirtualMediaAttach receipt should be minted from this directory.

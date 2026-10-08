@@ -60,25 +60,19 @@ fn witness_artifact(path: NonEmptyStr) -> RoadmapSiteSurfaceArtifact {
 // identity/revision/surface algebra over a supplied bundle; live inhabitance stays on
 // gunbc.roadmap_site_surface_witness.
 fn witness_bundle() -> RoadmapSiteSurfaceBundle {
-  let roadmap = witness_artifact(path: "/ROADMAP.md" as NonEmptyStr)
   let dispatch = witness_artifact(path: "/target/roadmap-dispatch.json" as NonEmptyStr)
   let daily = witness_artifact(path: "/" as NonEmptyStr)
-  let full = witness_artifact(path: "/roadmap" as NonEmptyStr)
   let dispatch_js = witness_artifact(path: "/dispatch.js" as NonEmptyStr)
   RoadmapSiteSurfaceBundle {
     subject_identity: witness_digest(),
     producer_identity: witness_digest(),
     bundle_identity: witness_digest(),
-    roadmap_md: roadmap,
     dispatch_json: dispatch,
     daily_html: daily,
-    full_html: full,
     dispatch_js: dispatch_js,
     healthz_body: healthz_body_from_surface_artifacts(
-      roadmap: roadmap,
       dispatch: dispatch,
       daily: daily,
-      full: full,
       dispatch_js: dispatch_js,
     ),
   }
@@ -97,10 +91,8 @@ fn healthz_body_at_revision_and_surface(
 ) -> String {
   let bundle = witness_bundle()
   healthz_body_with_release_identity(
-    roadmap: bundle.roadmap_md,
     dispatch: bundle.dispatch_json,
     daily: bundle.daily_html,
-    full: bundle.full_html,
     dispatch_js: bundle.dispatch_js,
     release_revision: revision,
     surface_bundle_identity: surface_bundle_identity,
@@ -209,7 +201,7 @@ test fn witness_correct_artifacts_with_wrong_bundle_identity_refuses() -> Bool {
 
 test fn witness_correct_identity_with_one_stale_artifact_refuses() -> Bool {
   let body = join([
-    "{\"status\": \"ok\", \"service\": \"gunbc-roadmap\", \"artifacts\": {\"/ROADMAP.md\": \"0000000000000000\"}, ",
+    "{\"status\": \"ok\", \"service\": \"gunbc-roadmap\", \"artifacts\": {\"/target/roadmap-dispatch.json\": \"0000000000000000\"}, ",
     "\"revision\": \"", deploy_witness_release_revision as String, "\", ",
     "\"surface_bundle_identity\": \"", witness_bundle().bundle_identity.digest as String, "\"}",
   ], "")
