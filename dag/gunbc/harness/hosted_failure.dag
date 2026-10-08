@@ -1,0 +1,77 @@
+module gunbc.harness.hosted_failure
+
+import std.types { String, HttpStatus }
+import extdeps.ietf.http_semantics {
+  HttpStatusClass, ClientError, ServerError, http_status_class_of, HttpRetryAfter, http_retry_after_wire,
+}
+import extdeps.http.header_dump { HttpHeaderDump, http_header_dump_status, http_header_dump_retry_after }
+import extdeps.llm.openai_compat_sse {
+  openai_compat_sse_read, SseNotAStream, SseCompleted, SseErrorChunk, SseSevered,
+}
+
+// HOSTED OPENAI-COMPATIBLE CHAT-COMPLETIONS FAILURES, classified once. Every hosted provider row
+// posts that one shape; this module names the typed refusals the transport can return. It never
+// retries: a caller that waits (batch-workload policy) owns when it asks again.
+//
+// THE CLASSES (operator, free-provider fabric): 429 with Retry-After, 5xx, an in-stream error
+// chunk, a severed stream, other 4xx. A successful 2xx completion is not a failure.
+
+type HostedHttpFailure
+  = HostedRateLimited { status: HttpStatus, retry_after: HttpRetryAfter, body_note: String }
+  | HostedServerError { status: HttpStatus, body_note: String }
+  | HostedClientError { status: HttpStatus, body_note: String }
+  | HostedInStreamError { payload: String }
+  | HostedSeveredStream { detail: String }
+
+fn hosted_http_failure_label(f: HostedHttpFailure) -> String {
+  match f {
+    HostedRateLimited { status: _, retry_after: _, body_note: _ } => "hosted-rate-limited"
+    HostedServerError { status: _, body_note: _ } => "hosted-server-error"
+    HostedClientError { status: _, body_note: _ } => "hosted-client-error"
+    HostedInStreamError { payload: _ } => "hosted-stream-error"
+    HostedSeveredStream { detail: _ } => "hosted-severed-stream"
+  }
+}
+
+fn hosted_http_failure_wire(f: HostedHttpFailure) -> String {
+  match f {
+    HostedRateLimited { status: s, retry_after: r, body_note: n } =>
+      join(["hosted upstream answered ", to_string(s), " rate limited; ", http_retry_after_wire(r: r), "; ", n, "; the request was NOT retried"], "")
+    HostedServerError { status: s, body_note: n } =>
+      join(["hosted upstream answered ", to_string(s), " (5xx); ", n, "; the request was NOT retried"], "")
+    HostedClientError { status: s, body_note: n } =>
+      join(["hosted upstream answered ", to_string(s), " (4xx); ", n, "; the request was NOT retried"], "")
+    HostedInStreamError { payload: p } =>
+      join(["hosted upstream sent an in-stream error chunk; ", p, "; the request was NOT retried"], "")
+    HostedSeveredStream { detail: d } =>
+      join(["hosted upstream stream severed; ", d, "; the request was NOT retried"], "")
+  }
+}
+
+fn hosted_classify_http_status(status: HttpStatus, retry_after: HttpRetryAfter, body_note: String) -> HostedHttpFailure? {
+  match http_status_class_of(status: status) {
+    ServerError => Present { value: HostedServerError { status: status, body_note: body_note } }
+    ClientError =>
+      if status == 429 {
+        Present { value: HostedRateLimited { status: status, retry_after: retry_after, body_note: body_note } }
+      } else {
+        Present { value: HostedClientError { status: status, body_note: body_note } }
+      }
+    Informational => none
+    Successful => none
+    Redirection => none
+  }
+}
+
+fn hosted_classify_round(body: String, dump: HttpHeaderDump) -> HostedHttpFailure? {
+  match openai_compat_sse_read(body: body) {
+    SseErrorChunk { payload: p } => Present { value: HostedInStreamError { payload: p } }
+    SseSevered { detail: d } => Present { value: HostedSeveredStream { detail: d } }
+    SseCompleted => none
+    SseNotAStream =>
+      match http_header_dump_status(dump: dump) {
+        Absent => none
+        Present { value: s } => hosted_classify_http_status(status: s, retry_after: http_header_dump_retry_after(dump: dump), body_note: body)
+      }
+  }
+}

@@ -19,7 +19,11 @@ import gunbc.harness.harness_hosted_route {
   HostedRoundLease,
 }
 import extdeps.openrouter.openrouter {
-  OpenRouterRateLimitRefusal, OpenRouterHeaderDump, HeaderDumpRead, HeaderDumpUnread, openrouter_decode_rate_limited, openrouter_rate_limit_wire,
+  OpenRouterRateLimitRefusal, openrouter_decode_rate_limited, openrouter_rate_limit_wire,
+}
+import extdeps.http.header_dump { HttpHeaderDump, HeaderDumpRead, HeaderDumpUnread }
+import gunbc.harness.hosted_failure {
+  HostedHttpFailure, hosted_classify_round, hosted_http_failure_label, hosted_http_failure_wire,
 }
 import gunbc.harness.harness_seat {
   HostedInflightRead, HostedInflightUnread, HostedInflightHeld, HostedInflightRefused, harness_hosted_inflight_read,
@@ -559,6 +563,7 @@ type HarnessTurnOutcome
   | TurnHostedQuotaFull { wire: String, steps_taken: Int }
   | TurnHostedQuotaUnleasable { detail: String, steps_taken: Int }
   | TurnHostedRateLimited { refusal: OpenRouterRateLimitRefusal, steps_taken: Int }
+  | TurnHostedHttpFailed { failure: HostedHttpFailure, steps_taken: Int }
 
 fn harness_outcome_label(outcome: HarnessTurnOutcome) -> String {
   match outcome {
@@ -580,6 +585,7 @@ fn harness_outcome_label(outcome: HarnessTurnOutcome) -> String {
     TurnHostedQuotaFull { wire: _, steps_taken: _ } => "hosted-quota-full"
     TurnHostedQuotaUnleasable { detail: _, steps_taken: _ } => "hosted-quota-unleasable"
     TurnHostedRateLimited { refusal: _, steps_taken: _ } => "hosted-rate-limited"
+    TurnHostedHttpFailed { failure: f, steps_taken: _ } => hosted_http_failure_label(f: f)
   }
 }
 
@@ -649,6 +655,11 @@ fn harness_outcome_detail(outcome: HarnessTurnOutcome) -> String {
     TurnHostedRateLimited { refusal: r, steps_taken: k } =>
       join([
         "after ", to_string(value: k), " tool rounds ", openrouter_rate_limit_wire(r: r),
+        "; the turn stopped rather than retrying, and a caller that waits owns when it asks again",
+      ], "")
+    TurnHostedHttpFailed { failure: f, steps_taken: k } =>
+      join([
+        "after ", to_string(value: k), " tool rounds ", hosted_http_failure_wire(f: f),
         "; the turn stopped rather than retrying, and a caller that waits owns when it asks again",
       ], "")
     TurnTransportRefused { detail: d } => d
@@ -1082,6 +1093,7 @@ type HarnessPostedRound {
   wire_log_detail: String?
   inflight_release_detail: String?
   rate_limited: OpenRouterRateLimitRefusal?
+  hosted_failure: HostedHttpFailure?
 }
 
 // AN IN-FLIGHT SEAT THAT DID NOT RELEASE IS NOT A REFUSAL OF THE ROUND -- the request went out and its
@@ -1128,6 +1140,7 @@ fn harness_post_round(
         wire_log_detail: none,
         inflight_release_detail: none,
         rate_limited: none,
+        hosted_failure: none,
       } }
     ReasoningKwargsAdmitted { kwargs } =>
       match harness_prepare_round(config: config, messages: messages, reasoning_kwargs: kwargs, round: round) {
@@ -1193,7 +1206,7 @@ fn harness_hosted_round_charged_post(config: HarnessTurnConfig, round: Int, head
           let hold = HostedInflightHeld { reference: r, store: st }
           let posted = harness_send_round(config: config, round: round, header_file: Present { value: header_file }, wire_request_detail: wire_request_detail)
           let released = harness_hosted_inflight_release(quota: quota, hold: hold, reason: "the transport returned" as NonEmptyStr)
-          RoundPosted { posted: HarnessPostedRound { read: posted.read, wire_log_detail: posted.wire_log_detail, inflight_release_detail: released, rate_limited: posted.rate_limited } }
+          RoundPosted { posted: HarnessPostedRound { read: posted.read, wire_log_detail: posted.wire_log_detail, inflight_release_detail: released, rate_limited: posted.rate_limited, hosted_failure: posted.hosted_failure } }
         }
       }
   }
@@ -1222,6 +1235,7 @@ fn harness_prepare_round(
       wire_log_detail: none,
       inflight_release_detail: none,
       rate_limited: none,
+      hosted_failure: none,
     } }
   } else {
     let wire_request_path = harness_wire_log_path(config: config, round: round, kind: ".request.json")
@@ -1254,6 +1268,7 @@ fn harness_send_round(
     } else {
       Present { value: join(wire_details, "; ") }
     }
+    let hosted_fail = harness_hosted_failure(config: config, posted: posted)
     if !posted.success {
       HarnessPostedRound {
         read: HarnessResponseUnreadable {
@@ -1264,6 +1279,7 @@ fn harness_send_round(
         wire_log_detail: wire_log_detail,
         inflight_release_detail: none,
         rate_limited: harness_hosted_rate_limited(config: config, posted: posted),
+        hosted_failure: hosted_fail,
       }
     } else if !kept.success {
       HarnessPostedRound {
@@ -1273,13 +1289,26 @@ fn harness_send_round(
         wire_log_detail: wire_log_detail,
         inflight_release_detail: none,
         rate_limited: none,
+        hosted_failure: hosted_fail,
       }
     } else {
-      HarnessPostedRound {
-        read: harness_decode_for_shape(unit: config.serving_unit, shape: config.wire_shape, body: posted.body),
-        wire_log_detail: wire_log_detail,
-        inflight_release_detail: none,
-        rate_limited: none,
+      match hosted_fail {
+        Present { value: f } =>
+          HarnessPostedRound {
+            read: HarnessResponseUnreadable { cause: hosted_http_failure_wire(f: f) },
+            wire_log_detail: wire_log_detail,
+            inflight_release_detail: none,
+            rate_limited: none,
+            hosted_failure: Present { value: f },
+          }
+        Absent =>
+          HarnessPostedRound {
+            read: harness_decode_for_shape(unit: config.serving_unit, shape: config.wire_shape, body: posted.body),
+            wire_log_detail: wire_log_detail,
+            inflight_release_detail: none,
+            rate_limited: none,
+            hosted_failure: none,
+          }
       }
     }
 }
@@ -1289,22 +1318,31 @@ fn harness_send_round(
 type HarnessPostOutcome {
   body: String
   success: Bool
-  headers: OpenRouterHeaderDump?
+  headers: HttpHeaderDump?
 }
 
 // A 429 FROM A HOSTED UPSTREAM IS A TYPED REFUSAL WITH THE UPSTREAM'S OWN RETRY HINTS, decoded from the
 // error body and the response header dump; it is never retried here. A fleet engine has no such refusal.
+fn harness_hosted_header_dump(posted: HarnessPostOutcome) -> HttpHeaderDump {
+  match posted.headers {
+    Present { value: d } => d
+    Absent => HeaderDumpUnread { cause: "no response header dump was taken for this request" }
+  }
+}
+
 fn harness_hosted_rate_limited(config: HarnessTurnConfig, posted: HarnessPostOutcome) -> OpenRouterRateLimitRefusal? {
   match config.backend_access {
     BackendAdmittedBySeat => none
     BackendAdmittedByHostedQuota { header_file: _, quota: _ } =>
-      openrouter_decode_rate_limited(
-        body: posted.body,
-        header_dump: match posted.headers {
-          Present { value: d } => d
-          Absent => HeaderDumpUnread { cause: "no response header dump was taken for this request" }
-        },
-      )
+      openrouter_decode_rate_limited(body: posted.body, header_dump: harness_hosted_header_dump(posted: posted))
+  }
+}
+
+fn harness_hosted_failure(config: HarnessTurnConfig, posted: HarnessPostOutcome) -> HostedHttpFailure? {
+  match config.backend_access {
+    BackendAdmittedBySeat => none
+    BackendAdmittedByHostedQuota { header_file: _, quota: _ } =>
+      hosted_classify_round(body: posted.body, dump: harness_hosted_header_dump(posted: posted))
   }
 }
 
@@ -1534,13 +1572,23 @@ fn harness_turn_after_post(
               HarnessEventsWritten => TurnHostedRateLimited { refusal: limited, steps_taken: steps_taken }
             }
           }
-          Absent => {
-            let failed = concat(events_after_wire, [harness_event_turn_failed(message: c)])
-            match harness_write_events(config: config, events: failed) {
-              HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
-              HarnessEventsWritten => TurnResponseUnreadable { cause: c }
+          Absent =>
+            match posted_round.hosted_failure {
+              Present { value: f } => {
+                let failed = concat(events_after_wire, [harness_event_turn_failed(message: hosted_http_failure_wire(f: f))])
+                match harness_write_events(config: config, events: failed) {
+                  HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+                  HarnessEventsWritten => TurnHostedHttpFailed { failure: f, steps_taken: steps_taken }
+                }
+              }
+              Absent => {
+                let failed = concat(events_after_wire, [harness_event_turn_failed(message: c)])
+                match harness_write_events(config: config, events: failed) {
+                  HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+                  HarnessEventsWritten => TurnResponseUnreadable { cause: c }
+                }
+              }
             }
-          }
         }
       HarnessResponseParsed { blocks: raw_blocks, stop_reason, usage: usage_read } =>
         match usage_read {

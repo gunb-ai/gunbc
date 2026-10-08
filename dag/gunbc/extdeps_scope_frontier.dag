@@ -571,6 +571,8 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/deepseek/deepseek_v4_1_flash.dag",
   "dag/extdeps/nvidia/api_trial_terms.dag",
   "dag/extdeps/nvidia/nemotron_3_ultra.dag",
+  "dag/extdeps/http/header_dump.dag",
+  "dag/extdeps/llm/openai_compat_sse.dag",
   "dag/extdeps/openrouter/openrouter.dag",
   "dag/extdeps/openrouter/nvidia_nemotron_3_ultra_free.dag",
   "dag/extdeps/zhipu/glm_5_3.dag",

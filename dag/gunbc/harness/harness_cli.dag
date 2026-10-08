@@ -14,7 +14,7 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.harness.harness_tool { HarnessToolEnvironment }
 import gunbc.harness.harness_turn {
   HarnessTurnConfig, HarnessTurnOutcome, TurnProviderStopped, TurnCompletedByArtifact, TurnAlignmentCheckpointDue, harness_tool_contract_wire,
-  CompletesOnProviderStop, CompletesWhenEntryPresent, harness_run_turn, harness_outcome_label, TurnHostedQuotaFull, TurnHostedQuotaUnleasable, TurnHostedRateLimited,
+  CompletesOnProviderStop, CompletesWhenEntryPresent, harness_run_turn, harness_outcome_label, TurnHostedQuotaFull, TurnHostedQuotaUnleasable, TurnHostedRateLimited, TurnHostedHttpFailed,
   harness_outcome_detail, harness_event_placement_waiting,
 }
 import gunbc.harness.harness_guidance {
@@ -299,6 +299,7 @@ fn harness_turn_exit(outcome: HarnessTurnOutcome) -> ProcessExit {
     TurnHostedQuotaFull { wire: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnHostedQuotaUnleasable { detail: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnHostedRateLimited { refusal: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnHostedHttpFailed { failure: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnAlignmentCheckpointDue { steps_taken: _ } =>
       ExitFailure { code: 3, reason: harness_outcome_label(outcome: outcome) }
   }

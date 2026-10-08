@@ -13,8 +13,14 @@ import extdeps.openrouter.openrouter {
   openrouter_credits_from_daily_limit, CreditsTierObserved, CreditsTierUnrecognized,
   CreditsPurchasedAtLeastTen, CreditsPurchasedBelowTen, openrouter_free_models_per_day, openrouter_free_models_per_minute,
   EffortHigh, EffortMedium,
-  openrouter_decode_rate_limited, OpenRouterRateLimitRefusal, RetryAfterSeconds, RetryAfterUnparsed, RetryAfterAbsent, RetryAfterUnread,
-  openrouter_rate_limit_wire, openrouter_rate_limit_hints, HeaderDumpRead, HeaderDumpUnread,
+  openrouter_decode_rate_limited, OpenRouterRateLimitRefusal,
+  openrouter_rate_limit_wire, openrouter_rate_limit_hints,
+}
+import extdeps.ietf.http_semantics { HttpRetryAfter, RetryAfterSeconds, RetryAfterUnparsed, RetryAfterAbsent, RetryAfterUnread }
+import extdeps.http.header_dump { HeaderDumpRead, HeaderDumpUnread }
+import gunbc.harness.hosted_failure {
+  hosted_classify_round, hosted_http_failure_label, hosted_http_failure_wire,
+  HostedRateLimited, HostedServerError, HostedClientError, HostedInStreamError, HostedSeveredStream,
 }
 import gunbc.harness.harness_reasoning_wire {
   NemotronUltraFreeOnOpenRouter, ReasoningOff, ReasoningStandard, ReasoningMaximum,
@@ -47,7 +53,7 @@ import gunbc.fabric_quota { QuotaLease, QuotaLeased, QuotaFull, QuotaLeaseRefuse
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
 import product.capacity.event_chain { PartitionId }
 import gunbc.fabric_storage_client { FabricStorageServed }
-import gunbc.harness.harness_turn { TurnHostedQuotaFull, TurnHostedRateLimited, harness_outcome_label, harness_outcome_detail }
+import gunbc.harness.harness_turn { TurnHostedQuotaFull, TurnHostedRateLimited, TurnHostedHttpFailed, harness_outcome_label, harness_outcome_detail }
 import gunbc.harness.harness_cli { harness_turn_exit, harness_default_max_token_count, harness_request_deadline }
 import std.process { ExitSuccess, ExitFailure }
 import std.measure { token_count }
@@ -582,14 +588,14 @@ test fn an_unread_header_dump_is_stated_unknown_not_reported_as_no_retry_after()
 
 // RED: delay-seconds is 1*DIGIT, and the integer parser would accept a sign, so a signed, fractional or
 // unit-suffixed value is carried as text and never read as a number of seconds.
-fn w_retry_after_of(value: String) -> OpenRouterRetryAfter? {
+fn w_retry_after_of(value: String) -> HttpRetryAfter? {
   match openrouter_decode_rate_limited(body: w_429_body, header_dump: HeaderDumpRead { text: join(["HTTP/2 429\r\nretry-after: ", value, "\r\n\r\n"], "") }) {
     Present { value: r } => Present { value: r.hints.retry_after }
     Absent => none
   }
 }
 
-fn w_is_unparsed(r: OpenRouterRetryAfter?) -> Bool {
+fn w_is_unparsed(r: HttpRetryAfter?) -> Bool {
   match r {
     Present { value: RetryAfterUnparsed { text: _ } } => true
     Present { value: RetryAfterSeconds { seconds: _ } } => false
@@ -699,5 +705,54 @@ test fn settling_a_refused_lease_records_nothing() -> Bool {
   match fabric_quota_settle_at(lease: QuotaLeaseRefused { detail: "no dashboard instance is declared for host x" }, actual: 1, now: w_day_start + 59) {
     QuotaSettleRefused { detail: d } => d.contains("nothing to settle")
     QuotaSettled { partition: _, actual: _ } => false
+  }
+}
+
+// TYPED HOSTED FAILURES LIVE ONCE (gunbc.harness.hosted_failure) and are never retried. OpenRouter's
+// JSON 429 remains its own refusal; HTTP status, SSE error chunks and a severed stream classify here
+// so a second provider does not fork the decoder.
+test fn a_429_status_classifies_as_rate_limited_with_retry_after() -> Bool {
+  match hosted_classify_round(body: "{}", dump: HeaderDumpRead { text: "HTTP/2 429\r\nretry-after: 8\r\n\r\n" }) {
+    Present { value: HostedRateLimited { status: s, retry_after: RetryAfterSeconds { seconds: n }, body_note: _ } } =>
+      s == 429 && n == 8 && hosted_http_failure_label(f: HostedRateLimited { status: s, retry_after: RetryAfterSeconds { seconds: n }, body_note: "{}" }) == "hosted-rate-limited"
+    Present { value: _ } => false
+    Absent => false
+  }
+}
+
+test fn a_5xx_classifies_as_server_error_and_is_not_retried() -> Bool {
+  match hosted_classify_round(body: "upstream down", dump: HeaderDumpRead { text: "HTTP/1.1 503 Service Unavailable\r\n\r\n" }) {
+    Present { value: f } => {
+      let o = TurnHostedHttpFailed { failure: f, steps_taken: 1 }
+      (match f { HostedServerError { status: s, body_note: _ } => s == 503  HostedRateLimited { status: _, retry_after: _, body_note: _ } => false  HostedClientError { status: _, body_note: _ } => false  HostedInStreamError { payload: _ } => false  HostedSeveredStream { detail: _ } => false })
+        && hosted_http_failure_wire(f: f).contains("NOT retried")
+        && harness_outcome_label(outcome: o) == "hosted-server-error"
+        && harness_outcome_detail(outcome: o).contains("rather than retrying")
+    }
+    Absent => false
+  }
+}
+
+test fn other_4xx_classifies_as_client_error_not_rate_limited() -> Bool {
+  match hosted_classify_round(body: "{}", dump: HeaderDumpRead { text: "HTTP/2 401\r\n\r\n" }) {
+    Present { value: HostedClientError { status: s, body_note: _ } } => s == 401
+    Present { value: _ } => false
+    Absent => false
+  }
+}
+
+test fn an_in_stream_error_chunk_classifies_even_when_the_dump_says_200() -> Bool {
+  match hosted_classify_round(body: "data: {\"error\":{\"message\":\"provider exploded\"}}\n", dump: HeaderDumpRead { text: "HTTP/2 200\r\n\r\n" }) {
+    Present { value: HostedInStreamError { payload: p } } => p.contains("provider exploded")
+    Present { value: _ } => false
+    Absent => false
+  }
+}
+
+test fn a_severed_stream_is_typed_and_never_guessed_complete() -> Bool {
+  match hosted_classify_round(body: "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n", dump: HeaderDumpRead { text: "HTTP/2 200\r\n\r\n" }) {
+    Present { value: HostedSeveredStream { detail: d } } => d.contains("[DONE]")
+    Present { value: _ } => false
+    Absent => false
   }
 }

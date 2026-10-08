@@ -71,6 +71,11 @@ import gunbc.harness.harness_reasoning_wire {
 // the reasoning level a turn on the route runs at is SELECTED, not written down; the credential is
 // materialized and its liveness read before any turn spends it; and each request leases both of the
 // upstream's pools before it goes out and settles them after.
+//
+// THE WIRE SHAPE IS ONE: OpenAI-compatible chat completions. A hosted unit is a ROW joining that shape
+// to one independently governed upstream (DESIGN section 3). Failure classification (429+Retry-After,
+// 5xx, in-stream error chunk, severed stream, other 4xx) lives in gunbc.harness.hosted_failure and
+// is never retried here.
 
 // ── THE ROUTE, JOINED FROM ITS AUTHORITIES ────────────────────────────────────────────────────
 
