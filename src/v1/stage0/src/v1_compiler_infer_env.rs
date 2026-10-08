@@ -1020,6 +1020,12 @@ struct ChainBindingWalk {
 struct PeerImportForkLedger {
     first: Rc<HashMap<String, Rc<TypeBinding>>>,
     conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
+    memo: Rc<HashMap<String, Rc<HashMap<String, Rc<TypeBinding>>>>>,
+}
+
+struct ChainIndexMemo {
+    acc: Rc<HashMap<String, Rc<TypeBinding>>>,
+    memo: Rc<HashMap<String, Rc<HashMap<String, Rc<TypeBinding>>>>>,
 }
 
 pub fn collect_chain_bare_names(
@@ -1076,6 +1082,53 @@ pub fn str_bindings_from_bindings(
 
 pub fn lookup_binding_on_chain(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
     lookup_binding_on_chain_seen(env, name, v1_rt::rc_empty_map()).binding
+}
+
+fn last_wins_merge_bindings(
+    base: Rc<HashMap<String, Rc<TypeBinding>>>,
+    overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
+) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    Rc::new(v1_rt::map_keys(&*overlay)).iter().cloned().fold(
+        base,
+        |acc, name| match v1_rt::map_get(&overlay, name.clone()) {
+            Some(binding) => v1_rt::rc_map_insert(acc, name, binding.clone()),
+            std::option::Option::None => acc,
+        },
+    )
+}
+
+fn collect_chain_lookup_index_seen(
+    env: Rc<TypeEnv>,
+    memo: Rc<HashMap<String, Rc<HashMap<String, Rc<TypeBinding>>>>>,
+) -> ChainIndexMemo {
+    match v1_rt::map_get(&memo, env.module_path.clone()) {
+        Some(acc) => ChainIndexMemo { acc, memo },
+        std::option::Option::None => {
+            let parent_st = env.parents.iter().cloned().fold(
+                ChainIndexMemo {
+                    acc: v1_rt::rc_empty_map(),
+                    memo,
+                },
+                |st, parent| {
+                    let nxt = collect_chain_lookup_index_seen(parent, st.memo);
+                    ChainIndexMemo {
+                        acc: last_wins_merge_bindings(st.acc, nxt.acc),
+                        memo: nxt.memo,
+                    }
+                },
+            );
+            let one_hop = env.parents.iter().cloned().fold(
+                v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+                |acc, parent| last_wins_merge_bindings(acc, parent.str_bindings.clone()),
+            );
+            let with_one_hop = last_wins_merge_bindings(parent_st.acc, one_hop);
+            let with_local = last_wins_merge_bindings(with_one_hop, env.str_bindings.clone());
+            ChainIndexMemo {
+                acc: with_local.clone(),
+                memo: v1_rt::rc_map_insert(parent_st.memo, env.module_path.clone(), with_local),
+            }
+        }
+    }
 }
 
 fn last_wins_parent_locals(parents: &Rc<Vec<Rc<TypeEnv>>>, name: &str) -> Option<Rc<TypeBinding>> {
@@ -1161,16 +1214,17 @@ pub fn ledger_peer_import_binding_forks(
             PeerImportForkLedger {
                 first: v1_rt::rc_empty_map(),
                 conflicts,
+                memo: v1_rt::rc_empty_map(),
             },
             |st, env| {
-                Rc::new(v1_rt::map_keys(&*collect_chain_bare_names(
-                    env.clone(),
-                    v1_rt::rc_empty_map(),
-                )))
-                .iter()
-                .cloned()
-                .fold(st, |st2, name| {
-                    match lookup_binding_on_chain(env.clone(), name.clone()) {
+                let idx = collect_chain_lookup_index_seen(env.clone(), st.memo);
+                Rc::new(v1_rt::map_keys(&*idx.acc)).iter().cloned().fold(
+                    PeerImportForkLedger {
+                        first: st.first,
+                        conflicts: st.conflicts,
+                        memo: idx.memo,
+                    },
+                    |st2, name| match v1_rt::map_get(&idx.acc, name.clone()) {
                         std::option::Option::None => st2,
                         Some(incoming) => match v1_rt::map_get(&st2.first, name.clone()) {
                             std::option::Option::None => PeerImportForkLedger {
@@ -1180,6 +1234,7 @@ pub fn ledger_peer_import_binding_forks(
                                     incoming.clone(),
                                 ),
                                 conflicts: st2.conflicts,
+                                memo: st2.memo,
                             },
                             Some(existing) => {
                                 if binding_same_authority(existing.clone(), incoming.clone()) {
@@ -1204,12 +1259,13 @@ pub fn ledger_peer_import_binding_forks(
                                             incoming.clone(),
                                         ),
                                         conflicts: Rc::new(next),
+                                        memo: st2.memo,
                                     }
                                 }
                             }
                         },
-                    }
-                })
+                    },
+                )
             },
         )
         .conflicts

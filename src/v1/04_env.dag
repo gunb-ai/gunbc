@@ -639,6 +639,12 @@ type ChainBindingWalk {
 type PeerImportForkLedger {
   first: Map<String, TypeBinding>
   conflicts: List<TypeEnvCacheMergeConflict>
+  memo: Map<String, Map<String, TypeBinding>>
+}
+
+type ChainIndexMemo {
+  acc: Map<String, TypeBinding>
+  memo: Map<String, Map<String, TypeBinding>>
 }
 
 fn collect_chain_bare_names(env: TypeEnv, acc: Map<String, Bool>) -> Map<String, Bool> {
@@ -679,10 +685,42 @@ fn str_bindings_from_bindings(bindings: Map<Int, TypeBinding>) -> Map<String, Ty
 // overlay walks the parent chain. Direct-selected names are each import parent's own
 // str_bindings (interface locals), last-wins, before any transitive walk — so a later
 // import's leaked homonym cannot beat an earlier import's own export (#6663 x #6686).
-// Then last-wins on the remaining chain (imports then kernel). Serves the floor by not
-// retaining a per-module flatten of shared ancestry.
+// Then last-wins on the remaining chain (imports then kernel).
+// LOOKUP VS RETAINED INDEX (DESIGN 6b): the shared-state LCA of bare-name resolutions on
+// one module is that module's TypeEnv. Materializing ancestry_str_bindings there is the
+// Strict-prep pin (one unshared overlay per typed module on prepared.graph). The parent
+// Rc chain already holds every binding; a miss re-reads it. A per-closure index that
+// outlives typecheck is that overlay again. Walk cost is O(direct parents) on a one-hop
+// hit and O(unique modules on the chain) on a miss, once per lookup. The fork ledger
+// builds a one-pass chain index and drops it with the union.
 fn lookup_binding_on_chain(env: TypeEnv, name: String) -> TypeBinding? {
   lookup_binding_on_chain_seen(env: env, name: name, seen: empty_map()).binding
+}
+
+fn last_wins_merge_bindings(base: Map<String, TypeBinding>, overlay: Map<String, TypeBinding>) -> Map<String, TypeBinding> {
+  fold(overlay |> map_keys, init: base, f: (acc, name) =>
+    match map_get(overlay, name) {
+      Present { value: binding } => map_insert(acc, name, binding)
+      Absent => acc
+    }
+  )
+}
+
+fn collect_chain_lookup_index_seen(env: TypeEnv, memo: Map<String, Map<String, TypeBinding>>) -> ChainIndexMemo {
+  match map_get(memo, env.module_path) {
+    Present { value: acc } => ChainIndexMemo { acc: acc, memo: memo }
+    Absent =>
+      let parent_st = fold(env.parents, init: ChainIndexMemo { acc: empty_map(), memo: memo }, f: (st, parent) =>
+        let nxt = collect_chain_lookup_index_seen(env: parent, memo: st.memo)
+        ChainIndexMemo { acc: last_wins_merge_bindings(base: st.acc, overlay: nxt.acc), memo: nxt.memo }
+      )
+      let one_hop = fold(env.parents, init: empty_map(), f: (acc, parent) =>
+        last_wins_merge_bindings(base: acc, overlay: parent.str_bindings)
+      )
+      let with_one_hop = last_wins_merge_bindings(base: parent_st.acc, overlay: one_hop)
+      let with_local = last_wins_merge_bindings(base: with_one_hop, overlay: env.str_bindings)
+      ChainIndexMemo { acc: with_local, memo: map_insert(parent_st.memo, env.module_path, with_local) }
+  }
 }
 
 fn last_wins_parent_locals(parents: List<TypeEnv>, name: String) -> TypeBinding? {
@@ -725,16 +763,17 @@ fn lookup_binding_on_chain_seen(env: TypeEnv, name: String, seen: Map<String, Bo
 }
 
 // Peer-import binding forks, ledgered from the parent chain (not a retained str_bindings flatten).
-// Overlay-wins: later import replaces first; same-authority names are skipped. The novelty gate
-// still consumes these rows.
+// One pass per import env (memoized by module_path across the union): the walk records the lookup
+// binding as it visits. Overlay-wins: later import replaces first; same-authority names are skipped.
 fn ledger_peer_import_binding_forks(envs: List<TypeEnv>, conflicts: List<TypeEnvCacheMergeConflict>) -> List<TypeEnvCacheMergeConflict> {
-  fold(envs, init: PeerImportForkLedger { first: empty_map(), conflicts: conflicts }, f: (st, env) =>
-    fold(collect_chain_bare_names(env: env, acc: empty_map()) |> map_keys, init: st, f: (st2, name) =>
-      match lookup_binding_on_chain(env: env, name: name) {
+  fold(envs, init: PeerImportForkLedger { first: empty_map(), conflicts: conflicts, memo: empty_map() }, f: (st, env) =>
+    let idx = collect_chain_lookup_index_seen(env: env, memo: st.memo)
+    fold(idx.acc |> map_keys, init: PeerImportForkLedger { first: st.first, conflicts: st.conflicts, memo: idx.memo }, f: (st2, name) =>
+      match map_get(idx.acc, name) {
         Absent => st2
         Present { value: incoming } =>
           match map_get(st2.first, name) {
-            Absent => PeerImportForkLedger { first: map_insert(st2.first, name, incoming), conflicts: st2.conflicts }
+            Absent => PeerImportForkLedger { first: map_insert(st2.first, name, incoming), conflicts: st2.conflicts, memo: st2.memo }
             Present { value: existing } =>
               if binding_same_authority(a: existing, b: incoming) {
                 st2
@@ -748,7 +787,8 @@ fn ledger_peer_import_binding_forks(envs: List<TypeEnv>, conflicts: List<TypeEnv
                     incoming_site: incoming.resolved.span.file,
                     span: incoming.resolved.span,
                     same_tree: source_tree_of(file: existing.resolved.span.file) == source_tree_of(file: incoming.resolved.span.file)
-                  }])
+                  }]),
+                  memo: st2.memo
                 }
               }
           }
