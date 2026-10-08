@@ -121,6 +121,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.ldd", decl_name: "ldd_command"),
     decl_ref(module_path: "extdeps.tools.dpkg_deb", decl_name: "dpkg_deb_extract_command"),
     decl_ref(module_path: "extdeps.tools.node", decl_name: "node_eval_command"),
+    decl_ref(module_path: "extdeps.tools.node", decl_name: "node_run_file_command"),
     decl_ref(module_path: "extdeps.tools.node", decl_name: "node_version_command"),
     decl_ref(module_path: "extdeps.browser.chromium", decl_name: "chromium_version_command"),
     decl_ref(module_path: "extdeps.tools.squashfs_tools", decl_name: "unsquashfs_extract_command"),
