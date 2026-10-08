@@ -3,9 +3,18 @@ module test.claim.os_install_actuator_selection
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+// The dispatch consumes the kind rows in declaration order; pin the declared
+// roster by whole-list equality. List.first() cannot be used here: the checker
+// types it T? (#13179) while the executing runtime returns the bare element
+// (the fork recorded in cross_type_comparison_answers_instead_of_refusing), so
+// no first()-based comparison both type-checks and executes true.
 test fn os_install_actuator_requirements_dispatch_through_kind_rows() -> Bool {
-  os_install_actuator_requirement_kinds.first() == Present { value: BmcNetworkReach }
-    && os_install_actuator_requirement_kinds.skip(n: 1).first() == Present { value: ActuatorToolchainGrant }
+  os_install_actuator_requirement_kinds == [
+    BmcNetworkReach,
+    ActuatorToolchainGrant,
+    InstallMediaArtifactRealizable,
+    InstallWindowAvailability,
+  ]
     && os_install_actuator_requirement_satisfied(
       kind: BmcNetworkReach,
       candidate: srv1_host,
@@ -26,8 +35,7 @@ test fn srv3_actuator_host_selected_because_requirements_and_policy() -> Bool {
     && srv3_os_install_actuator_host_is_derived_srv1()
     && match srv3_os_install_actuator_tie_break_policy {
       OperatorHostPreference { order: order } =>
-        order.first() == Present { value: operator_host_srv1 }
-          && order.skip(n: 1).first() == Present { value: operator_host_srv2 }
+        order == [operator_host_srv1, operator_host_srv2]
       _ => false
     }
 }
