@@ -3,7 +3,6 @@ module gunbc.machine_intake_arrival_converge
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { content_hash_equal }
-import gunbc.clock_read { observer_instant_millis }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.goal_assessment {
   ObservationAttempt,
@@ -132,6 +131,7 @@ import gunbc.machine_intake_bmc_secure {
   BmcAccountApplication,
   ManagedCredentialReference,
   managed_reference_same,
+  bmc_account_state_observation_same,
 }
 import gunbc.auth.authorization_pattern_selection {
   InterlockedBy, InterlockPending,
@@ -815,10 +815,7 @@ fn managed_generation_advances_the_requested(requested: ManagedCredentialReferen
 }
 
 fn bmc_account_observation_is_the_inspected_pre_state(inspected: BmcAccountStateObservation, diverged: BmcAccountStateObservation) -> Bool {
-  same_intake_subject(left: inspected.subject, right: diverged.subject)
-    && (inspected.endpoint.host as String) == (diverged.endpoint.host as String)
-    && (inspected.attempt as String) == (diverged.attempt as String)
-    && (observer_instant_millis(instant: inspected.read_floor) as Int) == (observer_instant_millis(instant: diverged.read_floor) as Int)
+  bmc_account_state_observation_same(a: inspected, b: diverged)
 }
 
 fn bmc_secure_application_joins_this_instance(
@@ -857,6 +854,9 @@ fn bmc_secure_bound(
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "bmc_secure_bound_refuses_foreign_apply"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_without_authorization_refuses_after_a_real_apply"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_for_a_later_break_glass_generation_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_another_channel_state_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_a_different_present_controller_clock_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_a_present_controller_clock_over_absent_is_refused"),
   ]
 {
   if (identity_key.run as NonEmptyStr) != (key.run as NonEmptyStr) || (identity_key.subject as NonEmptyStr) != (key.subject as NonEmptyStr) {
