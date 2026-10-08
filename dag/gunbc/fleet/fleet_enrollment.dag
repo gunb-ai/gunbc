@@ -12,7 +12,8 @@ import gunbc.fleet_host_backing {
   BmcVirtualMediaInstall,
   ApplianceFirstBoot,
   ProviderGuest,
-  ProviderResourceAwaited,
+  ProviderResourceBound,
+  ProviderResourceBinding,
   backing_microvm_forbidding_offer,
 }
 import gunbc.hetzner_cloud_guest { hetzner_cloud_guest_entitlement }
@@ -109,20 +110,14 @@ data both_participation_enrollment_participation: List<FleetParticipation> = [
 // the Firecracker execution path downstream refuses on it with that cause. The provider's resource
 // identifier has not been read yet: the console display names the operator relayed are recorded only
 // as what to look up, because a display name is not the resource an operation may target.
-fn cax41_guest(route: ProviderRoute, server: String) -> HostBacking {
+fn cax41_guest(route: ProviderRoute, resource: ProviderResourceBinding) -> HostBacking {
   ProviderGuest {
     route: route,
     entitlement: hetzner_cloud_guest_entitlement(
       row: cax41_catalog,
       offer: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "cax41_catalog"),
     ),
-    resource: ProviderResourceAwaited {
-      read_obligation: join([
-        "read the Hetzner Cloud server id of the server the console displays as '",
-        server,
-        "' (GET /v1/servers in the operator's project) and bind it here",
-      ], "") as NonEmptyStr,
-    },
+    resource: resource,
   }
 }
 
@@ -133,6 +128,9 @@ fn cax41_guest(route: ProviderRoute, server: String) -> HostBacking {
 // cells at all, and one that appears gains a full column of UnknownRefused cells — the work
 // becoming visible the moment the host is enrolled, which is the behaviour the incident wanted.
 
+// The server ids are the Hetzner Cloud console's own resource numbers, relayed by the operator
+// 2026-10-08: 169308819 is ubuntu-32gb-nbg1-1 (178.104.134.135), 169308796 is ubuntu-32gb-hel1-1
+// (62.238.115.145). A Cloud API read (GET /v1/servers/{id}) is what would ground them further.
 data fleet_enrollments: List<HostEnrollmentIntent> = [
   HostEnrollmentIntent { host: operator_host_srv1, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: BmcVirtualMediaInstall } },
   HostEnrollmentIntent { host: operator_host_srv2, participation: ci_runner_and_session_enrollment_participation, backing: OwnedMachine { provisioning: BmcVirtualMediaInstall } },
@@ -143,12 +141,18 @@ data fleet_enrollments: List<HostEnrollmentIntent> = [
   HostEnrollmentIntent {
     host: operator_host_183527,
     participation: ci_runner_enrollment_participation,
-    backing: cax41_guest(route: hetzner_nuremberg_route(), server: "ubuntu-32gb-nbg1-1"),
+    backing: cax41_guest(
+      route: hetzner_nuremberg_route(),
+      resource: ProviderResourceBound { resource_id: "169308819" },
+    ),
   },
   HostEnrollmentIntent {
     host: operator_host_3dde7f,
     participation: ci_runner_enrollment_participation,
-    backing: cax41_guest(route: hetzner_helsinki_route(), server: "ubuntu-32gb-hel1-1"),
+    backing: cax41_guest(
+      route: hetzner_helsinki_route(),
+      resource: ProviderResourceBound { resource_id: "169308796" },
+    ),
   },
 ]
 

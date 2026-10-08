@@ -6,12 +6,13 @@ import std.measure { kibibyte }
 import extdeps.toolchain.types { Aarch64, X86_64 }
 import extdeps.cloud.hetzner { cax41_catalog }
 import product.supplier.hetzner { hetzner_nuremberg_route }
-import gunbc.fleet_host_identity { operator_host_183527, operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_183527, operator_host_3dde7f, operator_host_srv1 }
 import gunbc.fleet_host_backing {
   GuestEntitlement,
   OwnedMachine,
   BmcVirtualMediaInstall,
   ProviderGuest,
+  ProviderResourceAwaited,
   ProviderResourceBound,
 }
 import gunbc.hetzner_cloud_guest { hetzner_cloud_guest_entitlement }
@@ -72,17 +73,22 @@ fn cax41_observed(arch_is_arm: Bool, cpus: Int, mem_kib: Int, kvm: Bool) -> Gues
   }
 }
 
-// THE PRODUCTION ROW, NOT A FIXTURE: the enrolled CAX guest has no provider resource id yet, so
-// adoption refuses on that read obligation before any observation can be attributed to it.
-test fn production_cax_guest_refuses_until_its_resource_is_read() -> Bool {
-  match enrollment_for_host(host: operator_host_183527) {
-    Absent => false
-    Present { value: e } => match adopt_provider_guest(intent: e, read: cax41_observed(arch_is_arm: true, cpus: 16, mem_kib: 32500000, kvm: false)) {
-      GuestAdoptionRefused { host: _, cause: ProviderResourceUnread { read_obligation: o } } =>
-        string_contains(s: o as String, pattern: "ubuntu-32gb-nbg1-1")
-      GuestAdoptionRefused { host: _, cause: _ } => false
-      GuestAdopted { host: _, resource_id: _, observation: _, execution: _ } => false
-    }
+// AN UNREAD RESOURCE REFUSES before any observation can be attributed to it, naming its obligation.
+test fn guest_refuses_until_its_resource_is_read() -> Bool {
+  let unread = HostEnrollmentIntent {
+    host: operator_host_3dde7f,
+    participation: ci_runner_enrollment_participation,
+    backing: ProviderGuest {
+      route: hetzner_nuremberg_route(),
+      entitlement: cax41_entitlement(),
+      resource: ProviderResourceAwaited { read_obligation: "read the server id of 'ubuntu-32gb-hel1-1'" },
+    },
+  }
+  match adopt_provider_guest(intent: unread, read: cax41_observed(arch_is_arm: true, cpus: 16, mem_kib: 32011268, kvm: false)) {
+    GuestAdoptionRefused { host: _, cause: ProviderResourceUnread { read_obligation: o } } =>
+      string_contains(s: o as String, pattern: "ubuntu-32gb-hel1-1")
+    GuestAdoptionRefused { host: _, cause: _ } => false
+    GuestAdopted { host: _, resource_id: _, observation: _, execution: _ } => false
   }
 }
 
@@ -176,5 +182,32 @@ test fn owned_machine_is_not_adopted_as_a_guest() -> Bool {
     GuestAdoptionRefused { host: _, cause: HostIsNotAProviderGuest } => true
     GuestAdoptionRefused { host: _, cause: _ } => false
     GuestAdopted { host: _, resource_id: _, observation: _, execution: _ } => false
+  }
+}
+
+// THE BOUND PRODUCTION ROW: the Nuremberg guest's server id is bound, so the same observation that
+// 2026-10-08's read returned (16 CPUs, MemTotal 32011264 kB, aarch64, no /dev/kvm) adopts it -- and
+// its microVM path is refused on the cited offer.
+test fn production_nuremberg_guest_adopts_with_its_bound_server_id() -> Bool {
+  match enrollment_for_host(host: operator_host_183527) {
+    Absent => false
+    Present { value: e } => match adopt_provider_guest(intent: e, read: cax41_observed(arch_is_arm: true, cpus: 16, mem_kib: 32011264, kvm: false)) {
+      GuestAdopted { host: _, resource_id: id, observation: _, execution: MicroVmExecutionRefused { cause: ProviderForbidsNestedVirtualization { offer: _ } } } =>
+        (id as String) == "169308819"
+      GuestAdopted { host: _, resource_id: _, observation: _, execution: _ } => false
+      GuestAdoptionRefused { host: _, cause: _ } => false
+    }
+  }
+}
+
+test fn production_helsinki_guest_adopts_with_its_bound_server_id() -> Bool {
+  match enrollment_for_host(host: operator_host_3dde7f) {
+    Absent => false
+    Present { value: e } => match adopt_provider_guest(intent: e, read: cax41_observed(arch_is_arm: true, cpus: 16, mem_kib: 32011268, kvm: false)) {
+      GuestAdopted { host: _, resource_id: id, observation: _, execution: MicroVmExecutionRefused { cause: ProviderForbidsNestedVirtualization { offer: _ } } } =>
+        (id as String) == "169308796"
+      GuestAdopted { host: _, resource_id: _, observation: _, execution: _ } => false
+      GuestAdoptionRefused { host: _, cause: _ } => false
+    }
   }
 }
