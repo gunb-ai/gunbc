@@ -321,6 +321,10 @@ data excl_bin_wet_reason: String = "bin-execution witness class: fns run compile
 
 data excl_bin_wet_dissolve: DissolutionCondition = unbound_dissolution(description: "the file migrates under the execution-corpus scope prefix and enrolls as ExecutionWitnessKind rows in gunbc.commit_workflow; then this row and the roster entries delete (bin_witness_wet_note)")
 
+data excl_immutable_pin_no_ci_wet_lane_reason: String = "ioctl-set IMMUTABLE leaked-hold composition (test.claim.materialization_store_local_immutable_pin_wet_witness): pin G, second acquire/release, reuse leaked G. Needs CAP_LINUX_IMMUTABLE. No required wet lane grants that cap, so the file is BinWitnessWet and named in gunbc.rung_drop.edited_bin_witness_wet_rows_not_executed_by_ci_population: a changed identity is DeclinedNoCiWetLane, not PlannedAsChangedWitness without a terminal. The executing floor wall for the no-hole reclaim half is reclaim_stops_before_a_later_generation_when_an_earlier_delete_fails_by_real_execution on the LocalRepoWetLane sibling file."
+
+data excl_immutable_pin_no_ci_wet_lane_dissolve: DissolutionCondition = unbound_dissolution(description: "a required wet lane grants CAP_LINUX_IMMUTABLE, or an unlink-refusal construction that needs none; then this file re-enrolls on local_repo_wet_schedule as ExpectedToHold, this exclusion flips to LocalRepoWetLane or deletes, and the pattern leaves edited_bin_witness_wet_rows_not_executed_by_ci_population")
+
 data excl_run_verdict_exit_status_reason: String = "SUBSTANTIATED per-row (found 2026-08-16, PR #8286 CI red, run 31922786399, batch 3 discovery-corpus, 3 of 9782): every fn in this file invokes the compiled `gunbc` seed as a SUBPROCESS and reads the status of that process, so the hermetic envelope refuses them — 'no mock_response for operation Run' and 'for operation IsExecutable', the class excl_install_media_reason names. The refusal is correct and the file cannot be made hermetic: the subject IS the process exit status, which no in-process assertion can observe, and mocking the invocation would let the witness pass against a fabricated status — precisely the defect it exists to detect. The file was authored into dag/test/claim/ and so was swept into unshrunk hermetic discovery by path; the witnesses were right and the enrolment was wrong. Per DESIGN 'witness cost derives from purpose', this row alone would only remove them from hermetic discovery, which is NOT an executing consumer — so all three fns are ALSO enrolled in bin_witness_wet_entries below, which is their real per-PR executing consumer under WitnessHasExecutingConsumer standing. Size is derived, not chosen: three subprocess invocations of a three-constructor fixture, one per arm of the driver's verdict map."
 
 data excl_run_verdict_exit_status_dissolve: DissolutionCondition = unbound_dissolution(description: "the driver's exit-status seam becomes observable without a subprocess — i.e. the verdict boundary migrates under the execution-corpus scope prefix and enrolls as ExecutionWitnessKind rows in gunbc.commit_workflow, the same terminal excl_bin_wet_dissolve names; then this row and the three roster entries delete together. Publishing a mock_response for Run/IsExecutable does NOT discharge it: a mocked status is authored data, so the assertions would be re-checked against the fixture rather than against the seam, which is the vacuous pass this file's refusal-polarity note already records once.")
@@ -1111,6 +1115,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
+    pattern: "materialization_store_local_immutable_pin_wet_witness_test.dag",
+    classification: BinWitnessWet,
+    reason: excl_immutable_pin_no_ci_wet_lane_reason,
+    dissolution: excl_immutable_pin_no_ci_wet_lane_dissolve},
+  WitnessExclusionRow {
     pattern: "host_capacity_wet_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
@@ -1723,7 +1732,8 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/push_event_witness_wet_test.dag", f: "witness_push_before_payload_read_refused_on_missing_path"),
   bin_wet(entry: "dag/test/claim/host/host_cli_dependency_wet_witness_test.dag", f: "observe_echo_wet_posix_command_v_check_does_not_crash"),
   bin_wet(entry: "dag/test/claim/host/host_cli_dependency_wet_witness_test.dag", f: "observe_npm_wet_posix_command_v_check_does_not_crash"),
-  bin_wet(entry: "dag/test/claim/stage0_rust_maintenance_census_report_live_witness_test.dag", f: "maintenance_census_report_positive_control_derives_from_current_head")
+  bin_wet(entry: "dag/test/claim/stage0_rust_maintenance_census_report_live_witness_test.dag", f: "maintenance_census_report_positive_control_derives_from_current_head"),
+  bin_wet(entry: "dag/test/claim/materialization_store_local_immutable_pin_wet_witness_test.dag", f: "a_leaked_hold_stays_stale_when_reclaim_cannot_remove_its_generation_by_real_execution")
 ]
 
 data bin_witness_wet_per_row_wall_budget_seconds: Int = 60
