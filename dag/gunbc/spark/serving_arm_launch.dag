@@ -832,8 +832,8 @@ fn arm_memory_experiment_for_wall(
             ArmMemoryExperimentAdmitted { plan: p } => ArmWallExperimentPlanned { plan: p }
             ArmMemoryExperimentRefused { cause: c } => ArmWallExperimentRefused { cause: c }
           }
-        ArmMemoryFitProved { rank: _, phase: _, headroom_bytes: _ } => ArmWallExperimentNotRequired
-        ArmMemoryFitRefused { rank: _, phase: _, demand_lower: _, supply_upper: _, cause: _ } => ArmWallExperimentNotRequired
+        ArmMemoryFitProved { rank: _, tier: _, phase: _, headroom_bytes: _ } => ArmWallExperimentNotRequired
+        ArmMemoryFitRefused { rank: _, tiers: _, phase: _, demand_lower: _, supply_upper: _, cause: _ } => ArmWallExperimentNotRequired
       }
   }
 }

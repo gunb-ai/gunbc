@@ -9,6 +9,7 @@ import std.algebra { trim }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.uri { Uri, Https }
 import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire }
 // The manager's version line has ONE spelling for the whole systemd upstream, so the major is read
@@ -44,134 +45,283 @@ data systemd_run_authority: ExternalAuthority = extdeps_external_authority_ancho
 
 fn systemd_run_program() -> ProgramIdentity = uncataloged_program(invocation: "systemd-run")
 
-// THE PROPERTY WORDS ARE RENDERED IN EXACTLY ONE PLACE, and that is the whole point of this
-// function existing beside the full-line authority rather than inside it. A systemd unit property
-// becomes an argv word here and nowhere else, so the operation's transport, the pure authority and
-// every caller are reading one spelling. The transport CANNOT carry the typed record itself:
-// push_shell_argv_tokens has arms for Str, List, ProcessArgvExpansion and a refusing arm for
-// ambiguous free monoids, and a record reaches none of them — it lands in the catch-all, which
-// Display-formats the value into a single argv word rather than refusing. So a record spliced into
-// argv would hand systemd-run a fabricated argument at the exact seam that decides whether a unit
-// is bounded. The typed population stays on this side of that boundary; only words cross it.
-fn systemd_run_property_argv(properties: List<SystemdRunProperty>) -> List<String> {
-  fold(
-    properties,
-    init: [],
-    f: (acc, setting) => list_push(
-      acc,
-      concat(
-        "--property=",
-        concat(systemd_unit_property_wire(property: setting.property) as String, concat("=", setting.value as String)),
-      ),
-    ),
-  )
-}
+// THE WAITING LAUNCHER IS A TOKEN, NOT A WORD LIST: SystemdSummaryPrintingWait is minted in
+// exactly one place, the SystemdSummaryPrintingWaitReady arm of systemd_run_user_wait_command, so
+// what a caller holds is the builder's own fact that this projection is the waiting, non-quiet
+// one. No other site can construct it, and a launcher that cannot print a memory peak therefore
+// cannot be handed to the thing whose contract is to observe one.
+type SystemdSummaryPrintingWait { command: ArgvCommand }
 
-// THE USER-MANAGER TRANSIENT UNIT, modelled beside the system-scope one above because the flags
-// systemd-run actually accepts are upstream's, not ours: --user selects the calling user's manager,
-// -p sets a unit property, and --setenv binds one environment variable in the started unit.
-//
-// NO --collect HERE, DELIBERATELY, and it is the difference that makes this worth a second
-// function. --collect unloads the unit as soon as it exits, which discards Result and
-// ExecMainStatus -- exactly the terminal state a caller starts a transient unit in order to be able
-// to read afterwards. A unit that lingers in `failed` is evidence; one that was garbage collected
-// is an absence indistinguishable from never having run. Callers that want no residue name a unit
-// per attempt and reset it explicitly, which is a decision about evidence rather than a flag.
-fn systemd_run_user_transient_arguments(
-  unit: NonEmptyStr,
-  properties: List<String>,
-  setenv_bindings: List<String>,
-  command_argv: List<String>,
-) -> List<String> {
-  let head = ["--user", concat("--unit=", unit as String)]
-  let with_properties = fold(
-    properties,
-    init: head,
-    f: (acc, p) => list_push(list_push(acc, "-p"), p),
-  )
-  let with_env = fold(
-    setenv_bindings,
-    init: with_properties,
-    f: (acc, b) => list_push(acc, concat("--setenv=", b)),
-  )
-  fold(
-    command_argv,
-    init: list_push(with_env, "--"),
-    f: (acc, arg) => list_push(acc, arg),
-  )
-}
+type SystemdSummaryPrintingWaitReading
+  = SystemdSummaryPrintingWaitReady { wait: SystemdSummaryPrintingWait }
+  | SystemdSummaryPrintingWaitRefused { cause: SystemdRunOptionWordsRefusedCause }
 
-// THE SYNCHRONOUS FORM: the caller blocks until the unit exits and receives its exit status and its
-// stdio (`--wait --pipe`), so a build or a check runs under the unit's resource bounds while the
-// process that asked for it observes the result directly. `--collect` unloads the unit afterwards
-// whatever its result, so a failed compute unit does not accumulate as a failed unit to reap.
-// WHETHER THERE IS A SUMMARY TO READ IS A FACT ABOUT THE INVOCATION, SO THE INVOCATION CARRIES IT.
-// systemd-run prints the result and peak lines only under `if (arg_wait && !arg_quiet)` (run.c,
-// v255), so --quiet suppresses the summary ENTIRELY: a reader handed a quiet launcher's stderr
-// finds no peak, reports MemoryPeakNotReported forever, and is indistinguishable from a healthy
-// launcher whose manager is below v254. A DEAD PRODUCER THAT LOOKS LIKE A HEALTHY ONE WITH NOTHING
-// TO REPORT is the failure this file is one word away from: RunTransientAndWait and this builder
-// differ by exactly "--quiet", and the next author adds a third by copying whichever they reached
-// first. So the summary reader does not take a loose String. It takes this token, which is minted
-// in exactly one place -- the builder below, the only wait invocation in this module that omits
-// --quiet -- and a launcher that cannot print a peak therefore cannot be handed to the thing whose
-// contract is to observe one.
-type SystemdSummaryPrintingWait { argv: List<String> }
-
+// compute_exec receives the program separately, so these are the argument tail; the full
+// argv_words would double the program head on the compute side too.
 fn systemd_summary_printing_wait_argv(w: SystemdSummaryPrintingWait) -> List<String> {
-  w.argv
+  systemd_run_command_argument_words(command: w.command)
 }
 
-fn systemd_run_user_wait_arguments(
-  unit: NonEmptyStr,
-  properties: List<String>,
-  setenv_bindings: List<String>,
-  command_argv: List<String>,
-) -> SystemdSummaryPrintingWait {
-  SystemdSummaryPrintingWait { argv: concat(["--wait", "--pipe", "--collect"], systemd_run_user_transient_arguments(unit: unit, properties: properties, setenv_bindings: setenv_bindings, command_argv: command_argv)) }
+// ── THE TYPED OPTION MODEL OF systemd-run(1) AT THE GROUNDED MAJOR ─────────────────────────────
+//
+// EVERY WORD THIS MODULE RENDERS IS BORN IN ONE PROJECTION, `systemd_run_option_words`, from typed
+// options carrying the man page's own spellings at systemd 255 — the major the summary ground
+// below actually reads (grounded_summary_format_majors). No builder glues a flag to a value with
+// string literals anymore: the flag words live here, once, each citing its option, and the
+// projection REFUSES a value the wire cannot carry rather than trimming or dropping it.
+
+// --setenv=NAME=VALUE binds ONE environment variable into the unit (systemd-run(1)).
+type SystemdSetenvBinding {
+  name: NonEmptyStr,
+  value: NonEmptyStr,
 }
 
-// ONE COMMAND IN A TRANSIENT SCOPE OF THE CALLING USER'S MANAGER, bounded by the given properties
-// (`systemd-run --user --scope -p NAME=VALUE ... -- CMD`, per the cited man page: a scope runs the
-// command synchronously as a child of systemd-run and places it in its own cgroup). The kernel
-// enforces the bound, not the command, so an over-budget run is killed by the cgroup instead of
-// competing for the host. The program is PATH-resolved because the invoking host is unobserved
-// (extdeps.exec.command program_spelling_is_an_observation_claim).
-fn systemd_run_user_scope_command(properties: List<SystemdRunProperty>, command: ArgvCommand) -> ArgvCommand {
-  let head = ["--user", "--scope"]
-  let with_properties = fold(systemd_run_property_argv(properties: properties), init: head, f: (acc, word) => list_push(acc, word))
-  let with_separator = list_push(with_properties, "--")
-  argv_command(
-    program: systemd_run_program(),
-    arguments: fold(argv_words(command: command), init: with_separator, f: (acc, arg) => list_push(acc, arg)),
-  )
+// THE OPTION ARMS AND THEIR WIRE SPELLINGS, one per line, each citing systemd-run(1) at v255:
+//   RunUnit        --unit=UNIT
+//   RunUserManager --user
+//   RunScope       --scope
+//   PropertyShort  -p NAME=VALUE — flag and value are TWO words
+//   PropertyLong   --property=NAME=VALUE — one word
+//   SetEnv         --setenv=NAME=VALUE
+//   Wait           --wait
+//   Quiet          --quiet
+//   Pipe           --pipe
+//   Collect        --collect
+//   EndOfOptions   -- (systemd-run's own options end; the rest is the command)
+type SystemdRunOption
+  = RunUnit { unit: NonEmptyStr }
+  | RunUserManager
+  | RunScope
+  | PropertyShort { property: SystemdRunProperty }
+  | PropertyLong { property: SystemdRunProperty }
+  | SetEnv { binding: SystemdSetenvBinding }
+  | Wait
+  | Quiet
+  | Pipe
+  | Collect
+  | EndOfOptions
+
+// WHAT THE WIRE CANNOT CARRY IS REFUSED AT THE PROJECTION — a refusal at the wall between the
+// typed value and the words, not a mangled word downstream. Each arm names the wire fact it
+// defends (unit names and setting values are one line and contain no slash; an environment name
+// is the text before the first '=').
+type SystemdRunOptionWordsRefusedCause
+  = UnitNameContainsSlash
+  | UnitNameMultiline
+  | UnitSettingValueMultiline { property: SystemdUnitProperty }
+  | SetenvNameContainsEquals
+  | SetenvNameMultiline
+  | SetenvValueMultiline
+
+type SystemdRunOptionWordsReading
+  = SystemdRunOptionWordsProjected { words: List<String> }
+  | SystemdRunOptionWordsRefused { cause: SystemdRunOptionWordsRefusedCause }
+
+type SystemdRunCommandReading
+  = SystemdRunCommandReady { command: ArgvCommand }
+  | SystemdRunCommandRefused { cause: SystemdRunOptionWordsRefusedCause }
+
+fn systemd_run_option_word_has_newline(s: String) -> Bool {
+  string_contains(s: s, pattern: "\n")
 }
 
-// ONE COMMAND IN A TRANSIENT SCOPE OF THE SYSTEM MANAGER (`systemd-run --scope -p NAME=VALUE ... -- CMD`).
+fn systemd_run_option_word_refused(cause: SystemdRunOptionWordsRefusedCause) -> SystemdRunOptionWordsReading {
+  SystemdRunOptionWordsRefused { cause: cause }
+}
+
+// The one prose projection of a refusal cause, for consumers whose carriers are prose (belt
+// step details, log lines). Every arm names the wire fact it defends; the cause sum itself is
+// what callers match on.
+fn systemd_run_option_words_refused_cause_detail(cause: SystemdRunOptionWordsRefusedCause) -> String {
+  match cause {
+    UnitNameContainsSlash => "a unit name never contains / (systemd.unit(5))"
+    UnitNameMultiline => "a unit name is one line"
+    UnitSettingValueMultiline { property: p } => concat("unit setting value is one line, so --property= cannot carry a newline in: ", systemd_unit_property_wire(property: p))
+    SetenvNameContainsEquals => "--setenv= takes NAME=VALUE, so the NAME side carries no = of its own"
+    SetenvNameMultiline => "--setenv= takes NAME=VALUE, so the NAME side is one line"
+    SetenvValueMultiline => "--setenv= takes NAME=VALUE, so the VALUE side is one line"
+  }
+}
+
+fn systemd_run_property_options_long(properties: List<SystemdRunProperty>) -> List<SystemdRunOption> {
+  fold(properties, init: [], f: (acc, p) => list_append(left: acc, right: [PropertyLong { property: p }]))
+}
+
+fn systemd_run_property_options_short(properties: List<SystemdRunProperty>) -> List<SystemdRunOption> {
+  fold(properties, init: [], f: (acc, p) => list_append(left: acc, right: [PropertyShort { property: p }]))
+}
+
+// THE ONE PROJECTION STEP. Each option's words are spelled exactly once, here; the fold folds over
+// these so a refused command never mints words at all (short-circuit on the first refusal).
+fn systemd_run_option_projection_step(acc: SystemdRunOptionWordsReading, option: SystemdRunOption) -> SystemdRunOptionWordsReading {
+  match acc {
+    SystemdRunOptionWordsRefused { cause: c } => SystemdRunOptionWordsRefused { cause: c }
+    SystemdRunOptionWordsProjected { words: words } =>
+      match option {
+        RunUnit { unit: unit } =>
+          if string_contains(s: unit as String, pattern: "/") {
+            systemd_run_option_word_refused(cause: UnitNameContainsSlash)
+          } else if systemd_run_option_word_has_newline(s: unit as String) {
+            systemd_run_option_word_refused(cause: UnitNameMultiline)
+          } else {
+            SystemdRunOptionWordsProjected { words: list_append(left: words, right: [concat("--unit=", unit as String)]) }
+          }
+        RunUserManager => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--user"]) }
+        RunScope => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--scope"]) }
+        PropertyShort { property: p } =>
+          if systemd_run_option_word_has_newline(s: p.value as String) {
+            systemd_run_option_word_refused(cause: UnitSettingValueMultiline { property: p.property })
+          } else {
+            SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["-p", concat(systemd_unit_property_wire(property: p.property), concat("=", p.value as String))]) }
+          }
+        PropertyLong { property: p } =>
+          if systemd_run_option_word_has_newline(s: p.value as String) {
+            systemd_run_option_word_refused(cause: UnitSettingValueMultiline { property: p.property })
+          } else {
+            SystemdRunOptionWordsProjected { words: list_append(left: words, right: [concat("--property=", concat(systemd_unit_property_wire(property: p.property), concat("=", p.value as String)))]) }
+          }
+        SetEnv { binding: b } =>
+          if string_contains(s: b.name as String, pattern: "=") {
+            systemd_run_option_word_refused(cause: SetenvNameContainsEquals)
+          } else if systemd_run_option_word_has_newline(s: b.name as String) {
+            systemd_run_option_word_refused(cause: SetenvNameMultiline)
+          } else if systemd_run_option_word_has_newline(s: b.value as String) {
+            systemd_run_option_word_refused(cause: SetenvValueMultiline)
+          } else {
+            SystemdRunOptionWordsProjected { words: list_append(left: words, right: [concat("--setenv=", concat(b.name as String, concat("=", b.value as String)))]) }
+          }
+        Wait => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--wait"]) }
+        Quiet => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--quiet"]) }
+        Pipe => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--pipe"]) }
+        Collect => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--collect"]) }
+        EndOfOptions => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--"]) }
+      }
+  }
+}
+
+// THE MANAGER-SIDE STANDING THE TYPED BUILDERS OWN, AND WHY IT IS DECLARED RATHER THAN ENROLLED.
+// The three SystemdRun service transports promise behaviour a live systemd manager shows: the
+// retained transient stays manager-observable after a failing exit (it is still `loaded` -- no
+// --collect twin removes it), the collecting transient's twin is gone (`not-found`), and the
+// waited run reports the child's exact exit code. THIS IS THE POPULATION the typed
+// SystemdRunOption builders carry on the wire. These builders carry no RunUserManager arm: they
+// target the DEFAULT (system) manager, and the manual lifecycle receipt executes these same
+// builders against it. What stands today: no REQUIRED automated claim exercises them -- no CI
+// lane can run systemd units under the privilege/elevation posture these builders need, and the
+// one real execution that reaches the manager (the manual lifecycle receipt's wet path) is a
+// NON-required, manual receipt, not an enrolled required claim. A claim file nothing can execute
+// would be dangling (DESIGN 3c), so the standing is a declared unbound dissolution here beside
+// the builders -- the authority that owns the behaviour -- rather than a placeholder row in a
+// lane that cannot run it. Dissolves when a required-workflow lane exists that can execute these
+// system-manager builders under their required privilege/elevation posture: at that point the
+// retained/collected/waited claims are AUTHORED AND ENROLLED through the same production
+// integration, and this row retires.
+data systemd_run_manager_side_claim_gap: DissolutionCondition = unbound_dissolution(description: "population: the typed SystemdRun builders' manager-side contract -- a retained transient stays manager-observable (still loaded) after a failing exit, a collecting transient's unit is not-found after removal, and the waited run reports the exact child exit; the three builders carry no RunUserManager arm, so they target the default (system) manager and the manual lifecycle receipt executes these same builders against it; current: no REQUIRED automated claim covers this population (no required lane can run systemd units under the privilege/elevation posture these builders need, and the manual lifecycle receipt's wet path is non-required real execution); trigger: a required-workflow lane exists that can execute these system-manager builders under their required privilege/elevation posture, at which point the retained/collected/waited claims are authored and enrolled through the same production integration and this row retires.")
+
+fn systemd_run_option_words(options: List<SystemdRunOption>) -> SystemdRunOptionWordsReading {
+  fold(options, init: SystemdRunOptionWordsProjected { words: [] }, f: systemd_run_option_projection_step)
+}
+
+// THE COMMAND COMPOSITION: options first, then the command's own words after `--` (the caller's
+// argv is appended verbatim; its typing is its own layer's debt, one batch per module).
+// The words AFTER the program word. The projection leads with exactly one program spelling, so a
+// caller that runs a RESOLVED program path instead (an observation the instance toolchain declares,
+// and the only thing the invoking host is allowed to assert about where the program lives) takes
+// the tail and substitutes its own head.
+type SystemdRunCommandTailFold {
+  program_pending: Bool,
+  words: List<String>,
+}
+
+fn systemd_run_command_argument_words(command: ArgvCommand) -> List<String> {
+  fold(argv_words(command: command), init: SystemdRunCommandTailFold { program_pending: true, words: [] }, f: (acc, w) =>
+    if acc.program_pending {
+      SystemdRunCommandTailFold { program_pending: false, words: acc.words }
+    } else {
+      SystemdRunCommandTailFold { program_pending: false, words: list_append(left: acc.words, right: [w]) }
+    }
+  ).words
+}
+
+fn systemd_run_command_of(options: List<SystemdRunOption>, command_argv: List<String>) -> SystemdRunCommandReading {
+  match systemd_run_option_words(options: options) {
+    SystemdRunOptionWordsRefused { cause: c } => SystemdRunCommandRefused { cause: c }
+    SystemdRunOptionWordsProjected { words: option_words } =>
+      SystemdRunCommandReady { command: argv_command(program: systemd_run_program(), arguments: list_append(left: option_words, right: command_argv)) }
+  }
+}
+
+// ── THE BUILDERS, ALL RETURNING THE TYPED COMMAND ───────────────────────────────────────────────
+
+// ONE COMMAND IN A TRANSIENT SCOPE OF THE SYSTEM MANAGER (`systemd-run --scope --property=NAME=VALUE ... -- CMD`).
 // The user-manager form above needs the caller's own session bus, which a command elevated from
 // another login does not have; the system manager starts the scope and the kernel bounds its
 // cgroup. The caller must be root. The command runs with the caller's credentials: systemd-run's
 // --uid/--gid are not rendered, because in scope mode they switch uid and gid without initialising
 // the target's supplementary groups and leave the caller's in place (fleet-converge run
 // 37098981121). A caller that needs another account composes its own privilege drop as CMD.
-fn systemd_run_system_scope_argv(properties: List<SystemdRunProperty>, command_argv: List<String>) -> List<String> {
-  let with_properties = fold(systemd_run_property_argv(properties: properties), init: ["systemd-run", "--scope"], f: (acc, word) => list_push(acc, word))
-  let with_separator = list_push(with_properties, "--")
-  fold(command_argv, init: with_separator, f: (acc, arg) => list_push(acc, arg))
+// ONE COMMAND IN A TRANSIENT SCOPE OF THE CALLING USER'S MANAGER, bounded by the given properties
+// (`systemd-run --user --scope --property=NAME=VALUE ... -- CMD`, per the cited man page: a scope
+// runs the command synchronously as a child of systemd-run and places it in its own cgroup). The
+// kernel enforces the bound, not the command, so an over-budget run is killed by the cgroup
+// instead of competing for the host. The program is PATH-resolved because the invoking host is
+// unobserved (extdeps.exec.command program_spelling_is_an_observation_claim).
+fn systemd_run_setenv_options(bindings: List<SystemdSetenvBinding>) -> List<SystemdRunOption> {
+  fold(bindings, init: [], f: (acc, b) => list_append(left: acc, right: [SetEnv { binding: b }]))
 }
 
-fn systemd_run_property(name: String, value: String) -> String {
-  join([name, "=", value], "")
+// THE USER-MANAGER TRANSIENT START: `systemd-run --user --unit=NAME -p NAME=VALUE ... --setenv=K=V
+// ... -- CMD`. The property words travel as two words (-p, then NAME=VALUE) and the projected
+// order here is the order the string-built form this replaces happened to emit, so the projected
+// words for existing callers are byte-identical to what they rendered before the cutover.
+fn systemd_run_user_transient_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, setenv_bindings: List<SystemdSetenvBinding>, command_argv: List<String>) -> SystemdRunCommandReading {
+  systemd_run_command_of(
+    options: list_append(left: [RunUserManager, RunUnit { unit: unit }], right: list_append(left: systemd_run_property_options_short(properties: properties), right: list_append(left: systemd_run_setenv_options(bindings: setenv_bindings), right: [EndOfOptions]))),
+    command_argv: command_argv,
+  )
+}
+
+// THE USER-MANAGER WAITING TRANSIENT: the start above plus --wait --pipe --collect, and NOT
+// --quiet -- run.c at v255 prints "Finished with result:" and "Memory peak:" only under
+// `if (arg_wait && !arg_quiet)`, so the quiet form's stderr never carries the summary this type
+// exists to be read for. The wait flags lead because that is the word order the string-built form
+// this replaces emitted; the projection keeps it byte-identical for existing callers.
+fn systemd_run_user_wait_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, setenv_bindings: List<SystemdSetenvBinding>, command_argv: List<String>) -> SystemdSummaryPrintingWaitReading {
+  match systemd_run_command_of(
+    options: list_append(left: [Wait, Pipe, Collect], right: list_append(left: [RunUserManager, RunUnit { unit: unit }], right: list_append(left: systemd_run_property_options_short(properties: properties), right: list_append(left: systemd_run_setenv_options(bindings: setenv_bindings), right: [EndOfOptions])))),
+    command_argv: command_argv,
+  ) {
+    SystemdRunCommandRefused { cause: cause } => SystemdSummaryPrintingWaitRefused { cause: cause }
+    SystemdRunCommandReady { command: command } => SystemdSummaryPrintingWaitReady { wait: SystemdSummaryPrintingWait { command: command } }
+  }
+}
+
+// The pre-cutover system-scope builder systemd_run_system_scope_argv led with --scope only
+// (["systemd-run", "--scope"]); the account entry happens in the command tail (setpriv).
+fn systemd_run_system_scope_command(properties: List<SystemdRunProperty>, command_argv: List<String>) -> SystemdRunCommandReading {
+  systemd_run_command_of(options: list_append(left: [RunScope], right: list_append(left: systemd_run_property_options_long(properties: properties), right: [EndOfOptions])), command_argv: command_argv)
 }
 
 // The full invocation, and the authority the materialized operation argv is checked against. It
-// COMPOSES the property words rather than re-deriving them; if this fold and the transport template
-// ever disagree about word order, systemd_run_transient_operation_argv_matches_authority goes red.
-fn systemd_run_transient_unit_argv(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> List<String> {
-  let launcher = ["systemd-run", concat("--unit=", unit as String), "--collect"]
-  let with_properties = fold(systemd_run_property_argv(properties: properties), init: launcher, f: (acc, word) => list_push(acc, word))
-  let with_separator = list_push(with_properties, "--")
-  fold(command_argv, init: with_separator, f: (acc, arg) => list_push(acc, arg))
+// COMPOSES the option words through the one projection rather than re-deriving them. The
+// transport template carries no words of its own beyond the program head, so this fold's order IS
+// the executed order; systemd_run_transient_operation_argv_matches_authority witnesses the head
+// spelling and refuses embedded newlines (see its comment for the narrowed check).
+// Word order: --unit, --collect, then the properties, then -- (the base argv shape for a
+// collecting transient; the enrolled controls pin this exact order). The retained variant below
+// is the same builder WITHOUT the
+// --collect arm, because the RETAINED invocation exists precisely so the terminal state stays
+// observable (the service op is the same RunTransient either way -- retained vs collected is a
+// decision the typed option model renders into the words, not a service-side contract).
+fn systemd_run_transient_unit_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> SystemdRunCommandReading {
+  systemd_run_command_of(options: list_append(left: [RunUnit { unit: unit }, Collect], right: list_append(left: systemd_run_property_options_long(properties: properties), right: [EndOfOptions])), command_argv: command_argv)
+}
+
+// The retained shape: no --collect, so the transient unit survives its process and its terminal
+// state stays observable (the callers are realize and the manual wet receipt, both of which read
+// the unit AFTER the invocation ends).
+fn systemd_run_transient_retained_unit_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> SystemdRunCommandReading {
+  systemd_run_command_of(options: list_append(left: [RunUnit { unit: unit }], right: list_append(left: systemd_run_property_options_long(properties: properties), right: [EndOfOptions])), command_argv: command_argv)
 }
 
 // Waiting is a different operation from starting. It owns the complete wait/quiet/collect
@@ -180,15 +330,12 @@ fn systemd_run_transient_unit_argv(unit: NonEmptyStr, properties: List<SystemdRu
 // excluded because it collapses normal nonzero statuses to 1 (systemd issue 22812, observed on
 // systemd 245 / 245.4-4ubuntu3.15); the same report establishes that signal death is not reliably
 // recoverable as an exact child status through this boundary.
-fn systemd_run_transient_wait_unit_argv(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> List<String> {
-  let launcher = ["systemd-run", concat("--unit=", unit as String), "--wait", "--quiet", "--collect"]
-  let with_properties = fold(systemd_run_property_argv(properties: properties), init: launcher, f: (acc, word) => list_push(acc, word))
-  let with_separator = list_push(with_properties, "--")
-  fold(command_argv, init: with_separator, f: (acc, arg) => list_push(acc, arg))
+fn systemd_run_transient_wait_unit_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> SystemdRunCommandReading {
+  systemd_run_command_of(options: list_append(left: [RunUnit { unit: unit }, Wait, Quiet, Collect], right: list_append(left: systemd_run_property_options_long(properties: properties), right: [EndOfOptions])), command_argv: command_argv)
 }
 
 
-// RunTransient AND RunTransientRetained DIFFER BY --collect AND THAT IS A DECISION ABOUT EVIDENCE.
+// RETAINED AND COLLECTED DIFFER BY --collect AND THAT IS A DECISION ABOUT EVIDENCE.
 //
 // The argument is already made in this file for the user-manager variant and it holds identically
 // here: --collect unloads the unit the moment it exits, which discards Result, ExecMainStatus and
@@ -207,23 +354,30 @@ fn systemd_run_transient_wait_unit_argv(unit: NonEmptyStr, properties: List<Syst
 // `if (arg_wait && !arg_quiet)`, so that invocation's stderr never carries the summary and a peak
 // read from it is NotReported for every run. That is why systemd_run_wait_summary takes a
 // SystemdSummaryPrintingWait token that operation cannot produce: a caller needing the unit's peak
-// takes systemd_run_user_wait_arguments instead. --quiet stays there because that operation's
+// takes systemd_run_user_wait_command instead, whose projection is the waiting, non-quiet one and
+// the only site that mints the token. --quiet stays there because that builder's
 // callers want the child's own stdio unpolluted by the launcher's chatter, which is a real and
 // different need -- the fix is that the two cannot be confused, not that one of them loses its flag.
 //
 // (Authored at module-item grain because DESIGN 4c admits annotations only above a module-scope
 // declaration; an operation nested in this service has no annotation site of its own, so the
 // annotation names its subject instead of relying on adjacency.)
+// THE WORDS THIS SERVICE RUNS ARE NOT TEMPLATED HERE. Each operation takes the complete projected
+// words -- the program, the options and the command -- from the typed builders above
+// (systemd_run_transient_unit_command and siblings), whose one projection refuses a value the wire
+// cannot carry, and the transport's argv IS those words. A record spliced into argv would hand
+// systemd-run a fabricated argument at the exact seam that decides whether a unit is bounded;
+// that is why only words cross this boundary and why they cross from one projection.
 service systemd.SystemdRun {
   operation RunTransient {
     requires opaque
-    input { unit: NonEmptyStr, property_argv: List<String>, command_argv: List<String> }
+    input { command_argv: List<String> }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["systemd-run", "--unit={unit}", "--collect", property_argv, "--", command_argv] }
+    transport shell { argv: ["systemd-run", command_argv] }
     exit {
       0 => Unit
       nonzero => String "systemd-run transient unit start failed"
@@ -234,33 +388,15 @@ service systemd.SystemdRun {
   }
 
 
-  operation RunTransientRetained {
-    requires opaque
-    input { unit: NonEmptyStr, property_argv: List<String>, command_argv: List<String> }
-    output {
-      success: Bool from "exit_success"
-      stdout: String from "stdout"
-      stderr: String from "stderr"
-    }
-    transport shell { argv: ["systemd-run", "--unit={unit}", property_argv, "--", command_argv] }
-    exit {
-      0 => Unit
-      nonzero => String "systemd-run transient unit start failed"
-    }
-    mock_response {
-      0 => { success: true, stdout: "Running as unit: demo.service", stderr: "" } "hermetic systemd.SystemdRun.RunTransientRetained"
-    }
-  }
-
   operation RunTransientAndWait {
     requires opaque
-    input { unit: NonEmptyStr, property_argv: List<String>, command_argv: List<String> }
+    input { command_argv: List<String> }
     output {
       exit_code: Int from "exit_code"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    transport shell { argv: ["systemd-run", "--unit={unit}", "--wait", "--quiet", "--collect", property_argv, "--", command_argv] }
+    transport shell { argv: ["systemd-run", command_argv] }
     exit {
       0 => Unit
       nonzero => Unit
@@ -557,7 +693,7 @@ fn systemd_argv_suppresses_summary(argv: List<String>) -> Bool {
 
 // THE READER TAKES THE LAUNCHER AND INSPECTS IT, AND THE SECOND HALF IS NOT REDUNDANT -- IT IS
 // MEASURED. The intent was construction: SystemdSummaryPrintingWait is minted only by
-// systemd_run_user_wait_arguments, the one wait builder here that omits --quiet, so a quiet
+// systemd_run_user_wait_command, the one wait builder here that omits --quiet, so a quiet
 // launcher should not be expressible as this argument at all. IT IS. A probe passing the
 // List<String> returned by systemd_run_transient_wait_unit_argv (which carries --quiet) as this
 // parameter COMPILED AND EVALUATED, reading a peak out of stderr no quiet launcher could have

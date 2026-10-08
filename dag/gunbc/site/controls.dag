@@ -1,6 +1,8 @@
 module gunbc.site.controls
 import gunbc.site.mention_client { mention_bind_statements }
 import gunbc.site.choice_client { choice_bind_statements }
+import gunbc.site.build_meter_client { build_meter_bind_statements }
+import gunbc.site.specimen_meter_client { specimen_meter_bind_statements }
 
 import std.types { Int, String, Bool, Milliseconds }
 import std.measure { Millisecond, millisecond, millisecond_count }
@@ -523,6 +525,6 @@ data site_client_path: String = "/assets/site.js"
 fn site_client_program() -> TsProgram {
   let dismiss = ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "gunbcSessionRead"), property: "catch"), args: [ts_arrow(params: [], body: ts_block(stmts: []))]))
   let statements = concat(sound_preamble_statements(), concat(sound_toggle_bind_statements(), concat(theme_toggle_bind_statements(), concat(session_read_bind_statements(), concat(account_swap_statements(), [dismiss])))))
-  TsProgram { ts_nocheck: false, header_lines: [], statements: concat(statements, concat(choice_bind_statements(), mention_bind_statements())) }
+  TsProgram { ts_nocheck: false, header_lines: [], statements: concat(statements, concat(choice_bind_statements(), concat(mention_bind_statements(), concat(build_meter_bind_statements(), specimen_meter_bind_statements())))) }
 }
 fn site_client_source() -> String { serialize_typescript_program(p: site_client_program()) }
