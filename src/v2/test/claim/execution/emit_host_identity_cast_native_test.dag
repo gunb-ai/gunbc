@@ -9,20 +9,20 @@ import v2.std.diagnostic { Accepted, None, Rejected }
 import v2.std.host_run { EmitHostRunReceipt, HostLogicalRun }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, node_synthetic }
-import std.optional { Absent, Optional, Present, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import v2.std.witness { Violates }
 import v2.test.claim.coercion.identity_cast_emission_route {
-  identity_cast_supplied_emitted_text,
+  IdentityCastClosureRefused, IdentityCastEntryEmitted, IdentityCastEntryRefused,
+  identity_cast_route_verdict,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE ADMITTED IDENTITY CAST, BUILT AND RUN. Native reads supplied
-// identity_cast_supplied_emitted_text so it does not demand the emit producer (fill-debt stays
-// ActiveFillDebt). The last merge-time execution of the door is
-// v2.test.claim.coercion.identity_cast_emission_route.an_admitted_identity_cast_emits_through_the_closure_route_holds,
-// not this module.
+// THE ADMITTED IDENTITY CAST, BUILT AND RUN. One native control reads the REAL member text from
+// identity_cast_route_verdict and every runtime case builds and runs that artifact (DESIGN section 3
+// pairing). The last merge-time execution of the door on the required gate is still
+// v2.test.claim.coercion.identity_cast_emission_route.an_admitted_identity_cast_emits_through_the_closure_route_holds.
 //
 // STANDING, STATED SO IT IS NOT READ AS COVERAGE: this module is outside the required gate
 // (v2.workflow.required_floor required_gate_authored_modules) by operator decision, because every
@@ -45,11 +45,19 @@ fn identity_cast_native_inputs() -> Inputs {
   inputs_root_only(root: node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^identity_cast_native_probe } }, children: []))
 }
 
-// The entry member's emitted text, supplied at this module's interface (DESIGN section 3). The
-// admission inhabitance on identity_cast_emission_route is the pairing that the closure door
-// still emits this spelling.
+// The entry member's emitted text from the closure door. Absent when the route did not emit exactly
+// one admitted entry. Runtime cases share this control; they do not substitute a supplied spelling.
 fn identity_cast_native_emitted() -> Optional<String> {
-  optional_present(value: identity_cast_supplied_emitted_text)
+  match identity_cast_route_verdict() {
+    IdentityCastEntryEmitted { text: t, members: n } =>
+      if n == 1 {
+        optional_present(value: t)
+      } else {
+        optional_absent()
+      }
+    IdentityCastEntryRefused { reason: _, members: _ } => optional_absent()
+    IdentityCastClosureRefused { reason: _ } => optional_absent()
+  }
 }
 
 // One run of the emitted program on one argv value: true only when it exited through the logical-run
