@@ -3238,8 +3238,13 @@ mod process_workspace_root_tests {
 /// fixture spellings. Witness: `dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness_test.dag`.
 #[cfg(test)]
 mod cli_run_arg_channel_tests {
-    use super::{bind_run_arg_specs_against_admissions, parse_run_arg_specs, CliArgAdmission};
-    use crate::v1_interpreter::Value;
+    use super::{
+        bind_run_arg_specs_against_admissions, bind_run_args_for_entry, parse_run_arg_specs,
+        CliArgAdmission,
+    };
+    use crate::v1_compiler_compile::{compile_to_resolved, SourceFile};
+    use crate::v1_interpreter::{ExecutionMode, InterpContext, Value};
+    use std::rc::Rc;
 
     fn spec(items: &[&str]) -> Vec<String> {
         items.iter().map(|s| s.to_string()).collect()
@@ -3429,6 +3434,69 @@ mod cli_run_arg_channel_tests {
         )
         .expect_err("non-canonical Bool must refuse");
         assert!(err.contains("true") && err.contains("false"), "{err}");
+    }
+
+    /// Resolve a small entry whose params are `Int` and `NonEmptyStr = String where
+    /// string_non_empty`, then bind through [`bind_run_args_for_entry`]. Deleting that
+    /// function, or the where-chain peel it calls, must fail these controls.
+    fn resolved_bind_probe_ctx() -> InterpContext {
+        let files = vec![Rc::new(SourceFile {
+            path: "probe_cli_arg_bind.dag".to_string(),
+            content: "module probe.cli_arg_bind\n\
+                      type NonEmptyStr = String where string_non_empty\n\
+                      fn bind_probe(n: Int, token: NonEmptyStr) -> Int { n }\n"
+                .to_string(),
+        })];
+        let result = compile_to_resolved(Rc::new(files.into()));
+        let graph = result
+            .graph
+            .as_ref()
+            .unwrap_or_else(|| panic!("bind_probe fixture must resolve: {:?}", result.diagnostics));
+        InterpContext::new(
+            graph,
+            result.source_indices.clone(),
+            ExecutionMode::Hermetic,
+        )
+    }
+
+    #[test]
+    fn bind_run_args_for_entry_int_and_nonemptystr_inhabit() {
+        let ctx = resolved_bind_probe_ctx();
+        let got = bind_run_args_for_entry(
+            &ctx,
+            "bind_probe",
+            &[
+                ("n".to_string(), "2".to_string()),
+                ("token".to_string(), "none".to_string()),
+            ],
+        )
+        .expect("resolved Int and NonEmptyStr must inhabit through bind_run_args_for_entry");
+        assert!(
+            matches!(got[0].1, Value::Int(2)),
+            "Int param must bind as Int 2, not Str: {:?}",
+            got[0].1
+        );
+        assert!(matches!(&got[1].1, Value::Str(s) if s.as_ref() == "none"));
+    }
+
+    #[test]
+    fn bind_run_args_for_entry_empty_nonemptystr_refuses() {
+        let ctx = resolved_bind_probe_ctx();
+        let err = bind_run_args_for_entry(
+            &ctx,
+            "bind_probe",
+            &[
+                ("n".to_string(), "2".to_string()),
+                ("token".to_string(), "".to_string()),
+            ],
+        )
+        .expect_err("empty NonEmptyStr must refuse on the resolved path");
+        assert!(
+            err.contains("token")
+                && err.contains("NonEmptyStr")
+                && err.contains("string_non_empty"),
+            "diagnostic names parameter, resolved type, and declared predicate: {err}"
+        );
     }
 }
 
