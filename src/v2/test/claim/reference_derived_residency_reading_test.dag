@@ -38,6 +38,8 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node,
   dag_named_edge,
   dag_surface_edge,
+  dag_surface_identity_is_module_member,
+  dag_surface_identity_is_top_level_item,
 }
 import v2.std.symbol_index { empty_symbol_index, symbol_index_lookup }
 import v2.test.claim.reference_derived_graph_fixture { xl4_fixture_trees, xl4_item_at, consumer_field_bare_local_path }
@@ -323,6 +325,13 @@ test fn a_header_edge_on_a_conj_does_not_skip_a_hand_built_field() -> Bool {
     r: reading_of(decl_name: "HeaderAndField", decl: conj_with_header_edge_and_hand_built_field()),
     expected: ^trees,
   )
+}
+
+test fn top_level_item_identities_come_from_the_grammar_rows() -> Bool {
+  dag_surface_identity_is_top_level_item(id: ^dag_surface_data_decl)
+    && dag_surface_identity_is_top_level_item(id: ^dag_surface_import_decl)
+    && !dag_surface_identity_is_top_level_item(id: ^dag_surface_module)
+    && dag_surface_identity_is_module_member(id: ^dag_surface_module)
 }
 
 // A DATA DECLARATION SIBLING DOES NOT WIDEN THE SKIP. The identity-stamped member is skipped;

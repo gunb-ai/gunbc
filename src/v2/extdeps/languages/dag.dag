@@ -3113,28 +3113,67 @@ fn dag_grammar_resource_decl_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_top_level_item_expr() -> GrammarExpr {
-  dag_grammar_choice(
-    left: dag_grammar_nonterminal(production: ^dag_production_import_decl),
-    right: dag_grammar_choice(
-      left: dag_grammar_nonterminal(production: ^dag_production_alias_decl),
-      right: dag_grammar_choice(
-        left: dag_grammar_nonterminal(production: ^dag_production_type_decl),
-        right: dag_grammar_choice(
-          left: dag_grammar_nonterminal(production: ^dag_production_data_decl),
-          right: dag_grammar_choice(
-            left: dag_grammar_nonterminal(production: ^dag_production_fn_decl),
-            right: dag_grammar_choice(
-              left: dag_grammar_nonterminal(production: ^dag_production_test_fn_decl),
-              right: dag_grammar_choice(
-                left: dag_grammar_nonterminal(production: ^dag_production_service_decl),
-                right: dag_grammar_nonterminal(production: ^dag_production_resource_decl)
-              )
-            )
-          )
-        )
-      )
+// THE TOP-LEVEL DECLARATION ROWS: one list is the authority for which productions inhabit a
+// module as items, for the choice the module grammar repeats, and for which emitted identities
+// are declaration members rather than record binders.
+fn dag_grammar_top_level_item_productions() -> List<GrammarProduction> {
+  [
+    dag_grammar_production(
+      name: ^dag_production_import_decl,
+      expression: dag_grammar_import_decl_expr(),
+      emitted: ^dag_surface_import_decl
+    ),
+    dag_grammar_production(
+      name: ^dag_production_alias_decl,
+      expression: dag_grammar_alias_decl_expr(),
+      emitted: ^dag_surface_alias_decl
+    ),
+    dag_grammar_production(
+      name: ^dag_production_type_decl,
+      expression: dag_grammar_type_decl_expr(),
+      emitted: ^dag_surface_type_decl
+    ),
+    dag_grammar_production(
+      name: ^dag_production_data_decl,
+      expression: dag_grammar_data_decl_expr(),
+      emitted: ^dag_surface_data_decl
+    ),
+    dag_grammar_production(
+      name: ^dag_production_fn_decl,
+      expression: dag_grammar_fn_decl_expr(),
+      emitted: ^dag_surface_fn_decl
+    ),
+    dag_grammar_production(
+      name: ^dag_production_test_fn_decl,
+      expression: dag_grammar_test_fn_decl_expr(),
+      emitted: ^dag_surface_test_fn_decl
+    ),
+    dag_grammar_production(
+      name: ^dag_production_service_decl,
+      expression: dag_grammar_service_decl_expr(),
+      emitted: ^dag_surface_service_decl
+    ),
+    dag_grammar_production(
+      name: ^dag_production_resource_decl,
+      expression: dag_grammar_resource_decl_expr(),
+      emitted: ^dag_surface_resource_decl
     )
+  ]
+}
+
+fn dag_grammar_choice_of_production_names(names: List<Symbol>) -> GrammarExpr {
+  match names {
+    Cons { head: first, tail: rest } =>
+      fold(rest, init: dag_grammar_nonterminal(production: first), f: fn(acc, name) {
+        dag_grammar_choice(left: acc, right: dag_grammar_nonterminal(production: name))
+      })
+    Empty => dag_grammar_nonterminal(production: ^dag_production_top_level_item)
+  }
+}
+
+fn dag_grammar_top_level_item_expr() -> GrammarExpr {
+  dag_grammar_choice_of_production_names(
+    names: list_map(xs: dag_grammar_top_level_item_productions(), f: fn(p) { p.name })
   )
 }
 
@@ -3367,46 +3406,6 @@ fn dag_grammar_root() -> GrammarRoot {
     name: ^dag_production_top_level_item,
     expression: dag_grammar_top_level_item_expr(),
     emitted: ^dag_surface_top_level_item
-  )
-  let import_decl = dag_grammar_production(
-    name: ^dag_production_import_decl,
-    expression: dag_grammar_import_decl_expr(),
-    emitted: ^dag_surface_import_decl
-  )
-  let alias_decl = dag_grammar_production(
-    name: ^dag_production_alias_decl,
-    expression: dag_grammar_alias_decl_expr(),
-    emitted: ^dag_surface_alias_decl
-  )
-  let type_decl = dag_grammar_production(
-    name: ^dag_production_type_decl,
-    expression: dag_grammar_type_decl_expr(),
-    emitted: ^dag_surface_type_decl
-  )
-  let data_decl = dag_grammar_production(
-    name: ^dag_production_data_decl,
-    expression: dag_grammar_data_decl_expr(),
-    emitted: ^dag_surface_data_decl
-  )
-  let fn_decl = dag_grammar_production(
-    name: ^dag_production_fn_decl,
-    expression: dag_grammar_fn_decl_expr(),
-    emitted: ^dag_surface_fn_decl
-  )
-  let test_fn_decl = dag_grammar_production(
-    name: ^dag_production_test_fn_decl,
-    expression: dag_grammar_test_fn_decl_expr(),
-    emitted: ^dag_surface_test_fn_decl
-  )
-  let service_decl = dag_grammar_production(
-    name: ^dag_production_service_decl,
-    expression: dag_grammar_service_decl_expr(),
-    emitted: ^dag_surface_service_decl
-  )
-  let resource_decl = dag_grammar_production(
-    name: ^dag_production_resource_decl,
-    expression: dag_grammar_resource_decl_expr(),
-    emitted: ^dag_surface_resource_decl
   )
   let resource_body_entry = dag_grammar_production(
     name: ^dag_production_resource_body_entry,
@@ -3823,19 +3822,12 @@ fn dag_grammar_root() -> GrammarRoot {
   )
   GrammarRoot {
     start: ^dag_production_module,
-    productions: [
-      module_prod,
-      module_header,
-      top_level_item,
-      import_decl,
-      alias_decl,
-      type_decl,
-      data_decl,
-      fn_decl,
-      test_fn_decl,
-      service_decl,
+    productions: list_append(
+      left: [module_prod, module_header, top_level_item],
+      right: list_append(
+        left: dag_grammar_top_level_item_productions(),
+        right: [
       service_body_entry,
-      resource_decl,
       resource_body_entry,
       resource_kind,
       resource_mode,
@@ -3917,7 +3909,9 @@ fn dag_grammar_root() -> GrammarRoot {
       if_expr,
       fn_literal,
       arrow_lambda
-    ],
+        ]
+      )
+    ),
     sync_tokens: dag_sync_tokens()
   }
 }
@@ -6774,21 +6768,27 @@ fn parse_production_emitted_identity_optional(node: Node) -> Optional<Symbol> {
   }
 }
 
+fn dag_surface_identity_is_top_level_item(id: Symbol) -> Bool {
+  fold_list(
+    xs: dag_grammar_top_level_item_productions(),
+    empty: false,
+    cons: fn(acc, production) {
+      acc || match node_atom_identity_optional(node: production.emitted) {
+        Present { value: emitted } => emitted == id
+        Absent => false
+      }
+    }
+  )
+}
+
 // Parse identities that inhabit a module as Authored members and are not record binders:
-// the module surface, the graft-body stamp, and every declaration production the grammar
-// emits as a top-level item. Identity only — a missing stamp is false, never a Conj-shape
-// guess (DESIGN §5: refuse the member, never widen to the container).
+// the module surface and graft-body stamp as the only explicit extras, plus every emitted
+// identity of dag_grammar_top_level_item_productions. Identity only — a missing stamp is
+// false, never a Conj-shape guess (DESIGN §5: refuse the member, never widen to the container).
 fn dag_surface_identity_is_module_member(id: Symbol) -> Bool {
   (id == ^dag_surface_module)
     || (id == ^namespace_graft_module_body)
-    || (id == ^dag_surface_fn_decl)
-    || (id == ^dag_surface_test_fn_decl)
-    || (id == ^dag_surface_data_decl)
-    || (id == ^dag_surface_type_decl)
-    || (id == ^dag_surface_alias_decl)
-    || (id == ^dag_surface_service_decl)
-    || (id == ^dag_surface_resource_decl)
-    || (id == ^dag_surface_import_decl)
+    || dag_surface_identity_is_top_level_item(id: id)
 }
 
 fn dag_node_is_module_member_surface(node: Node) -> Bool {
