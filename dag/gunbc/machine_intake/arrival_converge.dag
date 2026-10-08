@@ -1,8 +1,10 @@
 module gunbc.machine_intake_arrival_converge
 
-import std.types { Bool, EpochMs, List, NonEmptyStr, String }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.content_hash { content_hash_equal }
+import gunbc.clock_read { observer_instant_millis }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.goal_assessment {
   ObservationAttempt,
   ObservationEstablished,
@@ -41,6 +43,7 @@ import gunbc.machine_intake_phase {
   Placement,
   arrival_phases_all,
   intake_phase_rank,
+  machine_qualification_policy_digest,
 }
 import gunbc.machine_intake_subject {
   AssemblyManifest,
@@ -78,6 +81,7 @@ import gunbc.machine_intake_mtjade1_access_observation {
   fru_gap_text,
   smbios_gap_text,
   sol_session_controller,
+  mtjade1_smbios_sol_attribution,
   provisional_assembly_of_fru,
   read_mtjade1_current_manager_read,
   read_mtjade1_fru,
@@ -125,8 +129,9 @@ import gunbc.machine_intake_bmc_secure {
   inspect_bmc_secure_state,
   bmc_secure_phase_noop,
   bmc_secure_phase_applied,
-  bmc_secure_state_finding_label,
   BmcAccountApplication,
+  ManagedCredentialReference,
+  managed_reference_same,
 }
 import gunbc.auth.authorization_pattern_selection {
   InterlockedBy, InterlockPending,
@@ -139,8 +144,8 @@ import gunbc.auth.standing_operator_grant {
   standing_grant_arm_interlock,
 }
 import gunbc.auth.privileged_effect_census { ruling_interlock_is_rostered }
-import product.host_identity { HostIdentity }
-import gunbc.fleet_host_identity { operator_host_named }
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.fleet_host_identity { operator_host_named, operator_host_mtjade1 }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
 import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted, RedemptionRefused }
 import gunbc.fleet.convergence_fold {
@@ -722,6 +727,26 @@ fn bound_bmc_secure_host(key: StepInstanceKey) -> HostIdentity? {
   operator_host_named(label: key.subject as NonEmptyStr)
 }
 
+fn bound_host_owns_this_controller(host: HostIdentity, endpoint: BmcControllerEndpoint) -> Bool {
+  host_identity_eq(a: host, b: operator_host_mtjade1)
+    && (endpoint.host as String) == (sol_session_controller(a: mtjade1_smbios_sol_attribution).host as String)
+}
+
+fn bmc_secure_instance_joins_this_controller(
+  key: StepInstanceKey,
+  identity_subject: MachineIntakeSubject,
+  reading: BmcAccountStateObservation,
+  standing: BmcRotationRouteStanding,
+) -> Bool {
+  same_intake_subject(left: reading.subject, right: identity_subject)
+    && (key.run as String) == (identity_subject.attempt_id as String)
+    && (standing.endpoint.host as String) == (reading.endpoint.host as String)
+    && match bound_bmc_secure_host(key: key) {
+      Absent => false
+      Present { value: host } => bound_host_owns_this_controller(host: host, endpoint: standing.endpoint)
+    }
+}
+
 fn capability_discharge(
   key: StepInstanceKey,
   inputs: BmcSecureInputs,
@@ -748,35 +773,69 @@ fn capability_discharge(
 
 fn discharge_bmc_secure_apply(
   key: StepInstanceKey,
+  identity_subject: MachineIntakeSubject,
   inputs: BmcSecureInputs,
   standing: BmcRotationRouteStanding,
   request: BmcAccountWriteRequest,
-) -> InstanceAuthorization? {
-  match inputs.grant {
-    Present { value: g } =>
-      match bound_bmc_secure_host(key: key) {
-        Present { value: host } =>
-          if grant_discharges_bmc_secure_account_write(g: g, host: host) {
-            Present { value: instance_authorization(key: key, principal: g.principal) }
-          } else {
+) -> InstanceAuthorization?
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "bmc_secure_bound"),
+    decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "converge_arrival_through_bmc_secure"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_uncovered_grant_falls_through_to_capability"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_uncovered_grant_refuses_a_capability_for_another_request"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_a_foreign_bound_host_key_cannot_mint_from_this_instance_controller"),
+  ]
+{
+  if !bmc_secure_instance_joins_this_controller(key: key, identity_subject: identity_subject, reading: inputs.reading, standing: standing) {
+    none
+  } else {
+    match bound_bmc_secure_host(key: key) {
+      Absent => none
+      Present { value: host } =>
+        match inputs.grant {
+          Present { value: g } =>
+            if grant_discharges_bmc_secure_account_write(g: g, host: host) {
+              Present { value: instance_authorization(key: key, principal: g.principal) }
+            } else {
+              capability_discharge(key: key, inputs: inputs, standing: standing, request: request)
+            }
+          Absent =>
             capability_discharge(key: key, inputs: inputs, standing: standing, request: request)
-          }
-        Absent =>
-          capability_discharge(key: key, inputs: inputs, standing: standing, request: request)
-      }
-    Absent =>
-      capability_discharge(key: key, inputs: inputs, standing: standing, request: request)
+        }
+    }
   }
+}
+
+fn managed_generation_advances_the_requested(requested: ManagedCredentialReference, planned: ManagedCredentialReference) -> Bool {
+  requested.account == planned.account
+    && requested.role == planned.role
+    && (requested.secret.project as String) == (planned.secret.project as String)
+    && requested.secret.secret == planned.secret.secret
+    && planned.credential_epoch > requested.credential_epoch
+}
+
+fn bmc_account_observation_is_the_inspected_pre_state(inspected: BmcAccountStateObservation, diverged: BmcAccountStateObservation) -> Bool {
+  same_intake_subject(left: inspected.subject, right: diverged.subject)
+    && (inspected.endpoint.host as String) == (diverged.endpoint.host as String)
+    && (inspected.attempt as String) == (diverged.attempt as String)
+    && (observer_instant_millis(instant: inspected.read_floor) as Int) == (observer_instant_millis(instant: diverged.read_floor) as Int)
 }
 
 fn bmc_secure_application_joins_this_instance(
   identity_subject: MachineIntakeSubject,
-  due_label: NonEmptyStr,
+  inspected_reading: BmcAccountStateObservation,
+  requested_goal: BmcSecureGoal,
   application: BmcAccountApplication,
 ) -> ArrivalStepRefusal? {
   if !same_intake_subject(left: application.plan.subject, right: identity_subject) {
     Present { value: BmcSecureApplicationForAnotherInstance { subject: application.plan.subject } }
-  } else if (bmc_secure_state_finding_label(finding: application.plan.due.deviation) as String) != (due_label as String) {
+  } else if !bmc_account_observation_is_the_inspected_pre_state(inspected: inspected_reading, diverged: application.plan.diverged) {
+    Present { value: BmcSecureApplicationNotTheInspectedTransition }
+  } else if !managed_reference_same(a: requested_goal.published_break_glass, b: application.plan.goal.published_break_glass) {
+    Present { value: BmcSecureApplicationNotTheInspectedTransition }
+  } else if !content_hash_equal(left: machine_qualification_policy_digest(policy: requested_goal.policy), right: machine_qualification_policy_digest(policy: application.plan.goal.policy)) {
+    Present { value: BmcSecureApplicationNotTheInspectedTransition }
+  } else if !managed_generation_advances_the_requested(requested: requested_goal.managed, planned: application.plan.goal.managed) {
     Present { value: BmcSecureApplicationNotTheInspectedTransition }
   } else {
     none
@@ -797,6 +856,7 @@ fn bmc_secure_bound(
     decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "bmc_secure"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "bmc_secure_bound_refuses_foreign_apply"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_without_authorization_refuses_after_a_real_apply"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_for_a_later_break_glass_generation_is_refused"),
   ]
 {
   if (identity_key.run as NonEmptyStr) != (key.run as NonEmptyStr) || (identity_key.subject as NonEmptyStr) != (key.subject as NonEmptyStr) {
@@ -815,19 +875,21 @@ fn bmc_secure_bound(
               BmcSecurePhaseRefused { cause: _ } => StepRefused { key: key, cause: BmcSecurePhaseDomainRefused }
             }
           Refuse { reason: _ } => StepRefused { key: key, cause: BmcSecurePhaseDomainRefused }
-          Apply { plan: due } =>
+          Apply { plan: _ } =>
             match inputs.apply {
               Absent => StepRefused { key: key, cause: BmcSecureApplyInputsMissing }
               Present { value: ap } =>
                 match bmc_secure_application_joins_this_instance(
                   identity_subject: identity_subject,
-                  due_label: bmc_secure_state_finding_label(finding: due.deviation),
+                  inspected_reading: inputs.reading,
+                  requested_goal: inputs.goal,
                   application: ap.application,
                 ) {
                   Present { value: c } => StepRefused { key: key, cause: c }
                   Absent =>
                     match discharge_bmc_secure_apply(
                       key: key,
+                      identity_subject: identity_subject,
                       inputs: inputs,
                       standing: ap.application.plan.managed_write.route,
                       request: ap.application.plan.managed_write.request,
@@ -1035,6 +1097,7 @@ fn converge_arrival_through_bmc_secure(run: ConvergenceRunId, subject: StepSubje
         Present { value: ap } =>
           match discharge_bmc_secure_apply(
             key: key,
+            identity_subject: bmc.reading.subject,
             inputs: bmc,
             standing: ap.application.plan.managed_write.route,
             request: ap.application.plan.managed_write.request,

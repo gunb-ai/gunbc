@@ -2263,8 +2263,9 @@ fn dry_read_bmc_account_state(
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "read_in"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_mtjade1_converges_through_bmc_secure_noop_on_the_real_prefix"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_mtjade1_bmc_secure_apply_without_discharge_refuses_on_the_real_path"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_mtjade1_bmc_secure_apply_inputs_missing_refuses_on_the_real_path"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_for_a_later_break_glass_generation_is_refused"),
   ]
 {
   let at = dry_bmc_account_instant(millis: read_at_millis)
