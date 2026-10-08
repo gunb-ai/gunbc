@@ -149,3 +149,12 @@ data brand_erased_at_list_literal_element_source: String = "module probe_brand_e
 test fn brand_erased_at_list_literal_element_still_compiles_until_the_wall() -> Bool {
   compiles_with_no_blocking_diagnostic(source: brand_erased_at_list_literal_element_source)
 }
+
+// TWO INFORMED NON-STRING LISTS THAT DISAGREE MUST TYPEMISMATCH (review 77794).
+// The string/brand arm already refused; keep-left for Int vs Bool was the same fabricated join.
+data concat_informed_int_and_bool_lists_source: String = "module probe_concat_int_bool\nfn bad_concat() -> List<Int> {\n  concat([1], [true])\n}\nfn bad_plus() -> List<Int> {\n  [1] + [true]\n}\n"
+
+test fn concat_informed_int_and_bool_lists_refuses() -> Bool {
+  (blocking_class_count_for(source: concat_informed_int_and_bool_lists_source, wanted_class: "TypeMismatch") >= 1)
+    && !compiles_with_no_blocking_diagnostic(source: concat_informed_int_and_bool_lists_source)
+}

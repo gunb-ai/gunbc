@@ -25019,27 +25019,6 @@ pub fn concat_operand_is_informed_list(
         && !unify_binding_is_uninformative(n.clone()))
 }
 
-pub fn list_element_is_kernel_string(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    (node_is_list_concat_operand(n.clone(), source_indices.clone())
-        && match n.children.clone().first().cloned() {
-            Some(el) => {
-                ((type_node_label(
-                    crate::v1_compiler_infer_types::child_type_node(el.clone()),
-                    source_indices.clone(),
-                ) == "String".to_string())
-                    && ((crate::v1_compiler_infer_types::child_type_node(el.clone())
-                        .children
-                        .clone()
-                        .len() as i64)
-                        == 0))
-            }
-            std::option::Option::None => false,
-        })
-}
-
 pub fn list_branch_meets_expected_list(
     branch: Rc<Node>,
     expected: Rc<Node>,
@@ -25189,35 +25168,26 @@ pub fn concat_unify_operands(
                             refuse: std::option::Option::None,
                         })
                     } else {
-                        if (list_element_is_kernel_string(left.clone(), source_indices.clone())
-                            && list_element_is_kernel_string(right.clone(), source_indices.clone()))
-                        {
-                            Rc::new(ConcatUnify {
-                                result: error_type(),
-                                refuse: Some(v1_rt::concat(
+                        Rc::new(ConcatUnify {
+                            result: error_type(),
+                            refuse: Some(v1_rt::concat(
+                                v1_rt::concat(
                                     v1_rt::concat(
-                                        v1_rt::concat(
-                                            "concat operands have incompatible element types: "
-                                                .to_string(),
-                                            crate::v1_compiler_infer_types::node_type_shape(
-                                                left.clone(),
-                                                source_indices.clone(),
-                                            ),
+                                        "concat operands have incompatible element types: "
+                                            .to_string(),
+                                        crate::v1_compiler_infer_types::node_type_shape(
+                                            left.clone(),
+                                            source_indices.clone(),
                                         ),
-                                        " vs ".to_string(),
                                     ),
-                                    crate::v1_compiler_infer_types::node_type_shape(
-                                        right.clone(),
-                                        source_indices.clone(),
-                                    ),
-                                )),
-                            })
-                        } else {
-                            Rc::new(ConcatUnify {
-                                result: left.clone(),
-                                refuse: std::option::Option::None,
-                            })
-                        }
+                                    " vs ".to_string(),
+                                ),
+                                crate::v1_compiler_infer_types::node_type_shape(
+                                    right.clone(),
+                                    source_indices.clone(),
+                                ),
+                            )),
+                        })
                     }
                 } else {
                     if (left_unsolved.clone() && right_unsolved.clone()) {
