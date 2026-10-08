@@ -19433,7 +19433,7 @@ mod floor_base_tree_tests {
     /// now the binary's, over the comparison `gunbc.diff_baseline` resolves for that event
     /// (`PushParent` on the policy base, under the policy's merge-base mode): it names the departure
     /// point, demands nothing for a change touching no base-fact input, demands the kernel names
-    /// exactly when the kernel's declaring file differs, and the cost-debt roster exactly when the
+    /// (and the parse environment, whose closure holds that file) exactly when it differs, and the cost-debt roster exactly when the
     /// roster is touched.
     #[test]
     fn base_compiler_demand_names_the_resolved_base_under_workflow_dispatch() {
@@ -19502,7 +19502,8 @@ mod floor_base_tree_tests {
         let d = base_compiler_demand_at(&dispatch(&kernel), &dir, no_diff, no_closure)
             .expect("decided");
         assert_eq!(d.revision, departure);
-        assert_eq!(d.facts, vec!["kernel_names"]);
+        // The kernel's declaring file is also in the parse environment's closure, so both readers ask.
+        assert_eq!(d.facts, vec!["parse_environment", "kernel_names"]);
         let roster = || Ok((vec![FLOOR_COST_DEBT_ROSTER.to_string()], HashSet::new()));
         let d =
             base_compiler_demand_at(&dispatch(&plain), &dir, roster, no_closure).expect("decided");
