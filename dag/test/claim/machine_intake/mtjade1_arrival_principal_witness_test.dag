@@ -2,6 +2,7 @@ module test.claim.machine_intake.mtjade1_arrival_principal_witness
 
 import std.logic { Bool }
 import std.types { List, NonEmptyStr, String }
+import std.durable_exclusive_hold { DurableHoldOwnerRef }
 import gunbc.machine_intake_arrival_subject {
   arrival_converge_subject_options, admit_arrival_subject, arrival_subject_admission_refuses_before_effect,
   ArrivalSubjectInPopulation, ArrivalSubjectUnknown, ArrivalSubjectIsManagedHostExecutorConfusion,
@@ -11,9 +12,12 @@ import gunbc.machine_intake_arrival_interlock {
   admit_arrival_archive_interlock, admit_arrival_bmc_secure_interlock,
   ArrivalArchiveInterlockAdmitted, ArrivalArchiveInterlockRefused,
   ArrivalBmcSecureInterlockAdmitted, ArrivalBmcSecureInterlockRefused,
-  arrival_combine_prefix_and_release, arrival_after_acquire,
+  arrival_combine_prefix_and_release, arrival_after_acquire_traced,
+  arrival_after_acquire_mutant_drops_release, arrival_after_acquire_mutant_refused_calls_body,
   ArrivalArchiveSlotReleased, ArrivalArchiveSlotReleaseRefused,
-  ArrivalArchiveSlotAcquireRefused,
+  ArrivalArchiveSlotAcquire, ArrivalArchiveSlotAcquireRefused, ArrivalArchiveSlotAcquired, ArrivalArchiveSlotHeld,
+  ArrivalGatedBodyResult, ArrivalGatedReleaseResult, ArrivalInterlockTrace,
+  arrival_gated_body_result, arrival_gated_release_result, arrival_archive_slot_held_for_trace,
 }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.durable_compare_and_set { cas_generation_first }
@@ -133,19 +137,94 @@ test fn w_release_failure_after_prefix_failure_is_concatenated() -> Bool {
   }
 }
 
-fn body_that_runs_marks_exit() -> ProcessExit {
-  ExitFailure { code: 9, reason: "BODY_RAN" }
+fn recording_body_that_refuses() -> ArrivalGatedBodyResult {
+  arrival_gated_body_result(exit: ExitFailure { code: 9, reason: "BODY_RAN" }, body_invocations: 1)
+}
+
+fn recording_release(held: ArrivalArchiveSlotHeld) -> ArrivalGatedReleaseResult {
+  match held {
+    ArrivalArchiveSlotHeld { subject: _, slot_key: _, owner: _, generation: g } =>
+      arrival_gated_release_result(
+        slot: ArrivalArchiveSlotReleased { generation: g },
+        release_invocations: 1,
+      )
+  }
+}
+
+fn fixture_acquired_slot() -> ArrivalArchiveSlotAcquire {
+  match admit_arrival_subject(wire: "mtjade1") {
+    ArrivalSubjectInPopulation { subject: s } =>
+      ArrivalArchiveSlotAcquired {
+        held: arrival_archive_slot_held_for_trace(
+          subject: s,
+          slot_key: "arrival:mtjade1" as NonEmptyStr,
+          owner: "arrival-principal-witness" as DurableHoldOwnerRef,
+          generation: cas_generation_first(),
+        ),
+      }
+    _ => ArrivalArchiveSlotAcquireRefused { cause: "fixture subject was not admitted" as NonEmptyStr }
+  }
+}
+
+fn failed_acquire_has_no_body_invocation(trace: ArrivalInterlockTrace) -> Bool {
+  match trace {
+    ArrivalInterlockTrace { body_invocations: n, release_invocations: rel, exit: e } =>
+      n == 0 && rel == 0 && match e {
+        ExitSuccess => false
+        ExitFailure { code: _, reason: r } =>
+          string_contains(s: r, pattern: "slot occupied") && !string_contains(s: r, pattern: "BODY_RAN")
+      }
+  }
+}
+
+fn acquired_ran_body_and_release_including_body_refusal(trace: ArrivalInterlockTrace) -> Bool {
+  match trace {
+    ArrivalInterlockTrace { body_invocations: n, release_invocations: rel, exit: e } =>
+      n == 1 && rel == 1 && match e {
+        ExitSuccess => false
+        ExitFailure { code: c, reason: r } => c == 9 && string_contains(s: r, pattern: "BODY_RAN")
+      }
+  }
 }
 
 test fn w_failed_acquire_runs_no_body() -> Bool {
-  match arrival_after_acquire(
-    outcome: ArrivalArchiveSlotAcquireRefused { cause: "slot occupied" as NonEmptyStr },
-    body: fn() { body_that_runs_marks_exit() },
-  ) {
-    ExitSuccess => false
-    ExitFailure { code: _, reason: r } =>
-      string_contains(s: r, pattern: "slot occupied") && !string_contains(s: r, pattern: "BODY_RAN")
-  }
+  failed_acquire_has_no_body_invocation(
+    trace: arrival_after_acquire_traced(
+      outcome: ArrivalArchiveSlotAcquireRefused { cause: "slot occupied" as NonEmptyStr },
+      body: fn() { recording_body_that_refuses() },
+      release_fn: fn(h) { recording_release(held: h) },
+    ),
+  )
+}
+
+test fn w_acquired_runs_body_and_release_when_body_refuses() -> Bool {
+  acquired_ran_body_and_release_including_body_refusal(
+    trace: arrival_after_acquire_traced(
+      outcome: fixture_acquired_slot(),
+      body: fn() { recording_body_that_refuses() },
+      release_fn: fn(h) { recording_release(held: h) },
+    ),
+  )
+}
+
+test fn w_mutant_drop_release_fails_acquired_body_and_release_observation() -> Bool {
+  !acquired_ran_body_and_release_including_body_refusal(
+    trace: arrival_after_acquire_mutant_drops_release(
+      outcome: fixture_acquired_slot(),
+      body: fn() { recording_body_that_refuses() },
+      release_fn: fn(h) { recording_release(held: h) },
+    ),
+  )
+}
+
+test fn w_mutant_refused_calls_body_fails_zero_body_observation() -> Bool {
+  !failed_acquire_has_no_body_invocation(
+    trace: arrival_after_acquire_mutant_refused_calls_body(
+      outcome: ArrivalArchiveSlotAcquireRefused { cause: "slot occupied" as NonEmptyStr },
+      body: fn() { recording_body_that_refuses() },
+      release_fn: fn(h) { recording_release(held: h) },
+    ),
+  )
 }
 
 test fn w_successful_release_keeps_the_prefix() -> Bool {

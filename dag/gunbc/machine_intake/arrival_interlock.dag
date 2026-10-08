@@ -1,6 +1,6 @@
 module gunbc.machine_intake_arrival_interlock
 
-import std.types { NonEmptyStr, String }
+import std.types { Int, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.durable_compare_and_set { CasGeneration }
 import std.durable_exclusive_hold { DurableHoldOwnerRef, DurableHoldReleaseRef }
@@ -164,14 +164,155 @@ fn arrival_release_after_prefix(held: ArrivalArchiveSlotHeld, prefix: ProcessExi
   arrival_combine_prefix_and_release(prefix: prefix, slot: arrival_archive_slot_release(held: held))
 }
 
+type ArrivalGatedBodyResult sole_constructor {
+  exit: ProcessExit
+  body_invocations: Int
+}
+
+type ArrivalGatedReleaseResult sole_constructor {
+  slot: ArrivalArchiveSlotRelease
+  release_invocations: Int
+}
+
+type ArrivalInterlockTrace sole_constructor {
+  body_invocations: Int
+  release_invocations: Int
+  exit: ProcessExit
+}
+
+fn arrival_gated_body_result(exit: ProcessExit, body_invocations: Int) -> ArrivalGatedBodyResult {
+  ArrivalGatedBodyResult { exit: exit, body_invocations: body_invocations }
+}
+
+fn arrival_gated_release_result(slot: ArrivalArchiveSlotRelease, release_invocations: Int) -> ArrivalGatedReleaseResult {
+  ArrivalGatedReleaseResult { slot: slot, release_invocations: release_invocations }
+}
+
+fn arrival_archive_slot_held_for_trace(
+  subject: ArrivalSubjectAdmitted,
+  slot_key: NonEmptyStr,
+  owner: DurableHoldOwnerRef,
+  generation: CasGeneration,
+) -> ArrivalArchiveSlotHeld {
+  ArrivalArchiveSlotHeld { subject: subject, slot_key: slot_key, owner: owner, generation: generation }
+}
+
+fn arrival_trace_refused(cause: NonEmptyStr) -> ArrivalInterlockTrace {
+  ArrivalInterlockTrace {
+    body_invocations: 0,
+    release_invocations: 0,
+    exit: exit_failure(reason: concat("arrival_converge: ", cause as String)),
+  }
+}
+
+fn arrival_trace_join_body_and_release(
+  body_result: ArrivalGatedBodyResult,
+  released: ArrivalGatedReleaseResult,
+) -> ArrivalInterlockTrace {
+  match body_result {
+    ArrivalGatedBodyResult { exit: prefix, body_invocations: n } =>
+      match released {
+        ArrivalGatedReleaseResult { slot: s, release_invocations: r } =>
+          ArrivalInterlockTrace {
+            body_invocations: n,
+            release_invocations: r,
+            exit: arrival_combine_prefix_and_release(prefix: prefix, slot: s),
+          }
+      }
+  }
+}
+
+fn arrival_trace_acquired_after_body(
+  held: ArrivalArchiveSlotHeld,
+  body_result: ArrivalGatedBodyResult,
+  release_fn: fn(ArrivalArchiveSlotHeld) -> ArrivalGatedReleaseResult,
+) -> ArrivalInterlockTrace {
+  arrival_trace_join_body_and_release(body_result: body_result, released: release_fn(held))
+}
+
+fn arrival_trace_acquired(
+  held: ArrivalArchiveSlotHeld,
+  body: fn() -> ArrivalGatedBodyResult,
+  release_fn: fn(ArrivalArchiveSlotHeld) -> ArrivalGatedReleaseResult,
+) -> ArrivalInterlockTrace {
+  arrival_trace_acquired_after_body(held: held, body_result: body(), release_fn: release_fn)
+}
+
 // Acquire, body, release as a composition over a supplied outcome. The refused arm must not
-// evaluate the body (review 5441282428 / warm-crane msg_644b617c). Body is fn() so a refused
-// arm need not mint ArrivalArchiveSlotHeld (sole_constructor is FileHoldAcquired only).
-fn arrival_after_acquire(outcome: ArrivalArchiveSlotAcquire, body: fn() -> ProcessExit) -> ProcessExit {
+// evaluate the body (review 5441282428 / 5450542899). The acquired arm evaluates body then
+// release; the trace records each callee's invocation count so a discarded body return cannot
+// satisfy the zero-body oracle, and a dropped release call cannot satisfy the acquired oracle.
+fn arrival_after_acquire_traced(
+  outcome: ArrivalArchiveSlotAcquire,
+  body: fn() -> ArrivalGatedBodyResult,
+  release_fn: fn(ArrivalArchiveSlotHeld) -> ArrivalGatedReleaseResult,
+) -> ArrivalInterlockTrace {
+  match outcome {
+    ArrivalArchiveSlotAcquireRefused { cause: c } => arrival_trace_refused(cause: c)
+    ArrivalArchiveSlotAcquired { held: h } => arrival_trace_acquired(held: h, body: body, release_fn: release_fn)
+  }
+}
+
+fn arrival_after_acquire_mutant_drops_release(
+  outcome: ArrivalArchiveSlotAcquire,
+  body: fn() -> ArrivalGatedBodyResult,
+  release_fn: fn(ArrivalArchiveSlotHeld) -> ArrivalGatedReleaseResult,
+) -> ArrivalInterlockTrace {
+  match outcome {
+    ArrivalArchiveSlotAcquireRefused { cause: c } => arrival_trace_refused(cause: c)
+    ArrivalArchiveSlotAcquired { held: _ } => arrival_trace_acquired_body_without_release(body: body)
+  }
+}
+
+fn arrival_trace_acquired_body_without_release(
+  body: fn() -> ArrivalGatedBodyResult,
+) -> ArrivalInterlockTrace {
+  match body() {
+    ArrivalGatedBodyResult { exit: e, body_invocations: n } =>
+      ArrivalInterlockTrace {
+        body_invocations: n,
+        release_invocations: 0,
+        exit: e,
+      }
+  }
+}
+
+fn arrival_after_acquire_mutant_refused_calls_body(
+  outcome: ArrivalArchiveSlotAcquire,
+  body: fn() -> ArrivalGatedBodyResult,
+  release_fn: fn(ArrivalArchiveSlotHeld) -> ArrivalGatedReleaseResult,
+) -> ArrivalInterlockTrace {
   match outcome {
     ArrivalArchiveSlotAcquireRefused { cause: c } =>
-      exit_failure(reason: concat("arrival_converge: ", c as String))
-    ArrivalArchiveSlotAcquired { held: h } =>
-      arrival_release_after_prefix(held: h, prefix: body())
+      arrival_trace_refused_after_calling_body(cause: c, body: body)
+    ArrivalArchiveSlotAcquired { held: h } => arrival_trace_acquired(held: h, body: body, release_fn: release_fn)
+  }
+}
+
+fn arrival_trace_refused_after_calling_body(
+  cause: NonEmptyStr,
+  body: fn() -> ArrivalGatedBodyResult,
+) -> ArrivalInterlockTrace {
+  match body() {
+    ArrivalGatedBodyResult { exit: _, body_invocations: n } =>
+      ArrivalInterlockTrace {
+        body_invocations: n,
+        release_invocations: 0,
+        exit: exit_failure(reason: concat("arrival_converge: ", cause as String)),
+      }
+  }
+}
+
+fn arrival_after_acquire(outcome: ArrivalArchiveSlotAcquire, body: fn() -> ProcessExit) -> ProcessExit {
+  match arrival_after_acquire_traced(
+    outcome: outcome,
+    body: fn() {
+      ArrivalGatedBodyResult { exit: body(), body_invocations: 1 }
+    },
+    release_fn: fn(h) {
+      ArrivalGatedReleaseResult { slot: arrival_archive_slot_release(held: h), release_invocations: 1 }
+    },
+  ) {
+    ArrivalInterlockTrace { body_invocations: _, release_invocations: _, exit: e } => e
   }
 }
