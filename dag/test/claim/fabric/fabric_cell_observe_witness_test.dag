@@ -12,6 +12,7 @@ import gunbc.fabric_cell_converge {
   FabricCellResourceBoundaryAddress,
   fabric_cell_resource_addresses,
   fabric_cell_slice_name,
+  fabric_cell_expected_slots,
   fabric_cell_desired_state_digest,
   FabricCellAddressObservation,
   AddressObserved,
@@ -481,15 +482,48 @@ fn discovery_wire_set(d: FabricCellDiscovery) -> String {
 // LAW 15 -- THE OBSERVER'S OUTPUT IS WHAT THE CLASSIFICATION KERNEL CONSUMES, AND A CONVERGED HOST
 // CLASSIFIES AS SATISFIED THROUGH IT. The end-to-end join: the two halves were built a PR apart and
 // this is the row that fails if the observer's vocabulary drifts from the kernel's.
+//
+// THE HOST IS CONVERGED ONLY WHEN EVERY EXPECTED SLOT IS, so the probe and the expected roster are
+// both the slot authority's population, not one fixture slot. #11625 gave srv3 a second fabric
+// member (srv3-07); a one-slot probe then left srv3-07's readback unobserved and outside a
+// one-slot expected roster, so this row went red on the unexpected readback rather than on drift.
 test fn witness_observer_converged_probe_classifies_as_satisfied() -> Bool {
-  let readback = fabric_cell_observe_host(probe: converged_probe())
+  let expected = fabric_cell_expected_slots(host: operator_host_srv3)
+  let readback = fabric_cell_observe_host(probe: converged_host_probe(slots: expected))
   let classified = classify_fabric_cell_host(
-    expected_slots: [observe_slot()],
+    expected_slots: expected,
     readback: readback,
   )
-  list_length(items: classified.unexpected) == 0
+  list_length(items: expected) > 0
+    && list_length(items: classified.unexpected) == 0
     && fold(classified.standings, init: true, f: (acc, s) => acc && standing_is_satisfied(s: s))
-    && list_length(items: classified.standings) == list_length(items: fabric_cell_resource_addresses())
+    && list_length(items: classified.standings)
+      == list_length(items: expected) * list_length(items: fabric_cell_resource_addresses())
+}
+
+// EVERY GIVEN SLOT FULLY PROVISIONED: the converged_probe shape, quantified over a slot list.
+fn converged_host_probe(slots: List<RunnerSlotIdentity>) -> FabricCellHostProbe {
+  FabricCellHostProbe {
+    host: operator_host_srv3,
+    namespaces: concat(
+      [
+        enumerated(ns: FabricCellsRootNamespace, entries: map(slots, s => runner_slot_instance_name(slot: s))),
+        enumerated(ns: FabricCellSliceNamespace, entries: map(slots, s => fabric_cell_slice_name(slot: s))),
+      ],
+      map(slots, s => enumerated(ns: FabricCellChildNamespace { slot: s }, entries: ["attempts"])),
+    ),
+    addresses: fold(slots, init: [], f: (acc, s) => concat(
+      acc,
+      map(
+        fabric_cell_resource_addresses(),
+        a => FabricCellAddressProbeEntry {
+          slot: s,
+          address: a,
+          probe: AddressStateRead { state_digest: fabric_cell_desired_state_digest(slot: s, address: a) },
+        }
+      ),
+    )),
+  }
 }
 
 // LAW 16 -- A DRIFTED STATE READ REACHES THE KERNEL AS DRIFT, NOT AS ABSENCE. The defect this
@@ -801,8 +835,12 @@ fn population_is_refused(p: FabricCellObservationDecision) -> Bool {
 // the pairs the authority expects, so a state read for an undeclared slot, or a child namespace for
 // a cell nobody asked about, had no output position and vanished. The observer was conserving what
 // it PRODUCED while silently dropping part of what it was GIVEN.
+//
+// THE STRAY SLOTS (srv3-08, srv3-09 here and below) ARE COMMITTED-RANGE INDICES OUTSIDE
+// gunbc.runner_slot_allocation fabric_execution_slot_identities. They were srv3-07 until #11625
+// made srv3-07 the second fabric member, which turned the "stray" into an expected slot.
 test fn witness_observer_unconsumed_probe_entries_refuse_rather_than_vanishing() -> Bool {
-  let stray = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 7 }
+  let stray = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 8 }
   let refusals = fabric_cell_unconsumed_probe_refusals(probe: FabricCellHostProbe {
     host: operator_host_srv3,
     namespaces: concat(
@@ -832,7 +870,7 @@ test fn witness_observer_matching_probe_leaves_nothing_unconsumed() -> Bool {
 // the projection carries it, and fabric_cell_projection_refusals is the only way to get the
 // discovery half, so a caller cannot take one and skip the other.
 test fn witness_observer_unconsumed_probe_refuses_the_population() -> Bool {
-  let stray = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 7 }
+  let stray = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 8 }
   population_is_refused(p: admit_fabric_cell_probe(probe: FabricCellHostProbe {
     host: operator_host_srv3,
     namespaces: converged_probe().namespaces,
@@ -994,8 +1032,8 @@ fn refusal_identities(host: HostIdentity, entries: List<String>) -> List<String>
 // the plan body. Two probes describing the same host in a different sequence must not produce two
 // plan identities.
 test fn witness_observer_unconsumed_refusals_are_order_independent() -> Bool {
-  let a = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 7 }
-  let b = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 8 }
+  let a = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 8 }
+  let b = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 9 }
   let forward = stray_probe_identities(first: a, second: b)
   let reverse = stray_probe_identities(first: b, second: a)
   list_length(items: forward) == 2 && identity_lists_equal(a: forward, b: reverse)
@@ -1004,7 +1042,7 @@ test fn witness_observer_unconsumed_refusals_are_order_independent() -> Bool {
 // AND DUPLICATES OF ONE SUBJECT ARE ONE REFUSAL, which is the same population question asked the
 // other way: an order that is stable but double-counts is no better than one that reorders.
 test fn witness_observer_duplicate_unconsumed_probes_are_one_refusal() -> Bool {
-  let a = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 7 }
+  let a = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 8 }
   list_length(items: stray_probe_identities(first: a, second: a)) == 1
 }
 

@@ -691,7 +691,7 @@ fn floor_expected_red_chunk_20() -> List<String> {
 // spelling collides with a builtin or module free function; the gate is widened against a
 // measured population, never speculatively.
 fn floor_expected_red_chunk_21() -> List<String> {
-  Cons { head: "v2.test.claim.local_binding_shadow.a_noncallable_local_binding_does_not_fall_through_to_the_module_function", tail:Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_extra_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_missing_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_wrong_argument_type_must_refuse_at_compile", tail: Cons { head: "test.claim.fabric_cell_evidence_algebra_witness.evidence_full_value_is_order_independent", tail: Empty {} } } } } }
+  Cons { head: "v2.test.claim.local_binding_shadow.a_noncallable_local_binding_does_not_fall_through_to_the_module_function", tail:Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_extra_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_missing_argument_must_refuse_at_compile", tail: Cons { head: "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_wrong_argument_type_must_refuse_at_compile", tail: Empty {} } } } }
 }
 
 // THE SHADOW CHUNK IS DELETED AND THE ROSTER IS RENUMBERED RATHER THAN LEFT WITH A HOLE. The chunk
