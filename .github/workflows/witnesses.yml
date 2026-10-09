@@ -381,6 +381,7 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read
+      id-token: write
     steps:
       - name: Checkout the commit this lane judges
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -408,6 +409,34 @@ jobs:
           if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
           if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
           echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
+      - name: Bind job-private native product store root
+        run: |-
+          # 🟡 dissolve-on: compiler_gate_native_cache_root_script — hand-authored two-line shell binding the job-private native product store root under RUNNER_TEMP. DISSOLVES WHEN the restore of the shared native product store is an emitted intent that names its job-private directory (a typed host-effect realization through v2.workflow.bash_emit bash_emit_program), so the mkdir and the GITHUB_ENV append are derived from that intent rather than spelled here.
+          mkdir -p "$RUNNER_TEMP/gunbc-native-products"
+          echo "GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TEMP/gunbc-native-products" >> "$GITHUB_ENV"
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+      - name: WIF auth (OIDC -> native-product-read, pull requests)
+        id: native_read_wif
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-actions/providers/github-oidc
+          service_account: native-product-read@gunbai-secrets.iam.gserviceaccount.com
+          token_format: access_token
+          create_credentials_file: false
+        if: (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'merge_group'
+        continue-on-error: true
+        timeout-minutes: 5
+      - name: WIF auth (OIDC -> native-product-write, merge queue)
+        id: native_write_wif
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-native-product-write/providers/github-native-product-write-oidc
+          service_account: native-product-write@gunbai-secrets.iam.gserviceaccount.com
+          token_format: access_token
+          create_credentials_file: false
+        if: github.event_name == 'merge_group'
+        continue-on-error: true
+        timeout-minutes: 5
       - name: Build the compiler
         id: build_witness_fold
         run: |+
@@ -462,6 +491,8 @@ jobs:
 
         env:
           GUNBC_NATIVE_FAULT_EXPERIMENT: ${{ github.event_name == 'pull_request' && 'skip_pull_request' || 'run' }}
+          WIF_ACCESS_TOKEN: ${{ steps.native_read_wif.outputs.access_token }}
+          GUNBC_PULL_REQUEST_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
       - name: emit and build //gunbc/instruments:v2-native-cli
         id: emit_build_v2_native_cli
         run: |+
@@ -488,6 +519,16 @@ jobs:
 
         env:
           GUNBC_NATIVE_FAULT_EXPERIMENT: ${{ github.event_name == 'pull_request' && 'skip_pull_request' || 'run' }}
+          WIF_ACCESS_TOKEN: ${{ steps.native_read_wif.outputs.access_token }}
+          GUNBC_PULL_REQUEST_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+      - name: Save admitted native products to the shared store
+        run: |
+          'target/release/gunbc' 'run' '--source-root' 'dag' '--source-root' 'src/v2' '--entry' 'dag/gunbc/native_product_shared_transfer.dag' '--function' 'native_product_save_wet'
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.native_write_wif.outputs.access_token }}
+        if: success() && github.event_name == 'merge_group'
+        continue-on-error: true
+        timeout-minutes: 10
       - name: Why this lane is red, and what would be a real finding
         run: |-
           printf '%s\n' 'emit-build is a REQUIRED lane: a red here BLOCKS your merge, through the required context `witnesses`.'

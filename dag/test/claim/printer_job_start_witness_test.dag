@@ -159,13 +159,12 @@ test fn the_start_payload_names_the_delivered_file() -> Bool {
     && string_contains(s: json, pattern: "\"command\": \"project_file\"")
 }
 
-// use_ams IS FALSE, and it is checked rather than trusted to the constructor. The operator's
-// constraint is one filament per printer -- printer-01 white, printer-02 black -- and a true here
-// would make the machine wait on an AMS that is not bound to this print.
-test fn the_start_payload_does_not_ask_for_an_ams() -> Bool {
+// Physical slot 1 is wire tray 0, not tray 1 or the external spool.
+test fn the_start_payload_selects_ams_slot_one() -> Bool {
   let json = bambu_start_payload_json(
     command: bambu_start_command(remote_name: a_remote_name), sequence_id: "1")
-  string_contains(s: json, pattern: "\"use_ams\": false")
+  string_contains(s: json, pattern: "\"use_ams\": true") &&
+  string_contains(s: json, pattern: "\"ams_mapping\": [0]")
 }
 
 // THE BROKER IS TLS, MEASURED ON THE MACHINE RATHER THAN ASSUMED FROM THE PORT NUMBER.

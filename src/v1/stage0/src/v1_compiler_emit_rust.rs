@@ -186,13 +186,13 @@ use crate::v1_compiler_emit::ShellResultChannel::{
 pub use crate::v1_compiler_emit::{
     bind_operation_transport, child_from_key, compute_service_fields,
     effective_operation_transport, emit_bin_op_symbol, emit_container, emit_data_value_json,
-    emit_declared_optional_row_json, emit_error_expr, emit_ident, emit_keyed_container_type,
-    emit_keyword, emit_lambda, emit_lambda_params, emit_let_binding, emit_let_binding_annotated,
-    emit_list_lit_expr, emit_literal, emit_node_type, emit_null_coalesce, emit_return,
-    emit_shared_expr, emit_shared_tco_expr, emit_simple_expr, emit_string_literal,
-    emit_typed_cast_shared, emit_typed_if_shared, emit_typed_let_shared, emit_unary_op,
-    escape_rust_interp_text, extract_modifier_names, has_nested_records_node, has_service_items,
-    is_null_coalesce, is_self_recursive, is_tco_eligible, keyed_container_has_target_inhabitant,
+    emit_error_expr, emit_ident, emit_keyed_container_type, emit_keyword, emit_lambda,
+    emit_lambda_params, emit_let_binding, emit_let_binding_annotated, emit_list_lit_expr,
+    emit_literal, emit_node_type, emit_null_coalesce, emit_return, emit_shared_expr,
+    emit_shared_tco_expr, emit_simple_expr, emit_string_literal, emit_typed_cast_shared,
+    emit_typed_if_shared, emit_typed_let_shared, emit_unary_op, escape_rust_interp_text,
+    extract_modifier_names, has_nested_records_node, has_service_items, is_null_coalesce,
+    is_self_recursive, is_tco_eligible, keyed_container_has_target_inhabitant,
     lookup_item_by_identity, module_emit_scope, order_typed_call_args_from_semantics,
     render_node_type, render_tuple_parts, rust_literal_for_pattern, scope_after_expr,
     seed_bindings, service_fallback_transport, service_field_ctors, service_field_decls,
@@ -39977,34 +39977,37 @@ pub fn emit_capability_method(
     }
 }
 
-pub fn data_value_has_cross_refs(value: Rc<Node>) -> bool {
+pub fn data_value_is_json_literal_tree(value: Rc<Node>) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*value.expr_data.clone()).clone() {
-            ExprData::ExprVar {
-                binding_kind: _, ..
-            } => true,
-            ExprData::ExprCall { .. } => true,
+            ExprData::ExprLiteral { value: _, .. } => true,
             ExprData::ExprListLit => {
-                let mut __found = false;
+                let mut __all = true;
                 for c in value.children.clone().iter().cloned() {
-                    if data_value_has_cross_refs(c.clone()) {
-                        __found = true;
+                    if !(data_value_is_json_literal_tree(c.clone())) {
+                        __all = false;
                         break;
                     }
                 }
-                __found
+                __all
             }
             ExprData::ExprRecordLit { parent_enum: _, .. } => {
-                let mut __found = false;
+                let mut __all = true;
                 for f in value.children.clone().iter().cloned() {
-                    if data_value_has_cross_refs(crate::v1_std_core::field_init_node_value(
-                        f.clone(),
+                    if !(data_value_is_json_literal_tree(
+                        crate::v1_std_core::field_init_node_value(f.clone()),
                     )) {
-                        __found = true;
+                        __all = false;
                         break;
                     }
                 }
-                __found
+                __all
+            }
+            ExprData::ExprUnaryOp {
+                op: UnaryOpKind::Neg,
+                ..
+            } => {
+                data_value_is_json_literal_tree(crate::v1_std_core::unaryop_operand(value.clone()))
             }
             _ => false,
         }
@@ -40082,21 +40085,18 @@ pub fn emit_data_def(
                 annotation_type_node.clone(),
                 scope.type_env.clone().source_indices.clone(),
             ) {
-                rust_carrier_optional_wrap(
-                    annotation_type_node.clone(),
-                    crate::v1_compiler_coercion::coerce_primitive_type(
-                        crate::v1_compiler_coercion::type_reference_realization(
-                            annotation_type_node.clone(),
-                            crate::v1_std_core::authored_name_at(
-                                scope.type_env.clone().source_indices.clone(),
-                                annotation_type_node.clone(),
-                            ),
-                            RenderTarget::Rust,
-                        ),
+                crate::v1_compiler_coercion::coerce_primitive_type(
+                    crate::v1_compiler_coercion::type_reference_realization(
+                        annotation_type_node.clone(),
                         crate::v1_std_core::authored_name_at(
                             scope.type_env.clone().source_indices.clone(),
                             annotation_type_node.clone(),
                         ),
+                        RenderTarget::Rust,
+                    ),
+                    crate::v1_std_core::authored_name_at(
+                        scope.type_env.clone().source_indices.clone(),
+                        annotation_type_node.clone(),
                     ),
                 )
             } else {
@@ -40249,10 +40249,6 @@ pub fn data_row_type_forbids_deserialize(
         source_indices.clone(),
         v1_rt::rc_empty_map::<String, bool>(),
     )
-}
-
-pub fn data_row_declares_optional(type_node: Rc<Node>) -> bool {
-    (type_node.return_cardinality.clone() == Cardinality::CardOptional)
 }
 
 pub fn emit_data_def_body(
@@ -40434,36 +40430,17 @@ pub fn emit_data_def_body(
                 if ((crate::v1_compiler_emit::has_nested_records_node(
                     type_node.clone(),
                     scope.type_env.clone().source_indices.clone(),
-                ) && !data_value_has_cross_refs(value.clone()))
+                ) && data_value_is_json_literal_tree(value.clone()))
                     && !data_row_type_forbids_deserialize(
                         type_node.clone(),
                         emit_info.clone(),
                         scope.type_env.clone().source_indices.clone(),
                     ))
                 {
-                    {
-                        let row_json = if data_row_declares_optional(type_node.clone()) {
-                            crate::v1_compiler_emit::emit_declared_optional_row_json(
-                                value.clone(),
-                                crate::v1_std_core::authored_name_at(
-                                    scope.type_env.clone().source_indices.clone(),
-                                    type_node.clone(),
-                                ),
-                                scope.type_env.clone().source_indices.clone(),
-                                emit_info.data_variant_wire_spellings.clone(),
-                            )
-                        } else {
-                            crate::v1_compiler_emit::emit_data_value_json(
-                                value.clone(),
-                                scope.type_env.clone().source_indices.clone(),
-                                emit_info.data_variant_wire_spellings.clone(),
-                            )
-                        };
-                        match (*row_json.clone()).clone() {
+                    match (*crate::v1_compiler_emit::emit_data_value_json(value.clone(), scope.type_env.clone().source_indices.clone(), emit_info.data_variant_wire_spellings.clone())).clone() {
     EmitterOutcome::Refused { reason: r, .. } => v1_rt::concat(v1_rt::concat("            compile_error!(\"".to_string(), crate::v1_compiler_emit_core_support::escape_string_literal_body(r.clone())), "\")".to_string()),
     EmitterOutcome::Emitted { json: json_str, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("            serde_json::from_str(\"".to_string(), crate::v1_compiler_emit_core_support::escape_string_literal_body(json_str.clone())), "\")\n".to_string()), "                .expect(\"valid data definition\")".to_string()),
 }
-                    }
                 } else {
                     {
                         let is_map = crate::v1_compiler_infer_types::node_is_keyed_collection(

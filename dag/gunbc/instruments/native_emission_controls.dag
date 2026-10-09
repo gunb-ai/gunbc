@@ -279,6 +279,35 @@ fn optional_data_row_cases() -> List<NativeEmissionCase> {
   ]
 }
 
+// RULE: a data row takes the JSON serializer only when its value is a literal tree
+// (v1.compiler.emit_rust data_value_is_json_literal_tree). A `"x" as NonEmptyStr` brand cast, bare or
+// inside a record literal, and an operator inside a record literal used to reach the serializer and
+// emit compile_error!("unsupported mock expression"); the literal-only record stays on the JSON path.
+// Each carrier is read back, and each has a red asking for a value it does not hold.
+type ControlBrandRow {
+  name: NonEmptyStr
+  width: Int
+}
+
+data control_brand_bare: NonEmptyStr = "brand-bare" as NonEmptyStr
+data control_brand_in_record: ControlBrandRow = ControlBrandRow { name: "brand-in-record" as NonEmptyStr, width: 3 }
+data control_operator_in_record: ControlBrandRow = ControlBrandRow { name: "op" as NonEmptyStr, width: 1 + 2 }
+data control_literal_record: ControlBrandRow = ControlBrandRow { name: "lit", width: 7 }
+
+fn data_literal_tree_cases() -> List<NativeEmissionCase> {
+  let bare = control_brand_bare as String
+  let in_record = control_brand_in_record.name as String
+  [
+    NativeEmissionCase { identity: "data_brand_cast_bare_reads_back", held: bare == "brand-bare" },
+    NativeEmissionCase { identity: "data_brand_cast_bare_red_other_text", held: !(bare == "brand") },
+    NativeEmissionCase { identity: "data_brand_cast_in_record_reads_back", held: in_record == "brand-in-record" && control_brand_in_record.width == 3 },
+    NativeEmissionCase { identity: "data_brand_cast_in_record_red_other_text", held: !(in_record == "brand-bare") },
+    NativeEmissionCase { identity: "data_operator_in_record_evaluates", held: control_operator_in_record.width == 3 },
+    NativeEmissionCase { identity: "data_operator_in_record_red_not_concatenated", held: !(control_operator_in_record.width == 12) },
+    NativeEmissionCase { identity: "data_literal_record_stays_on_json", held: control_literal_record.width == 7 }
+  ]
+}
+
 // RULE: an effectful function's return type is rendered against the module's type environment
 // (v1.compiler.emit_rust emit_func_inferred through render_rust_fn_sig_type), the same authority a
 // pure function's return uses. It rendered with an empty emit info, so a type argument was judged
@@ -516,6 +545,13 @@ data native_emission_expected_identities: List<String> = [
   "filter_guard_receipt_blank_tail_accepts",
   "filter_guard_receipt_red_nonblank_tail_refuses",
   "filter_guard_receipt_red_empty_tag_short_circuits",
+  "data_brand_cast_bare_reads_back",
+  "data_brand_cast_bare_red_other_text",
+  "data_brand_cast_in_record_reads_back",
+  "data_brand_cast_in_record_red_other_text",
+  "data_operator_in_record_evaluates",
+  "data_operator_in_record_red_not_concatenated",
+  "data_literal_record_stays_on_json",
   "claim_driver_filesystem_absent_path_read_is_refused",
   "effectful_fold_step_counts_every_refused_read",
   "effectful_fold_step_red_seen_counts_elements",
@@ -541,7 +577,7 @@ data native_emission_expected_identities: List<String> = [
 ]
 
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases())
+  concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases())
 }
 
 fn case_row(c: NativeEmissionCase) -> String {
