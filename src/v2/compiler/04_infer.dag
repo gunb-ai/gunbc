@@ -7264,7 +7264,12 @@ fn infer_binder_types_from_domain(lambda: Node, types: List<Node>) -> List<Infer
 // binder at the Arrow (v2.compiler.resolve arrow_domain_frame_binders); infer_payload_binder_derived_type
 // returns the first site match. Mapping fn(a, b) onto fn(Int, String) -> … would type both as Int.
 // Until resolve gives distinct sites, n != 1 stays untyped (DESIGN §5).
+// The expected type must itself be an Arrow: infer_expected_domain_types peels Atom/Conj as
+// domain members, which is right after an Arrow peel and fabricated if the formal is T/Int.
 fn infer_lambda_domain_binder_types(lambda: Node, expected: Node) -> Optional<List<InferBinderType>> {
+  match infer_operator_arrow(operator: expected) {
+    Absent => optional_absent()
+    Present { value: _ } =>
   match list_at_optional(xs: node_positional_child_targets(node: lambda), index: 0) {
     Absent => optional_absent()
     Present { value: domain } =>
@@ -7286,6 +7291,7 @@ fn infer_lambda_domain_binder_types(lambda: Node, expected: Node) -> Optional<Li
           }
       }
   }
+    }
 }
 
 fn infer_lambda_domain_binder_count(domain: Node) -> Optional<Int> {
