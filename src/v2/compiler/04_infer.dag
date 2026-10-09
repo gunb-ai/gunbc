@@ -5907,28 +5907,6 @@ type InferGatherApplicationExtend {
   pairs: Optional<List<InhabitanceFormalArg>>
 }
 
-type InferFormalArgAtAcc {
-  i: Int
-  index: Int
-  found: Optional<InhabitanceFormalArg>
-}
-
-fn infer_formal_arg_at_step(acc: InferFormalArgAtAcc, pair: InhabitanceFormalArg) -> InferFormalArgAtAcc {
-  if acc.i == acc.index {
-    InferFormalArgAtAcc { i: acc.i + 1, index: acc.index, found: optional_present(value: pair) }
-  } else {
-    InferFormalArgAtAcc { i: acc.i + 1, index: acc.index, found: acc.found }
-  }
-}
-
-fn infer_formal_arg_at(xs: List<InhabitanceFormalArg>, index: Int) -> Optional<InhabitanceFormalArg> {
-  fold(
-    xs,
-    init: InferFormalArgAtAcc { i: 0, index: index, found: optional_absent() },
-    f: infer_formal_arg_at_step
-  ).found
-}
-
 fn infer_gather_extend_kept(acc: InferGatherFoldAcc) -> InferGatherApplicationExtend {
   InferGatherApplicationExtend { instances: acc.application_instances, pairs: acc.application_pairs }
 }
@@ -5986,7 +5964,7 @@ fn infer_gather_extend_application_instances(
           Absent =>
             infer_gather_extend_kept_outcome(acc: acc)
           Present { value: pairs } =>
-            match infer_formal_arg_at(xs: pairs, index: idx) {
+            match list_at_optional(xs: pairs, index: idx) {
               Absent =>
                 outcome_rejected(infer_application_actual_pair_missing_diagnostic(actual: edge.target))
               Present { value: pair } =>
@@ -7239,7 +7217,7 @@ fn infer_application_lambda_expected_binder_types(
       match pairs {
         Absent => optional_absent()
         Present { value: ps } =>
-          match infer_formal_arg_at(xs: ps, index: idx) {
+          match list_at_optional(xs: ps, index: idx) {
             Absent => optional_absent()
             Present { value: pair } =>
               match infer_operand_declared_type_instantiated(
