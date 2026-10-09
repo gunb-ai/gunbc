@@ -2091,6 +2091,24 @@ fn infer_declared_type_mentions_free_formal(declared: Node, instances: List<Type
   }
 }
 
+type InferMentionsUnfixedAcc {
+  instances: List<TypeVariableInstance>
+  type_params: List<Symbol>
+  found: Bool
+}
+
+fn infer_mentions_unfixed_child_step(acc: InferMentionsUnfixedAcc, c: Node) -> InferMentionsUnfixedAcc {
+  InferMentionsUnfixedAcc {
+    instances: acc.instances,
+    type_params: acc.type_params,
+    found: acc.found || infer_type_mentions_unfixed_param(
+      declared: c,
+      instances: acc.instances,
+      type_params: acc.type_params
+    )
+  }
+}
+
 fn infer_type_mentions_unfixed_param(
   declared: Node,
   instances: List<TypeVariableInstance>,
@@ -2098,23 +2116,41 @@ fn infer_type_mentions_unfixed_param(
 ) -> Bool {
   match declared.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      fold(type_params, init: false, f: fn(acc, p) {
-        acc || ((p == id) && match type_variable_instance_lookup(instances: instances, binder: id) {
-          Present { value: _ } => false
-          Absent => true
-        })
-      })
+      fold(type_params, init: InferMentionsUnfixedAcc { instances: instances, type_params: type_params, found: false }, f: fn(acc, p) {
+        InferMentionsUnfixedAcc {
+          instances: acc.instances,
+          type_params: acc.type_params,
+          found: acc.found || ((p == id) && match type_variable_instance_lookup(instances: acc.instances, binder: id) {
+            Present { value: _ } => false
+            Absent => true
+          })
+        }
+      }).found
     TypeNode { connective: _ } =>
-      any(
-        xs: node_positional_child_targets(node: declared),
-        predicate: fn(c) { infer_type_mentions_unfixed_param(declared: c, instances: instances, type_params: type_params) }
-      )
+      fold(
+        node_positional_child_targets(node: declared),
+        init: InferMentionsUnfixedAcc { instances: instances, type_params: type_params, found: false },
+        f: infer_mentions_unfixed_child_step
+      ).found
     ComputationNode { behavior: _ } =>
-      any(
-        xs: node_positional_child_targets(node: declared),
-        predicate: fn(c) { infer_type_mentions_unfixed_param(declared: c, instances: instances, type_params: type_params) }
-      )
+      fold(
+        node_positional_child_targets(node: declared),
+        init: InferMentionsUnfixedAcc { instances: instances, type_params: type_params, found: false },
+        f: infer_mentions_unfixed_child_step
+      ).found
   }
+}
+
+fn infer_domain_mentions_unfixed_param(
+  types: List<Node>,
+  instances: List<TypeVariableInstance>,
+  type_params: List<Symbol>
+) -> Bool {
+  fold(
+    types,
+    init: InferMentionsUnfixedAcc { instances: instances, type_params: type_params, found: false },
+    f: infer_mentions_unfixed_child_step
+  ).found
 }
 
 // Substitution descends through the arguments: a compound declared type
@@ -7260,15 +7296,10 @@ fn infer_application_lambda_expected_binder_types(
                       match infer_expected_domain_types(expected: expected) {
                         Absent => optional_absent()
                         Present { value: types } =>
-                          if any(
-                            xs: types,
-                            predicate: fn(t) {
-                              infer_type_mentions_unfixed_param(
-                                declared: t,
-                                instances: instances,
-                                type_params: type_params
-                              )
-                            }
+                          if infer_domain_mentions_unfixed_param(
+                            types: types,
+                            instances: instances,
+                            type_params: type_params
                           ) {
                             optional_absent()
                           } else {
