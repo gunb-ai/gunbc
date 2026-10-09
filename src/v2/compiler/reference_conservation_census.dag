@@ -441,7 +441,6 @@ data reference_conservation_stratified_sample_paths: List<String> = [
   "dag/gunbc/repo/repo_self_warning_policy.dag",
   "dag/gunbc/roadmap/roadmap_acceptance_history_projection.dag",
   "dag/gunbc/roadmap/roadmap_publish_admission.dag",
-  "dag/gunbc/rung_drop/admit_callers_discarded_on_the_native_route.dag",
   "dag/gunbc/rung_drop/dashboard_merge_ready_semantic_admissibility.dag",
   "dag/gunbc/rung_drop/floor_cut_effect_gates.dag",
   "dag/gunbc/rung_drop/lens_enforcement_censuses.dag",

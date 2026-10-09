@@ -73,6 +73,27 @@ test fn named_child_lookup_decides_all_three_states_in_one_pass() -> Bool {
     && ncl_is_missing(lookup: named_child_lookup(root: ncl_atom(s: ^ncl_not_a_conj), name: ^ncl_unique))
 }
 
+// A lowered call is a ComputationNode whose authored edges carry its named arguments
+// (body-lowering mints comp:transform[ *=atom:callee[] @arg=atom:... ]). The lookup must read
+// them: this arm goes red against the pre-fix behavior, which answered NamedChildMissing for
+// every ComputationNode regardless of its children.
+fn ncl_transform() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: ncl_atom(s: ^ncl_callee) },
+      ncl_named(name: ^ncl_arg, target: ncl_atom(s: ^ncl_arg_value))
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+test fn named_child_lookup_reads_a_lowered_call_s_named_args_holds() -> Bool {
+  ncl_found_is(lookup: named_child_lookup(root: ncl_transform(), name: ^ncl_arg), expected: ncl_atom(s: ^ncl_arg_value))
+    && ncl_is_missing(lookup: named_child_lookup(root: ncl_transform(), name: ^ncl_absent))
+    && ncl_is_missing(lookup: named_child_lookup(root: ncl_transform(), name: ^ncl_unique))
+}
+
 test fn find_named_child_projects_the_lookup_with_its_refusal_reasons() -> Bool {
   ncl_accepted_is(o: find_named_child(root: ncl_conj(), name: ^ncl_unique), expected: ncl_atom(s: ^ncl_unique_target))
     && ncl_rejected_with(o: find_named_child(root: ncl_conj(), name: ^ncl_repeated), reason: ^named_child_ambiguous)

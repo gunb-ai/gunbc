@@ -20,7 +20,7 @@ module test.claim.scm_object_table_json_witness
 // closure document's concern; what is asserted is that the TABLE preserves what it was given.
 
 import std.types { Bool, Int, String, List, list_length, NonEmptyStr }
-import v2.std.node { Node, Edge, Symbol, Authored, Conj, Atom, TypeNode, node_synthetic }
+import v2.std.node { Node, Edge, Symbol, Authored, Conj, Atom, TypeNode, node_synthetic, AdmitCallersEdge, StructuralLabel, CoreMarker }
 import extdeps.languages.json.emit { json_object, json_kv, json_array, json_string, json_null, JsonValue }
 import gunbc.scm.object_store {
   ObjectId,
@@ -62,6 +62,8 @@ import gunbc.scm.object_store {
   CorpusManifestIsAuthoredSource,
   StoreAdmission,
   store_admission_store,
+  stored_edge_label_of,
+  ScmObject,
 }
 import gunbc.scm.object_table_json {
   ObjectTableDecodeRefusal,
@@ -668,4 +670,80 @@ test fn ot_a_contained_manifest_source_at_a_manifest_stands_as_a_wrong_kind_requ
         _ => false
       }
   }
+}
+
+// THE WALL'S EDGE IS A CLOSED-LIST MARKER (side chat review 5439746794). The caller-admission
+// carrier AdmitCallersEdge rides core_edge_labels(), the closed list this codec decodes markers
+// through -- the same list object_table_json's decode_object_table folds when it reads a
+// "structural_core" edge's marker lexeme. A marker the list does not name is a LOUD, typed
+// refusal: the decoder answers NodeEntryUnknownLabelTag and the whole entry fails to decode --
+// a round-trip/compatibility refusal, not silent edge loss, and exactly what the wall's edge
+// would hit if AdmitCallersEdge were dropped from core_edge_labels(). So the control is here, in
+// the codec's own witness: an entry carrying the wall's marker must decode, and the marker must
+// come home as itself -- edge_is_core names it -- not merely fail to refuse.
+fn ot_admit_edge_entry(marker: String) -> JsonValue {
+  json_object(
+    members: [
+      json_kv(
+        key: "kind",
+        value: json_object(
+          members: [
+            json_kv(key: "kind", value: json_string(s: "type")),
+            json_kv(key: "connective", value: json_string(s: "conj")),
+          ]
+        ),
+      ),
+      json_kv(
+        key: "children",
+        value: json_array(
+          elements: [
+            json_object(
+              members: [
+                json_kv(key: "label", value: json_string(s: "structural_core")),
+                json_kv(key: "marker", value: json_string(s: marker)),
+                json_kv(
+                  key: "target",
+                  value: json_object(
+                    members: [
+                      json_kv(key: "uncontained", value: json_string(s: "aabbccdd00112233"))
+                    ]
+                  ),
+                ),
+              ]
+            ),
+          ]
+        ),
+      ),
+    ]
+  )
+}
+
+// THE POSITIVE: the marker is a member of the closed list, so the entry decodes and the decoded
+// edge's label is AdmitCallersEdge -- the codec hands back the wall's edge, not a stripped node.
+test fn ot_the_admit_callers_edge_marker_decodes_to_itself() -> Bool {
+  match ot_decoded(entries: [ot_admit_edge_entry(marker: "core_admit_callers_edge")]) {
+    DecodeAcc { refusal: Absent, admission } =>
+      match ot_admitted_store(admission: admission).objects {
+        Empty => false
+        Cons { head: first, tail: _ } =>
+          match first {
+            SemanticNodeObject(record) =>
+              match record.children {
+                Empty => false
+                Cons { head: edge, tail: _ } =>
+                  stored_edge_label_of(e: edge)
+                    == StructuralLabel { label: CoreMarker { marker: AdmitCallersEdge } }
+              }
+            _ => false
+          }
+      }
+    DecodeAcc { refusal: Present { value: _ }, admission: _ } => false
+  }
+}
+
+// THE NEGATIVE: a marker the closed list does not name refuses as an unknown label. This is the
+// discriminating arm -- if AdmitCallersEdge left core_edge_labels(), the positive claim above
+// would land here too.
+test fn ot_a_marker_the_closed_list_does_not_name_refuses() -> Bool {
+  ot_tag_of(entries: [ot_admit_edge_entry(marker: "core_nonsuch_edge")]) == "label"
 }
