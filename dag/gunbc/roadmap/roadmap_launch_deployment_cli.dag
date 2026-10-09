@@ -380,7 +380,10 @@ fn event_backlog_fact(instance: HostDashboardInstance, now: String) -> EventBack
       match belt_exit_spool_times(instance: instance) {
         BeltExitSpoolTimesUnreadable { reason } => EventBacklogUnobserved { detail: reason }
         BeltExitSpoolTimesRead { entries } =>
-          event_backlog_judge(entries: entries |> map(e => EventBacklogEntry { stage: e.stage, entry: e.entry, age: second(count: if second_count(now_s) > e.mtime_epoch { second_count(now_s) - e.mtime_epoch } else { 0 }) }))
+          match (entries |> filter(e => (e.mtime_epoch as Int) > second_count(now_s))).first() {
+            Present { value: e } => EventBacklogUnobserved { detail: join(["exit spool entry ", e.entry, " is modified after the receipt run's now; the clock or the stat is unreliable"], "") }
+            Absent => event_backlog_judge(entries: entries |> map(e => EventBacklogEntry { stage: e.stage, entry: e.entry, age: second(count: second_count(now_s) - (e.mtime_epoch as Int)) }))
+          }
       }
   }
 }

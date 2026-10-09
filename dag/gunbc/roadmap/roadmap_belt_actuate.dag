@@ -9,7 +9,7 @@ import gunbc.roadmap_nesting { roadmap_memberships }
 import std.algebra { trim }
 
 import gunbc.output_policy { OutcomeIsData }
-import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, CommitSha, GitRef }
+import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, CommitSha, GitRef, EpochSecs }
 import gunbc.roadmap_attempt_metering {
   MeteringPersist, MeteringPersisted, MeteringAlreadyFinal, MeteringNotDue, MeteringPersistRefused, metering_persist_for_attempt,
   RosterAdmitted, RosterAdmissionRefused, MeteredReviewer, MeteredAuditor, MeteredSupervisor, metering_roster_admit,
@@ -14244,7 +14244,7 @@ fn belt_exit_entries_settle_at(root: String, node_id: String, attempt_key: Strin
 type BeltExitSpoolEntryTime {
   stage: AttemptExitSpoolStage
   entry: String
-  mtime_epoch: Int
+  mtime_epoch: EpochSecs
 }
 
 type BeltExitSpoolTimes
@@ -14263,7 +14263,12 @@ fn belt_exit_spool_stage_times(instance: HostDashboardInstance, stage: AttemptEx
           match belt_exec(cmd: host_exec_argv(program: cmd.program.invocation as String, args: cmd.arguments), workdir: belt_observe_workdir as String) {
             ExecOk { stdout } =>
               match parse_int(text: trim(stdout)) {
-                Present { value: t } => BeltExitSpoolTimesRead { entries: concat(entries, [BeltExitSpoolEntryTime { stage: stage, entry: n, mtime_epoch: t }]) }
+                Present { value: t } =>
+                  if t >= 0 {
+                    BeltExitSpoolTimesRead { entries: concat(entries, [BeltExitSpoolEntryTime { stage: stage, entry: n, mtime_epoch: t as EpochSecs }]) }
+                  } else {
+                    BeltExitSpoolTimesUnreadable { reason: join(["the modification time of ", label, " entry ", n, " is negative: ", stdout], "") }
+                  }
                 Absent => BeltExitSpoolTimesUnreadable { reason: join(["the modification time of ", label, " entry ", n, " did not parse: ", stdout], "") }
               }
             ExecFailed { program: _, exit_code: _, stderr } => BeltExitSpoolTimesUnreadable { reason: join(["the modification time of ", label, " entry ", n, " could not be read: ", stderr], "") }
