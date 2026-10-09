@@ -2,7 +2,8 @@ module v2.test.claim.compiler.lambda_expected_formal
 
 import v2.test.claim.type_param_binder_frame { tpb_apply, tpb_formal, tpb_generic_arrow }
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
-import v2.compiler.infer { infer }
+import v2.compiler.infer { infer, inferred_facts_resolved_type }
+import v2.std.witness { Holds, Violates }
 import v2.compiler.resolve { LexicalBinding, LexicalUntyped, ResolvedTree }
 import v2.std.symbol_index { empty_symbol_index }
 import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_type_atom_node }
@@ -13,6 +14,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node {
   ArrowBodyEdge,
   Authored,
+  ComputationNode,
   Conj,
   Edge,
   Node,
@@ -30,7 +32,7 @@ import v2.std.qualified_name { lexical_reference_node }
 import v2.std.type_binder { type_binder_set_children }
 import std.algebra { Cons, Empty }
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted }
-import std.optional { Absent, Present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.types { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -55,7 +57,7 @@ fn lef_n_ref() -> Node {
 fn lef_lambda() -> Node {
   let body = lef_n_ref()
   let signature = declared_signature(
-    params: [binder_edge(name: ^n, type_node: dag_type_atom_node(identity: ^dag_binding_type_int))],
+    params: [binder_edge(name: ^n, type_node: dag_type_atom_node(identity: ^lef_unwritten))],
     source: body
   )
   node_with_occurrence_id(
@@ -158,8 +160,31 @@ fn lef_lambda_then_value_tree() -> ResolvedTree {
   )
 }
 
+fn lef_n_derived_as(tree: ResolvedTree) -> Optional<Symbol> {
+  match infer(tree: tree) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: inferred, diagnostics: _ } =>
+      match inferred.facts.lookup(lef_n_ref()) {
+        Absent => optional_absent()
+        Present { value: facts } =>
+          match inferred_facts_resolved_type(facts: facts) {
+            Violates { diagnostic: _ } => optional_absent()
+            Holds { value: t } =>
+              match t.kind {
+                TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+                TypeNode { connective: _ } => optional_absent()
+                ComputationNode { behavior: _ } => optional_absent()
+              }
+          }
+      }
+  }
+}
+
 test fn lef_value_then_lambda_infers_holds() -> Bool {
-  lef_infer_terminal(tree: lef_value_then_lambda_tree()) == ^infers
+  match lef_n_derived_as(tree: lef_value_then_lambda_tree()) {
+    Present { value: id } => id == ^dag_binding_type_int
+    Absent => false
+  }
 }
 
 test fn lef_lambda_then_value_does_not_infer_as_int_holds() -> Bool {
