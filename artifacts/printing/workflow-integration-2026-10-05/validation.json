@@ -1,0 +1,26 @@
+{
+  "date": "2026-10-05",
+  "full_preparation_revision": "2289d979e7c43d7876a4c571dfb604c402835f02",
+  "final_boundary_revision": "3822a0574e774fedb7165e3be8cc8f54f6ee3531",
+  "compiler": {
+    "path": "/home/briansrls/print-prep-2026-10-04/ci-validation-target/release/gunbc",
+    "sha256": "44ad0bb28758a5e967e65c84062a19032d895285fec01f42a4735c369241e1c1",
+    "standing": "existing validation binary, not rebuilt from current source head; CI is separate"
+  },
+  "results": {
+    "combined_boundary_checks": 48,
+    "combined_boundary_exit": 0,
+    "production_prepare_exit": 0,
+    "prepared_printer_queues": 2,
+    "emitted_kernel_controls": "passed",
+    "actual_archive_extra_plate": "refused",
+    "changed_checked_step": "refused",
+    "occupied_socket_hardware_envelope": "refused"
+  },
+  "execution_scope": "prepare mode only; no credentials, approvals, printer observations or starts",
+  "limitations": [
+    "No live fleet controller rollout validated",
+    "Explicit plate membership, not arbitrary desired-set optimization",
+    "No automatic crash recovery or accepted-part inventory"
+  ]
+}

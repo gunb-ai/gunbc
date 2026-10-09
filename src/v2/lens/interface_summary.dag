@@ -136,7 +136,7 @@ fn import_interface_hashes_for_module(
 fn module_key_for_rel_path(
   rel_path: String,
   module_path: NonEmptyStr,
-  source_hash: ContentHash,
+  source_hash: Fnv1a64Structural,
   pool_roots: List<String>
 ) -> Outcome<ModuleKey?> {
   bind_outcome(o: interface_summaries_live(pool_roots: pool_roots), f: fn(summaries) {

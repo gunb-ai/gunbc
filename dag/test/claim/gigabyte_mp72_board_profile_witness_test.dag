@@ -2,15 +2,19 @@ module test.claim.gigabyte_mp72_board_profile_witness
 
 import std.nat { Nat }
 import std.measure { square_millimeter_count, watt_count }
+import extdeps.boards.types {
+  BaseboardPhysicalProfile,
+  PowerInputPopulationStanding, PowerInputPopulationSpecified, PowerInputMinimumOneStated, PowerInputPopulationUnresolved,
+  board_profile_power_headers_match, board_profile_area, board_profile_max_socket_power,
+}
 import extdeps.boards.gigabyte {
-  BaseboardPhysicalProfile, BoardProcurementStanding,
+  BoardProcurementStanding,
   gigabyte_mp72_hb0_catalog, gigabyte_mp72_hb0_physical_profile,
-  asrock_altrad8ud_1l2t_physical_profile,
   gigabyte_mp72_hb0_procurement_standing, gigabyte_mp72_hb0_purchase_gate,
-  PowerInputPopulationStanding, PowerInputPopulationSpecified, PowerInputPopulationUnresolved,
+}
+import extdeps.boards.asrock_rack {
+  asrock_altrad8ud_1l2t_physical_profile,
   asrock_altrad8ud_required_input_population,
-  board_profile_power_headers_match, board_profile_area,
-  board_profile_max_socket_power,
 }
 
 // Three witnesses over a CANDIDATE board row that no fleet asset cites. They exist to keep a
@@ -41,15 +45,18 @@ test fn witness_board_power_interfaces_differ() -> Bool {
        )
 }
 
-// How many of the three 8-pin inputs must be populated is UNRESOLVED, and the model must keep
-// saying so. A cable diagram that draws a specific number of connected inputs before a vendor
-// statement or fixture measurement closes this would repeat the exact mistake above: a plausible
-// number rendered as a fact.
+// How many of the three 8-pin inputs must be populated was UNRESOLVED until the manual was read
+// first-party on 2026-10-04. Section 2.8 states that under the lowest power supply any ONE of
+// ATX12V1/2/3 may be used, and states no rule above that. So the standing is a stated minimum of
+// one with the higher-power population left to a connector-rating derivation downstream, and the
+// witness pins exactly that grade: not Specified, which the manual does not say, and no longer
+// Unresolved, which would discard what it does say.
 
-test fn witness_required_input_population_stays_unresolved() -> Bool {
+test fn witness_required_input_population_is_a_stated_minimum_of_one() -> Bool {
   match asrock_altrad8ud_required_input_population {
     PowerInputPopulationSpecified { required_inputs } => false,
-    PowerInputPopulationUnresolved { available_inputs } => available_inputs == 3,
+    PowerInputMinimumOneStated { available_inputs, stated_condition } => available_inputs == 3,
+    PowerInputPopulationUnresolved { available_inputs } => false,
   }
 }
 
