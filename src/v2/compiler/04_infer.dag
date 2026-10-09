@@ -5994,6 +5994,8 @@ fn infer_gather_extend_kept_outcome(acc: InferGatherFoldAcc) -> Outcome<InferGat
 // ONE JUDGMENT PER ACTUAL, CARRIED ON THE GATHER ACC. Pairs live on acc.application_pairs after the
 // callee child; each later actual indexes that list. infer_judge_formal_args extends
 // acc.application_instances by that one pair. The child frame reads the same list.
+// Absent pairs is FormalsUnresolved: keep the acc so the row can count it. A missing
+// pair refuses only when the list is present and the index is past its end.
 fn infer_gather_extend_application_instances(
   acc: InferGatherFoldAcc,
   edge: Edge,
@@ -6016,7 +6018,7 @@ fn infer_gather_extend_application_instances(
       Present { value: idx } =>
         match acc.application_pairs {
           Absent =>
-            outcome_rejected(infer_application_actual_pair_missing_diagnostic(actual: edge.target))
+            infer_gather_extend_kept_outcome(acc: acc)
           Present { value: pairs } =>
             match infer_formal_arg_at(xs: pairs, index: idx) {
               Absent =>
