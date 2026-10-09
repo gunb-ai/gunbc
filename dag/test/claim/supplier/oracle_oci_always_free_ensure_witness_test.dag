@@ -1,6 +1,6 @@
 module test.claim.supplier.oracle_oci_always_free_ensure_witness
 
-import std.measure { gigabyte_count }
+import std.measure { gigabyte_count, second, second_count }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import extdeps.languages.json.emit { JsonValue, JsonArray, JsonObject, JsonNull, JsonBool, JsonNumber, JsonString }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
@@ -306,8 +306,8 @@ test fn only_a_first_send_definitive_refusal_retires_the_record() -> Bool {
 // The record round-trips its first-send time and exact body, and a record outside the retry-token
 // window is not re-sent.
 test fn the_record_carries_its_send_time_and_expires_from_replay() -> Bool {
-  let round = match oci_parse_launch_record(content: oci_launch_record_text(sent_at: 1000, body: "{\"a\": 1}\n{\"b\": 2}")) {
-    OciLaunchRecorded { sent_at, body } => sent_at == 1000 && body == "{\"a\": 1}\n{\"b\": 2}"
+  let round = match oci_parse_launch_record(content: oci_launch_record_text(sent_at: second(count: 1000), body: "{\"a\": 1}\n{\"b\": 2}")) {
+    OciLaunchRecorded { sent_at, body } => second_count(s: sent_at) == 1000 && body == "{\"a\": 1}\n{\"b\": 2}"
     OciLaunchRecordMalformed { cause } => false
   }
   let malformed = match oci_parse_launch_record(content: "not-a-time\n{}") {
@@ -315,9 +315,9 @@ test fn the_record_carries_its_send_time_and_expires_from_replay() -> Bool {
     OciLaunchRecorded { sent_at, body } => false
   }
   round && malformed
-    && oci_replay_window_open(sent_at: 1000, now: 1000 + 3600)
-    && !oci_replay_window_open(sent_at: 1000, now: 1000 + 82800)
-    && !oci_replay_window_open(sent_at: 1000, now: 999)
+    && oci_replay_window_open(sent_at: second(count: 1000), now: second(count: 1000 + 3600))
+    && !oci_replay_window_open(sent_at: second(count: 1000), now: second(count: 1000 + 82800))
+    && !oci_replay_window_open(sent_at: second(count: 1000), now: second(count: 999))
 }
 
 // An SSH rule restricted to a source port does not admit a client connecting from an ephemeral port;

@@ -2,7 +2,7 @@ module gunbc.oracle_oci.instance_ensure
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.resources { Network }
-import std.measure { Gigabyte, gigabyte, gigabyte_count, Second, second, second_count }
+import std.measure { Gigabyte, gigabyte, gigabyte_count, Second, second, second_count, measure_sub, measure_le, MeasureDifference, MeasureSubtrahendExceedsMinuend }
 import std.algebra { trim }
 import extdeps.clock { Clock }
 import v2.std.algebra { any }
@@ -342,7 +342,11 @@ fn oci_out_of_host_capacity(status: Int, body: String) -> Bool {
 //   - A record older than oci_launch_replay_window is not re-sent, because Oracle's retry tokens expire
 //     after 24 hours and may be invalidated earlier. Past that window the converge refuses and asks for
 //     reconciliation, rather than re-sending on a deduplication that may no longer hold.
-// RECONCILIATION is an operator step: look for the instance in the console, then delete the record.
+// RECONCILIATION is an operator step, done with no run active: look for the instance in the console,
+// then delete the record.
+//
+// All of this runs under the instance lock (oci_free_instances), so no other run can send, re-send or
+// retire while one does.
 //
 // The record lives in /etc/gunbc/oracle-oci, the root-only directory the custody converge creates for
 // the API key (gunbc.host_credential_custody_converge OracleOciApiSigningKey). It is stable across
@@ -359,13 +363,17 @@ fn oci_launch_attempt_path(planned: OciPlannedInstance) -> String {
   join([oci_launch_record_dir, "/launch-attempt-", planned.name as String, ".json"], "")
 }
 
-// The record is the first-send time in epoch seconds, one newline, then the exact body.
-fn oci_launch_record_text(sent_at: Int, body: String) -> String {
-  join([to_string(sent_at), body], "\n")
+// INSTANTS ARE std.measure Second COUNTED FROM THE UNIX EPOCH, the unit Clock.UnixSecs prints, so the
+// record's first-send time, the clock reading and the replay window are one carrier and are compared
+// with std.measure's own subtraction and order (review 78218), never as bare integers.
+//
+// The record is the first-send instant, one newline, then the exact body.
+fn oci_launch_record_text(sent_at: Second, body: String) -> String {
+  join([to_string(second_count(s: sent_at)), body], "\n")
 }
 
 type OciLaunchRecord
-  = OciLaunchRecorded { sent_at: Int, body: String }
+  = OciLaunchRecorded { sent_at: Second, body: String }
   | OciLaunchRecordMalformed { cause: String }
 
 fn oci_parse_launch_record(content: String) -> OciLaunchRecord {
@@ -376,15 +384,20 @@ fn oci_parse_launch_record(content: String) -> OciLaunchRecord {
       match parse_int(s: head) {
         Absent => OciLaunchRecordMalformed { cause: "the record's first line is not epoch seconds" }
         Present { value: sent_at } =>
-          if lines.length() < 2 { OciLaunchRecordMalformed { cause: "the record carries no body" } }
-          else { OciLaunchRecorded { sent_at: sent_at, body: join(lines.skip(n: 1), "\n") } }
+          if sent_at < 0 { OciLaunchRecordMalformed { cause: "the record's first-send time is negative" } }
+          else if lines.length() < 2 { OciLaunchRecordMalformed { cause: "the record carries no body" } }
+          else { OciLaunchRecorded { sent_at: second(count: sent_at), body: join(lines.skip(n: 1), "\n") } }
       }
   }
 }
 
-// PURE: whether a recorded attempt is still inside the window in which a re-send is a retry of it.
-fn oci_replay_window_open(sent_at: Int, now: Int) -> Bool {
-  now >= sent_at && now - sent_at < second_count(s: oci_launch_replay_window)
+// PURE: whether a recorded attempt is still inside the window in which a re-send is a retry of it. A
+// clock that reads earlier than the record is not inside the window: the elapsed time is unknown.
+fn oci_replay_window_open(sent_at: Second, now: Second) -> Bool {
+  match measure_sub(a: now, b: sent_at) {
+    MeasureSubtrahendExceedsMinuend => false
+    MeasureDifference { value: elapsed } => !measure_le(a: oci_launch_replay_window, b: elapsed)
+  }
 }
 
 fn oci_definitive_non_creation(status: Int, body: String) -> Bool {
@@ -405,9 +418,9 @@ fn oci_reconcile_line(planned: OciPlannedInstance, why: String) -> String {
   join(["oci instance ", planned.name as String, " NOT LAUNCHED: ", why, ". RECONCILE: check the OCI console for an instance named ", planned.name as String, " in the compartment; if none exists, delete ", oci_launch_attempt_path(planned: planned), " and run again"], "")
 }
 
-fn oci_now() -> Int? {
+fn oci_now() -> Second? {
   match parse_int(s: trim(s: Clock.UnixSecs().unix_secs)) {
-    Present { value } => Present { value: value }
+    Present { value } => if value < 0 { none } else { Present { value: second(count: value) } }
     Absent => none
   }
 }
@@ -627,7 +640,42 @@ fn oci_not_launched(line: String) -> List<OciInstanceOutcome> {
   [OciInstanceOutcome { line: concat("oci instances NOT LAUNCHED: ", line), held: false }]
 }
 
+// ONE RUN AT A TIME OWNS THE INSTANCE STEP (side-chat review on gunbc#13351). The launch record makes a
+// lost reply recoverable; it does not by itself stop two runs from acting on one attempt. A creator
+// could retire a record another run is re-sending, and a run holding an old observation could delete
+// a newer generation. So the whole step, from the instance observations that decide held-or-launch
+// through record publication, send, re-send and retirement, runs under one lock, taken with
+// WriteCreateNew in the record directory and released at the end. A run that finds the lock held
+// refuses as busy. A lock left by a run that died is not broken automatically: it is reported with its
+// path, and an operator who has checked that no run is active removes it. Reconciling a launch record
+// is likewise done with no run active.
+data oci_instance_lock_path: String = "/etc/gunbc/oracle-oci/instance-converge.lock"
+
 fn oci_free_instances(compartment: NonEmptyStr, subnet: NonEmptyStr) -> List<OciInstanceOutcome> uses net: Network {
+  match oci_now() {
+    Absent => oci_not_launched(line: "the host clock did not print epoch seconds, so the instance lock cannot be taken")
+    Present { value: now } => {
+      let lock = Filesystem.WriteCreateNew(path: oci_instance_lock_path, content: to_string(second_count(s: now)))
+      if !lock.success {
+        if lock.error_kind == "already_exists" {
+          oci_not_launched(line: join(["another run holds the instance lock ", oci_instance_lock_path, ". If no run is active (one that died leaves its lock behind), remove that file and run again"], ""))
+        } else {
+          oci_not_launched(line: join(["the instance lock ", oci_instance_lock_path, " could not be taken: ", lock.error], ""))
+        }
+      } else {
+        let outcomes = oci_free_instances_locked(compartment: compartment, subnet: subnet)
+        let released = Filesystem.Delete(path: oci_instance_lock_path)
+        if released.success {
+          outcomes
+        } else {
+          concat(outcomes, [OciInstanceOutcome { line: join(["the instance lock ", oci_instance_lock_path, " could not be released: ", released.error, "; remove it before the next run"], ""), held: false }])
+        }
+      }
+    }
+  }
+}
+
+fn oci_free_instances_locked(compartment: NonEmptyStr, subnet: NonEmptyStr) -> List<OciInstanceOutcome> uses net: Network {
   match oci_list(operation: "ListInstances", host: oci_iaas_host, path_and_query: join(["/20160918/instances?compartmentId=", compartment as String], "") as NonEmptyStr) {
     OciListRefused { cause } => oci_not_launched(line: concat("ListInstances refused: ", cause as String))
     OciListInaccessible { status, body } => oci_not_launched(line: join(["ListInstances refused by OCI (", to_string(status), "): ", body], ""))
