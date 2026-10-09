@@ -1,0 +1,12 @@
+module gunbc.recurring_failure_mode.functional_print_features_confused_with_supports
+import std.types {NonEmptyStr}
+import gunbc.recurring_failure_mode {RecurringFailureMode}
+
+data functional_print_features_confused_with_supports: RecurringFailureMode = RecurringFailureMode {
+ identity:"functional_print_features_confused_with_supports" as NonEmptyStr,
+ receipts:[
+  "2026-10-04 cassette prototype: the operator removed both integral rear-arm sockets while clearing supports. Support material was trapped in the mating channels, and the functional walls resembled disposable supports.",
+  "Earliest unjustified boundary: panel geometry combined downward-facing arm channels with a broad elevated tray, then relied on manual support removal to preserve thin functional walls. The repair separates open, floor-down sockets from the tray and retains each socket/arm/tray stack with a through-bolt.",
+  "Standing: geometry and sliced support absence can be checked mechanically; human recognition, handling damage, bearing strength and creep remain external observations. A support-free slice alone does not qualify the connection structurally. Next trigger: inspect the revised physical assembly and record retention/load behavior before powered use.",
+ ],evidence:[],
+}

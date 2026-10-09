@@ -5,7 +5,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.oasis.mqtt { MqttEndpoint, MqttTopic, MqttOverTls, MqttQos, ExactlyOnce, AtLeastOnce }
-import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_object, json_string, json_bool, serialize_json }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_object, json_string, json_bool, json_array, json_int, serialize_json }
 
 // THE LAN CONTROL PROTOCOL OF BAMBU LAB PRINTERS IN LAN-ONLY MODE, modeled because the delivery leg
 // already speaks FTPS and the leg that STARTS a job speaks MQTT -- and that second leg was
@@ -69,9 +69,8 @@ fn bambu_lan_mqtt_endpoint(host: NonEmptyStr) -> MqttEndpoint {
 // meaningless unless delivery has completed, and the sequencing is a real dependency rather than a
 // convention.
 //
-// use_ams IS FALSE BECAUSE THESE MACHINES HAVE NO AMS BOUND TO THIS PRINT. The operator's constraint
-// is one filament per printer -- printer-01 white, printer-02 black -- which is exactly what the
-// design wants, since the logo is a slot-in insert rather than a multi-colour feature.
+// Operator confirmed AMS physical slot 1 on both printers on 2026-10-03.
+// The single project filament maps to zero-indexed tray 0.
 type BambuPrintStartCommand {
   file_url: NonEmptyStr
   plate_gcode: NonEmptyStr
@@ -96,7 +95,7 @@ fn bambu_start_command(remote_name: NonEmptyStr) -> BambuPrintStartCommand {
     file_url: bambu_sd_file_url(remote_name: remote_name),
     plate_gcode: bambu_first_plate_gcode,
     subtask_name: remote_name,
-    use_ams: false,
+    use_ams: true,
     bed_leveling: true,
   }
 }
@@ -155,6 +154,7 @@ fn bambu_start_payload_json(command: BambuPrintStartCommand, sequence_id: NonEmp
       json_kv(key: "url", value: json_string(s: command.file_url as String)),
       json_kv(key: "subtask_name", value: json_string(s: command.subtask_name as String)),
       json_kv(key: "use_ams", value: json_bool(b: command.use_ams)),
+      json_kv(key: "ams_mapping", value: json_array(elements: [json_int(n: 0)])),
       json_kv(key: "bed_leveling", value: json_bool(b: command.bed_leveling)),
       json_kv(key: "flow_cali", value: json_bool(b: false)),
       json_kv(key: "vibration_cali", value: json_bool(b: true)),
@@ -204,3 +204,23 @@ data bambu_printer_ca_bundle_source: ExternalAuthority = ExternalAuthority {
 data bambu_printer_ca_bundle_sha256: NonEmptyStr = "36f2bcee347ec7adce719b5fd350099591a4d3d0ec4e039c7019890d78e152a0"
 
 data bambu_ca_measured_fingerprint_sha256: NonEmptyStr = "030BCA81CECE18B7EFF3CFD2B75D09D3EFCA893BC069609E37FA04257FE4D840"
+
+fn bambu_status_snapshot_payload() -> String {
+  serialize_json(v: json_object(members: [json_kv(key: "pushing", value: json_object(members: [
+    json_kv(key: "command", value: json_string(s: "pushall")),
+    json_kv(key: "sequence_id", value: json_string(s: "0")),
+    json_kv(key: "version", value: json_int(n: 1)),
+    json_kv(key: "push_target", value: json_int(n: 1)),
+  ]))]))
+}
+
+// Bambu Studio MachineObject::can_print accepts IDLE and FINISH; FINISH is
+// excluded from is_in_printing_status. This is job readiness, never bed-clear evidence.
+// https://github.com/bambulab/BambuStudio/blob/master/src/slic3r/GUI/DeviceManager.cpp
+fn bambu_completed_or_idle_state(state:String) -> Bool {state=="IDLE"||state=="FINISH"}
+
+// 83935249 is 0x0500C011. Bambu's collaborator calls this a non-existent error
+// that should be deleted; the vendor error table has a blank description for it.
+// https://github.com/bambulab/BambuStudio/issues/4495#issuecomment-2275068828
+// This exact wire value is classified, not all nonzero codes or all blank UI messages.
+fn bambu_start_error_nonblocking(code:String) -> Bool {code=="0"||code=="83935249"}

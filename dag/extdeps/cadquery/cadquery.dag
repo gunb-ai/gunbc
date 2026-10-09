@@ -8,7 +8,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
-import extdeps.opencascade.ocp { OcpDistribution, OcpWithoutVtk }
+import extdeps.opencascade.ocp { OcpDistribution, OcpWithVtk }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -32,11 +32,12 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 data cadquery_distribution_name: NonEmptyStr = "cadquery"
 data cadquery_version: NonEmptyStr = "2.8.0"
 
-// WHICH KERNEL BUILD THIS PROJECT ASKS FOR. Nothing in this repository renders, so the VTK stack is
-// weight with no consumer. The choice is declared here rather than left to pip's default because a
-// resolver default is not a decision anyone made, and DESIGN section 2 prices an unexamined default
-// the same as an authored one once it is load-bearing.
-data cadquery_ocp_distribution: OcpDistribution = OcpWithoutVtk
+// The pinned CadQuery 2.8.0 wheel requires cadquery-ocp>=7.9.3.1,<8.0 in its
+// distribution metadata. Use that declared dependency in the pip realization.
+// The former no-VTK selection did not satisfy pip's dependency graph: the actual
+// environment contained cadquery-ocp. A no-VTK route needs a separately resolved
+// environment, rather than a declaration contradicting the installed distribution.
+data cadquery_ocp_distribution: OcpDistribution = OcpWithVtk
 
 // PATH-resolved, for the reason extdeps.exec.command program_spelling_is_an_observation_claim
 // records: an absolute path is a claim about a filesystem this repository has not observed.
@@ -146,4 +147,12 @@ fn stl_export_call(destination: String, knobs: StlExportKnobs) -> String {
     ", parallel=True",
     ")\n",
   ], "")
+}
+
+// Import the actual geometry modules as well as reading distribution metadata.
+// Package metadata alone cannot establish that their dynamic dependencies load.
+fn cadquery_import_probe_command(distributions:List<String>) -> ArgvCommand {
+ argv_command(program:python_program(),arguments:concat([
+  "-c", "import cadquery, OCP, importlib.metadata as m, json, sys; print(json.dumps(dict((n,m.version(n)) for n in sys.argv[1:])))"
+ ],distributions))
 }
