@@ -5328,7 +5328,7 @@ fn canonical_string_set(items: List<String>) -> List<String> {
 
 fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> ReferenceDerivedUseLinePlan {
   {
-    let module_source = match typed_modules |> filter(tm => authored_name_at(source_indices: source_indices, node: tm.module) == this_module_name) |> first {
+    let module_source = match typed_module_by_name(module_name: this_module_name, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
       Present { value: tm } => module_authored_source_text(module: tm.module, source_indices: source_indices)
       Absent => ""
     }

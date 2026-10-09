@@ -3130,6 +3130,16 @@ pub(crate) fn fixture_closure_union_digest(members: &BTreeMap<String, String>) -
 pub(crate) fn fixture_closure_union_emit_receipt(
     union: &FixtureClosureUnion,
 ) -> Result<FixtureClosureUnionObserved, String> {
+    fixture_closure_union_emit_receipt_staged(union, &|_, _, _| {})
+}
+
+/// The receipt with a stage observer: `on_stage(stage, members, wall_ms)` is called as each stage
+/// completes, BEFORE the next stage's work starts, so a run cancelled inside the phase still
+/// names the stage that was running. The caller owns the printing (a library crate may not).
+pub(crate) fn fixture_closure_union_emit_receipt_staged(
+    union: &FixtureClosureUnion,
+    on_stage: &dyn Fn(&str, usize, u128),
+) -> Result<FixtureClosureUnionObserved, String> {
     let digest = fixture_closure_union_digest(&union.members);
     let refuse = |cause: &str, what: String| {
         format!(
@@ -3172,7 +3182,16 @@ pub(crate) fn fixture_closure_union_emit_receipt(
             })
         })
         .collect();
+    let stage_started = std::time::Instant::now();
+    let stage_line = |stage: &str| {
+        on_stage(
+            stage,
+            union.members.len(),
+            stage_started.elapsed().as_millis(),
+        );
+    };
     let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+    stage_line("compile-done");
     let located = |d: &Rc<ErrorNode>| {
         format!(
             "module={} reason=`{}`",
@@ -3200,10 +3219,12 @@ pub(crate) fn fixture_closure_union_emit_receipt(
     }
     let (resolved, excluded) = union_emit_graph_excluding_unmodeled_stderr_capture(resolved);
     let compile_diagnostics = resolved.diagnostics.len();
+    stage_line("exclusion-done");
     let rendered = v1_compiler_compile::emit_resolved_for_target(
         resolved,
         crate::v1_compiler_artifact::RenderTarget::Rust,
     );
+    stage_line("emit-done");
     let emitted: Vec<&Rc<ErrorNode>> = rendered
         .diagnostics
         .iter()
