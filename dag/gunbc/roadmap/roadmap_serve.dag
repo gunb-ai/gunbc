@@ -9,6 +9,7 @@ import gunbc.site.web_fonts { web_font_stylesheet, web_font_stylesheet_path, web
 import extdeps.languages.json.emit { JsonNull }
 
 import gunbc.site.document { site_document }
+import gunbc.site.specimen { specimen_route_path, specimen_page }
 import gunbc.site.markup { el, txt }
 import gunbc.site.brand { site_favicon_path, site_favicon_type, site_favicon_source }
 import gunbc.site.controls { site_client_path, site_client_source }
@@ -112,6 +113,7 @@ import extdeps.languages.json.emit {
   json_int,
   json_array,
   JsonValue,
+  JsonKeyValue,
 }
 import gunbc.roadmap_launch_admission {
   LaunchRefusal,
@@ -285,6 +287,7 @@ type RoadmapServeHandler
   | AllocationReleaseHandler
   | AllocationClientHandler
   | FleetStandingPageHandler
+  | SpecimenPageHandler
   | DispatchJsonHandler
   | HealthzHandler
   | DashboardInstanceHandler
@@ -364,6 +367,7 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
     ServedRouteSpec { method: GET, raw: web_font_stylesheet_path(), handler: WebFontStylesheetHandler },
     ServedRouteSpec { method: GET, raw: allocation_client_path, handler: AllocationClientHandler },
     ServedRouteSpec { method: GET, raw: "/fleet", handler: FleetStandingPageHandler },
+    ServedRouteSpec { method: GET, raw: specimen_route_path, handler: SpecimenPageHandler },
     ServedRouteSpec { method: GET, raw: roadmap_site_dispatch_url_path as String, handler: DispatchJsonHandler },
     ServedRouteSpec { method: GET, raw: roadmap_site_health_path as String, handler: HealthzHandler },
     ServedRouteSpec { method: GET, raw: "/instance.json", handler: DashboardInstanceHandler },
@@ -1260,6 +1264,7 @@ fn roadmap_serve_invoke_over(
     AllocationGetHandler => workspace_route_get(request: request, allocation_id: path_param_value(params: params, name: "allocation_id") as NonEmptyStr)
     AllocationClientHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: allocation_client_source())
     FleetStandingPageHandler => serve_page_response(page: roadmap_fleet_page())
+    SpecimenPageHandler => serve_page_response(page: specimen_page())
     DispatchJsonHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_dispatch_json_body_over(plan: plan()))
     HealthzHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_healthz_body_for_release(release_revision: release_revision))
     DashboardInstanceHandler =>
@@ -1999,14 +2004,14 @@ fn auth_session_response_over(instance: HostDashboardInstance, request: ServeHtt
   )
 }
 
-fn auth_session_roster_standing_members(roster: ProfileStoreReadAll) -> List<JsonValue> {
-  let unreadable = [ json_kv(key: "profile_standing", value: json_string(s: "profile store unread; session profile only")) ] as List<JsonValue>
-  let partial = [ json_kv(key: "profile_standing", value: json_string(s: "one or more profile records unreadable; the affected members render their fallback")) ] as List<JsonValue>
+fn auth_session_roster_standing_members(roster: ProfileStoreReadAll) -> List<JsonKeyValue> {
+  let unreadable = [ json_kv(key: "profile_standing", value: json_string(s: "profile store unread; session profile only")) ]
+  let partial = [ json_kv(key: "profile_standing", value: json_string(s: "one or more profile records unreadable; the affected members render their fallback")) ]
   match roster {
     ProfileStoreUnread { step: _, reason: _ } => unreadable
     ProfileStoreRead { profiles: _, skipped } =>
       if count(skipped) == 0 {
-        [] as List<JsonValue>
+        []
       } else {
         partial
       }
@@ -2071,7 +2076,7 @@ fn auth_session_body_over(roster: ProfileStoreReadAll, evidence: RequestAuthenti
 // projected one — absence is the member's ABSENCE, never an empty string standing in for none,
 // and the client reads absence (like a failed fetch) as the initials fallback, never an
 // identity claim from a hole in the wire.
-fn auth_session_picture_members(picture: Uri?) -> List<JsonValue> {
+fn auth_session_picture_members(picture: Uri?) -> List<JsonKeyValue> {
   match picture {
     Present { value: u } => [ json_kv(key: "picture", value: json_string(s: uri_wire(uri: u) as String)) ]
     Absent => []
@@ -2080,7 +2085,7 @@ fn auth_session_picture_members(picture: Uri?) -> List<JsonValue> {
 
 // THE OPTIONAL NAME MEMBER, the same law as the picture: absence is the member's ABSENCE,
 // never an empty string standing in for none.
-fn auth_session_name_members(name: String?) -> List<JsonValue> {
+fn auth_session_name_members(name: String?) -> List<JsonKeyValue> {
   match name {
     Present { value: n } => [ json_kv(key: "name", value: json_string(s: n)) ]
     Absent => []
@@ -2088,7 +2093,7 @@ fn auth_session_name_members(name: String?) -> List<JsonValue> {
 }
 
 // THE OPTIONAL EMAIL MEMBER, the same law as the name: absence is the member's ABSENCE.
-fn auth_session_email_members(email: Email?) -> List<JsonValue> {
+fn auth_session_email_members(email: Email?) -> List<JsonKeyValue> {
   match email {
     Present { value: e } => [ json_kv(key: "email", value: json_string(s: e as String)) ]
     Absent => []

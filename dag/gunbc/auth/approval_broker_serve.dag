@@ -455,7 +455,7 @@ fn approval_status_response(params: List<PathParamBinding>, process: ApprovalSer
 // writes nothing, so like the status route it takes no writer admission; the asker's authentication
 // is the submission-key MAC the fold checks before it reads the escalation at all.
 fn approval_store_receipt_response(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, params: List<PathParamBinding>, process: ApprovalServingProcess) -> ServeHttpResponse {
-  let answer = store_receipt_answer(escalation_id: path_param_value(params: params, name: "escalation_id") as NonEmptyStr, body: request.body)
+  let answer = store_receipt_answer(escalation_id: path_param_value(params: params, name: "escalation_id") as NonEmptyStr, body: request.body, root: approval_decision_store_root, submission_keyring: read_submission_keyring())
   broker_text_response(status: answer.status, content_type: text_plain_utf8, body: answer.body, marker: StoreReceiptHandlerObserved, process: process)
 }
 

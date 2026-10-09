@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure {Milliampere,milliampere_count,Micrometer,micrometer_count,Millimeter, millimeter, millimeter_count}
 import product.printed_chassis.rear_cooling {RearFanBank,RearCoolingReading,RearFanGeometry,RearCoolingInvalidInput,RearCoolingNoFit,rear_plate_gap_um}
 import product.printed_chassis.node_power_feed {FanHeaderLoad,fan_bank_header_load,FanHeaderLoadAgainstUnreadLimit,FanBankNeedsOneHeaderPerFan}
-import extdeps.external_authority {CitedToAuthority,TranscribedUncited}
+import extdeps.external_authority {CitedToAuthority,TranscribedUncited,ObservedByReceipt}
 import extdeps.languages.json.emit {JsonValue,json_object,json_kv,json_string,json_int,json_bool}
 import std.nat { Nat, nat_sub, NatSubtraction, NatDifference, NatSubtrahendExceedsMinuend }
 import std.measure { Millimeter, millimeter, millimeter_count }
@@ -124,7 +124,7 @@ fn selected_fan_harness_json(reading:RearCoolingReading,service_allowance:Millim
  FanHeaderLoadAgainstUnreadLimit {header_current:i,fans:_}=>json_object(members:[json_kv(key:"standing",value:json_string(s:"open: board header current limit unread")),json_kv(key:"header_current_ma",value:json_int(n:milliampere_count(i:i)))])
  FanBankNeedsOneHeaderPerFan {fans:n,headers_available:a}=>json_object(members:[json_kv(key:"standing",value:json_string(s:"separate headers required; current rating unresolved")),json_kv(key:"headers_needed",value:json_int(n:n)),json_kv(key:"headers_available",value:json_int(n:a))])
  }
- let chain=match p.sharing {NoPassThrough=>"no pass-through" PstPassThrough {max_chained_standing:s}=>match s {CitedToAuthority {authority:_}=>"cited chain standing; header capacity still required" TranscribedUncited {read_obligation:o}=>o as String}}
+ let chain=match p.sharing {NoPassThrough=>"no pass-through" PstPassThrough {max_chained_standing:s}=>match s {CitedToAuthority {authority:_}=>"cited chain standing; header capacity still required" TranscribedUncited {read_obligation:o}=>o as String ObservedByReceipt {observed:_}=>"observed chain standing; header capacity still required"}}
  json_object(members:[json_kv(key:"standing",value:json_string(s:"design lower-bound route estimate; bend, retention, cable exit and installed fit remain open")),json_kv(key:"lead_mm",value:json_int(n:millimeter_count(m:p.cable_length))),json_kv(key:"header_run_mm",value:json_int(n:millimeter_count(m:p.header_run))),json_kv(key:"service_allowance_mm",value:json_int(n:millimeter_count(m:service_allowance))),json_kv(key:"extension_needed",value:json_bool(b:fan_plan_needs_extension(plan:p))),json_kv(key:"native_fan_cable_count",value:json_int(n:fold(runs,init:0,f:(acc,r)=>acc+r.count))),json_kv(key:"header_load",value:header),json_kv(key:"chain_standing",value:json_string(s:chain)),json_kv(key:"stack_power_and_ethernet",value:json_string(s:"open: station, inlet and switch selections required for complete stack census"))])
  }
  }

@@ -481,7 +481,7 @@ fn accumulate_json_field(acc: JsonFragmentsAccum, name: String, outcome: Emitter
 // a re-derivation: an unindexed key or a stored DataVariantSpellingRefused fails closed (the
 // caller renders compile_error!, a build-time located refusal) rather than spelling a guess.
 // The bare fieldless variant never reaches here at all: it is an ExprVar, and
-// data_value_has_cross_refs routes any ExprVar-bearing value to direct construction.
+// data_value_is_json_literal_tree routes any ExprVar-bearing value to direct construction.
 fn emit_data_fields_json(value: Node, source_indices: Map<String, NewlineIndex>, variant_wire: Map<String, DataVariantWireSpelling>) -> JsonFragmentsAccum {
   value.children |> fold(init: FragmentsAccumulated { pieces: [] }, f: (acc, fld) =>
     accumulate_json_field(

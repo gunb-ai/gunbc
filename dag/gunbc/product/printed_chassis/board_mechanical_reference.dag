@@ -1,7 +1,7 @@
 module product.printed_chassis.board_mechanical_reference
 import std.types {Int,List,String,NonEmptyStr}
 import std.measure {Micrometer,micrometer_count}
-import extdeps.external_authority {ExternalAuthority,CitedFigureStanding,CitedToAuthority,TranscribedUncited}
+import extdeps.external_authority {ExternalAuthority,CitedFigureStanding,CitedToAuthority,TranscribedUncited,ObservedByReceipt,observed_receipt_ref}
 import extdeps.uri {uri_wire}
 import extdeps.ocp.mt_jade.platform {mt_jade_motherboard_mechanical}
 import extdeps.ocp.mt_jade.subject {mt_jade_subject_authority_anchor}
@@ -61,6 +61,7 @@ fn cited_figure_json(standing:CitedFigureStanding) -> JsonValue {
  match standing {
  CitedToAuthority {authority:a}=>json_object(members:[json_kv(key:"source",value:json_string(s:uri_wire(uri:a.uri) as String)),json_kv(key:"standing",value:json_string(s:"cited"))])
  TranscribedUncited {read_obligation:o}=>json_object(members:[json_kv(key:"standing",value:json_string(s:"transcribed; read required")),json_kv(key:"read_obligation",value:json_string(s:o as String))])
+ ObservedByReceipt {observed:r}=>json_object(members:[json_kv(key:"standing",value:json_string(s:"observed by receipt")),json_kv(key:"receipt_module",value:json_string(s:observed_receipt_ref(observed:r).module_path as String)),json_kv(key:"receipt_decl",value:json_string(s:observed_receipt_ref(observed:r).decl_name as String))])
  }
 }
 fn placement_admitted(standing:BoardLocationStanding) -> Bool {

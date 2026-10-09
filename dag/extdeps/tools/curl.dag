@@ -2,8 +2,9 @@ module extdeps.tools.curl
 
 import extdeps.exec.program { ProgramIdentity, cataloged_program }
 
-import std.types { String, NonEmptyStr, Bool, List, FilePath, Int, HttpStatus, http_status_of }
+import std.types { String, NonEmptyStr, Bool, List, FilePath, Int, HttpStatus, http_status_of, Unit }
 import std.algebra { trim }
+import std.resources { Network }
 import std.measure { Second, second, second_count, Microsecond, microsecond, microsecond_count }
 import std.algebra { Less, Equal, Greater }
 import extdeps.version.semver { SemVerVersion, semver_compare, semver_core_of_dotted, semver_minimum_of_constraint }
@@ -725,4 +726,121 @@ fn curl_exit_outcome_name(outcome: CurlExitOutcome) -> String {
     CurlReceiveFailed => "failure receiving data (curl exit 56)"
     CurlExitUnnamed { code: c } => join(["curl exit ", to_string(c)], "")
   }
+}
+
+// ── REQUESTS WHOSE AUTHORIZATION IS AN HTTP SIGNATURE OVER THE EXACT BYTES SENT ─────────────────
+//
+// Some APIs authenticate each request with a signature over its date, its target and, for a request
+// with a body, a digest of the body's bytes (Oracle Cloud Infrastructure is the consumer:
+// extdeps.cloud.oracle_oci_request_signing). The signature can only be checked if the bytes it covers
+// are the bytes on the wire. So the body here is a caller-supplied STRING sent verbatim on stdin with
+// --data-binary, never a structure the transport re-serializes. curl sets Content-Length from those
+// bytes, which is the value the caller signed. The headers are fixed slots, because the set of
+// signed headers is the protocol and not a caller's choice.
+//
+// A POST also carries a caller-derived idempotency token in a fixed slot (Oracle: opc-retry-token),
+// so a request whose reply was lost can be re-sent without the server performing it twice. It is not
+// a signed header.
+//
+// The Authorization value appears in argv. It is a signature bound to one request and one date
+// (Oracle rejects a date more than 5 minutes off), not the key, which never leaves the signer.
+// The response body comes back followed by a newline and the status, read by
+// classify_curl_http_code_after_newline. The response HEADERS are dumped to stderr (-D /dev/stderr),
+// because a paged API carries its continuation token in a header (Oracle: opc-next-page), and a
+// list read without it cannot tell a finished listing from one with more pages. -sS writes only
+// errors to stderr, and those arrive only on a nonzero exit, which callers refuse before reading
+// headers.
+service curl.HttpSignature {
+  operation SignedGet {
+    requires Network
+    input { url: NonEmptyStr, date: NonEmptyStr, authorization: NonEmptyStr, max_seconds: NonEmptyStr }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: [curl_program().invocation, "-sS", "--max-time", "{max_seconds}", "-H", "date: {date}", "-H", "authorization: {authorization}", "-D", "/dev/stderr", "-w", "\n%\{http_code\}", "{url}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => Unit
+    }
+  }
+
+  operation SignedPostJson {
+    requires Network
+    input {
+      url: NonEmptyStr,
+      date: NonEmptyStr,
+      authorization: NonEmptyStr,
+      max_seconds: NonEmptyStr,
+      content_sha256: NonEmptyStr,
+      retry_token: NonEmptyStr,
+      body: String,
+    }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [curl_program().invocation, "-sS", "--max-time", "{max_seconds}", "-X", "POST", "-H", "date: {date}", "-H", "authorization: {authorization}", "-H", "content-type: application/json", "-H", "x-content-sha256: {content_sha256}", "-H", "opc-retry-token: {retry_token}", "--data-binary", "@-", "-D", "/dev/stderr", "-w", "\n%\{http_code\}", "{url}"]
+      stdin: body
+    }
+    exit {
+      0 => Unit
+      nonzero => Unit
+    }
+  }
+}
+
+// THE VALUE OF ONE RESPONSE HEADER from a -D dump, by case-insensitive name (RFC 9110 section 5.1).
+// Absent is the empty string. With redirects, -D writes one header block per response, and the last
+// match wins, which is the final response's.
+fn curl_ascii_lower_from(s: String, i: Int, acc: String) -> String {
+  if i >= string_length(s) {
+    acc
+  } else {
+    let c = char_at(s, i)
+    let cp = code_point(c)
+    curl_ascii_lower_from(s: s, i: i + 1, acc: concat(acc, if cp >= 65 && cp <= 90 { from_code_point(cp: cp + 32) } else { c }))
+  }
+}
+
+fn curl_dumped_header_value(dump: String, name: String) -> String {
+  let prefix = concat(curl_ascii_lower_from(s: name, i: 0, acc: ""), ":")
+  let n = string_length(prefix)
+  fold(split(s: dump, delimiter: "\n"), init: "", f: (acc, line) =>
+    if string_length(line) > n && curl_ascii_lower_from(s: substring(s: line, start: 0, end: n), i: 0, acc: "") == prefix {
+      trim(s: substring(s: line, start: n, end: string_length(line)))
+    } else {
+      acc
+    }
+  )
+}
+
+// The body is everything before the final newline that the write-out format adds.
+fn curl_body_before_http_code(stdout: String) -> String {
+  let lines = split(s: stdout, delimiter: "\n")
+  let n = lines.length()
+  if n <= 1 { "" } else { join(lines |> take(n: n - 1), "\n") }
+}
+
+type CurlSignedRun {
+  exit_code: Int
+  stdout: String
+  stderr: String
+}
+
+// How long a caller waits is the caller's policy, so it is a parameter here, never a literal in the argv.
+fn curl_http_signature_get(url: NonEmptyStr, date: NonEmptyStr, authorization: NonEmptyStr, max_time: Second) -> CurlSignedRun uses net: Network {
+  let run = curl.HttpSignature.SignedGet(url: url, date: date, authorization: authorization, max_seconds: to_string(second_count(s: max_time)) as NonEmptyStr)
+  CurlSignedRun { exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr }
+}
+
+fn curl_http_signature_post_json(url: NonEmptyStr, date: NonEmptyStr, authorization: NonEmptyStr, max_time: Second, content_sha256: NonEmptyStr, retry_token: NonEmptyStr, body: String) -> CurlSignedRun uses net: Network {
+  let run = curl.HttpSignature.SignedPostJson(url: url, date: date, authorization: authorization, max_seconds: to_string(second_count(s: max_time)) as NonEmptyStr, content_sha256: content_sha256, retry_token: retry_token, body: body)
+  CurlSignedRun { exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr }
 }
