@@ -8,11 +8,9 @@ import gunbc.live_deploy.apply {
   DesiredApplyRefused,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1, selected_deployment_spec, srv1_lab_desired_deployment }
-import gunbc.live_deploy.spec {
-  DeploymentSpec, DeploymentStep, Dependency, ArtifactStep,
-  FabricStorageStoreDirectory, TailscalePackage, TmuxPackage, DevbootArtifactStoreDirectory,
-  CodexRuntimeReleaseDirectory, ProviderStateRootDirectory,
-}
+import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands }
+import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_member }
+import gunbc.fabric_storage_placement { fabric_storage_store_directories }
 import gunbc.ci_deploy_access { ci_deploy_srv1_operator_local_access }
 import gunbc.roadmap_dashboard_instance { srv1_dashboard_lab_id, srv2_deploy_dashboard_id }
 
@@ -80,25 +78,16 @@ test fn a_row_on_another_host_refuses_under_srv1_access() -> Bool {
   }
 }
 
-// THE FABRIC STORE IS THE PLACED INSTANCE'S (gunbc.live_deploy.spec fabric_storage_ensured_steps).
-// The lab row's step list carries no FabricStorageStoreDirectory member; production's does.
-fn is_fabric_store_step(st: DeploymentStep) -> Bool {
-  match st {
-    Dependency { step } =>
-      match step.kind {
-        FabricStorageStoreDirectory => true
-        TailscalePackage => false
-        TmuxPackage => false
-        DevbootArtifactStoreDirectory => false
-        CodexRuntimeReleaseDirectory => false
-        ProviderStateRootDirectory => false
-      }
-    ArtifactStep { step: _ } => false
-  }
+// THE FABRIC STORE IS THE PLACED INSTANCE'S (gunbc.fabric_storage_placement fabric_storage_directory_demands).
+// Directories are owned-directory demands (gunbc.live_deploy.spec deployment_directory_demands), not
+// step kinds: the lab row demands none of the fabric store's directories; production's does.
+fn is_fabric_store_demand(t: OwnedDirectoryTarget) -> Bool {
+  let m = owned_directory_member(t: t)
+  count(filter(xs: fabric_storage_store_directories(), predicate: d => d.member == m)) > 0
 }
 
 fn fabric_store_step_count(spec: DeploymentSpec) -> Int {
-  count(filter(xs: spec.steps, predicate: st => is_fabric_store_step(st: st)))
+  count(filter(xs: deployment_directory_demands(spec: spec), predicate: t => is_fabric_store_demand(t: t)))
 }
 
 test fn the_lab_row_does_not_converge_the_fabric_store_and_production_does() -> Bool {

@@ -1208,7 +1208,7 @@ fn deployment_steps_apply_order(
   names: DeploymentNames,
 ) -> List<DeploymentStep> {
   concat(
-    map(deployment_ensured_steps(instance: instance, target: target), s => Dependency { step: s }),
+    map(deployment_ensured_steps(target: target), s => Dependency { step: s }),
     map(
       deployment_owned_steps(instance: instance, names: names),
       s => ArtifactStep { step: s },
