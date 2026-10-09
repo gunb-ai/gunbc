@@ -8463,7 +8463,24 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
             ),
         }),
 
-        ExprData::NoExprData => Ok(Value::Unit),
+        ExprData::NoExprData => {
+            // A List/Set type node (make_container_type) is NoExprData. Evaluating it as
+            // [] was a fabricated default (review 77868, DESIGN §5/§6b). Empty list
+            // values keep ExprListLit and evaluate in that arm. A type used as a value
+            // refuses.
+            let ty = match node.inferred.as_deref() {
+                Some(InferredNode::Resolved { node: t, .. }) => t.clone(),
+                _ => node.clone(),
+            };
+            if crate::v1_compiler_infer_types::node_is_element_collection(ty, ctx.si()) {
+                Err(InterpError::TypeError {
+                    msg: "type node used as a value (empty list must remain ExprListLit)"
+                        .to_string(),
+                })
+            } else {
+                Ok(Value::Unit)
+            }
+        }
     }
 }
 
