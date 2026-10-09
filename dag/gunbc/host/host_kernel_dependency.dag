@@ -147,7 +147,8 @@ fn host_kernel_dependency_action_lines(plan: HostKernelDependencyPlan) -> List<S
     concat("observed-running-kernel:", plan.running_release as String),
     "observed-capability:unsupported (errno EOPNOTSUPP)"] + install + [
     concat("activate-kernel:", plan.provider.kernel_release as String),
-    "activation-prerequisites: plan-bound host interruption authority; drained runners; verified console recovery; external reset observer",
+    "activation-prerequisites: plan-bound host interruption authority; drained runners; operator BMC recovery; external boot observer",
+    "maintenance: gunbc.host_kernel_dependency_apply administrator entries consume this canonical dependency; no job-user grant",
     "readback: running kernel and new boot identity; KVM; network and services; successful TUN queue query",
     "continuation: rerun the same commissioning goal; sanitation must still prove zero holders",
     "standing: dependency remedy planned; VM remains uncommissioned",

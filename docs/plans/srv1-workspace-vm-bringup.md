@@ -419,7 +419,7 @@ to multi-queue would not match [Firecracker v1.16.1's open flags](https://github
 No refusal has been relaxed, no readiness record has been fabricated, and no VM
 has been commissioned or booted.
 
-### Proposed host maintenance (not applied)
+### Host kernel dependency and maintenance
 
 The commissioning planner derives this proposal from the selected sanitation
 reader's `TunAttachedQueueRequirement`. Its observation now invokes Linux's
@@ -441,14 +441,42 @@ refuses instead of entering a reboot loop.
 
 The existing `workspace-slot-commissioning` plan carries the dependency, package
 simulation and continuation. It cannot mint a commissioning credential or initial
-readiness. Its apply admission is `AwaitingCapability`: plan-bound interruption
-authority, runner drain, verified console recovery and an external boot observer
-are not established for srv1. `gunbc.host_reset_boot_selection` currently admits
-only the separately enrolled reset subject, not srv1. This change implements
-capability-driven dependency planning; it does **not** implement an unattended
-srv1 kernel installer/reboot actuator. After an admitted maintenance path establishes
-the running capability, rerunning the same commissioning goal continues through
-the full sanitation, protected-state and runtime checks.
+readiness. Generic slot apply remains `AwaitingCapability` because a slot request
+alone does not authorize interruption of the shared host.
+
+`gunbc.host_kernel_dependency_apply` now supplies the administrator maintenance
+path for that exact canonical dependency. Its drain entry puts runtime masks on
+observed runner instances without stopping them, allowing their one current job
+to finish. Installation and activation require every instance inhibited, stopped,
+without a queued job, and with an empty or absent workload cgroup. The existing
+cgroup observer includes descendants. Unknown and foreign runner census rows,
+unreadable state, a live workspace controller, changed boot identity or changed
+package proposal refuse. Existing permanent masks are retained.
+
+The install entry uses the same exact, non-removing apt selection as planning,
+then reads package identities, boot image, initramfs and the TUN symbol back. An
+already installed target needs only activation. The separate activation entry
+checks srv1's observed GRUB default-zero realization, exact image/initramfs and
+absence of a pending boot override, then requests a normal OS reboot. The peer
+keeps the reviewed plan and invokes verification after SSH returns. Verification
+requires a new boot identity, the target release and the actual queue capability;
+commissioning must subsequently perform its full sanitation and readiness checks.
+
+These entries require root and are not included in the job-user commissioning
+sudo grant. They are the operator's explicitly approved maintenance action, not
+an unattended reboot policy. The BMC is the operator recovery fallback. Normal OS
+reboot does not require enrolling srv1 in the separate BMC-issued reset workflow
+(`host_reset_boot_selection`); treating that unrelated enrollment as a kernel
+installation dependency was an overly broad frontier in the earlier proposal.
+
+The four entries consume the planner's canonical JSON on stdin:
+`host_kernel_dependency_drain_cli`, `host_kernel_dependency_install_cli`,
+`host_kernel_dependency_activate_cli`, and `host_kernel_dependency_verify_cli`.
+An unfinished drain reports refusal and leaves its runtime masks in place; it
+never interrupts current jobs to force completion. Those masks disappear at
+reboot. If maintenance is abandoned before reboot, the operator removes only the
+runtime masks created by that attempt and starts those instances again, preserving
+previous permanent masks. The pre-maintenance unit census is retained as evidence.
 
 This is ordinary domain composition using the existing `ensure` decision and
 fleet plan, not a claim that the generic completion/elaboration engine proposed
@@ -464,10 +492,13 @@ The modules package's `System.map-7.0.0-38-generic` contains `tun_get_channels`,
 not merely its version. The install command whose simulation was reviewed is:
 
 ```sh
-sudo apt-get --no-install-recommends install linux-generic-hwe-24.04=7.0.0-38.38~24.04.4
+sudo env LC_ALL=C DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l \
+  apt-get --yes --no-install-recommends --no-remove install \
+  linux-generic-hwe-24.04=7.0.0-38.38~24.04.4
 ```
 
-This requires separate operator approval for shared-host maintenance: the reboot
+The operator approved this shared-host maintenance on 2026-10-09 after the
+interruption was explained. The reboot
 interrupts srv1's twelve runner services, dashboard, fabric storage, approval
 broker, ntfy and container services. Before installing or rebooting, drain work,
 establish console/boot recovery, and recheck the package plan and disk capacity.
@@ -475,11 +506,29 @@ GRUB currently boots entry 0 with a hidden, zero-second menu; keeping an old
 kernel alone is not automatic rollback. After reboot, require successful
 `ethtool --show-channels gunbc-tap13`, verify KVM, network and service recovery,
 then rerun the commissioning plan. A newer version string alone is insufficient.
-Local read-only IPMI device/chassis queries succeed and SOL reports enabled;
-remote console access and boot recovery have not been established. The current
-GitHub credential cannot list organization runners (403), so a runner drain must
-be established separately rather than inferred from the repository runner list.
-No kernel package has been installed and no reboot has been initiated.
+Local read-only IPMI device/chassis queries succeed and SOL reports enabled.
+The BMC's HTTPS endpoint is reachable from srv2, firmware selects Ubuntu, and the
+BMC reports no boot-device override. An authenticated remote console session has
+not been tested. Runner drain uses the actual local service/cgroup population,
+not an incomplete GitHub organization runner listing.
+
+The first production drain used source snapshot SHA-256
+`d2ef5ab2f7d3d11bda59d5773ffd9ca2a41c8f14578d41746f6ced41da544646`
+and the existing canonical dependency for installed release `4fa60f71342`.
+It placed twelve runtime masks and returned the expected awaiting-jobs refusal;
+the existing jobs remained active and permanent masks were unchanged. Evidence:
+`target/srv1-bringup-evidence/kernel-maintenance-drain-r1.log` and the before/masked
+runner censuses. Package installation and reboot remain pending at this receipt.
+
+The seven maintenance controls pass: canonical input, permitted install progress,
+boot/transaction drift, runner population inclusion/refusal, complete drain
+readback, and exact GRUB image selection with override refusal. The boot-selection
+control resolves only its pure reader and passes at 1,216 evaluation steps.
+All 8,291 source files parse; formatting and whitespace checks pass. Logs are
+`target/srv1-kernel-maintenance-tests-r3.log`,
+`target/srv1-kernel-maintenance-drain-tests.log`,
+`target/srv1-kernel-maintenance-boot-tests-leaf-r2.log`, and
+`target/srv1-kernel-maintenance-parse-r2.log`.
 
 The diagnostics repair at `0fd9f91c7b1` passes all 29 focused commissioning,
 network-producer, TUN-census and initial-sanitation witnesses in
