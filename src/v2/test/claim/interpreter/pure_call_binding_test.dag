@@ -1,0 +1,46 @@
+module v2.test.claim.interpreter.pure_call_binding
+
+import std.types { Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A CALL BINDS ITS ARGUMENTS BY LABEL, AND A SERVED RESULT MUST ANSWER THE SAME BINDING. The seed
+// interpreter's PureCallMemo admitted calls by function SPELLING (content_hash, well_formed, ...)
+// and keyed them on the function node plus the allocation identity of each argument in SOURCE
+// order, dropping the labels. Two calls passing the same retained values under swapped labels
+// presented one key, so the second was served the first's result before call_function bound
+// anything. The subject is supplied directly: one two-parameter function returning its first
+// formal, spelled like an admitted structural producer, and two retained list instances.
+fn well_formed(a: List<Int>, b: List<Int>) -> List<Int> {
+  a
+}
+
+// The same body under a spelling no roster names. It isolates the defect to the served tier: this
+// one binds correctly whatever happens to the spelled one.
+fn first_formal(a: List<Int>, b: List<Int>) -> List<Int> {
+  a
+}
+
+test fn swapped_labels_bind_their_own_parameters_holds() -> Bool {
+  let x = [1]
+  let y = [2]
+  let first = well_formed(a: x, b: y)
+  let second = well_formed(b: x, a: y)
+  first == [1] && second == [2]
+}
+
+test fn swapped_labels_bind_under_an_unrostered_spelling_holds() -> Bool {
+  let x = [1]
+  let y = [2]
+  let first = first_formal(a: x, b: y)
+  let second = first_formal(b: x, a: y)
+  first == [1] && second == [2]
+}
+
+// THE POSITIVE CONTROL. An identical repeat still answers the same value, whichever tier serves it.
+test fn an_identical_repeat_answers_the_same_value_holds() -> Bool {
+  let x = [1]
+  let y = [2]
+  well_formed(a: x, b: y) == well_formed(a: x, b: y)
+}

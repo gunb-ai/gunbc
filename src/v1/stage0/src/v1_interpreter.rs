@@ -1742,13 +1742,6 @@ pub type InterpResult<T> = Result<T, InterpError>;
 
 type ServiceOp = (Rc<Node>, Rc<Node>);
 
-#[derive(Default)]
-struct PureCallMemo {
-    map: HashMap<(usize, Vec<usize>), Value>,
-    keepalive: Vec<Value>,
-    keepalive_fns: Vec<Rc<Node>>,
-}
-
 /// Origin-free mirror of `Value`, used as the cross-claim memo's storage shape.
 ///
 /// Required-floor builds a FRESH `InterpContext` per claim by design (`cli_run.rs`
@@ -5566,7 +5559,7 @@ struct EvalRecomputeTrace {
     // travels beside the name, so two declarations sharing a spelling are now two rows.
     unkeyed_by_fn: std::collections::HashMap<EvalRecomputePartialKey, (u64, u128, Rc<str>, String)>,
     // fn-node Rcs kept alive so fn_ptr keys stay valid for the ctx lifetime
-    // (same discipline as PureCallMemo.keepalive_fns).
+    // (same discipline as EvalCallMemo.keepalive_fns).
     keepalive_fns: Vec<Rc<Node>>,
     // fn_ptr -> interned display name, so millions of ledger entries share
     // one allocation per function instead of a String clone per key.
@@ -6487,8 +6480,7 @@ pub struct InterpContext {
     // per call (authored_name_at). Memoized per fn_node pointer. The pointer alone is unsound:
     // the ctx does not own fn_nodes (borrowed `Rc<Node>`s droppable while the ctx lives), so a
     // freed address can be reused and collide. keepalive_fns retains the `Rc<Node>` behind each
-    // key for the ctx's lifetime (as PureCallMemo.keepalive_fns / EvalRecomputeTrace.keepalive_fns
-    // / EvalCallMemo.keepalive_fns), and the cache dies with the ctx (as data_cache).
+    // key for the ctx's lifetime (as EvalRecomputeTrace.keepalive_fns / EvalCallMemo.keepalive_fns), and the cache dies with the ctx (as data_cache).
     // Value = (filtered named-param list, all-param list), matching call_function's two uses.
     param_name_cache: std::cell::RefCell<HashMap<usize, Rc<(Vec<String>, Vec<String>)>>>,
     param_name_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
@@ -6517,7 +6509,6 @@ pub struct InterpContext {
     // cast_expr_inferred_type_name).
     cast_source_name_cache: std::cell::RefCell<HashMap<usize, String>>,
     cast_source_name_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
-    pure_call_memo: std::cell::RefCell<PureCallMemo>,
     parse_table_memo: std::cell::RefCell<ParseTableMemo>,
     eval_recompute_trace: std::cell::RefCell<EvalRecomputeTrace>,
     eval_call_memo: std::cell::RefCell<EvalCallMemo>,
@@ -6713,13 +6704,6 @@ impl InterpContext {
             &mut acc,
         );
         for value in self.data_cache.borrow().values() {
-            account_value(value, &mut visited, &mut acc);
-        }
-        let memo = self.pure_call_memo.borrow();
-        for value in memo.map.values() {
-            account_value(value, &mut visited, &mut acc);
-        }
-        for value in memo.keepalive.iter() {
             account_value(value, &mut visited, &mut acc);
         }
         for value in extra_roots {
@@ -6943,7 +6927,6 @@ impl InterpContext {
             cast_kernel_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             cast_source_name_cache: std::cell::RefCell::new(HashMap::new()),
             cast_source_name_cache_keepalive: std::cell::RefCell::new(Vec::new()),
-            pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
             parse_table_memo: std::cell::RefCell::new(ParseTableMemo::default()),
             eval_recompute_trace: std::cell::RefCell::new(EvalRecomputeTrace::default()),
             eval_call_memo: std::cell::RefCell::new(EvalCallMemo::default()),
@@ -11236,14 +11219,11 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         return Ok(result);
     }
 
-    if let Some(key) = pure_call_memo_key(&fn_node, &func_name, &args) {
-        if let Some(v) = pure_call_memo_get(ctx, &key) {
-            return Ok(v);
-        }
-        let result = call_function(ctx, &fn_node, &args, env)?;
-        pure_call_memo_put(ctx, &fn_node, key, &args, result.clone());
-        return Ok(result);
-    }
+    // NO SPELLING-ADMITTED TIER SITS ABOVE THIS ONE. A memo here once admitted calls by function
+    // name and keyed them on argument allocations in source order without their labels, so
+    // `f(a: x, b: y)` then `f(b: x, a: y)` was served the first result before any binding
+    // (v2.test.claim.interpreter.pure_call_binding). A pure named call is served only by the
+    // eval-frame memo below, which verifies argument names and values before a hit.
     if fn_node.uses.is_empty() {
         return eval_pure_named_call(ctx, node, &fn_node, &func_name, &args, env);
     }
@@ -11602,18 +11582,6 @@ fn try_parse_table_memo_dispatch(
     env: &Rc<Env>,
 ) -> InterpResult<Option<Value>> {
     v1_parse_table_arms!(v1_parse_table_dispatch, func_name, ctx, fn_node, args, env)
-}
-
-fn is_structural_pure_fn(name: &str) -> bool {
-    matches!(
-        name,
-        "content_hash"
-            | "well_formed"
-            | "locally_well_formed"
-            | "fold_node"
-            | "fold_node_content_hash"
-            | "node_subtree_count"
-    )
 }
 
 fn eval_recompute_str_hash(s: &str) -> u64 {
@@ -13046,39 +13014,6 @@ pub fn eval_call_memo_counters(ctx: &InterpContext) -> (u64, u64, u64) {
     let m = ctx.eval_call_memo.borrow();
     (m.hits, m.misses, m.overflow)
 }
-fn pure_call_memo_key(
-    fn_node: &Rc<Node>,
-    func_name: &str,
-    args: &[(Option<String>, Value)],
-) -> Option<(usize, Vec<usize>)> {
-    if !is_structural_pure_fn(func_name) {
-        return None;
-    }
-    let fid = Rc::as_ptr(fn_node) as usize;
-    let mut ids = Vec::with_capacity(args.len());
-    for (_, v) in args {
-        ids.push(value_rc_identity(v)?);
-    }
-    Some((fid, ids))
-}
-fn pure_call_memo_get(ctx: &InterpContext, key: &(usize, Vec<usize>)) -> Option<Value> {
-    ctx.pure_call_memo.borrow().map.get(key).cloned()
-}
-fn pure_call_memo_put(
-    ctx: &InterpContext,
-    fn_node: &Rc<Node>,
-    key: (usize, Vec<usize>),
-    args: &[(Option<String>, Value)],
-    result: Value,
-) {
-    let mut st = ctx.pure_call_memo.borrow_mut();
-    st.keepalive_fns.push(fn_node.clone());
-    for (_, v) in args {
-        st.keepalive.push(v.clone());
-    }
-    st.map.insert(key, result);
-}
-
 fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let method_name = expr_method_name_at(node.clone(), ctx.si());
     let semantics = expr_method_call_semantics(node.clone());
