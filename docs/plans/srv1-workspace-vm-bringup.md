@@ -340,3 +340,23 @@ the actual published ten-slot receipt, including the predecessor's rejecting par
 All three focused checks pass: the complete host population reaches the workspace
 consumer, another receipt host refuses, and an unenrolled network slot refuses.
 Commissioning diagnostics now retain the underlying network/sanitation refusal.
+
+Controller installation at `f99e440ce59874b10d0c9c65c27a3217a0a1cc3e` passes.
+Its commissioning preflight gets through the network receipt and sanitation reads,
+then refuses the installed cell boundary. Independent readback finds all five
+non-CPU limits correct, but `CPUQuotaPerSecUSec=infinity`; the persistent quota
+drop-in still dates to the initial cell apply at 03:47:23. The `MemberAdded` effect
+passed the fleet-wide unlimited quota instead of the slot's declared four-CPU quota.
+The earlier `FullyApplied` receipt therefore establishes successful commands,
+not full resource-boundary convergence. No VM or commissioning mutation ran.
+
+The add constructor now accepts only the slot and derives its own quota. Existing
+state repair admits only an enrolled workspace's unlimited CPU predecessor when
+all non-CPU limits already match and the target equals its declared boundary.
+`gunbc.change_realization` classifies the preserved address as `InPlaceUpdate`;
+the boundary effect emits only `CPUQuota=400%`. Other resource changes, finite predecessors,
+quota removal and changed addresses still refuse. This preserves the cell and
+its storage; it is not deletion/recreation to make drift look absent.
+All thirteen focused cell-effect and fleet-plan checks pass, including the actual
+slot-specific add path and the restricted repair. All 8,279 source files parse,
+and formatting checks pass. Live repair and commissioning remain outstanding.

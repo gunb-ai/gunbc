@@ -1136,7 +1136,7 @@ fn fabric_cell_realization_refusal_line(refusal: FabricCellRealizationRefusal) -
     CellRosterDuplicateKey { address_wire: w } =>
       concat("fabric-cell ", concat(w, " roster duplicate key"))
     CellChangeNotYetRealizable { address_wire: w } =>
-      concat("fabric-cell ", concat(w, " change realization undeclared: no staged intermediates (gunbc.change_realization)"))
+      concat("fabric-cell ", concat(w, " change has no admitted resource transition (gunbc.change_realization)"))
     CellTeardownNotYetRealizable { address_wire: w } =>
       concat("fabric-cell ", concat(w, " teardown unmodeled: destructive effect over possibly-live attempt state"))
   }

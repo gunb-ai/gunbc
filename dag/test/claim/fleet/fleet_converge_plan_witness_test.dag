@@ -1589,7 +1589,7 @@ test fn witness_fabric_cell_drifted_address_plans_change_and_never_add() -> Bool
   list_length(items: lines) == 2
     && fabric_cell_line_occurrences(
         lines: lines,
-        target: "REFUSED-REALIZATION fabric-cell resource-boundary change realization undeclared: no staged intermediates (gunbc.change_realization)",
+        target: "REFUSED-REALIZATION fabric-cell resource-boundary change has no admitted resource transition (gunbc.change_realization)",
       ) == 1
     && fabric_cell_line_occurrences(
         lines: lines,
@@ -1618,7 +1618,7 @@ test fn witness_fabric_cell_absent_address_plans_add_and_never_change() -> Bool 
       ) == 1
     && fabric_cell_line_occurrences(
         lines: lines,
-        target: "REFUSED-REALIZATION fabric-cell resource-boundary change realization undeclared: no staged intermediates (gunbc.change_realization)",
+        target: "REFUSED-REALIZATION fabric-cell resource-boundary change has no admitted resource transition (gunbc.change_realization)",
       ) == 0
 }
 
