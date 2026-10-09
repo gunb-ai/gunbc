@@ -66,10 +66,14 @@ test fn lef_repeated_actual_second_formal_is_judged_holds() -> Bool {
 
 // SUPPLIED TREE: the callee edge and the actual edge share one Node. Positional index, not
 // target equality, must still judge that actual at Int; a function does not inhabit Int.
-fn lef_share_callee_as_actual(n: Node) -> Node {
-  let children = list_map(xs: n.children, f: fn(e) {
+fn lef_rewrite_child_edges(xs: List<Edge>) -> List<Edge> {
+  list_map(xs: xs, f: fn(e) {
     Edge { label: e.label, target: lef_share_callee_as_actual(n: e.target) }
   })
+}
+
+fn lef_share_callee_as_actual(n: Node) -> Node {
+  let children = lef_rewrite_child_edges(xs: n.children)
   match n.kind {
     ComputationNode { behavior: Transform } =>
       match children {
