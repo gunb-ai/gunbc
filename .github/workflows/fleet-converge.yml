@@ -750,7 +750,7 @@ jobs:
         id: wif_auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:
-          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-actions/providers/github-oidc
+          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-fleet-convergence/providers/github-fleet-convergence-oidc
           service_account: fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com
           token_format: access_token
           create_credentials_file: false
@@ -3263,7 +3263,7 @@ jobs:
         id: wif_auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:
-          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-actions/providers/github-oidc
+          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-fleet-convergence/providers/github-fleet-convergence-oidc
           service_account: fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com
           token_format: access_token
           create_credentials_file: false
