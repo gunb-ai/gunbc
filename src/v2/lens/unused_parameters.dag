@@ -1,5 +1,6 @@
 module v2.lens.unused_parameters
 
+import v2.std.dependency { DependencyView, ClassifiedDependencyView }
 
 type UseRelation
   = IsUseOfDeclaration
