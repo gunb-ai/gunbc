@@ -1238,7 +1238,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     claims: [
       SingleClaimFillDebtClaim { claim: "rcf_a_bool_declared_field_value_of_the_wrong_type_refuses_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "rcf_a_construct_is_its_declared_record_at_a_declared_type_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "rcf_a_cross_module_records_field_value_is_counted_not_judged_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "rcf_a_cross_module_records_field_value_of_the_wrong_type_refuses_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "rcf_a_cross_module_records_missing_field_refuses_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "rcf_a_generic_record_at_its_instantiation_is_accepted_and_decided_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "rcf_a_generic_records_second_field_must_inhabit_the_instance_holds", standing: ActiveFillDebt },
