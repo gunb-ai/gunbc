@@ -799,6 +799,12 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // Twelve more were added from probe 37238532455, for the sixteen rows gunbc#13187 added to the hand
 // roster (v2.test.claim.compiler.generic_formal_instantiation): all twelve claims of the module.
 // Re-derive with that probe; do not extend by hand.
+// gunbc#13320 (XL-2): its ONE real-path inhabitance claim, kept per the DESIGN section 3 witness rule (every
+// other claim in the module supplies its input; sharp-raven-357 approved this member). Over the 72,300
+// new-witness budget on its floor run at a2485f0 by the pipeline's per-claim fixed
+// cost of assembling and inferring a one-module fixture, not the test's own work. Trigger: assemble plus infer
+// of a one-module fixture runs under the per-claim budget (gunbc.recurring_failure_mode
+// shared_precondition_re_derived_once_per_claim_frame).
 // gunbc#13307 (XL-2): its ONE real-path inhabitance claim, kept per the DESIGN section 3 witness rule (every
 // other claim in the module supplies its input; sharp-raven-357 approved this member). Over the 72,300
 // new-witness budget on that PR's floor run 37240332005 (886,357 steps) by the pipeline's per-claim fixed cost
@@ -838,6 +844,12 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     module: "v2.test.claim.construction_confinement.construction_confinement",
     claims: [
       SingleClaimFillDebtClaim { claim: "cc_real_route_refuses_exactly_the_outside_introductions_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.compiler.literal_elaboration",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "lel_route_runs_on_the_real_path", standing: ActiveFillDebt },
     ]
   },
   SingleClaimFillDebtModule {
