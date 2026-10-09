@@ -1380,9 +1380,9 @@ fn release_bins_consumer_script_dispatch(pair_modes: List<String>) -> String {
   release_bins_mode_dispatch(pair_modes: pair_modes, pair_text: release_bins_consumer_key_check_script_for(product: compiler_pair_release_product()), fleet_text: release_bins_consumer_key_check_script())
 }
 
+// The pair's pack includes the build diagnostics. Use the floor's existing capture wrapper,
+// which writes that log and preserves a failed compiler exit through tee.
 fn release_bins_build_script_dispatch(pair_modes: List<String>, fleet_build: String) -> String {
-  // The pair's pack includes the build diagnostics. Use the floor's existing capture wrapper,
-  // which writes that log and preserves a failed compiler exit through tee.
   release_bins_mode_dispatch(pair_modes: pair_modes,
     pair_text: wrap_command_with_floor_attempt_receipt(command: compiler_pair_release_product().build_line),
     fleet_text: fleet_build)
