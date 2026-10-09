@@ -173,7 +173,7 @@ test fn witness_root_tree_standing_refuses_a_mismatched_tree() -> Bool {
 }
 
 // THE QUEUED BOUND IS DERIVED, NOT COPIED: it is the obligation unit's RuntimeMaxSec plus the drain bound,
-// so changing belt_tick_run_bound moves it (45min = 2700s, plus the 900s drain bound).
+// so changing belt_tick_run_bound moves it (plus the drain bound).
 test fn witness_queued_bound_is_the_run_bound_plus_the_drain_bound() -> Bool {
-  queued_bound_count() == 2700 + second_count(s: event_backlog_drain_bound)
+  queued_bound_count() == second_count(s: belt_tick_run_bound) + second_count(s: event_backlog_drain_bound)
 }

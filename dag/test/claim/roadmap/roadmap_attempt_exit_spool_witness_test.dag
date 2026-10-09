@@ -101,3 +101,17 @@ test fn an_unlisted_signal_name_is_refused_at_decode() -> Bool {
     AttemptExitEntryDecoded { record: _ } => false
   }
 }
+
+// Review 78301: an entry that names this attempt but cannot be decoded (non-numeric status) is its end
+// UNOBSERVED, never absent -- settlement must not free on it. Another attempt's malformed entry is not this one's.
+test fn an_undecodable_entry_for_this_attempt_is_unreadable_and_another_attempts_is_not() -> Bool {
+  let mine = "n-1+k1+worker+inv+exit-code+exited+BOGUS"
+  let other = "n-2+k9+worker+inv+exit-code+exited+BOGUS"
+  (match attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [AttemptExitStageNames { names: [mine] }]) {
+    AttemptExitRecordUnreadable { reason: _ } => true
+    _ => false
+  }) && (match attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", role: AttemptWorkerRole, listings: [AttemptExitStageNames { names: [other] }]) {
+    AttemptExitRecordNone => true
+    _ => false
+  })
+}

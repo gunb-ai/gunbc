@@ -910,7 +910,7 @@ fn session_worker_unit_lifecycle_for_instance(instance: HostDashboardInstance, u
         unit: unit,
         loaded: loaded,
         record: attempt_exit_record_matching(
-          matches: r => r.role == attempt_unit_role_token(role: AttemptWorkerRole) && (dispatch_attempt_unit_name(node_id: r.node_id, attempt_key: r.attempt_key) as String) == (unit as String),
+          matches: (n, a, r) => r == attempt_unit_role_token(role: AttemptWorkerRole) && (dispatch_attempt_unit_name(node_id: n, attempt_key: a) as String) == (unit as String),
           listings: attempt_exit_stage_listings(instance_root: instance.instance_root as String),
         ),
       )

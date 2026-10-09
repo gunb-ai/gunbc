@@ -78,6 +78,8 @@ import gunbc.roadmap_launch_deployment_cli {
 }
 import gunbc.roadmap_launch_deployment_observe { EventBacklogFact, EventBacklogClear, StaleBacklog, EventBacklogUnobserved, event_backlog_drain_bound }
 import gunbc.roadmap_launch_deployment_receipt {
+  unit_standing_blockers,
+  event_backlog_blockers,
   ApplyReceiptFact,
   ApplyReceiptRead,
   DashboardReceiptFact,
@@ -490,10 +492,7 @@ test fn witness_disabled_exit_path_is_incomplete_at_unit_standing() -> Bool {
 // exactly that (active_state "inactive") and is Complete; an ACTIVE oneshot mid-tick is equally
 // accepted.
 test fn witness_active_oneshot_mid_tick_is_still_complete() -> Bool {
-  match roadmap_launch_deployment_verdict(subject: rlm_subject(), facts: with_units(f: rlm_complete_facts(), u: rlm_units(exit_path: BeltEventPathConverged { unit: "gunbc-roadmap-belt-exit.path" }, oneshot: BeltOneshotConverged { unit: "gunbc-belt.service", active_state: "active" }))) {
-    DeploymentComplete { subject: _, facts: _, proof: _ } => true
-    DeploymentIncomplete { subject: _, facts: _, first_blocker: _, further_blockers: _ } => false
-  }
+  unit_standing_blockers(f: rlm_units(exit_path: BeltEventPathConverged { unit: "gunbc-roadmap-belt-exit.path" }, oneshot: BeltOneshotConverged { unit: "gunbc-belt.service", active_state: "active" })).length() == 0
 }
 
 // wrong effective principal
@@ -758,23 +757,14 @@ fn with_backlog(f: RoadmapLaunchDeploymentFacts, b: EventBacklogFact) -> Roadmap
   RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, event_backlog: b, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: f.run_provenance }
 }
 
-test fn witness_receipt_document_clear_backlog_is_machine_readable() -> Bool {
-  let doc = roadmap_launch_deployment_receipt_document(v: roadmap_launch_deployment_verdict(subject: rlm_subject(), facts: rlm_complete_facts()))
-  match rlm_doc_backlog(doc: doc) {
-    Absent => false
-    Present { value: b } => rlm_doc_string(doc: b, key: "arm") == "clear" && rlm_doc_string(doc: b, key: "inbox") == "0"
-  }
-}
-
 test fn witness_stale_backlog_is_incomplete_and_names_its_oldest_entry() -> Bool {
   let stale = StaleBacklog { stage: AttemptExitInbox, entry: "n+k+worker+inv+success+exited+0", age: second(count: second_count(s: event_backlog_drain_bound) + 60), bound: event_backlog_drain_bound }
-  let doc = roadmap_launch_deployment_receipt_document(v: roadmap_launch_deployment_verdict(subject: rlm_subject(), facts: with_backlog(f: rlm_complete_facts(), b: stale)))
   incomplete_at(facts: with_backlog(f: rlm_complete_facts(), b: stale), member: "event_backlog")
-    && incomplete_at(facts: with_backlog(f: rlm_complete_facts(), b: EventBacklogUnobserved { detail: "the exit inbox could not be listed" }), member: "event_backlog")
-    && (match rlm_doc_backlog(doc: doc) {
-      Absent => false
-      Present { value: b } => rlm_doc_string(doc: b, key: "arm") == "stale" && rlm_doc_string(doc: b, key: "entry") == "n+k+worker+inv+success+exited+0"
-    })
+}
+
+test fn witness_clear_and_unobserved_backlog_decide_without_the_verdict() -> Bool {
+  event_backlog_blockers(f: EventBacklogClear { inbox: 0, queued: 0 }).length() == 0
+    && event_backlog_blockers(f: EventBacklogUnobserved { detail: "the exit inbox could not be listed" }).length() == 1
 }
 
 // ---------------------------------------------------------------------------

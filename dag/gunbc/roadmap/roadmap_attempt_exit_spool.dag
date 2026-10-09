@@ -192,10 +192,6 @@ fn attempt_exit_entry_decode(entry_name: String) -> AttemptExitEntryDecode {
   }
 }
 
-fn attempt_exit_record_is_for(record: AttemptExitRecord, node_id: String, attempt_key: String, role: AttemptUnitRole) -> Bool {
-  record.node_id == node_id && record.attempt_key == attempt_key && record.role == attempt_unit_role_token(role: role)
-}
-
 // WHERE IN THE SPOOL AN ENTRY STANDS, which is responsibility, not evidence: the record means the
 // same thing in every stage. Inbox: no obligation has taken it. Queued: an obligation was started for
 // it. Done: its obligation's receipt exists. Refused: the drain could not hand it off.
@@ -248,7 +244,7 @@ fn attempt_exit_record_from_listings(
   role: AttemptUnitRole,
   listings: List<AttemptExitStageListing>,
 ) -> AttemptExitRecordObservation {
-  attempt_exit_record_matching(matches: r => attempt_exit_record_is_for(record: r, node_id: node_id, attempt_key: attempt_key, role: role), listings: listings)
+  attempt_exit_record_matching(matches: (n, a, r) => n == node_id && a == attempt_key && r == attempt_unit_role_token(role: role), listings: listings)
 }
 
 // THE SAME DECISION OVER ANY SUBJECT PREDICATE: the placement settlement knows a worker by its unit
@@ -256,7 +252,7 @@ fn attempt_exit_record_from_listings(
 // dispatch_attempt_unit_name), so the caller supplies the predicate rather than this module
 // re-deriving the name.
 fn attempt_exit_record_matching(
-  matches: fn(AttemptExitRecord) -> Bool,
+  matches: fn(String, String, String) -> Bool,
   listings: List<AttemptExitStageListing>,
 ) -> AttemptExitRecordObservation {
   let unreadable = listings |> flat_map(l => match l {
@@ -266,16 +262,34 @@ fn attempt_exit_record_matching(
   match unreadable.first() {
     Present { value: why } => AttemptExitRecordUnreadable { reason: why }
     Absent => {
+      let malformed = listings
+        |> flat_map(l => match l {
+          AttemptExitStageNames { names } => names
+          AttemptExitStageUnreadable { reason: _ } => [] as List<String>
+        })
+        |> flat_map(name => match attempt_exit_entry_decode(entry_name: name) {
+          AttemptExitEntryDecoded { record: _ } => [] as List<String>
+          AttemptExitEntryMalformed { entry_name: _, reason: why } => {
+            let parts = name.split(delimiter: attempt_exit_entry_separator)
+            if count(parts) >= 3 && matches(attempt_exit_entry_part(parts: parts, index: 0), attempt_exit_entry_part(parts: parts, index: 1), attempt_exit_entry_part(parts: parts, index: 2)) {
+              [join([name, ": ", why], "")]
+            } else {
+              [] as List<String>
+            }
+          }
+        })
       let records = listings
         |> flat_map(l => match l {
           AttemptExitStageNames { names } => names
           AttemptExitStageUnreadable { reason: _ } => [] as List<String>
         })
         |> flat_map(name => match attempt_exit_entry_decode(entry_name: name) {
-          AttemptExitEntryDecoded { record } => if matches(record) { [record] } else { [] as List<AttemptExitRecord> }
+          AttemptExitEntryDecoded { record } => if matches(record.node_id, record.attempt_key, record.role) { [record] } else { [] as List<AttemptExitRecord> }
           AttemptExitEntryMalformed { entry_name: _, reason: _ } => [] as List<AttemptExitRecord>
         })
-      if count(records) > 1 {
+      if count(malformed) > 0 {
+        AttemptExitRecordUnreadable { reason: join(["the attempt-exit spool holds an exit entry for this attempt that cannot be decoded, so its end is unobserved rather than absent: ", join(malformed, "; ")], "") }
+      } else if count(records) > 1 {
         AttemptExitRecordUnreadable { reason: join(["the attempt-exit spool holds ", to_string(value: count(records)), " exit records for one attempt, and its unit runs once: ", join(records |> map(r => r.entry_name), ", ")], "") }
       } else {
         match records.first() {
