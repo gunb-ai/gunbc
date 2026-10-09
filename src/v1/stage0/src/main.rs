@@ -2,7 +2,7 @@
 
 #![allow(unused_parens, clippy::all, clippy::disallowed_macros)]
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, FromArgMatches, Subcommand};
 
 use im::HashMap;
 use std::rc::Rc;
@@ -352,7 +352,14 @@ fn write_output_files(
 }
 
 fn main() {
-    let cli = v1_compiler::gunbc_cli_dispatch_generated::Cli::parse();
+    let cli = match v1_compiler::gunbc_cli_dispatch_generated::Cli::from_arg_matches(
+        &v1_compiler::gunbc_cli_dispatch_generated::Cli::command()
+            .version(v1_compiler::cli_run::clap_version_text())
+            .get_matches(),
+    ) {
+        Ok(cli) => cli,
+        Err(err) => err.exit(),
+    };
     let host = RetainedCliHost {
         dry_run: cli.dry_run,
     };
@@ -1015,15 +1022,13 @@ mod tests {
 
     #[test]
     fn version_surface_reports_the_exact_source_commit() {
-        assert_eq!(
-            Cli::command().get_version(),
-            Some(env!("GUNBC_BUILD_IDENTITY"))
+        use v1_compiler::cli_run::{clap_version_text, UNVERIFIED_VERSION_TEXT};
+        let version = clap_version_text();
+        assert_eq!(Cli::command().version(version).get_version(), Some(version));
+        assert!(
+            version == UNVERIFIED_VERSION_TEXT
+                || (version.len() == 40 && version.bytes().all(|b| b.is_ascii_hexdigit()))
         );
-        let identity = env!("GUNBC_BUILD_IDENTITY");
-        let commit = identity.strip_suffix("-dirty").unwrap_or(identity);
-        assert_eq!(commit.len(), 40);
-        assert!(commit.bytes().all(|byte| byte.is_ascii_hexdigit()));
-        assert!(identity == commit || identity == format!("{commit}-dirty"));
     }
 
     #[test]

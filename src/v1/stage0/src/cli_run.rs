@@ -93,6 +93,9 @@ pub mod derived_row_roster;
 mod emitted_crate_workspace_host;
 mod native_lane_runner;
 mod native_product_cache;
+pub(crate) mod seed_binary_provenance;
+pub use seed_binary_provenance::clap_version_text;
+pub use seed_binary_provenance::UNVERIFIED_VERSION_TEXT;
 pub mod reach_base_standings;
 pub mod required_ci_measurement;
 mod required_floor_runner;
@@ -20279,7 +20282,7 @@ pub fn measure_root_demand(
         measured_on_host: host,
         instrument_run: format!(
             "gunbc measure-root-demand ({}) child pid {pid} at unix {}",
-            env!("GUNBC_BUILD_IDENTITY"),
+            crate::cli_run::clap_version_text(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs())
@@ -21248,7 +21251,7 @@ pub fn run_bootstrap_dag_operation(
     if !receipt.ends_with('\n') {
         println!();
     }
-    let seed_identity = env!("GUNBC_BUILD_IDENTITY");
+    let seed_identity = crate::cli_run::clap_version_text();
     match terminal {
         ExitClass::Success => {
             eprintln!(

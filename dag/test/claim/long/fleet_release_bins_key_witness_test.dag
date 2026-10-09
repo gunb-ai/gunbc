@@ -13,6 +13,7 @@ import gunbc.fleet_release_bins_key {
   lit, var, words, cmd, cmdl, assign_sub, test_words, seq,
   release_bins_emitted, release_bins_transport,
   release_bins_key_statements, fleet_release_bins_product, release_bins_pack_statements, release_bins_outcome_statements,
+  release_bins_pack_members,
   release_bins_consumer_statements, release_bins_download_dir, release_bins_main_lookup_ref, lookup_decode_statements,
   release_bins_dispatch_lookup_ref, release_bins_dispatch_scope_ref_env,
   release_bins_lookup_file, release_bins_staging_dir, release_bins_manifest_name,
@@ -293,12 +294,12 @@ data malformed_gunbc_line_edit: String = "s/^[0-9a-f]{64}  gunbc$/xxxxxxxxxxxxxx
 
 data mutation_malformed_line_and_altered_gunbc: Outcome<String> = e(statements: concat(
   [cmd(ws: [fx(t: "sed"), fx(t: "-i"), fx(t: "-E"), fx(t: malformed_gunbc_line_edit), in_t(path: join(["/store/", release_bins_manifest_name], ""))])],
-  repack(edit: [write_file(path: in_t(path: "/re/gunbc"), lines: ["#!/bin/sh", "echo altered"])], names: ci_floor_required_artifact_names()),
+  repack(edit: [write_file(path: in_t(path: "/re/gunbc"), lines: ["#!/bin/sh", "echo altered"])], names: release_bins_pack_members(product: fleet_release_bins_product())),
 ))
 
 data mutation_altered_gunbc: Outcome<String> = e(statements: repack(
   edit: [write_file(path: in_t(path: "/re/gunbc"), lines: ["#!/bin/sh", "echo altered"])],
-  names: ci_floor_required_artifact_names(),
+  names: release_bins_pack_members(product: fleet_release_bins_product()),
 ))
 
 test fn release_bins_restore_positive_promotes_verified_members() -> Bool {
@@ -330,15 +331,15 @@ data mutation_symlinked_gunbc_with_matching_digest: Outcome<String> = e(statemen
     cmd(ws: [fx(t: "rm"), in_t(path: "/re/gunbc")]),
     cmd(ws: [fx(t: "ln"), fx(t: "-s"), in_t(path: "/outside"), in_t(path: "/re/gunbc")]),
   ],
-  names: ci_floor_required_artifact_names(),
+  names: release_bins_pack_members(product: fleet_release_bins_product()),
 ))
 
 data mutation_extra_member: Outcome<String> = e(statements: repack(
   edit: [write_file(path: in_t(path: "/re/extra"), lines: ["#!/bin/sh"]), cmd(ws: [fx(t: "chmod"), fx(t: "+x"), in_t(path: "/re/extra")])],
-  names: concat(ci_floor_required_artifact_names(), ["extra"]),
+  names: concat(release_bins_pack_members(product: fleet_release_bins_product()), ["extra"]),
 ))
 
-data mutation_duplicate_member: Outcome<String> = e(statements: repack(edit: [], names: concat(ci_floor_required_artifact_names(), ["gunbc"])))
+data mutation_duplicate_member: Outcome<String> = e(statements: repack(edit: [], names: concat(release_bins_pack_members(product: fleet_release_bins_product()), ["gunbc"])))
 
 test fn release_bins_RED_restore_symlink_member_refuses() -> Bool {
   refused_as(script: script_RED_restore_symlink_member_refuses, refusal: "MemberNotRegularFile")

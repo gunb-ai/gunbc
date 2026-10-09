@@ -149,7 +149,7 @@ type CliSurfaceEmission
 // A package release number cannot identify a compiler binary built between releases, which is
 // the distinction this surface exists to preserve. The interface therefore promises the exact
 // source commit. How a target binds that commit at build time is realization; the Rust emitter
-// currently renders it from the build-script-provided `GUNBC_BUILD_IDENTITY` value.
+// currently renders it from `gunbc.seed_binary_provenance` when the sidecar verifies.
 type CliVersionIdentity
   = CliCleanSourceCommit { commit: CommitSha }
   | CliDirtySourceCommit { commit: CommitSha }

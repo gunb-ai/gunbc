@@ -42,6 +42,12 @@ import v2.compiler.self_host.generation {
 }
 import extdeps.git { TreeObj }
 import extdeps.git.object_store { git_object_type_wire_name }
+import gunbc.seed_binary_provenance {
+  provenance_wire_binary_sha256_label,
+  provenance_wire_source_commit_label,
+  provenance_wire_tree_identity_label,
+  seed_binary_provenance_sidecar_name,
+}
 import gunbc.ci_release_bins { ci_floor_required_artifact_names, ci_floor_invoked_bins }
 import gunbc.repo_self_build { repo_self_build_command }
 import gunbc.ci_spec { ci_release_build_line, ci_release_bins_archive_name }
@@ -71,11 +77,9 @@ import gunbc.ci_failure_class { floor_attempt_command_log_filename }
 // dispatches at one revision (the brief's case), not across revisions. Narrowing it to the rustc
 // dep-info closure is a hit-rate improvement, not a correctness one, and is left unbuilt.
 //
-// THE BINARY IS STAMPED WITH THE SAME TREE. src/v1/stage0/build.rs embeds a build identity; left
-// to itself it embeds the checkout's COMMIT, which would make a reused binary report whichever
-// commit first built it. The key step exports GUNBC_MATERIALIZED_TREE_IDENTITY (the build script's
-// existing materialized-tree channel, gunbc.build_identity) set to the source-closure value, so the
-// embedded identity is a function of the key and reuse cannot misreport provenance.
+// PROVENANCE IS A SIDECAR, NOT rustc-env. After the pack hashes each roster binary it writes
+// <name>.provenance (gunbc.seed_binary_provenance) beside it, verified on restore and promoted
+// with the binary. A reused image cannot misreport commit: mismatch or absence is unverified.
 //
 // IDENTITY UP TO BUILD LOCATION, as generation.dag's own note says of every axis set: the runner's
 // workspace path is not an axis. A release binary embeds source paths only in panic locations, so a
@@ -183,13 +187,20 @@ type ReleaseBinsDiagnostics
 // uses one to carry the checker's input record (claim_executor --write-checker-inputs), the form of
 // cargo's dep-info that survives a change of checkout, so the floor's checker-subject rule can run
 // against a restored binary without a rebased copy of the old evidence.
+fn release_bins_provenance_members(product: ReleaseBinsProduct) -> List<String> {
+  map(product.roster, n => seed_binary_provenance_sidecar_name(binary: n))
+}
+
 fn release_bins_pack_members(product: ReleaseBinsProduct) -> List<String> {
   concat(
-    match product.diagnostics {
-      NoBuildDiagnostics => product.roster
-      BuildLogMember { member: m, source: _ } => concat(product.roster, [m])
-    },
-    product.sidecars,
+    concat(
+      match product.diagnostics {
+        NoBuildDiagnostics => product.roster
+        BuildLogMember { member: m, source: _ } => concat(product.roster, [m])
+      },
+      product.sidecars,
+    ),
+    release_bins_provenance_members(product: product),
   )
 }
 
@@ -785,7 +796,7 @@ fn roster_file_statement(product: ReleaseBinsProduct) -> Node {
 // checksum line a failure rather than a skipped line. Only then is each member copied, as a regular
 // file, from that same verified directory into target/release -- the archive is never extracted a
 // second, unchecked time.
-data release_bins_manifest_record_pattern: String = "^[0-9a-f]{64}  [A-Za-z0-9_]+$"
+data release_bins_manifest_record_pattern: String = "^[0-9a-f]{64}  [A-Za-z0-9_.]+$"
 
 fn release_bins_member_types_expected(product: ReleaseBinsProduct) -> String {
   fold(product.roster, init: "", f: (acc, name) => join([acc, name, ":regular file:1\n"], ""))
@@ -822,12 +833,17 @@ fn release_bins_member_checks(site: ReleaseBinsVerifySite, dir: Node, product: R
   ]
 }
 
+fn release_bins_provenance_words(product: ReleaseBinsProduct) -> List<Node> {
+  map(release_bins_provenance_members(product: product), n => lit(t: n))
+}
+
 fn release_bins_promote_all(dir: Node, product: ReleaseBinsProduct) -> List<Node> {
-  concat([
+  concat(concat([
     cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), rooted(file: "target/release")]),
-    in_dir(dir: rooted(file: "target/release"), command: cmd(ws: concat([lit(t: "rm"), lit(t: "-f")], release_bins_roster_words(product: product)))),
+    in_dir(dir: rooted(file: "target/release"), command: cmd(ws: concat([lit(t: "rm"), lit(t: "-f")], concat(release_bins_roster_words(product: product), release_bins_provenance_words(product: product))))),
     in_dir(dir: dir, command: cmd(ws: concat(concat([lit(t: "cp"), lit(t: "-p")], release_bins_roster_words(product: product)), [rooted(file: "target/release/")]))),
-  ], map(product.sidecars, f => in_dir(dir: dir, command: cmd(ws: [lit(t: "cp"), lit(t: "-p"), lit(t: f), rooted(file: "target/release/")]))))
+  ], map(product.sidecars, f => in_dir(dir: dir, command: cmd(ws: [lit(t: "cp"), lit(t: "-p"), lit(t: f), rooted(file: "target/release/")])))),
+    map(release_bins_provenance_members(product: product), f => in_dir(dir: dir, command: cmd(ws: [lit(t: "cp"), lit(t: "-p"), lit(t: f), rooted(file: "target/release/")]))))
 }
 
 fn release_bins_verify_pack(site: ReleaseBinsVerifySite, archive: Node, manifest: Node, dir: Node, product: ReleaseBinsProduct) -> List<Node> {
@@ -886,7 +902,6 @@ fn release_bins_key_statements(product: ReleaseBinsProduct) -> List<Node> {
           cmd(ws: [lit(t: "echo"), words(ws: [lit(t: "release-bins request key "), var(n: "KEY"), lit(t: " over preimage:")])]),
           cmd(ws: [lit(t: "cat"), var(n: "EXPECTED")]),
           append_line(file_var: "GITHUB_OUTPUT", line: words(ws: [lit(t: "key="), var(n: "KEY")])),
-          append_line(file_var: "GITHUB_ENV", line: words(ws: [lit(t: "GUNBC_MATERIALIZED_TREE_IDENTITY="), var(n: "SOURCE_CLOSURE")])),
         ]),
       ),
     )
@@ -1131,6 +1146,7 @@ fn release_bins_pack_statements(product: ReleaseBinsProduct) -> List<Node> {
     ],
     release_bins_diagnostics_capture(product: product),
     release_bins_sidecar_capture(product: product),
+    release_bins_provenance_capture(product: product),
     [
       bash_build_with_redir_to_file(
         inner: bash_build_subshell_from_stmts(stmts: [bash_build_and_then(
@@ -1179,6 +1195,39 @@ fn release_bins_sidecar_writes(product: ReleaseBinsProduct) -> List<Node> {
     true => []
     false => map(product.sidecars, f => cmd(ws: concat(map(product.sidecar_writer, w => lit(t: w)), [rooted(file: join(["target/release/", f], ""))])))
   }
+}
+
+fn release_bins_write_one_provenance(name: String) -> List<Node> {
+  [
+    produce_to(
+      file: join([name, ".sha"], ""),
+      command: cmd(ws: [lit(t: "sha256sum"), rooted(file: join(["target/release/", name], ""))]),
+    ),
+    assign_sub(name: "BIN_SHA", body: cmd(ws: [lit(t: "cut"), lit(t: "-c"), lit(t: "1-64"), temp(file: join([name, ".sha"], ""))])),
+    bash_build_with_redir_to_file(
+      inner: cmd(ws: [
+        lit(t: "printf"),
+        lit(t: "%s %s\\n%s %s\\n%s %s\\n"),
+        lit(t: provenance_wire_binary_sha256_label),
+        var(n: "BIN_SHA"),
+        lit(t: provenance_wire_source_commit_label),
+        var(n: "SOURCE_COMMIT"),
+        lit(t: provenance_wire_tree_identity_label),
+        var(n: "SOURCE_CLOSURE"),
+      ]),
+      path: rooted(file: join(["target/release/", seed_binary_provenance_sidecar_name(binary: name)], "")),
+    ),
+  ]
+}
+
+fn release_bins_provenance_capture(product: ReleaseBinsProduct) -> List<Node> {
+  concat(
+    concat(source_closure_statements(), [
+      assign_sub(name: "SOURCE_COMMIT", body: cmd(ws: [lit(t: "git"), lit(t: "-C"), var(n: "ROOT"), lit(t: "rev-parse"), lit(t: "HEAD")])),
+      read_nonempty(variable: "SOURCE_COMMIT"),
+    ]),
+    fold(product.roster, init: [], f: (acc, name) => concat(acc, release_bins_write_one_provenance(name: name))),
+  )
 }
 
 // CONSUMER: a downstream job holds the key its build job published and refuses, before executing

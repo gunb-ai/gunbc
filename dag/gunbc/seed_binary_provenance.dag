@@ -1,0 +1,133 @@
+module gunbc.seed_binary_provenance
+
+import std.types { String, List, Bool, CommitSha, commit_sha_text_holds }
+import std.content_hash { Sha256DigestHex, sha256_hex_digest }
+import std.optional { Present, Absent }
+import extdeps.git { TreeObj }
+import extdeps.git.object_store {
+  GitObjectId,
+  git_object_type_wire_name,
+  git_object_id_eq,
+}
+import gunbc.build_identity { materialized_tree_build_identity_text }
+import gunbc.merge_admission_subject { parse_git_object_id_wire }
+
+// BINARY CONTENT AND SOURCE PROVENANCE ARE DIFFERENT FACTS (operator 2026-10-09).
+// The running image is keyed by its bytes. Which commit and tree produced it is a record
+// written beside that image after the pack hashes it, never rustc-env baked into the image.
+//
+// tree_identity is GitObjectId rendered through gunbc.build_identity
+// materialized_tree_build_identity_text (tree:<family>:<hex>) -- the same spelling the
+// release-bins SOURCE_CLOSURE already is. A bare String would hide those named parts.
+
+type SeedBinaryProvenance {
+  binary_sha256: Sha256DigestHex
+  source_commit: CommitSha
+  tree_identity: GitObjectId
+}
+
+data provenance_wire_binary_sha256_label: String = "binary_sha256"
+data provenance_wire_source_commit_label: String = "source_commit"
+data provenance_wire_tree_identity_label: String = "tree_identity"
+data provenance_sidecar_suffix: String = ".provenance"
+data provenance_unverified_version_text: String = "provenance-unverified"
+
+type SeedBinaryProvenanceParse
+  = ProvenanceParsed { record: SeedBinaryProvenance }
+  | ProvenanceMalformed
+
+fn seed_binary_provenance_sidecar_name(binary: String) -> String {
+  concat(binary, provenance_sidecar_suffix)
+}
+
+fn seed_binary_provenance_wire(record: SeedBinaryProvenance) -> String {
+  join([
+    join([provenance_wire_binary_sha256_label, record.binary_sha256 as String], " "),
+    join([provenance_wire_source_commit_label, record.source_commit], " "),
+    join([provenance_wire_tree_identity_label, materialized_tree_build_identity_text(tree: record.tree_identity)], " "),
+    ""
+  ], "\n")
+}
+
+fn provenance_labeled_value(line: String, label: String) -> String? {
+  let prefix = concat(label, " ")
+  if starts_with(s: line, prefix: prefix) {
+    Present { value: replace(line, prefix, "") }
+  } else {
+    none
+  }
+}
+
+fn parse_tree_identity_field(value: String) -> GitObjectId? {
+  let parts = split(s: value, delimiter: ":")
+  if !(length(parts) == 3) {
+    none
+  } else if match parts.first() {
+    Present { value: head } => head != git_object_type_wire_name(object_type: TreeObj)
+    Absent => true
+  } {
+    none
+  } else {
+    match parts.skip(n: 1).first() {
+      Absent => none
+      Present { value: family } => match parts.skip(n: 2).first() {
+        Absent => none
+        Present { value: hex } => parse_git_object_id_wire(raw: join([family, hex], ":"))
+      }
+    }
+  }
+}
+
+fn seed_binary_provenance_parse(text: String) -> SeedBinaryProvenanceParse {
+  let lines = split(s: text, delimiter: "\n")
+  if !(length(lines) == 4) {
+    ProvenanceMalformed
+  } else if match lines.skip(n: 3).first() {
+    Present { value: last } => last != ""
+    Absent => true
+  } {
+    ProvenanceMalformed
+  } else {
+    match lines.first() {
+      Absent => ProvenanceMalformed
+      Present { value: sha_line } => match provenance_labeled_value(line: sha_line, label: provenance_wire_binary_sha256_label) {
+        Absent => ProvenanceMalformed
+        Present { value: sha_text } => match sha256_hex_digest(hex: sha_text) {
+          Absent => ProvenanceMalformed
+          Present { value: digest } => match lines.skip(n: 1).first() {
+            Absent => ProvenanceMalformed
+            Present { value: commit_line } => match provenance_labeled_value(line: commit_line, label: provenance_wire_source_commit_label) {
+              Absent => ProvenanceMalformed
+              Present { value: commit } => if !commit_sha_text_holds(head: commit) {
+                ProvenanceMalformed
+              } else {
+                match lines.skip(n: 2).first() {
+                  Absent => ProvenanceMalformed
+                  Present { value: tree_line } => match provenance_labeled_value(line: tree_line, label: provenance_wire_tree_identity_label) {
+                    Absent => ProvenanceMalformed
+                    Present { value: tree_text } => match parse_tree_identity_field(value: tree_text) {
+                      Absent => ProvenanceMalformed
+                      Present { value: tree } => ProvenanceParsed {
+                        record: SeedBinaryProvenance {
+                          binary_sha256: digest.hex,
+                          source_commit: commit as CommitSha,
+                          tree_identity: tree
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn provenance_records_eq(left: SeedBinaryProvenance, right: SeedBinaryProvenance) -> Bool {
+  (left.binary_sha256 as String) == (right.binary_sha256 as String)
+    && left.source_commit == right.source_commit
+    && git_object_id_eq(left: left.tree_identity, right: right.tree_identity)
+}

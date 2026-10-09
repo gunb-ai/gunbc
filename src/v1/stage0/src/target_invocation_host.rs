@@ -2353,11 +2353,8 @@ pub fn dep_info_inputs(dep_info: &str) -> Result<Vec<String>, String> {
 /// against ours is the "built elsewhere" test -- not a list of excluded prefixes. Registry and
 /// sysroot inputs are outside every checkout and are judged by mtime like any other input.
 ///
-/// Git paths are skipped, with a reason: build.rs watches `HEAD`, `index`, `packed-refs` and the
-/// branch ref only to re-stamp `GUNBC_BUILD_IDENTITY`, the version string. `packed-refs` moves on
-/// any fetch in any worktree, so judging them would refuse a binary whose code did not change --
-/// the spurious refusal this check exists not to make. The cost is that a fresh binary may print
-/// an older commit as its identity; its bytes are still those that commit built.
+/// Git paths are skipped: they are not source inputs of the crate, and judging them would refuse
+/// a binary whose code did not change after a fetch in any worktree.
 pub fn classify_binary_inputs(
     inputs: &[String],
     workspace: &std::path::Path,

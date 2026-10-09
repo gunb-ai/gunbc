@@ -162,6 +162,8 @@ data v1_maintenance_parse_sweep_partition_refusal: RefusedV1Proposal = RefusedV1
 
 data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: MaintenanceActive }
 
+data v1_seed_binary_provenance_admission_note: String = "ADMISSION UNDER THE 2026-08-20 PURPOSE TEST (operator 2026-10-09 via swift-bat-828): separate seed content from seed provenance so the native-product producer_compiler axis is SHA-256 of /proc/self/exe and does not retint on docs-only commits. INSTANCE: SupportsV2SelfHostProgram. Build.rs no longer rustc-env's git HEAD; gunbc.seed_binary_provenance is the record; the pack writer in gunbc.fleet_release_bins_key writes <exe>.provenance. Serves the v2 self-host CI path."
+
 // OPERATOR RULING 2026-08-18, and the reason it is a reclassification rather than a loophole. The
 // v1 seed was carried as 'frozen' under DESIGN section 3's frozen-X carve-out: no new investment,
 // no completion work, quarry-in-place. Work then arrived that is economically correct and that the

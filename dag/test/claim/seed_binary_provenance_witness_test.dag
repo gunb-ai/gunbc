@@ -1,0 +1,78 @@
+module test.claim.seed_binary_provenance_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, CommitSha, String }
+import std.content_hash { sha256_hex_digest }
+import std.optional { Present, Absent }
+import extdeps.git.object_store { git_sha1_object_id }
+import gunbc.seed_binary_provenance {
+  SeedBinaryProvenance,
+  ProvenanceParsed,
+  ProvenanceMalformed,
+  provenance_wire_binary_sha256_label,
+  provenance_wire_source_commit_label,
+  provenance_wire_tree_identity_label,
+  seed_binary_provenance_wire,
+  seed_binary_provenance_parse,
+  provenance_records_eq,
+  seed_binary_provenance_sidecar_name,
+}
+import gunbc.fleet_release_bins_key { release_bins_pack_manifest_script }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn provenance_fixture_record() -> SeedBinaryProvenance? {
+  match sha256_hex_digest(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+    Absent => none
+    Present { value: digest } => match git_sha1_object_id(hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") {
+      Absent => none
+      Present { value: tree } => Present {
+        value: SeedBinaryProvenance {
+          binary_sha256: digest.hex,
+          source_commit: "cccccccccccccccccccccccccccccccccccccccc" as CommitSha,
+          tree_identity: tree
+        }
+      }
+    }
+  }
+}
+
+test fn provenance_wire_round_trips() -> Bool {
+  match provenance_fixture_record() {
+    Absent => false
+    Present { value: record } => match seed_binary_provenance_parse(text: seed_binary_provenance_wire(record: record)) {
+      ProvenanceMalformed => false
+      ProvenanceParsed { record: back } => provenance_records_eq(left: record, right: back)
+    }
+  }
+}
+
+test fn provenance_parse_refuses_reordered_labels() -> Bool {
+  match provenance_fixture_record() {
+    Absent => false
+    Present { value: record } => {
+      let wire = seed_binary_provenance_wire(record: record)
+      let swapped = replace(
+        replace(wire, provenance_wire_binary_sha256_label, "tmp"),
+        provenance_wire_source_commit_label,
+        provenance_wire_binary_sha256_label
+      )
+      match seed_binary_provenance_parse(text: replace(swapped, "tmp", provenance_wire_source_commit_label)) {
+        ProvenanceMalformed => true
+        ProvenanceParsed { record: _ } => false
+      }
+    }
+  }
+}
+
+test fn provenance_sidecar_name_is_exe_dot_provenance() -> Bool {
+  seed_binary_provenance_sidecar_name(binary: "gunbc") == "gunbc.provenance"
+}
+
+test fn pack_writer_emits_the_wire_labels() -> Bool {
+  let script = release_bins_pack_manifest_script()
+  string_contains(s: script, pattern: provenance_wire_binary_sha256_label)
+    && string_contains(s: script, pattern: provenance_wire_source_commit_label)
+    && string_contains(s: script, pattern: provenance_wire_tree_identity_label)
+    && string_contains(s: script, pattern: seed_binary_provenance_sidecar_name(binary: "gunbc"))
+}

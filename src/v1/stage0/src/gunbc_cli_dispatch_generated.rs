@@ -4,7 +4,10 @@
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "gunbc", about = "A causal compiler: write .dag, get Rust/Python/Go.", version = env!("GUNBC_BUILD_IDENTITY"))]
+#[command(
+    name = "gunbc",
+    about = "A causal compiler: write .dag, get Rust/Python/Go."
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,

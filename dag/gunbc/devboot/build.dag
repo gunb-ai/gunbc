@@ -98,7 +98,6 @@ import gunbc.devboot.program {
 }
 import extdeps.git.object_store { git_object_id_from_untagged_hex }
 import extdeps.toolchain.types { ToolchainRequirement, TargetTriple }
-import gunbc.build_identity { materialized_tree_build_identity_text }
 import std.algebra { trim }
 
 // GUNBC BUILD RETURNS ONE EXACT EXECUTABLE TO A REMOTE AGENT.
@@ -1203,10 +1202,6 @@ fn devboot_serve_built(
     bin_path: env_path_resolved_program().invocation as String,
     args: env_prefixed_args(
       bindings: [
-        EnvSet {
-          name: "GUNBC_MATERIALIZED_TREE_IDENTITY",
-          value: materialized_tree_build_identity_text(tree: build_subject.tree_oid),
-        },
         EnvSet { name: rustup_home_env_name as String, value: home.rustup_home },
         EnvSet { name: cargo_environment_variable_name(variable: CargoHomeEnv) as String, value: home.cargo_home },
         EnvSet { name: cargo_environment_variable_name(variable: CargoTargetDirEnv) as String, value: target_dir },
