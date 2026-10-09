@@ -8576,33 +8576,47 @@ fn v1_fn_body_derived_clone_param_names(params: List<Node>, inferred: Node, body
     type_decl_items: emit_info.type_decl_items,
     source_indices: si
   )
-  let rc_match_clone_param_names = match body.expr_data {
+  let rc_match_clone_param_names = v1_fn_body_rc_match_clone_bound_param_names(body: body, generic_param_names: generic_param_names, shared_types: shared_types, emit_info: emit_info, source_indices: si)
+  v1_union_bound_param_names(
+    base: derived_clone_param_names,
+    extra: rc_match_clone_param_names
+  )
+}
+
+// EVERY MATCH WHOSE Rc SCRUTINEE IS DEREFERENCED AND CLONED OWES Clone ON THE GENERICS IT CARRIES,
+// wherever the match sits. This walk is the next-rung trigger BoundedToDirectTopLevelMatchBody
+// named, firing on its specimen: gunbc.product.data_class admit_data_effect<C, T> clones the
+// accumulator `acc: DataEffectAdmission<C, T>` it matches on INSIDE a fold step, so the match is a
+// lambda's body, not the fn's, and the top-level-only reading emitted a bare `<C, T>` that rustc
+// refused (E0599, `clone` exists for DataEffectAdmission<C, T> but its trait bounds were not
+// satisfied). The traversal is generous and the predicate exact, as in the equality walker below:
+// analyze_rc_match still decides whether this match derefs, and the pure core still keeps only the
+// scrutinee's type arguments that are this fn's own generics.
+fn v1_fn_body_rc_match_clone_bound_param_names(body: Node, generic_param_names: List<String>, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let here = match body.expr_data {
     ExprMatch =>
       let scrutinee = match_scrutinee(texpr: body)
       match scrutinee.inferred {
         Present { value: Resolved { node: rt } } =>
-          let scrut_type = authored_name_at(source_indices: si, node: rt)
-          let arms = match_arm_nodes(texpr: body)
           let rc_match = analyze_rc_match(
             scrutinee: scrutinee,
-            arms: arms,
-            scrut_type: scrut_type,
+            arms: match_arm_nodes(texpr: body),
+            scrut_type: authored_name_at(source_indices: source_indices, node: rt),
             shared_types: shared_types,
             emit_info: emit_info,
-            source_indices: si
+            source_indices: source_indices
           )
           v1_rc_match_scrutinee_clone_bound_param_names(
             generic_param_names: generic_param_names,
-            scrutinee_type_arg_names: rt.children |> map(c => authored_name_at(source_indices: si, node: c)),
+            scrutinee_type_arg_names: rt.children |> map(c => authored_name_at(source_indices: source_indices, node: c)),
             rc_match_needs_deref: rc_match.needs_deref
           )
         _ => []
       }
     _ => []
   }
-  v1_union_bound_param_names(
-    base: derived_clone_param_names,
-    extra: rc_match_clone_param_names
+  body.children |> fold(init: here, f: (acc, child) =>
+    v1_union_bound_param_names(base: acc, extra: v1_fn_body_rc_match_clone_bound_param_names(body: child, generic_param_names: generic_param_names, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices))
   )
 }
 
@@ -8675,8 +8689,8 @@ fn v1_fn_signature_map_key_param_names(value_params: List<Node>, ret: Node, gene
 // lives there, the Node walk lives at the call site, and reversing that would close an
 // emit_rust -> trait_bound_witness -> emit_rust cycle.
 //
-// This is the RECURSIVE BODY WALKER that BoundedToDirectTopLevelMatchBody and
-// BoundedToDirectSingleCallLambdaBody both name as their next-rung trigger. Unlike those two it
+// This is the RECURSIVE BODY WALKER that the retired BoundedToDirectTopLevelMatchBody and
+// BoundedToDirectSingleCallLambdaBody scopes both named as their next-rung trigger. Unlike those two it
 // declares no depth boundary: the specimen that motivated it puts the earning comparison inside a
 // lambda, inside any(), inside a pipeline, inside the && of another lambda inside another any().
 //
