@@ -33,7 +33,9 @@ import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { V2Tree }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.algebra { fold_list }
+import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
@@ -49,7 +51,7 @@ fn wall_red_peer_text() -> String {
 // callee's declared Arrow through the call's facts entry, so the edge the peer's body_lowering
 // carried survives into the subject module's judgment.
 fn wall_red_subject_text() -> String {
-  "module bcb\n\nimport aca { sealed_mint }\n\nfn unlisted_caller(n: Int) -> Int = sealed_mint(n: n)\n"
+  "module bcb\n\nimport aca { sealed_mint }\n\nfn listed_caller(n: Int) -> Int = sealed_mint(n: n)\n\nfn unlisted_caller(n: Int) -> Int = sealed_mint(n: n)\n\nfn second_unlisted_caller(n: Int) -> Int = sealed_mint(n: n)\n"
 }
 
 data wall_red_subject_artifact: Artifact = Artifact {
@@ -89,15 +91,25 @@ fn wall_red_assembled(subject_src: String, peer_src: String) -> Outcome<Resolved
   )
 }
 
-// THE INHABITANCE CLAIM: assemble peer + subject through the real ingest, infer, and the wall
-// refuses the outside cross-module call with caller_admission_refused -- v1's
-// ConstructorCallAdmissionRefused, restored on the native route.
-test fn the_native_route_refuses_an_outside_cross_module_call_holds() -> Bool {
+fn wall_red_refusal_count(head: Diagnostic, tail: List<Diagnostic>) -> Int {
+  fold_list(
+    xs: tail,
+    empty: if head.reason == ^infer_reason_caller_admission_refused { 1 } else { 0 },
+    cons: fn(n, d) { if d.reason == ^infer_reason_caller_admission_refused { n + 1 } else { n } }
+  )
+}
+
+// THE INHABITANCE CLAIM (the retargeted evidence of the withdrawn construction_confinement
+// stage, DESIGN section 4b(4)): assemble peer + subject through the real ingest, infer, and the
+// wall refuses EXACTLY the two outside cross-module calls with caller_admission_refused while the
+// listed caller beside them is admitted -- one extra or one missing refusal moves the count, and
+// with the wall removed the program is accepted, so the claim is red.
+test fn the_native_route_refuses_exactly_the_outside_cross_module_calls_holds() -> Bool {
   match wall_red_assembled(subject_src: wall_red_subject_text(), peer_src: wall_red_peer_text()) {
-    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^infer_reason_caller_admission_refused
+    Rejected { diagnostics: d } => wall_red_refusal_count(head: d.head, tail: d.tail) == 2
     Accepted { value: rt, diagnostics: _ } =>
       match infer(tree: rt) {
-        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^infer_reason_caller_admission_refused
+        Rejected { diagnostics: d } => wall_red_refusal_count(head: d.head, tail: d.tail) == 2
         Accepted { value: _, diagnostics: _ } => false
       }
   }

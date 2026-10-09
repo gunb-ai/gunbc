@@ -1051,7 +1051,7 @@ fn floor_cost_debt_proven_chunk_21() -> List<String> {
 // pipeline) or observational -- this identity measures below the charged budget on a required run
 // and is re-enrolled in required execution (side chat review 5439746794).
 fn floor_cost_debt_proven_chunk_22() -> List<String> {
-  Cons { head: "v2.test.claim.long.caller_admission_native_wall_red.the_native_route_refuses_an_outside_cross_module_call_holds", tail: Empty {} }
+  Cons { head: "v2.test.claim.long.caller_admission_native_wall_red.the_native_route_refuses_exactly_the_outside_cross_module_calls_holds", tail: Empty {} }
 }
 
 fn floor_cost_debt_proven_chunks() -> List<List<String>> {
