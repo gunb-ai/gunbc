@@ -1,0 +1,20 @@
+module test.claim.printer_authorization_census_witness_test
+import std.types {Bool}
+import gunbc.auth.privileged_effect_census {privileged_effect_census,site_verdict,DivergesWithReason,Conforms,printer_start_effect}
+import gunbc.auth.authorization_pattern_selection {select_authorization_pattern,PatternSelected,OperatorApprovedCapability}
+import gunbc.fleet.printer_receipt {execution_source}
+import gunbc.auth.access_token_source {WorkloadIdentityToken,GcloudPrintToken}
+
+test fn physical_print_requires_an_approval_pattern() -> Bool {
+ match select_authorization_pattern(e:printer_start_effect()) { PatternSelected {pattern:OperatorApprovedCapability,receipt:_}=>true _=>false }
+}
+test fn every_new_printer_credential_binding_is_censused() -> Bool {
+ let names=["product.printed_chassis.print_workflow","gunbc.fleet.printer_workflow_run","gunbc.fleet.printer_operator_approval","gunbc.fleet.printer_operator_run","gunbc.fleet.printer_report"]
+ all(names,n=>{
+  let rows=filter(privileged_effect_census,r=>r.site.module_path==n)
+  length(rows)==1 && all(rows,r=>match site_verdict(row:r).conformance {Conforms=>true DivergesWithReason {reason:_}=>true _=>false})
+ })
+}
+test fn receipt_source_comes_from_the_selected_credential() -> Bool {
+ execution_source(token_source:WorkloadIdentityToken)=="github-actions" && execution_source(token_source:GcloudPrintToken)=="operator-gcloud"
+}

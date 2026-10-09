@@ -421,7 +421,7 @@ data excl_local_repo_wet_profile_store_reason: String = "real host-effect execut
 
 data excl_local_repo_wet_profile_store_dissolve: DissolutionCondition = unbound_dissolution(description: "hermetic response coverage lands for shell.Mktemp.Dir, sha256sum.Sha256.DigestStdin and the Filesystem List/Read/Write/WriteOwnerOnly operations that is SUFFICIENT FOR executing a real directory's lifecycle -- a write observed by a later list and read in the same claim, and a create-exclusive write refused when the path exists -- rather than replaying authored bytes per call. Then the fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule and their floor_route_gap expectations, and this row deletes. Per-operation canned mock_response rows do NOT discharge it: they would decouple the read from the write, which is the supplied-input claim this file exists to pair.")
 
-data excl_local_repo_wet_scm_guarded_save_reason: String = "real host-effect execution witness over the SCM GUARDED SAVE'S WRITE (test.claim.scm_repository_save_real_execution_witness): the fresh-generation claim drives gunbc.scm.repository_save save_repository_sharded_guarded through Filesystem.Write over the committed v7 fixture and reads it back. The hermetic route has no arm for Filesystem.Write (no mock_response), measured as a route gap on gunbc#12787's floor; the write rewrites the bytes the fixture already holds, so it is idempotent on the local-repo wet lane."
+data excl_local_repo_wet_scm_guarded_save_reason: String = "real host-effect execution witness over the SCM GUARDED SAVE'S WRITE (test.claim.scm_repository_save_real_execution_witness): the fresh-generation claim drives gunbc.scm.repository_save save_repository_sharded_guarded through Filesystem.Write over the committed v7 fixture and reads it back; the first-save claim writes an empty envelope from GenerationExpectedAbsent to a throwaway path, reads G back, and admits a later persist on GenerationExpected(G). The hermetic route has no arm for Filesystem.Write (no mock_response), measured as a route gap on gunbc#12787's floor; the fixture rewrite is idempotent on the local-repo wet lane."
 
 data excl_local_repo_wet_scm_guarded_save_dissolve: DissolutionCondition = unbound_dissolution(description: "hermetic response coverage lands for Filesystem.Write that is SUFFICIENT FOR a write observed by a later Filesystem.Read in the same claim, and the fresh-generation claim is re-checked under it; then the fn re-enrolls as an ordinary hermetic discovery row and this row deletes")
 
@@ -1265,6 +1265,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   },
   WitnessExclusionRow {
     pattern: "roadmap_belt_base_advance_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "roadmap_belt_recapture_wet_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_reason,
     dissolution: excl_local_repo_wet_dissolve},

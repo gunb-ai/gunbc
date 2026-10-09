@@ -1,0 +1,61 @@
+module gunbc.site.element.touch_target
+
+import std.types { List }
+import gunbc.design.material { BuildRule, MediaRule, CssDecl, decl }
+import gunbc.design.scale { scale_var, height_control, space_0 }
+import extdeps.languages.css.media_queries { coarse_pointer }
+import extdeps.languages.css.selectors { SelectorSubject }
+import extdeps.languages.css.properties {
+  AlignItems, Display, LineHeight, MaxWidth, MinHeight, MinWidth, Overflow, TextOverflow, VerticalAlign, RawProperty,
+}
+
+// TOUCH TARGETS (ruling R3; element spec 5c: visual height and pointer target are separate). On a
+// fine pointer every element keeps the product's density exactly. Under a coarse pointer every
+// interactive control is at least the shared touch target, gunbc.design.scale height_control, in
+// both directions. The condition is the typed coarse_pointer MediaCondition, so no rule a fine
+// pointer reads changes, and an element that is not interactive (a chip, a status, a priority) takes
+// no rule at all.
+//
+// How a control reaches the target depends on how its element lays it out, so the element names the
+// shape and the minimum is never given to a box that would ignore it. A box (block, flex or
+// inline-flex, centring its own content) takes the minimum as its size. A link laid out as a flex
+// item or a block takes the minimum and centres its text in it. A link inside a line of text that is
+// cut with an ellipsis becomes an inline block one target tall, still cut with an ellipsis inside
+// itself.
+type TouchTargetShape
+  = TouchTargetBox
+  | TouchTargetCentredLink
+  | TouchTargetInlineLink
+
+fn touch_target_minimum_decls() -> List<CssDecl> {
+  [
+    decl(prop: MinHeight, value: scale_var(t: height_control)),
+    decl(prop: MinWidth, value: scale_var(t: height_control)),
+  ]
+}
+
+fn touch_target_decls(shape: TouchTargetShape) -> List<CssDecl> {
+  match shape {
+    TouchTargetBox => touch_target_minimum_decls()
+    TouchTargetCentredLink => concat([
+      decl(prop: Display, value: "inline-flex"),
+      decl(prop: AlignItems, value: "center"),
+    ], touch_target_minimum_decls())
+    TouchTargetInlineLink => concat([
+      decl(prop: Display, value: "inline-block"),
+      decl(prop: VerticalAlign, value: "middle"),
+      decl(prop: MaxWidth, value: "100%"),
+      decl(prop: LineHeight, value: scale_var(t: height_control)),
+      decl(prop: RawProperty { name: "padding-block" }, value: scale_var(t: space_0)),
+      decl(prop: Overflow, value: "hidden"),
+      decl(prop: TextOverflow, value: "ellipsis"),
+    ], touch_target_minimum_decls())
+  }
+}
+
+// The one rule a control needs. An element whose control also has to give up a fine-pointer
+// spacing under the same condition writes one MediaRule with touch_target_decls and that spacing,
+// because a selector is owned once per condition.
+fn touch_target_rule(selector: SelectorSubject, shape: TouchTargetShape) -> BuildRule {
+  MediaRule { condition: coarse_pointer, selector: selector, decls: touch_target_decls(shape: shape) }
+}

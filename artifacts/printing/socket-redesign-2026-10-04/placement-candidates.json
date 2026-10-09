@@ -1,0 +1,272 @@
+[
+  {
+    "name": "flat-p1",
+    "items": [
+      {
+        "id": "P1",
+        "rotation_degrees": [
+          90,
+          0,
+          0
+        ],
+        "minimum_xy_mm": [
+          5,
+          5
+        ]
+      }
+    ]
+  },
+  {
+    "name": "flat-p2",
+    "items": [
+      {
+        "id": "P2",
+        "rotation_degrees": [
+          90,
+          0,
+          0
+        ],
+        "minimum_xy_mm": [
+          5,
+          5
+        ]
+      }
+    ]
+  },
+  {
+    "name": "upright-batch",
+    "items": [
+      {
+        "id": "P1",
+        "rotation_degrees": [
+          0,
+          -90,
+          0
+        ],
+        "minimum_xy_mm": [
+          8,
+          12
+        ]
+      },
+      {
+        "id": "P2",
+        "rotation_degrees": [
+          0,
+          90,
+          0
+        ],
+        "minimum_xy_mm": [
+          8,
+          52
+        ]
+      },
+      {
+        "id": "S1",
+        "rotation_degrees": [
+          90,
+          0,
+          0
+        ],
+        "minimum_xy_mm": [
+          12,
+          95
+        ]
+      },
+      {
+        "id": "S2",
+        "rotation_degrees": [
+          90,
+          0,
+          0
+        ],
+        "minimum_xy_mm": [
+          55,
+          95
+        ]
+      }
+    ]
+  },
+  {
+    "name": "rear-edge-batch",
+    "items": [
+      {
+        "id": "P1",
+        "rotation_degrees": [
+          0,
+          0,
+          0
+        ],
+        "minimum_xy_mm": [
+          8,
+          12
+        ]
+      },
+      {
+        "id": "P2",
+        "rotation_degrees": [
+          0,
+          0,
+          0
+        ],
+        "minimum_xy_mm": [
+          8,
+          52
+        ]
+      },
+      {
+        "id": "S1",
+        "rotation_degrees": [
+          90,
+          0,
+          0
+        ],
+        "minimum_xy_mm": [
+          12,
+          95
+        ]
+      },
+      {
+        "id": "S2",
+        "rotation_degrees": [
+          90,
+          0,
+          0
+        ],
+        "minimum_xy_mm": [
+          55,
+          95
+        ]
+      }
+    ]
+  },
+  {
+    "name": "overnight-batch",
+    "items": [
+      {
+        "id": "P1",
+        "rotation_degrees": [
+          0,
+          0,
+          0
+        ],
+        "minimum_xy_mm": [
+          8,
+          12
+        ]
+      },
+      {
+        "id": "P2",
+        "rotation_degrees": [
+          0,
+          0,
+          0
+        ],
+        "minimum_xy_mm": [
+          8,
+          52
+        ]
+      },
+      {
+        "id": "S1",
+        "rotation_degrees": [
+          90,
+          0,
+          0
+        ],
+        "minimum_xy_mm": [
+          12,
+          95
+        ]
+      },
+      {
+        "id": "S2",
+        "rotation_degrees": [
+          90,
+          0,
+          0
+        ],
+        "minimum_xy_mm": [
+          55,
+          95
+        ]
+      },
+      {
+        "id": "K3",
+        "rotation_degrees": [
+          -90,
+          0,
+          0
+        ],
+        "minimum_xy_mm": [
+          100,
+          100
+        ]
+      },
+      {
+        "id": "K4",
+        "rotation_degrees": [
+          -90,
+          0,
+          0
+        ],
+        "minimum_xy_mm": [
+          125,
+          100
+        ]
+      },
+      {
+        "id": "K6",
+        "rotation_degrees": [
+          -90,
+          0,
+          0
+        ],
+        "minimum_xy_mm": [
+          100,
+          130
+        ]
+      },
+      {
+        "id": "K7",
+        "rotation_degrees": [
+          -90,
+          0,
+          0
+        ],
+        "minimum_xy_mm": [
+          125,
+          130
+        ]
+      }
+    ]
+  },
+  {
+    "name": "sockets",
+    "items": [
+      {
+        "id": "S1",
+        "rotation_degrees": [
+          90,
+          0,
+          0
+        ],
+        "minimum_xy_mm": [
+          20,
+          20
+        ]
+      },
+      {
+        "id": "S2",
+        "rotation_degrees": [
+          90,
+          0,
+          0
+        ],
+        "minimum_xy_mm": [
+          65,
+          20
+        ]
+      }
+    ]
+  }
+]
