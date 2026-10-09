@@ -7186,17 +7186,20 @@ fn infer_application_actual_child_frame(parent: Node, frame: InferFrame, acc: In
   match infer_gather_authored_actual_index(acc: acc) {
     Absent => infer_frame_inherited(frame: frame)
     Present { value: idx } =>
-      match infer_application_lambda_expected_binder_types(
-        actual: edge.target,
-        instances: acc.application_instances,
-        pairs: acc.application_pairs,
-        idx: idx
-      ) {
+      match infer_operator_arrow(operator: edge.target) {
         Absent => infer_frame_inherited(frame: frame)
-        Present { value: rows } =>
+        Present { value: _ } =>
           InferFrame {
-            instances: frame.instances,
-            binder_types: infer_append_binder_types(xs: frame.binder_types, ys: rows),
+            instances: acc.application_instances,
+            binder_types: match infer_application_lambda_expected_binder_types(
+              actual: edge.target,
+              instances: acc.application_instances,
+              pairs: acc.application_pairs,
+              idx: idx
+            ) {
+              Absent => frame.binder_types
+              Present { value: rows } => infer_append_binder_types(xs: frame.binder_types, ys: rows)
+            },
             entering: InferFrameEnteredPlain
           }
       }
