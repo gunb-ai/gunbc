@@ -4038,6 +4038,42 @@ fn infer_type_instantiated(t: Node, instances: List<TypeVariableInstance>) -> No
   )
 }
 
+// A LAMBDA ACTUAL AT A GENERIC FORMAL THAT STILL NAMES AN UNFIXED TYPE PARAMETER DOES NOT
+// INHABIT. infer_match_generic_formal does not open Arrow, so fn(T)->T would otherwise stay
+// UndecidableGenericFormal and accept (DESIGN section 5). T unfixed is not minted from the
+// lambda; the application refuses until a preceding actual has instantiated it.
+fn infer_lambda_actual_at_unfixed_generic(arg: Node, declared: Node, instances: List<TypeVariableInstance>) -> Bool {
+  match infer_operator_arrow(operator: arg) {
+    Absent => false
+    Present { value: _ } => infer_declared_type_mentions_free_formal(declared: declared, instances: instances)
+  }
+}
+
+fn infer_refuse_lambda_at_unfixed_generic(
+  position: DeclaredTypePosition,
+  application: Node,
+  declarations: SymbolIndex,
+  formal: InhabitanceFormal,
+  produced: Node,
+  type_params: List<Symbol>,
+  instances: List<TypeVariableInstance>
+) -> Outcome<List<TypeVariableInstance>> {
+  outcome_rejected(
+    application_argument_does_not_inhabit_diagnostic(
+      obligation: infer_declared_type_obligation(
+        position: position,
+        parameter_identity: formal.parameter_identity,
+        declared: infer_declared_type_denotation(declared: infer_type_instantiated(t: formal.declared, instances: instances)),
+        produced: produced,
+        application: application,
+        type_variables: type_params,
+        declarations: declarations
+      ),
+      find_witness_reason: ^find_witness_reason_no_candidate
+    )
+  )
+}
+
 fn infer_judge_generic_formal(
   position: DeclaredTypePosition,
   application: Node,
@@ -4058,11 +4094,34 @@ fn infer_judge_generic_formal(
   }
   match produced_optional {
     Absent =>
-      match infer_inhabitance_undecidable_accepted(application: application, reason: undecidable_argument_type_not_derived()) {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
+      if infer_lambda_actual_at_unfixed_generic(arg: arg, declared: formal.declared, instances: instances) {
+        infer_refuse_lambda_at_unfixed_generic(
+          position: position,
+          application: application,
+          declarations: declarations,
+          formal: formal,
+          produced: arg,
+          type_params: type_params,
+          instances: instances
+        )
+      } else {
+        match infer_inhabitance_undecidable_accepted(application: application, reason: undecidable_argument_type_not_derived()) {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
+        }
       }
     Present { value: produced } =>
+      if infer_lambda_actual_at_unfixed_generic(arg: arg, declared: formal.declared, instances: instances) {
+        infer_refuse_lambda_at_unfixed_generic(
+          position: position,
+          application: application,
+          declarations: declarations,
+          formal: formal,
+          produced: produced,
+          type_params: type_params,
+          instances: instances
+        )
+      } else {
       match infer_match_generic_formal_or_carrier(formal: infer_type_alias_normalized(t: formal.declared, declarations: declarations), produced: infer_type_alias_normalized(t: produced, declarations: declarations), type_params: type_params, instances: instances, declarations: declarations) {
         InferFormalShapeMismatch =>
           outcome_rejected(
@@ -4084,6 +4143,7 @@ fn infer_judge_generic_formal(
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: _, diagnostics: d } => Accepted { value: matched, diagnostics: d }
           }
+      }
       }
   }
 }

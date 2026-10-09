@@ -192,9 +192,10 @@ fn lef_lambda_then_value_terminal_reason() -> Bool {
 }
 
 test fn lef_shared_callee_actual_is_judged_holds() -> Bool {
-  let callee = tpb_generic_arrow(
-    type_params: [],
-    formals: [tpb_formal(name: ^a, declared: ^dag_binding_type_int)]
+  let callee = anonymous_signature_arrow(
+    domain_types: [dag_type_atom_node(identity: ^dag_binding_type_int)],
+    codomain: dag_type_atom_node(identity: ^dag_binding_type_int),
+    source: dag_type_atom_node(identity: ^dag_binding_type_int)
   )
   match infer(
     tree: claim_resolved_tree_without_declarations(
