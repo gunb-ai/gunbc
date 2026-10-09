@@ -1,0 +1,46 @@
+module wit.mtcollins1_boot_run_witness_test
+
+import std.types { Bool, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import test.claim.machine_intake.mtcollins1_boot_run_witness_test { the_step_timeout_covers_the_boot_phases, a_held_collector_is_the_recorded_live_process, an_exit_is_established_only_by_evidence_that_the_process_ended, an_unreadable_process_is_unobservable_not_exited, sol_lease_observation_is_the_collector_we_hold_not_sol_info, boot_terminal_is_the_host_capture_not_boot_control_issued, the_workload_is_held_to_the_milestone_footprint_and_refuses_at_preflight, the_boot_is_held_to_the_one_socket_milestone_not_the_count, boot_is_srv1_only_where_the_unit_hold_store_is, the_boot_job_takes_the_fleet_key_step_before_the_boot_step, the_fleet_key_step_materializes_the_fleet_key_and_never_names_expected_revision, the_boot_step_reads_the_bmc_credential_and_never_the_submission_key_or_expected_revision, the_stock_installer_medium_refuses_the_census_boot_at_the_gate, the_census_medium_passes_the_gate_and_binds_the_verdict_to_its_label, a_pre_os_refusal_on_the_console_is_a_typed_refusal_not_a_timeout, every_acquisition_that_reads_the_capture_binds_it_to_this_attempt, another_expected_revision_cannot_change_a_byte_the_boot_job_executes, a_boot_dispatch_naming_another_host_is_refused_on_srv1_before_any_credential, the_run_record_is_decided_by_the_actuation_stage, an_open_workload_section_refuses_only_on_what_it_has_proven, the_sol_launch_separates_client_words_from_host_bytes, the_sol_release_kills_only_the_recorded_process, a_failed_establishment_names_its_cause, a_gone_collector_under_a_pending_capture_is_channel_lost_not_pending, a_gone_collector_is_classified_by_its_own_diagnostics_and_nothing_stronger, a_live_collector_with_no_output_is_pending, a_decided_capture_is_not_unmade_by_a_later_channel_loss, an_unobservable_collector_is_never_reported_as_an_exit, establishment_is_the_operational_banner_first_not_a_live_pid, a_sol_notice_is_one_escaped_workflow_command, the_exit_notice_orders_requests_by_instant_not_by_reading, every_exit_record_is_a_distinct_notice_and_unreadable_history_is_unresolved, the_boot_requires_the_recorded_live_watcher, the_establishment_gate_is_elapsed_time_and_refuses_a_late_banner, a_refused_pace_or_a_stalled_clock_ends_the_establishment_wait }
+
+fn main() -> ProcessExit {
+  let failed = join([
+    if the_step_timeout_covers_the_boot_phases() { "" } else { "the_step_timeout_covers_the_boot_phases " },
+    if a_held_collector_is_the_recorded_live_process() { "" } else { "a_held_collector_is_the_recorded_live_process " },
+    if an_exit_is_established_only_by_evidence_that_the_process_ended() { "" } else { "an_exit_is_established_only_by_evidence_that_the_process_ended " },
+    if an_unreadable_process_is_unobservable_not_exited() { "" } else { "an_unreadable_process_is_unobservable_not_exited " },
+    if sol_lease_observation_is_the_collector_we_hold_not_sol_info() { "" } else { "sol_lease_observation_is_the_collector_we_hold_not_sol_info " },
+    if boot_terminal_is_the_host_capture_not_boot_control_issued() { "" } else { "boot_terminal_is_the_host_capture_not_boot_control_issued " },
+    if the_workload_is_held_to_the_milestone_footprint_and_refuses_at_preflight() { "" } else { "the_workload_is_held_to_the_milestone_footprint_and_refuses_at_preflight " },
+    if the_boot_is_held_to_the_one_socket_milestone_not_the_count() { "" } else { "the_boot_is_held_to_the_one_socket_milestone_not_the_count " },
+    if boot_is_srv1_only_where_the_unit_hold_store_is() { "" } else { "boot_is_srv1_only_where_the_unit_hold_store_is " },
+    if the_boot_job_takes_the_fleet_key_step_before_the_boot_step() { "" } else { "the_boot_job_takes_the_fleet_key_step_before_the_boot_step " },
+    if the_fleet_key_step_materializes_the_fleet_key_and_never_names_expected_revision() { "" } else { "the_fleet_key_step_materializes_the_fleet_key_and_never_names_expected_revision " },
+    if the_boot_step_reads_the_bmc_credential_and_never_the_submission_key_or_expected_revision() { "" } else { "the_boot_step_reads_the_bmc_credential_and_never_the_submission_key_or_expected_revision " },
+    if the_stock_installer_medium_refuses_the_census_boot_at_the_gate() { "" } else { "the_stock_installer_medium_refuses_the_census_boot_at_the_gate " },
+    if the_census_medium_passes_the_gate_and_binds_the_verdict_to_its_label() { "" } else { "the_census_medium_passes_the_gate_and_binds_the_verdict_to_its_label " },
+    if a_pre_os_refusal_on_the_console_is_a_typed_refusal_not_a_timeout() { "" } else { "a_pre_os_refusal_on_the_console_is_a_typed_refusal_not_a_timeout " },
+    if every_acquisition_that_reads_the_capture_binds_it_to_this_attempt() { "" } else { "every_acquisition_that_reads_the_capture_binds_it_to_this_attempt " },
+    if another_expected_revision_cannot_change_a_byte_the_boot_job_executes() { "" } else { "another_expected_revision_cannot_change_a_byte_the_boot_job_executes " },
+    if a_boot_dispatch_naming_another_host_is_refused_on_srv1_before_any_credential() { "" } else { "a_boot_dispatch_naming_another_host_is_refused_on_srv1_before_any_credential " },
+    if the_run_record_is_decided_by_the_actuation_stage() { "" } else { "the_run_record_is_decided_by_the_actuation_stage " },
+    if an_open_workload_section_refuses_only_on_what_it_has_proven() { "" } else { "an_open_workload_section_refuses_only_on_what_it_has_proven " },
+    if the_sol_launch_separates_client_words_from_host_bytes() { "" } else { "the_sol_launch_separates_client_words_from_host_bytes " },
+    if the_sol_release_kills_only_the_recorded_process() { "" } else { "the_sol_release_kills_only_the_recorded_process " },
+    if a_failed_establishment_names_its_cause() { "" } else { "a_failed_establishment_names_its_cause " },
+    if a_gone_collector_under_a_pending_capture_is_channel_lost_not_pending() { "" } else { "a_gone_collector_under_a_pending_capture_is_channel_lost_not_pending " },
+    if a_gone_collector_is_classified_by_its_own_diagnostics_and_nothing_stronger() { "" } else { "a_gone_collector_is_classified_by_its_own_diagnostics_and_nothing_stronger " },
+    if a_live_collector_with_no_output_is_pending() { "" } else { "a_live_collector_with_no_output_is_pending " },
+    if a_decided_capture_is_not_unmade_by_a_later_channel_loss() { "" } else { "a_decided_capture_is_not_unmade_by_a_later_channel_loss " },
+    if an_unobservable_collector_is_never_reported_as_an_exit() { "" } else { "an_unobservable_collector_is_never_reported_as_an_exit " },
+    if establishment_is_the_operational_banner_first_not_a_live_pid() { "" } else { "establishment_is_the_operational_banner_first_not_a_live_pid " },
+    if a_sol_notice_is_one_escaped_workflow_command() { "" } else { "a_sol_notice_is_one_escaped_workflow_command " },
+    if the_exit_notice_orders_requests_by_instant_not_by_reading() { "" } else { "the_exit_notice_orders_requests_by_instant_not_by_reading " },
+    if every_exit_record_is_a_distinct_notice_and_unreadable_history_is_unresolved() { "" } else { "every_exit_record_is_a_distinct_notice_and_unreadable_history_is_unresolved " },
+    if the_boot_requires_the_recorded_live_watcher() { "" } else { "the_boot_requires_the_recorded_live_watcher " },
+    if the_establishment_gate_is_elapsed_time_and_refuses_a_late_banner() { "" } else { "the_establishment_gate_is_elapsed_time_and_refuses_a_late_banner " },
+    if a_refused_pace_or_a_stalled_clock_ends_the_establishment_wait() { "" } else { "a_refused_pace_or_a_stalled_clock_ends_the_establishment_wait " }
+  ], "")
+  if failed == "" { ExitSuccess } else { exit_failure(reason: failed) }
+}

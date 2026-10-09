@@ -1,0 +1,39 @@
+module wit.mtcollins1_boot_acceptance_matrix_test
+
+import std.types { Bool, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test { a_host_that_never_prints_a_census_refuses_at_the_deadline, a_healthy_census_completes_and_releases_its_collector, a_toolchain_that_is_not_ready_starts_no_observer_and_no_power_action, an_unresolved_toolchain_starts_no_observer_and_no_power_action, a_second_run_for_a_held_unit_writes_nothing_to_the_controller, an_already_presented_image_is_not_attached_again, media_that_never_becomes_ready_refuses_before_any_power_action, the_right_filename_on_the_wrong_share_refuses_before_any_power_action, a_listing_that_names_the_image_twice_starts_nothing, a_presentation_lost_after_readiness_stops_the_handoff, a_presentation_lost_after_the_handoff_is_the_reported_cause, a_sol_session_held_elsewhere_refuses_before_the_attach, a_sol_loss_mid_boot_is_reported_before_the_deadline, a_two_socket_answer_is_a_truthful_topology_refusal, an_interrupted_attempts_dead_hold_is_recovered_by_the_next_one, a_live_holder_still_blocks_the_next_attempt, an_unobservable_holder_is_refused_not_recovered, a_successor_in_another_pid_namespace_refuses_rather_than_recovering, a_wall_clock_stepping_back_during_readiness_refuses_as_unbounded, a_wall_clock_jumping_forward_during_readiness_closes_the_window, cd_error_16_with_nothing_presented_attaches_and_boots_with_the_code_recorded, an_uncatalogued_cd_error_with_the_host_on_writes_nothing, cd_error_appearing_with_readiness_is_recorded_and_booted, a_start_that_stops_with_mount_error_refuses_by_name, a_start_that_stops_with_device_ejected_refuses_by_name_as_no_fault, a_stale_lane_image_with_a_code_the_stop_clears_is_replaced_and_booted, a_stale_lane_image_with_a_code_the_stop_does_not_clear_is_replaced_and_booted, a_foreign_presented_image_is_not_stopped }
+
+fn main() -> ProcessExit {
+  let failed = join([
+    if a_host_that_never_prints_a_census_refuses_at_the_deadline() { "" } else { "a_host_that_never_prints_a_census_refuses_at_the_deadline " },
+    if a_healthy_census_completes_and_releases_its_collector() { "" } else { "a_healthy_census_completes_and_releases_its_collector " },
+    if a_toolchain_that_is_not_ready_starts_no_observer_and_no_power_action() { "" } else { "a_toolchain_that_is_not_ready_starts_no_observer_and_no_power_action " },
+    if an_unresolved_toolchain_starts_no_observer_and_no_power_action() { "" } else { "an_unresolved_toolchain_starts_no_observer_and_no_power_action " },
+    if a_second_run_for_a_held_unit_writes_nothing_to_the_controller() { "" } else { "a_second_run_for_a_held_unit_writes_nothing_to_the_controller " },
+    if an_already_presented_image_is_not_attached_again() { "" } else { "an_already_presented_image_is_not_attached_again " },
+    if media_that_never_becomes_ready_refuses_before_any_power_action() { "" } else { "media_that_never_becomes_ready_refuses_before_any_power_action " },
+    if the_right_filename_on_the_wrong_share_refuses_before_any_power_action() { "" } else { "the_right_filename_on_the_wrong_share_refuses_before_any_power_action " },
+    if a_listing_that_names_the_image_twice_starts_nothing() { "" } else { "a_listing_that_names_the_image_twice_starts_nothing " },
+    if a_presentation_lost_after_readiness_stops_the_handoff() { "" } else { "a_presentation_lost_after_readiness_stops_the_handoff " },
+    if a_presentation_lost_after_the_handoff_is_the_reported_cause() { "" } else { "a_presentation_lost_after_the_handoff_is_the_reported_cause " },
+    if a_sol_session_held_elsewhere_refuses_before_the_attach() { "" } else { "a_sol_session_held_elsewhere_refuses_before_the_attach " },
+    if a_sol_loss_mid_boot_is_reported_before_the_deadline() { "" } else { "a_sol_loss_mid_boot_is_reported_before_the_deadline " },
+    if a_two_socket_answer_is_a_truthful_topology_refusal() { "" } else { "a_two_socket_answer_is_a_truthful_topology_refusal " },
+    if an_interrupted_attempts_dead_hold_is_recovered_by_the_next_one() { "" } else { "an_interrupted_attempts_dead_hold_is_recovered_by_the_next_one " },
+    if a_live_holder_still_blocks_the_next_attempt() { "" } else { "a_live_holder_still_blocks_the_next_attempt " },
+    if an_unobservable_holder_is_refused_not_recovered() { "" } else { "an_unobservable_holder_is_refused_not_recovered " },
+    if a_successor_in_another_pid_namespace_refuses_rather_than_recovering() { "" } else { "a_successor_in_another_pid_namespace_refuses_rather_than_recovering " },
+    if a_wall_clock_stepping_back_during_readiness_refuses_as_unbounded() { "" } else { "a_wall_clock_stepping_back_during_readiness_refuses_as_unbounded " },
+    if a_wall_clock_jumping_forward_during_readiness_closes_the_window() { "" } else { "a_wall_clock_jumping_forward_during_readiness_closes_the_window " },
+    if cd_error_16_with_nothing_presented_attaches_and_boots_with_the_code_recorded() { "" } else { "cd_error_16_with_nothing_presented_attaches_and_boots_with_the_code_recorded " },
+    if an_uncatalogued_cd_error_with_the_host_on_writes_nothing() { "" } else { "an_uncatalogued_cd_error_with_the_host_on_writes_nothing " },
+    if cd_error_appearing_with_readiness_is_recorded_and_booted() { "" } else { "cd_error_appearing_with_readiness_is_recorded_and_booted " },
+    if a_start_that_stops_with_mount_error_refuses_by_name() { "" } else { "a_start_that_stops_with_mount_error_refuses_by_name " },
+    if a_start_that_stops_with_device_ejected_refuses_by_name_as_no_fault() { "" } else { "a_start_that_stops_with_device_ejected_refuses_by_name_as_no_fault " },
+    if a_stale_lane_image_with_a_code_the_stop_clears_is_replaced_and_booted() { "" } else { "a_stale_lane_image_with_a_code_the_stop_clears_is_replaced_and_booted " },
+    if a_stale_lane_image_with_a_code_the_stop_does_not_clear_is_replaced_and_booted() { "" } else { "a_stale_lane_image_with_a_code_the_stop_does_not_clear_is_replaced_and_booted " },
+    if a_foreign_presented_image_is_not_stopped() { "" } else { "a_foreign_presented_image_is_not_stopped " }
+  ], "")
+  if failed == "" { ExitSuccess } else { exit_failure(reason: failed) }
+}

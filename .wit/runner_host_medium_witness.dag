@@ -1,0 +1,22 @@
+module wit.runner_host_medium_witness
+
+import std.types { Bool, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import test.claim.runner_host_medium_witness { the_runner_image_derives_with_the_slot_runner_and_a_program_that_never_halts, the_runner_medium_is_admitted_and_names_the_runner_host_up_terminal, a_closed_envelope_with_every_section_held_reads_the_runner_host_up, a_failed_install_and_a_foreign_machine_both_refuse, an_open_envelope_refuses_early_on_a_failed_install_and_otherwise_waits, a_closed_envelope_missing_the_meminfo_section_refuses, the_boot_run_terminal_verdict_delegates_and_carries_the_whole_reading, a_subject_admitted_with_another_label_is_refused_by_this_images_capture, the_seed_artifact_digest_keys_the_build_and_its_url_does_not, seed_artifact_names_are_admitted_only_as_fresh_basenames, the_accepted_reading_reaches_the_boot_attempt_result }
+
+fn main() -> ProcessExit {
+  let failed = join([
+    if the_runner_image_derives_with_the_slot_runner_and_a_program_that_never_halts() { "" } else { "the_runner_image_derives_with_the_slot_runner_and_a_program_that_never_halts " },
+    if the_runner_medium_is_admitted_and_names_the_runner_host_up_terminal() { "" } else { "the_runner_medium_is_admitted_and_names_the_runner_host_up_terminal " },
+    if a_closed_envelope_with_every_section_held_reads_the_runner_host_up() { "" } else { "a_closed_envelope_with_every_section_held_reads_the_runner_host_up " },
+    if a_failed_install_and_a_foreign_machine_both_refuse() { "" } else { "a_failed_install_and_a_foreign_machine_both_refuse " },
+    if an_open_envelope_refuses_early_on_a_failed_install_and_otherwise_waits() { "" } else { "an_open_envelope_refuses_early_on_a_failed_install_and_otherwise_waits " },
+    if a_closed_envelope_missing_the_meminfo_section_refuses() { "" } else { "a_closed_envelope_missing_the_meminfo_section_refuses " },
+    if the_boot_run_terminal_verdict_delegates_and_carries_the_whole_reading() { "" } else { "the_boot_run_terminal_verdict_delegates_and_carries_the_whole_reading " },
+    if a_subject_admitted_with_another_label_is_refused_by_this_images_capture() { "" } else { "a_subject_admitted_with_another_label_is_refused_by_this_images_capture " },
+    if the_seed_artifact_digest_keys_the_build_and_its_url_does_not() { "" } else { "the_seed_artifact_digest_keys_the_build_and_its_url_does_not " },
+    if seed_artifact_names_are_admitted_only_as_fresh_basenames() { "" } else { "seed_artifact_names_are_admitted_only_as_fresh_basenames " },
+    if the_accepted_reading_reaches_the_boot_attempt_result() { "" } else { "the_accepted_reading_reaches_the_boot_attempt_result " }
+  ], "")
+  if failed == "" { ExitSuccess } else { exit_failure(reason: failed) }
+}

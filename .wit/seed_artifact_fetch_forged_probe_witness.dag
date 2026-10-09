@@ -1,0 +1,14 @@
+module wit.seed_artifact_fetch_forged_probe_witness
+
+import std.types { Bool, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import test.claim.seed_artifact_fetch_forged_probe_witness { a_source_that_only_names_the_remaster_rebinds_nothing, each_fetch_helper_refuses_a_caller_outside_the_checked_route, an_admitted_artifact_cannot_be_minted_without_the_admission }
+
+fn main() -> ProcessExit {
+  let failed = join([
+    if a_source_that_only_names_the_remaster_rebinds_nothing() { "" } else { "a_source_that_only_names_the_remaster_rebinds_nothing " },
+    if each_fetch_helper_refuses_a_caller_outside_the_checked_route() { "" } else { "each_fetch_helper_refuses_a_caller_outside_the_checked_route " },
+    if an_admitted_artifact_cannot_be_minted_without_the_admission() { "" } else { "an_admitted_artifact_cannot_be_minted_without_the_admission " }
+  ], "")
+  if failed == "" { ExitSuccess } else { exit_failure(reason: failed) }
+}

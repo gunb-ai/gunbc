@@ -1,0 +1,40 @@
+module wit.runner_throughput_qualification_witness
+
+import std.types { Bool, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import test.claim.runner_throughput_qualification_witness { a_joining_run_meeting_every_axis_makes_the_offer_deliver, a_run_from_another_host_is_refused_on_the_host_axis, a_run_in_another_image_or_toolchain_is_refused_on_its_runtime_axis, a_run_on_another_host_shape_is_refused_on_its_host_axis, an_offer_stating_no_architecture_refuses_the_architecture_join, a_run_of_another_specimen_with_the_same_step_count_is_refused_on_the_specimen_axis, a_unit_whose_effective_high_is_not_the_selected_high_is_refused, a_cgroup_bound_that_is_unreadable_or_another_number_is_refused_on_the_bound_axis, a_workspace_read_off_the_subject_is_refused_on_the_workspace_axis, a_faster_run_that_pinned_the_high_line_is_not_hidden_by_a_slower_clean_run, the_sampling_policy_refuses_a_sample_of_the_wrong_size, a_missing_or_duplicated_required_phase_refuses, phase_walls_are_assessed_only_against_supplied_ceilings, delivery_needs_a_sealed_concurrent_cohort_at_the_derived_width, throughput_below_the_pinned_rate_does_not_deliver_and_carries_the_number, a_refused_or_oversubscribed_selected_allocation_derives_no_width, the_selected_sanction_not_the_assessment_decides_the_class, the_fabric_delivery_claim_holds_refuses_and_catches_another_offer, the_route_classifies_every_mutation_at_its_grain, the_route_is_not_executable_while_any_effectful_leg_is_unbound, the_image_and_boot_legs_are_implemented_by_the_runner_medium_and_not_wired, the_registration_and_deregistration_legs_are_implemented_not_wired_and_the_route_is_not_executable, the_route_registers_one_slot_deregisters_it_and_dispatches_to_the_attempt, only_the_runner_stages_open_the_network_and_only_default_drop, the_collect_stage_owes_a_sealed_concurrent_cohort, the_collect_stage_owes_the_rate_specimen_and_the_cgroup_rows, the_ephemeral_slot_argv_carries_the_fleet_memory_max, the_ephemeral_slot_labels_carry_class_host_and_attempt, the_fixture_selection_is_derived_by_the_fleet_folds }
+
+fn main() -> ProcessExit {
+  let failed = join([
+    if a_joining_run_meeting_every_axis_makes_the_offer_deliver() { "" } else { "a_joining_run_meeting_every_axis_makes_the_offer_deliver " },
+    if a_run_from_another_host_is_refused_on_the_host_axis() { "" } else { "a_run_from_another_host_is_refused_on_the_host_axis " },
+    if a_run_in_another_image_or_toolchain_is_refused_on_its_runtime_axis() { "" } else { "a_run_in_another_image_or_toolchain_is_refused_on_its_runtime_axis " },
+    if a_run_on_another_host_shape_is_refused_on_its_host_axis() { "" } else { "a_run_on_another_host_shape_is_refused_on_its_host_axis " },
+    if an_offer_stating_no_architecture_refuses_the_architecture_join() { "" } else { "an_offer_stating_no_architecture_refuses_the_architecture_join " },
+    if a_run_of_another_specimen_with_the_same_step_count_is_refused_on_the_specimen_axis() { "" } else { "a_run_of_another_specimen_with_the_same_step_count_is_refused_on_the_specimen_axis " },
+    if a_unit_whose_effective_high_is_not_the_selected_high_is_refused() { "" } else { "a_unit_whose_effective_high_is_not_the_selected_high_is_refused " },
+    if a_cgroup_bound_that_is_unreadable_or_another_number_is_refused_on_the_bound_axis() { "" } else { "a_cgroup_bound_that_is_unreadable_or_another_number_is_refused_on_the_bound_axis " },
+    if a_workspace_read_off_the_subject_is_refused_on_the_workspace_axis() { "" } else { "a_workspace_read_off_the_subject_is_refused_on_the_workspace_axis " },
+    if a_faster_run_that_pinned_the_high_line_is_not_hidden_by_a_slower_clean_run() { "" } else { "a_faster_run_that_pinned_the_high_line_is_not_hidden_by_a_slower_clean_run " },
+    if the_sampling_policy_refuses_a_sample_of_the_wrong_size() { "" } else { "the_sampling_policy_refuses_a_sample_of_the_wrong_size " },
+    if a_missing_or_duplicated_required_phase_refuses() { "" } else { "a_missing_or_duplicated_required_phase_refuses " },
+    if phase_walls_are_assessed_only_against_supplied_ceilings() { "" } else { "phase_walls_are_assessed_only_against_supplied_ceilings " },
+    if delivery_needs_a_sealed_concurrent_cohort_at_the_derived_width() { "" } else { "delivery_needs_a_sealed_concurrent_cohort_at_the_derived_width " },
+    if throughput_below_the_pinned_rate_does_not_deliver_and_carries_the_number() { "" } else { "throughput_below_the_pinned_rate_does_not_deliver_and_carries_the_number " },
+    if a_refused_or_oversubscribed_selected_allocation_derives_no_width() { "" } else { "a_refused_or_oversubscribed_selected_allocation_derives_no_width " },
+    if the_selected_sanction_not_the_assessment_decides_the_class() { "" } else { "the_selected_sanction_not_the_assessment_decides_the_class " },
+    if the_fabric_delivery_claim_holds_refuses_and_catches_another_offer() { "" } else { "the_fabric_delivery_claim_holds_refuses_and_catches_another_offer " },
+    if the_route_classifies_every_mutation_at_its_grain() { "" } else { "the_route_classifies_every_mutation_at_its_grain " },
+    if the_route_is_not_executable_while_any_effectful_leg_is_unbound() { "" } else { "the_route_is_not_executable_while_any_effectful_leg_is_unbound " },
+    if the_image_and_boot_legs_are_implemented_by_the_runner_medium_and_not_wired() { "" } else { "the_image_and_boot_legs_are_implemented_by_the_runner_medium_and_not_wired " },
+    if the_registration_and_deregistration_legs_are_implemented_not_wired_and_the_route_is_not_executable() { "" } else { "the_registration_and_deregistration_legs_are_implemented_not_wired_and_the_route_is_not_executable " },
+    if the_route_registers_one_slot_deregisters_it_and_dispatches_to_the_attempt() { "" } else { "the_route_registers_one_slot_deregisters_it_and_dispatches_to_the_attempt " },
+    if only_the_runner_stages_open_the_network_and_only_default_drop() { "" } else { "only_the_runner_stages_open_the_network_and_only_default_drop " },
+    if the_collect_stage_owes_a_sealed_concurrent_cohort() { "" } else { "the_collect_stage_owes_a_sealed_concurrent_cohort " },
+    if the_collect_stage_owes_the_rate_specimen_and_the_cgroup_rows() { "" } else { "the_collect_stage_owes_the_rate_specimen_and_the_cgroup_rows " },
+    if the_ephemeral_slot_argv_carries_the_fleet_memory_max() { "" } else { "the_ephemeral_slot_argv_carries_the_fleet_memory_max " },
+    if the_ephemeral_slot_labels_carry_class_host_and_attempt() { "" } else { "the_ephemeral_slot_labels_carry_class_host_and_attempt " },
+    if the_fixture_selection_is_derived_by_the_fleet_folds() { "" } else { "the_fixture_selection_is_derived_by_the_fleet_folds " }
+  ], "")
+  if failed == "" { ExitSuccess } else { exit_failure(reason: failed) }
+}
