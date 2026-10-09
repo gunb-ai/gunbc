@@ -9,6 +9,7 @@ module gunbc.tools.bmc_first_contact
 import gunbc.tools.bmc_onboard {
   bmc_onboard_netrc_path, write_netrc_outcome, netrc_write_succeeded, netrc_failure_reason,
 }
+import extdeps.transports.rest { RestResult }
 
 
 // `shell.Env.Get` answers `value: String?`, and this func reached it with `as NonEmptyStr`, which
@@ -43,5 +44,5 @@ fn bmc_first_contact() -> ProcessExit
     netrc_file: bmc_onboard_netrc_path as NonEmptyStr
   )
 
-  return if resp.success { ExitSuccess } else { exit_failure(reason: resp.body) }
+  return if resp is RestAnswered { answer: _ } { ExitSuccess } else { exit_failure(reason: match resp.refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c }) }
 }

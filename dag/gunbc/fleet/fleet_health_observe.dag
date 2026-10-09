@@ -1,6 +1,7 @@
 module gunbc.fleet_health_observe
 
 import extdeps.bmc.http
+import extdeps.transports.rest { RestResult }
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import std.algebra { trim }
 import std.nat { Nat, nat_range_inclusive }
@@ -134,23 +135,38 @@ fn health_redfish_read(bmc_host: NonEmptyStr, netrc: NonEmptyStr, read: FleetHea
   match read {
     ReadManager => {
       r = redfish.Http.GetManager(bmc_host: bmc_host, manager_id: "bmc", netrc_file: netrc)
-      return HealthReadResponse { body: r.body, success: r.success }
+      return match r {
+        RestAnswered { answer: body } => HealthReadResponse { body: body, success: true }
+        RestRefused { refusal: refusal } => HealthReadResponse { body: match refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c }, success: false }
+      }
     }
     ReadChassisThermal { chassis_id: c } => {
       r = redfish.Http.GetChassisThermal(bmc_host: bmc_host, chassis_id: c, netrc_file: netrc)
-      return HealthReadResponse { body: r.body, success: r.success }
+      return match r {
+        RestAnswered { answer: body } => HealthReadResponse { body: body, success: true }
+        RestRefused { refusal: refusal } => HealthReadResponse { body: match refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c }, success: false }
+      }
     }
     ReadChassisSensors { chassis_id: c } => {
       r = redfish.Http.GetChassisSensors(bmc_host: bmc_host, chassis_id: c, netrc_file: netrc)
-      return HealthReadResponse { body: r.body, success: r.success }
+      return match r {
+        RestAnswered { answer: body } => HealthReadResponse { body: body, success: true }
+        RestRefused { refusal: refusal } => HealthReadResponse { body: match refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c }, success: false }
+      }
     }
     ReadChassisSensor { chassis_id: c, sensor_id: s } => {
       r = redfish.Http.GetChassisSensor(bmc_host: bmc_host, chassis_id: c, sensor_id: s, netrc_file: netrc)
-      return HealthReadResponse { body: r.body, success: r.success }
+      return match r {
+        RestAnswered { answer: body } => HealthReadResponse { body: body, success: true }
+        RestRefused { refusal: refusal } => HealthReadResponse { body: match refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c }, success: false }
+      }
     }
     ReadSystemEventLog => {
       r = redfish.Http.GetSystemEventLogEntries(bmc_host: bmc_host, netrc_file: netrc)
-      return HealthReadResponse { body: r.body, success: r.success }
+      return match r {
+        RestAnswered { answer: body } => HealthReadResponse { body: body, success: true }
+        RestRefused { refusal: refusal } => HealthReadResponse { body: match refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c }, success: false }
+      }
     }
   }
 }
@@ -202,7 +218,7 @@ fn sample_sensor_collection(bmc_host: NonEmptyStr, netrc: NonEmptyStr, chassis_i
     ObservationEstablished { observed: points } => {
       let sensor_id = match reverse(split(s: id as String, delimiter: "/")).first() { Present { value: last } => last Absent => "" }
       if sensor_id == "" { ObservationRefused { cause: concat("a Sensors member reference names no sensor: ", id as String) as NonEmptyStr } } else {
-        match read_json(bmc_host: bmc_host, netrc: netrc, read: ReadChassisSensor { chassis_id: chassis_id, sensor_id: sensor_id as NonEmptyStr }, what: "Sensor") {
+        match read_json(bmc_host: bmc_host, username: username, password: password, read: ReadChassisSensor { chassis_id: chassis_id, sensor_id: sensor_id as NonEmptyStr }, what: "Sensor") {
           ObservationRefused { cause } => ObservationRefused { cause: cause }
           ObservationEstablished { observed: body } => match redfish_sensor_point(body: body) {
             ObservationRefused { cause } => ObservationRefused { cause: cause }

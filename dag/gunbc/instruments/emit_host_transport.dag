@@ -45,6 +45,7 @@ import tools.emit_host_fixtures {
 import gunbc.node_http_server_emit { gunbhub_node_http_server_source }
 import extdeps.posix.process
 import extdeps.posix.signal
+import extdeps.transports.rest { RestResult }
 import extdeps.http.client
 import extdeps.tools.sleep
 import extdeps.numeric.base16
@@ -231,10 +232,18 @@ type NodeServeReadiness
 
 fn node_http_await_ready(url: NonEmptyStr, attempts_left: Int, attempts_used: Int, last_status: String, last_exit_code: Int) -> NodeServeReadiness {
   if attempts_left <= 0 { ServeNotReady { attempts_used: attempts_used, last_status: last_status, last_exit_code: last_exit_code } } else {
-    let probe = http.Client.Probe(url: url, connect_time: second(count: 1), max_time: second(count: 2))
-    if probe.answered && probe.status == "200" { ServeReady } else {
-      let _pause = sleep.Delay.Seconds(seconds: "0.25" as NonEmptyStr)
-      node_http_await_ready(url: url, attempts_left: attempts_left - 1, attempts_used: attempts_used + 1, last_status: probe.status, last_exit_code: probe.exit_code)
+    let probe = http.Client.Probe(url: url)
+    return match probe {
+      RestAnswered { answer: status } => {
+        if status == "200" { ServeReady } else {
+          let _pause = sleep.Delay.Seconds(seconds: "0.25" as NonEmptyStr)
+          node_http_await_ready(url: url, attempts_left: attempts_left - 1, attempts_used: attempts_used + 1, last_status: status, last_exit_code: 0)
+        }
+      }
+      RestRefused { refusal: refusal } => {
+        let _pause = sleep.Delay.Seconds(seconds: "0.25" as NonEmptyStr)
+        node_http_await_ready(url: url, attempts_left: attempts_left - 1, attempts_used: attempts_used + 1, last_status: match refusal { RestStatusRefused { status: s, body: _ } => s | RestTransportRefused { cause: _ } => "000" | RestBodyUndecodable { status: s, cause: _ } => s }, last_exit_code: 7)
+      }
     }
   }
 }

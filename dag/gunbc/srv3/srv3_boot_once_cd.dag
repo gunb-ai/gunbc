@@ -1,6 +1,7 @@
 module gunbc.srv3_boot_once_cd
 
 import std.measure { Second, second }
+import extdeps.transports.rest { RestResult }
 import extdeps.bmc.http
 import std.scoped_authorization { ScopedAuthorization }
 import std.types { FilePath, Timestamp }
@@ -202,8 +203,8 @@ fn srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessExi
         system_id: asrock_altrad8ud_redfish_system_id,
         request_body_file: srv3_boot_cd_body_path as NonEmptyStr
       )
-      if patch.success == false {
-        return exit_failure(reason: concat("boot-once-cd: PATCH boot override failed: ", patch.body))
+      if patch is RestRefused { refusal: patch_refusal } {
+        return exit_failure(reason: concat("boot-once-cd: PATCH boot override failed: ", match patch_refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c }))
       }
 
       let rst_body = reset_body(reset_type: redfish_reset_type_wire(r: srv3_boot_cd_reset_type))
@@ -218,10 +219,10 @@ fn srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessExi
         system_id: asrock_altrad8ud_redfish_system_id,
         request_body_file: srv3_reset_body_path as NonEmptyStr
       )
-      return if rst.success {
+      return if rst is RestAnswered { answer: _ } {
         ExitSuccess
       } else {
-        exit_failure(reason: concat("boot-once-cd: reset POST failed: ", rst.body))
+        exit_failure(reason: concat("boot-once-cd: reset POST failed: ", match rst.refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c }))
       }
   }
 }

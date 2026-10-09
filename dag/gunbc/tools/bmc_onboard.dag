@@ -1,5 +1,6 @@
 module gunbc.tools.bmc_onboard
 
+import extdeps.transports.rest { RestResult }
 import extdeps.bmc.http
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -231,8 +232,8 @@ fn bmc_rotate_credential(plan: BmcOnboardingPlan, current_password: String, new_
     account_id: account,
     request_body_file: bmc_onboard_pwbody_path as NonEmptyStr
   )
-  if rot.success == false {
-    return exit_failure(reason: rot.body)
+  if rot is RestRefused { refusal: rot_refusal } {
+    return exit_failure(reason: match rot_refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c })
   }
 
   let reauth_w = write_netrc_outcome(host: host, account: account, password: new_credential as String)
@@ -240,10 +241,10 @@ fn bmc_rotate_credential(plan: BmcOnboardingPlan, current_password: String, new_
     return exit_failure(reason: netrc_failure_reason(outcome: reauth_w, stage: "rotate post-rotation reauth"))
   }
   verify = redfish.Http.GetSystem(bmc_host: host, netrc_file: bmc_onboard_netrc_path as NonEmptyStr)
-  return if verify.success {
+  return if verify is RestAnswered { answer: _ } {
     ExitSuccess
   } else {
-    exit_failure(reason: concat("rotate: reauth with new credential rejected: ", verify.body))
+    exit_failure(reason: concat("rotate: reauth with new credential rejected: ", match verify.refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c }))
   }
 }
 
@@ -429,9 +430,9 @@ fn bmc_assimilate_credential(plan: BmcOnboardingPlan, token_source: AccessTokenS
   let host = plan.bmc.host
   let account = plan.factory_login.username
 
-  root_resp = redfish.Http.GetServiceRoot(bmc_host: host)
-  if root_resp.success == false {
-    return exit_failure(reason: concat("acquire: service root unreachable: ", root_resp.body))
+  root_resp = redfish.Http.GetServiceRoot(bmc_host: host, netrc_file: bmc_onboard_netrc_path as NonEmptyStr)
+  if root_resp is RestRefused { refusal: root_refusal } {
+    return exit_failure(reason: concat("acquire: service root unreachable: ", match root_refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c }))
   }
   let acquire_w = write_netrc_outcome(host: host, account: account, password: plan.factory_login.published_password)
   if netrc_write_succeeded(outcome: acquire_w) == false {
@@ -441,8 +442,8 @@ fn bmc_assimilate_credential(plan: BmcOnboardingPlan, token_source: AccessTokenS
     bmc_host: host,
     netrc_file: bmc_onboard_netrc_path as NonEmptyStr
   )
-  if acq.success == false {
-    return exit_failure(reason: concat("acquire: factory login failed: ", acq.body))
+  if acq is RestRefused { refusal: acq_refusal } {
+    return exit_failure(reason: concat("acquire: factory login failed: ", match acq_refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c }))
   }
 
   return bmc_store_and_rotate(plan: plan, token_source: token_source, credential: mint_bmc_credential(), current_password: plan.factory_login.published_password)
@@ -469,7 +470,7 @@ fn bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessToken
     bmc_host: host,
     netrc_file: bmc_onboard_netrc_path as NonEmptyStr
   )
-  if factory_check.success {
+  if factory_check is RestAnswered { answer: _ } {
     return FactoryCredentialActive
   }
 
@@ -493,11 +494,10 @@ fn bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessToken
             bmc_host: host,
             netrc_file: bmc_onboard_netrc_path as NonEmptyStr
           )
-          return if rotated_verify.success {
+          return if rotated_verify is RestAnswered { answer: _ } {
             RotatedCredentialActive
           } else {
-            CredentialStateUnknown { reason: "stored credential rejected by BMC" }
-          }
+            CredentialStateUnknown { reason: concat("stored credential rejected by BMC: ", match rotated_verify.refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c }) }
         }
       }
     }
@@ -507,8 +507,8 @@ fn bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessToken
 fn bmc_converge_credential(plan: BmcOnboardingPlan, token_source: AccessTokenSource) -> ProcessExit
 {
   root_resp = redfish.Http.GetServiceRoot(bmc_host: plan.bmc.host)
-  if root_resp.success == false {
-    return exit_failure(reason: concat("credential converge: BMC unreachable: ", root_resp.body))
+  if root_resp is RestRefusal { cause: root_cause } {
+    return exit_failure(reason: concat("credential converge: BMC unreachable: ", root_cause))
   }
 
   probe = bmc_probe_credential_phase(plan: plan, token_source: token_source)

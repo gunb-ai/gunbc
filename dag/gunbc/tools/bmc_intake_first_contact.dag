@@ -2,6 +2,7 @@ module gunbc.tools.bmc_intake_first_contact
 
 import std.process { ExitSuccess, exit_failure }
 import std.types { Bool, HttpStatus, NonEmptyStr, String }
+import extdeps.transports.rest { RestResult }
 import extdeps.bmc.http
 import extdeps.shell
 import extdeps.tools.curl {
@@ -50,20 +51,21 @@ fn bmc_intake_first_contact() -> CliWireResponse
 {
   host = shell.Env.Get(name: "BMC_HOST")
   let bmc = bmc_first_contact_host(value: host.value)
-  resp = redfish.Http.ProbeServiceRoot(bmc_host: bmc, write_out: curl_http_code_after_newline_write_out_format)
-  match classify_intake_probe(
-    reached_host: resp.success,
-    blob: resp.body,
-    transport_stderr: resp.transport_stderr,
-  ) {
-    HostUnreachable { cause: c, transport_stderr: e } =>
-      CliWirePrintable {
-        bytes: join([c as String, ": ", e], ""),
-        exit: exit_failure(reason: join([c as String, ": ", e], "")),
+  probe_result = redfish.Http.ProbeServiceRoot(bmc_host: bmc)
+  return match probe_result {
+    RestAnswered { answer: blob } => {
+      // The body contains the HTTP status as the last line (from curl write-out)
+      match classify_curl_http_code_after_newline(stdout: blob) {
+        CurlWroteHttpStatus { status: _ } =>
+          CliWirePrintable { bytes: blob, exit: ExitSuccess }
+        CurlWroteNoHttpStatus { cause } =>
+          CliWirePrintable { bytes: blob, exit: exit_failure(reason: cause as String) }
       }
-    RedfishHttpSurface { status: _, blob: b } =>
-      CliWirePrintable { bytes: b, exit: ExitSuccess }
-    WriteOutUnreadable { blob: b, cause: c } =>
-      CliWirePrintable { bytes: b, exit: exit_failure(reason: c as String) }
+    }
+    RestRefused { refusal: refusal } =>
+      CliWirePrintable {
+        bytes: concat("host unreachable: ", match refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c }),
+        exit: exit_failure(reason: concat("host unreachable: ", match refusal { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c }) as String),
+      }
   }
 }

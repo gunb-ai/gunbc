@@ -7,6 +7,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import gunbc.output_policy { OutcomeIsData }
 import extdeps.shell
+import extdeps.transports.rest { RestResult }
 import extdeps.http.client
 import extdeps.tools.sha256sum { sha256sum_verify_via_shell, Sha256Matches, Sha256Mismatch, Sha256VerifyInfraFailure }
 import extdeps.provisioning.ubuntu_install_media {
@@ -130,7 +131,7 @@ fn attempt_install_media_mirror(subject: AcquisitionSubject, origin: Acquisition
 
 fn attempt_install_media_download(subject: AcquisitionSubject, origin: AcquisitionSource, url: NonEmptyStr, part_path: NonEmptyStr) -> AcquisitionAttempt {
   let downloaded = http.Client.DownloadToFile(url: url, destination: part_path)
-  if downloaded.success == false {
+  if downloaded is RestRefused { refusal: _ } {
     AttemptUnreachable
   } else {
     match sha256sum_verify_via_shell(path: part_path, expected_digest: acquisition_key_digest(key: subject.key)) {

@@ -4,6 +4,7 @@ import std.types { String, NonEmptyStr, Secret, Bool }
 import extdeps.uri { uri_percent_encode_component, UriPercentComponentEncoded, UriPercentComponentRefused }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.transports.rest { RestResult }
 import extdeps.http.client
 import extdeps.namecheap.read_hosts { NamecheapHostsRead, NamecheapHostsObserved, NamecheapHostsRefused, namecheap_read_hosts }
 
@@ -30,10 +31,13 @@ fn namecheap_get_hosts(account: NonEmptyStr, credential: Secret, client_ipv4: No
                       let query = join(["ApiUser=", account_wire as String, "&UserName=", account_wire as String, "&ApiKey=", key_wire as String,
                         "&ClientIp=", ip_wire as String, "&SLD=", sld_wire as String, "&TLD=", tld_wire as String,
                         "&Command=namecheap.domains.dns.getHosts"], "")
-                      let got = http.Client.GetQueryStdinWithin(url: "https://api.namecheap.com/xml.response" as NonEmptyStr, query: query,
-                        connect_seconds: "5" as NonEmptyStr, max_seconds: "30" as NonEmptyStr)
-                      let n = string_length(s: got.body)
-                      if !got.success || n < 4 || substring(s: got.body, start: n - 4, end: n) != "\n200" {
+                      let got = http.Client.GetQueryStdinWithin(url: "https://api.namecheap.com/xml.response" as NonEmptyStr, query: query)
+                      let got_body = match got {
+                        RestAnswered { answer: b } => b
+                        RestRefused { refusal: r } => return NamecheapHostsRefused { reason: concat("Namecheap getHosts transport refused: ", match r { RestStatusRefused { status: _, body: b } => b | RestTransportRefused { cause: c } => c | RestBodyUndecodable { status: _, cause: c } => c }) }
+                      }
+                      let n = string_length(s: got_body)
+                      if n < 4 || substring(s: got_body, start: n - 4, end: n) != "\n200" {
                         NamecheapHostsRefused { reason: "Namecheap getHosts transport did not return HTTP 200" }
                       } else {
                         namecheap_read_hosts_for_publication(body: substring(s: got.body, start: 0, end: n - 4),
