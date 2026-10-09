@@ -3068,6 +3068,54 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/runner/browser_ready_label_real_path_witness_test.dag",
       function: "revoke_executes_the_dropin_removal_for_real_on_a_scratch_root",
       expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.workspace_transcript_rate_real_execution", function: "a_real_tree_grows_gains_a_transcript_and_truncates_one_by_real_execution" },
+      entry: "dag/test/claim/workspace_transcript_rate_real_execution_witness_test.dag",
+      function: "a_real_tree_grows_gains_a_transcript_and_truncates_one_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.workspace_transcript_rate_real_execution", function: "a_root_that_does_not_exist_refuses_by_real_execution" },
+      entry: "dag/test/claim/workspace_transcript_rate_real_execution_witness_test.dag",
+      function: "a_root_that_does_not_exist_refuses_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.seeded_filler_real_execution", function: "a_seeded_filler_is_exactly_its_size_and_reproducible_by_real_execution" },
+      entry: "dag/test/claim/seeded_filler_real_execution_witness_test.dag",
+      function: "a_seeded_filler_is_exactly_its_size_and_reproducible_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.seeded_filler_real_execution", function: "two_seeds_give_different_fillers_by_real_execution" },
+      entry: "dag/test/claim/seeded_filler_real_execution_witness_test.dag",
+      function: "two_seeds_give_different_fillers_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.seeded_filler_real_execution", function: "a_zero_stand_in_compresses_and_the_filler_does_not_red_control_by_real_execution" },
+      entry: "dag/test/claim/seeded_filler_real_execution_witness_test.dag",
+      function: "a_zero_stand_in_compresses_and_the_filler_does_not_red_control_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.workspace_source_pack_archive_real_execution", function: "the_two_root_archive_carries_the_placeholder_and_reads_back_clean_by_real_execution" },
+      entry: "dag/test/claim/workspace_source_pack_archive_real_execution_witness_test.dag",
+      function: "the_two_root_archive_carries_the_placeholder_and_reads_back_clean_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.workspace_source_pack_archive_real_execution", function: "same_size_real_content_at_the_placeholder_path_is_refused_by_digest_by_real_execution" },
+      entry: "dag/test/claim/workspace_source_pack_archive_real_execution_witness_test.dag",
+      function: "same_size_real_content_at_the_placeholder_path_is_refused_by_digest_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.workspace_source_pack_archive_real_execution", function: "one_ordinary_file_and_zero_placeholders_packs_clean_by_real_execution" },
+      entry: "dag/test/claim/workspace_source_pack_archive_real_execution_witness_test.dag",
+      function: "one_ordinary_file_and_zero_placeholders_packs_clean_by_real_execution",
+      expectation: ExpectedToHold {}
     }
   ]
 }

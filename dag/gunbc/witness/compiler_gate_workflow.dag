@@ -166,7 +166,7 @@ import gunbc.fleet_release_bins_key {
   release_bins_pack_object_script, release_bins_pack_object_path_expression,
   compiler_pair_candidate_artifact_name, compiler_pair_candidate_retention_whole_days,
 }
-import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command, repo_self_test_command }
+import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command, repo_self_test_command, repo_self_slice_cost_control_command }
 import extdeps.exec.command { shell_command_render }
 import extdeps.github.expressions { interpolate, ContextAccess, Needs, Github, Expression, default_expression_spellings }
 import extdeps.github.log_annotations { emit_line_shell }
@@ -269,6 +269,28 @@ fn compiler_gate_hosted_build_prelude_bound_steps() -> List<CompilerGateBoundSte
 // lands off the run's critical path.
 data compiler_gate_clippy_step_name: String = "Lint every target"
 data compiler_gate_lint_step_id: String = "lint_all_targets"
+
+// THE EMITTED RUNTIME'S SLICE COST CONTROLS RUN HERE, beside the lint and under the same status
+// guard, because the blocking unit-test lane runs v1-compiler only and the runtime crate's controls
+// would otherwise only compile: specification without execution (DESIGN section 5). It is a step on
+// an existing job, not a job: the roster is closed to growth. Its subject and its RED / GREEN pair
+// are gunbc.repo_self_build repo_self_slice_cost_control_command's to state.
+data compiler_gate_slice_cost_step_name: String = "Run the slice cost controls"
+data compiler_gate_slice_cost_step_id: String = "slice_cost_controls"
+
+fn compiler_gate_slice_cost_step() -> Step {
+  RunStep {
+    name: Present { value: compiler_gate_slice_cost_step_name },
+    id: Present { value: compiler_gate_slice_cost_step_id },
+    run: concat(wrap_command_with_floor_attempt_receipt(command: repo_self_slice_cost_control_command()), "\n"),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: witness_step_status_guard_expression() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
 
 fn compiler_gate_lint_step() -> Step {
   RunStep {
@@ -857,6 +879,11 @@ fn compiler_gate_generated_bound_steps() -> List<CompilerGateBoundStep> {
       step_name: compiler_gate_clippy_step_name,
     },
     CompilerGateBoundStep {
+      step: compiler_gate_slice_cost_step(),
+      role: consumes_only(capabilities: [CargoCapability]),
+      step_name: compiler_gate_slice_cost_step_name,
+    },
+    CompilerGateBoundStep {
       step: compiler_gate_stage0_regen_step(),
       role: consumes_only(capabilities: [RustfmtCapability]),
       step_name: compiler_gate_stage0_regen_step_name,
@@ -923,6 +950,7 @@ fn compiler_gate_floor_scripts_are_renderable() -> Bool {
   wrap_command_is_renderable(command: witness_floor_run_script())
     && wrap_command_is_renderable(command: build_lane_run_script())
     && wrap_command_is_renderable(command: repo_self_clippy_command())
+    && wrap_command_is_renderable(command: repo_self_slice_cost_control_command())
     && wrap_command_is_renderable(command: repo_self_build_command(bins: witness_floor_required_bins))
     && required_ci_measurement_scripts_are_renderable()
 }
