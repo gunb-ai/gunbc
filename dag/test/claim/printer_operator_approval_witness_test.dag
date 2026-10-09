@@ -1,0 +1,61 @@
+module test.claim.printer_operator_approval_witness_test
+
+
+
+import gunbc.fleet.printer_report { report_has_state_and_error }
+
+import extdeps.shell.exec { ProcessObservation }
+import extdeps.tools.mosquitto_pub { mosquitto_pub_help_observation_admitted }
+
+
+
+import std.types { Bool,String }
+import gunbc.fleet.printer_operator_approval { print_subject, report_allows_start, start_claim_path }
+import gunbc.fleet_asset_identity { printer_01, printer_02 }
+
+test fn approval_subject_changes_with_device_bytes_version_or_attempt() -> Bool {
+  let base = print_subject(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "batch-a")
+  let variants = [
+    print_subject(printer: printer_02, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "batch-a"),
+    print_subject(printer: printer_01, digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", version: "1", attempt: "batch-a"),
+    print_subject(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "2", attempt: "batch-a"),
+    print_subject(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "batch-b"),
+  ]
+  all(variants, changed => base != changed)
+}
+
+test fn completed_or_idle_job_needs_nonblocking_error() -> Bool {
+ all(["IDLE","FINISH"],state=>all(["0","83935249"],code=>report_allows_start(text:join(["{\"print\":{\"gcode_state\":\"",state,"\",\"print_error\":",code,"}}"],"")))) &&
+ all(["RUNNING","PAUSE","PREPARE","SLICING","FAILED","UNKNOWN",""],state=>all(["0","83935249"],code=>!report_allows_start(text:join(["{\"print\":{\"gcode_state\":\"",state,"\",\"print_error\":",code,"}}"],""))))
+}
+test fn unknown_errors_and_incomplete_reports_remain_refused() -> Bool {
+ all(["1","83902511","83935248","83935250"],code=>!report_allows_start(text:join(["{\"print\":{\"gcode_state\":\"IDLE\",\"print_error\":",code,"}}"],""))) &&
+ !report_allows_start(text:"{\"print\":{\"gcode_state\":\"IDLE\"}}") &&
+ !report_allows_start(text:"{\"print\":{\"gcode_state\":\"IDLE\",\"print_error\":\"0\"}}") &&
+ !report_allows_start(text:"{\"print\":{\"gcode_state\":\"IDLE\",\"print_error\":0,\"print_error\":83902511}}") &&
+ !report_allows_start(text:"{}")
+}
+
+
+
+test fn help_exit_one_needs_the_actual_supported_version_banner() -> Bool {
+  mosquitto_pub_help_observation_admitted(observation: ProcessObservation {
+    exit_code: 1, stdout: "mosquitto_pub is a simple mqtt client.\nmosquitto_pub version 2.0.18 running on libmosquitto 2.0.18.\n", stderr: "",
+  }) &&
+  !mosquitto_pub_help_observation_admitted(observation: ProcessObservation { exit_code: 1, stdout: "", stderr: "failed" }) &&
+  !mosquitto_pub_help_observation_admitted(observation: ProcessObservation { exit_code: 2, stdout: "mosquitto_pub version 2.0.18", stderr: "" })
+}
+
+
+test fn partial_telemetry_does_not_count_as_a_complete_observation() -> Bool {
+  !report_has_state_and_error(text: "{\"print\":{\"nozzle_temper\":25}}") &&
+  !report_has_state_and_error(text: "{\"print\":{\"gcode_state\":\"IDLE\"}}") &&
+  report_has_state_and_error(text: "{\"print\":{\"gcode_state\":\"IDLE\",\"print_error\":83902511}}")
+}
+
+// Path ownership is independent of the request's cryptographic construction.
+// Supplied approval identities must stay in the fixed durable claim directory.
+test fn durable_claim_is_bound_to_approval_identity() -> Bool {
+ start_claim_path(escalation_id:"printer-start-a")=="/var/lib/gunbc/printer-starts/printer-start-a.claimed" &&
+ start_claim_path(escalation_id:"printer-start-a")!=start_claim_path(escalation_id:"printer-start-b")
+}

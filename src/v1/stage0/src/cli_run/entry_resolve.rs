@@ -251,6 +251,24 @@ pub(crate) fn import_closure_dag_files(
         .collect())
 }
 
+/// Compile-subject closure of caller-supplied seed sources over an explicit pool.
+///
+/// `compiler_tests` `resolve_source_closure` used to BFS `import` lines from the seed
+/// pairs. Same class as #13437 / #13464: a provider reached only by reference was omitted.
+/// This is not a second walker — it calls `extend_sources_to_both_closure_fixpoint`, and
+/// `resolve_virtual_entry_compile_closure` is this function over one seed.
+///
+/// SEED DELTA: production `resolve_source_closure` lost its import-line BFS. Net production
+/// seed is this wrapper; its controls are `virtual_entry_compile_closure_controls`, which
+/// reach it through the one-seed form.
+pub fn resolve_seeded_compile_closure(
+    seeds: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    pool_roots: &[String],
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let mei = try_index_for_run_or_owned_pool(pool_roots)?;
+    extend_sources_to_both_closure_fixpoint(seeds, &mei)
+}
+
 /// Compile-subject closure of an in-memory (or on-disk) entry over an explicit pool:
 /// the entry plus every module the one closure authority reaches from it.
 ///
@@ -268,12 +286,11 @@ pub fn resolve_virtual_entry_compile_closure(
     entry_content: &str,
     pool_roots: &[String],
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let mei = try_index_for_run_or_owned_pool(pool_roots)?;
     let seed = Rc::new(v1_compiler_compile::SourceFile {
         path: entry_path.to_string(),
         content: entry_content.to_string(),
     });
-    extend_sources_to_both_closure_fixpoint(vec![seed], &mei)
+    resolve_seeded_compile_closure(vec![seed], pool_roots)
 }
 
 #[cfg(test)]
@@ -694,8 +711,10 @@ pub(crate) fn build_module_graph_facts_live_uncached(
     // modules), while for SELECTION it is precisely the thing that destroys the answer. The loader
     // (`extend_with_bare_reference_closure`) is deliberately left alone.
     //
-    // Import-bearing files emit no reference edges at all (see `reference_resolution_facts` pass 2),
-    // so on an un-stripped file the union is a no-op and the graph is byte-identical to before.
+    // (SUPERSEDED: this measurement predates the all-importer producer. Import-bearing files now
+    // also emit strict-tier reference edges for modules they reach without importing, so the union
+    // is no longer a no-op on an un-stripped file. The selection-tier effect of that widening is
+    // measured by the floor, not asserted here.)
     // FIVE ROWS, EACH NET OF THE OTHERS. The import-edge facts are the module path index's first
     // demander, and that index is the first demander of every pool file's lexing, newline index
     // and heads parse (`pool_acquire`, which records those three as `pool_source_tokenize`,
@@ -3328,9 +3347,6 @@ impl ReferenceSelectionTier {
 
 /// One file's answer from the reference-edge producer.
 pub(crate) enum FileReferenceEdges {
-    /// The file carries `import` lines: its edges are owned EXACTLY by `import_resolution_facts`,
-    /// and emitting reference edges for it would only over-connect.
-    ImportBearing,
     /// The file's reference edges, every tier (`reference_edges_as_import_facts` filters).
     Edges(Vec<ReferenceEdgeRaw>),
     /// An import-less file the producer could not answer for, with the located cause.
@@ -3511,9 +3527,10 @@ pub(crate) fn reference_edges_for_file(
 }
 
 /// The same per-file answer with the pool name index DEMANDED rather than supplied. An unreadable
-/// or import-bearing file is decided from its own bytes, so a caller asking about one such file
-/// never builds the whole-pool heads index; only an import-less file, whose references must be
-/// resolved against pool names, forces it.
+/// file is decided from its own bytes and never builds the whole-pool heads index. EVERY readable
+/// file, import-bearing or not, answers its reference edges: an `import` line declares some of a
+/// module's dependencies, not all of them (`v2.std.artifact` imports three modules and reaches
+/// `v2.std.refinement` only by qualified reference), so imports never own a file's edge set.
 pub(crate) fn reference_edges_for_file_on_demand<
     R: std::ops::Deref<Target = ReferencePoolNames>,
 >(
@@ -3524,9 +3541,6 @@ pub(crate) fn reference_edges_for_file_on_demand<
     let Some(content) = content else {
         return FileReferenceEdges::Unaccounted("unreadable");
     };
-    if !extract_import_paths(content).is_empty() {
-        return FileReferenceEdges::ImportBearing;
-    }
     let names = names();
     let names: &ReferencePoolNames = &names;
     let Some(self_module) = extract_module_path(content) else {
@@ -3536,7 +3550,12 @@ pub(crate) fn reference_edges_for_file_on_demand<
         Ok(refs) => refs,
         Err(cause) => return FileReferenceEdges::Unaccounted(cause),
     };
-    let ParsedFileReferences { bare, chains, .. } = refs;
+    let ParsedFileReferences {
+        bare,
+        chains,
+        imports,
+        ..
+    } = refs;
     // Resolve to per-file (target_module → strongest confidence).
     let mut file_edges: std::collections::BTreeMap<String, RefEdgeResolution> =
         std::collections::BTreeMap::new();
@@ -3558,6 +3577,15 @@ pub(crate) fn reference_edges_for_file_on_demand<
         // it is never an edge: `String` in `std.primitives` once resolved UniqueBare to
         // std.string_type, a module the resolver never loads for that spelling.
         if super::is_substrate_vocabulary(name) {
+            continue;
+        }
+        // LEXICAL BINDING, NOT PROXIMITY, IN A FILE THAT IMPORTS: a bare name there is a local
+        // declaration or a name the file imports (the import edge already carries that), so
+        // guessing a pool declarer for it is a heuristic the closed substrate never needs. It
+        // manufactured a phantom edge from `std.optional { Present }` importers to a fixture that
+        // merely declares the same spelling. The proximity tier below stays for import-less files,
+        // where it already applied.
+        if !imports.is_empty() {
             continue;
         }
         if let Some(mods) = names.decl_index.get(name) {
@@ -3663,7 +3691,6 @@ pub fn reference_resolution_facts(
             }
             let content = std::fs::read_to_string(&file).ok();
             match reference_edges_for_file(&rel, content.as_deref(), &names) {
-                FileReferenceEdges::ImportBearing => {}
                 FileReferenceEdges::Edges(file_edges) => edges.extend(file_edges),
                 FileReferenceEdges::Unaccounted(cause) => {
                     unaccounted.push(ReferenceAccountingRefusal {

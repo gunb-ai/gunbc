@@ -78,105 +78,19 @@ mod compiler_tests {
             .collect()
     }
 
-    fn parse_module_or_panic(path: &str, content: &str) -> std::rc::Rc<crate::v1_std_core::Node> {
-        let tokens = tokenize(
-            content.to_string(),
-            path.to_string(),
-            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
-        );
-        let mut source_indices = HashMap::new();
-        source_indices.insert(
-            path.to_string(),
-            crate::v1_std_core::build_newline_index(path.to_string(), content.to_string()),
-        );
-        let parsed = crate::v1_compiler_parse::parse_with_table(
-            tokens.clone(),
-            std::rc::Rc::new(source_indices),
-            crate::v1_std_core::empty_intern_table(),
-        );
-        if let Some(err) = parsed.result.error.as_ref() {
-            panic!(
-                "failed to parse {} while building source closure: {}",
-                path,
-                crate::v1_std_core::diagnostic_to_message(err.diagnostic.clone())
-            );
-        }
-        parsed
-            .result
-            .module
-            .clone()
-            .unwrap_or_else(|| panic!("{} produced no module while building source closure", path))
-    }
-
-    fn module_path_from_source(path: &str, content: &str) -> String {
-        parse_module_or_panic(path, content).name.clone()
-    }
-
-    fn import_paths_from_source(path: &str, content: &str) -> Vec<String> {
-        let module = parse_module_or_panic(path, content);
-        crate::v1_std_core::module_imports(module)
-            .iter()
-            .map(|imp| imp.name.clone())
-            .collect()
-    }
-
-    fn build_source_index(roots: &[&str]) -> HashMap<String, (String, String)> {
-        let mut index = HashMap::new();
-        for root in roots {
-            for (path, content) in discover_dag_files(root) {
-                let module_path = module_path_from_source(&path, &content);
-                if let Some((existing, _)) = index.get(&module_path) {
-                    panic!(
-                        "duplicate module path '{}': declared in both {} and {}",
-                        module_path, existing, path
-                    );
-                }
-                index.insert(module_path, (path, content));
-            }
-        }
-        index
-    }
-
     fn resolve_source_closure(
         entry_pairs: Vec<(String, String)>,
         roots: &[&str],
     ) -> Vec<std::rc::Rc<crate::v1_compiler_compile::SourceFile>> {
-        let index = build_source_index(roots);
-        let mut seen =
-            HashMap::<String, std::rc::Rc<crate::v1_compiler_compile::SourceFile>>::new();
-        let mut queue = Vec::new();
-
-        for (path, content) in entry_pairs {
-            let module_path = module_path_from_source(&path, &content);
-            seen.insert(
-                module_path,
-                std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
-                    path: path.clone(),
-                    content: content.clone(),
-                }),
-            );
-            queue.push((path, content));
-        }
-
-        while let Some((_path, content)) = queue.pop() {
-            for module_path in import_paths_from_source(&_path, &content) {
-                if seen.contains_key(&module_path) {
-                    continue;
-                }
-                if let Some((path, file_content)) = index.get(&module_path).cloned() {
-                    seen.insert(
-                        module_path,
-                        std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
-                            path: path.clone(),
-                            content: file_content.clone(),
-                        }),
-                    );
-                    queue.push((path, file_content));
-                }
-            }
-        }
-
-        let mut result: Vec<_> = seen.into_iter().map(|(_, v)| v).collect();
+        let seeds = entry_pairs
+            .into_iter()
+            .map(|(path, content)| {
+                std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path, content })
+            })
+            .collect();
+        let pool: Vec<String> = roots.iter().map(|r| (*r).to_string()).collect();
+        let mut result = crate::cli_run::resolve_seeded_compile_closure(seeds, &pool)
+            .unwrap_or_else(|e| panic!("resolve_source_closure: {}", e));
         result.sort_by(|a, b| a.path.cmp(&b.path));
         result
     }

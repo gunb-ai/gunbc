@@ -62,6 +62,8 @@ fn cataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.tools.sed", decl_name: "sed_program"),
     decl_ref(module_path: "extdeps.tools.conntrack", decl_name: "conntrack_program"),
     decl_ref(module_path: "extdeps.tools.mosquitto_pub", decl_name: "mosquitto_pub_program"),
+    decl_ref(module_path: "extdeps.tools.mosquitto_sub", decl_name: "mosquitto_sub_program"),
+    decl_ref(module_path: "extdeps.tools.mosquitto_rr", decl_name: "mosquitto_rr_program"),
     decl_ref(module_path: "extdeps.tools.busybox", decl_name: "busybox_httpd_command"),
     decl_ref(module_path: "extdeps.tools.busybox", decl_name: "busybox_tftpd_over_udpsvd_command"),
     decl_ref(module_path: "extdeps.tools.busybox", decl_name: "busybox_dd_sparse_image_command"),
@@ -165,6 +167,7 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.package_managers.pip", decl_name: "pip_program"),
     decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_program"),
     decl_ref(module_path: "extdeps.cadquery.cadquery", decl_name: "python_program"),
+    decl_ref(module_path: "extdeps.dpkg", decl_name: "dpkg_query_status_command"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "scp_program"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_add_program"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "openssh_client_program"),
@@ -196,6 +199,7 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.virtualization.firecracker", decl_name: "firecracker_run_config_command"),
     decl_ref(module_path: "extdeps.virtualization.firecracker", decl_name: "firecracker_jailer_run_command"),
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_test_command"),
+    decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_run_command"),
     decl_ref(module_path: "extdeps.browser.chromium", decl_name: "chromium_version_command"),
   ]
   = ProgramIdentity { invocation: invocation, catalog: UncatalogedDebt }

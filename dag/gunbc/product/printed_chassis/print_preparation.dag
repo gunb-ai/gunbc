@@ -1,0 +1,92 @@
+module product.printed_chassis.print_preparation
+import extdeps.languages.json.parse {JsonDocumentUnreadable}
+import extdeps.languages.json.emit {JsonNull,JsonBool,JsonNumber,JsonString,JsonArray}
+import extdeps.shell.exec {ProcessOutputAbsent,ProcessOutputPresent}
+
+import std.types {String,List,Int,NonEmptyStr,Bool,FilePath}
+import product.printing.process_geometry {preserves_print_plane,prototype_support_policy,support_policy_json,support_settings}
+import std.process {ProcessExit,ExitSuccess,exit_failure}
+import std.measure {millimeter_count, Micrometer, micrometer, micrometer_count}
+import extdeps.printing.bambu_lab_a1_mini {a1_mini_build_envelope}
+import extdeps.printing.fdm {build_envelope_x,build_envelope_y,build_envelope_z}
+import extdeps.languages.json.emit {JsonValue,json_object,json_kv,json_string,json_array,json_int,serialize_json}
+import extdeps.filesystem.filesystem_io {Filesystem}
+import extdeps.languages.json.parse {parse_json_document,JsonDocumentParsed}
+import extdeps.languages.json.emit {JsonObject}
+import extdeps.printing.orca_slicer {orca_slicer_linux_aarch64_appimage_sha256}
+import extdeps.cadquery.cadquery {cadquery_run_program_command}
+import extdeps.exec.command {LocalExec}
+import extdeps.shell.exec {ProcessRefused}
+import gunbc.command_runner {run_shell_command_capture}
+import product.printed_chassis.print_preparation_kernel {source}
+import product.printed_chassis.slice_run {slice_profile_in}
+import extdeps.shell
+
+// Product decisions stay in modeled inputs; the kernel applies rigid transforms,
+// checks the realized solids, and preserves instance names through the archive.
+type PlatePlacement {id:String,rx:Int,ry:Int,rz:Int,x_um:Micrometer,y_um:Micrometer}
+type PlatePreparation {placements:List<PlatePlacement>,support_free:List<String>}
+data deposited_path_edge_allowance_um:Micrometer=micrometer(count: 250)
+fn placement_admitted(p:PlatePlacement) -> Bool {
+ preserves_print_plane(rx:p.rx,ry:p.ry) && p.id!="" && micrometer_count(m: p.x_um)>=0 && micrometer_count(m: p.y_um)>=0 && all([p.rx,p.ry,p.rz],n=>n==0||n==90||n==180||n==0-90||n==0-180)
+}
+fn placement_json(p:PlatePlacement) -> JsonValue {
+ json_object(members:[json_kv(key:"id",value:json_string(s:p.id)),json_kv(key:"rotation_degrees",value:json_array(elements:map([p.rx,p.ry,p.rz],v=>json_int(n:v)))),json_kv(key:"minimum_xy_um",value:json_array(elements:map([micrometer_count(m: p.x_um) as Int,micrometer_count(m: p.y_um) as Int],v=>json_int(n:v))))])
+}
+fn envelope_json() -> JsonValue {
+ json_array(elements:map([build_envelope_x(e:a1_mini_build_envelope),build_envelope_y(e:a1_mini_build_envelope),build_envelope_z(e:a1_mini_build_envelope)],m=>json_int(n:millimeter_count(m:m))))
+}
+fn literal(s:String) -> String {serialize_json(v:json_string(s:s))}
+fn run_kernel(script:String,call:String) -> ProcessExit {
+ if !Filesystem.WriteCreateNew(path:script,content:concat(source(),call)).success {return exit_failure(reason:"Preparation script path already exists or is not writable")}
+ match run_shell_command_capture(command:cadquery_run_program_command(script_path:script),transport:LocalExec) {ProcessRefused {exit_code:_,stderr:e}=>exit_failure(reason:e) ProcessOutputAbsent=>ExitSuccess ProcessOutputPresent {text:_}=>ExitSuccess}
+}
+
+// Current unpowered PLA process admission. This is explicit product policy, not a
+// filament thermal/structural certification. Nozzle/bed/feed changes need a new policy.
+fn required_settings() -> JsonValue {
+ json_object(members:concat(support_settings(p:prototype_support_policy),[
+  json_kv(key:"printer_model",value:json_string(s:"Bambu Lab A1 mini")),
+  json_kv(key:"nozzle_diameter",value:json_array(elements:[json_string(s:"0.4")])),
+  json_kv(key:"filament_type",value:json_array(elements:[json_string(s:"PLA")])),
+  json_kv(key:"nozzle_temperature",value:json_array(elements:[json_string(s:"220")])),
+  json_kv(key:"textured_plate_temp",value:json_array(elements:[json_string(s:"65")])),
+  json_kv(key:"print_sequence",value:json_string(s:"by layer")),
+  json_kv(key:"wall_loops",value:json_string(s:"4")),
+  json_kv(key:"sparse_infill_density",value:json_string(s:"20%"))
+ ]))
+}
+type StagedProfiles {machine:String,filament:String,process:String}
+fn staged_profiles(output:String) -> StagedProfiles {StagedProfiles {machine:concat(output,".machine.json"),filament:concat(output,".filament.json"),process:concat(output,".process.json")}}
+fn stage_profile(source:String,destination:String) -> Bool {
+ let read=Filesystem.Read(path:source)
+ if !read.success {false} else {match parse_json_document(s:read.content) {JsonDocumentParsed {value:JsonObject {members:_}}=>Filesystem.WriteCreateNew(path:destination,content:read.content).success JsonDocumentParsed {value:JsonNull}=>false JsonDocumentParsed {value:JsonBool {value:_}}=>false JsonDocumentParsed {value:JsonNumber {lexeme:_}}=>false JsonDocumentParsed {value:JsonString {value:_}}=>false JsonDocumentParsed {value:JsonArray {elements:_}}=>false JsonDocumentUnreadable {gap:_}=>false}}
+}
+fn readback_call(project:String,plan:PlatePreparation,receipt:String) -> String {
+ let profiles=staged_profiles(output:project)
+ let paths=serialize_json(v:json_object(members:[json_kv(key:"machine",value:json_string(s:profiles.machine)),json_kv(key:"filament",value:json_string(s:profiles.filament)),json_kv(key:"process",value:json_string(s:profiles.process))]))
+ join(["\nreport=readback(",literal(s:project),",",serialize_json(v:json_array(elements:map(plan.placements,p=>json_string(s:p.id)))),",",serialize_json(v:required_settings()),",",serialize_json(v:envelope_json()),",",serialize_json(v:json_array(elements:map(plan.support_free,s=>json_string(s:s)))),",['bed_temperature_too_high_than_filament','not_support_traditional_timelapse'],",to_string(micrometer_count(m: deposited_path_edge_allowance_um)),")\nsupport_geometry=report['paths'].pop('support_geometry')\nsupport_path=pathlib.Path(",literal(s:concat(project,".supports.json")),")\nsupport_payload=json.dumps(dict(schema='gunbc.generated-support-centerlines.v1',project_sha256=report['project_sha256'],policy=json.loads(",literal(s:serialize_json(v:support_policy_json(p:prototype_support_policy))),"),objects=support_geometry),indent=2).encode()\nsupport_path.write_bytes(support_payload)\nreport['support_geometry_sha256']=hashlib.sha256(support_payload).hexdigest()\nreport['cad_binding']=json.loads(pathlib.Path(",literal(s:concat(project,".source.3mf.cad-binding.json")),").read_text())\nreport['source_project_sha256']=hashlib.sha256(pathlib.Path(",literal(s:concat(project,".source.3mf")),").read_bytes()).hexdigest()\nreport['profile_sha256']=dict((k,hashlib.sha256(pathlib.Path(v).read_bytes()).hexdigest()) for k,v in ",paths,".items())\nreport['orca_archive_sha256']=",literal(s:orca_slicer_linux_aarch64_appimage_sha256 as String),"\nreport['reader_program_sha256']=hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest()\npathlib.Path(",literal(s:receipt),").write_text(json.dumps(report,indent=2)+'\\n')\n"],"")
+}
+fn prepare(cad:String,plan:PlatePreparation,output:String,appimage:String,machine:String,filament:String,process:String) -> ProcessExit {
+ if count(plan.placements)==0 || !all(plan.placements,p=>placement_admitted(p:p)) {return exit_failure(reason:"Invalid placements or rotation away from modeled print plane; build-stage stability review required")}
+ let profiles=staged_profiles(output:output)
+ if !stage_profile(source:machine,destination:profiles.machine) || !stage_profile(source:filament,destination:profiles.filament) || !stage_profile(source:process,destination:profiles.process) {return exit_failure(reason:"Cannot snapshot slicer profiles; malformed input or existing output")}
+ let scratch=concat(output,".orca")
+ if !shell.Mkdir.Parents(path:scratch as FilePath).success {return exit_failure(reason:"Cannot isolate slicer scratch output")}
+ let model=concat(output,".source.3mf")
+ let pack=join(["\npack_plate(",literal(s:cad),",",serialize_json(v:json_array(elements:map(plan.placements,p=>placement_json(p:p)))),",",literal(s:model),",",serialize_json(v:envelope_json()),")\n"],"")
+ match run_kernel(script:concat(output,".pack.py"),call:pack) {
+  ExitSuccess=>match slice_profile_in(directory:scratch,appimage:appimage,model:model,output:output,machine:profiles.machine,filament:profiles.filament,process:profiles.process) {
+   ExitSuccess=>run_kernel(script:concat(output,".readback.py"),call:readback_call(project:output,plan:plan,receipt:concat(output,".readback.json")))
+   other=>other
+  }
+  other=>other
+ }
+}
+
+// Read an existing immutable archive through the same process observer as admission.
+// Retrospective evidence never authorizes a start or rewrites an original receipt.
+fn observe_process_batch(projects_json:String,output:String) -> ProcessExit {
+ if !starts_with(s:output,prefix:"/") || !shell.Mkdir.Parents(path:output as FilePath).success {return exit_failure(reason:"Observation output must be an absolute writable directory")}
+ run_kernel(script:concat(output,"/process-reader.py"),call:join(["\nprojects=json.loads(",literal(s:projects_json),")\nassert isinstance(projects,list) and projects and all(isinstance(p,str) and p for p in projects)\nfor project in projects:\n    report=observe_archived_process(project)\n    (pathlib.Path(",literal(s:output),")/(report['project_sha256']+'.process.json')).open('x').write(json.dumps(report,indent=2)+'\\n')\n"],""))
+}
