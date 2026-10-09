@@ -27,8 +27,10 @@ import extdeps.tools.jq {
   JqProgram,
   JqProgramExit,
   JqRawOutput,
+  JqBinding,
   JqJsonBinding,
   JqBindingName,
+  JqJsonOutput,
   JqLastResultExit,
   jq_authority,
   JqOutcome,
@@ -73,9 +75,6 @@ import extdeps.bmc.openbmc_operation {
   OpenBmcDiskUsageKib,
   OpenBmcFanConfigDesired,
   OpenBmcFanConfigQuery,
-  OpenBmcFanConfigScalar,
-  OpenBmcFanConfigValidate,
-  OpenBmcFanConfigVerify,
   OpenBmcFanControllerCount,
   OpenBmcFanControllerNameAt,
   OpenBmcFanInputAt,
@@ -201,8 +200,8 @@ type OpenBmcStepwiseController {
   outputs: List<Percent>
 }
 
-fn openbmc_fan_config_desired_json(desired: OpenBmcFanConfigDesired) -> String {
-  serialize_json(v: json_object(members: [
+fn openbmc_fan_config_desired_value(desired: OpenBmcFanConfigDesired) -> JsonValue {
+  json_object(members: [
     json_kv(key: "minimum", value: json_int(n: percent_count(desired.minimum_duty))),
     json_kv(key: "zone_failsafe_duty", value: json_int(n: percent_count(desired.zone_failsafe_duty))),
     json_kv(key: "sensor_failsafe", value: json_int(n: percent_count(desired.sensor_failsafe_duty))),
@@ -226,7 +225,11 @@ fn openbmc_fan_config_desired_json(desired: OpenBmcFanConfigDesired) -> String {
         json_string(s: value as String)
       )),
     ),
-  ]))
+  ])
+}
+
+fn openbmc_fan_config_desired_json(desired: OpenBmcFanConfigDesired) -> String {
+  serialize_json(v: openbmc_fan_config_desired_value(desired: desired))
 }
 
 type OpenBmcFanController {
@@ -538,136 +541,6 @@ fn openbmc_execute(
         sensor_path: sensor_path,
       )
       }
-    OpenBmcFanConfigScalar { config_path, query } =>
-      match query {
-        OpenBmcMinimumDuty =>
-          openbmc.PasswordSshTransport.FanMinimumDuty(
-        host: session.host,
-        username: session.username,
-        password: session.password,
-        known_hosts_path: session.known_hosts_path,
-        config_path: config_path,
-      )
-        OpenBmcZoneFailsafeDuty =>
-          openbmc.PasswordSshTransport.FanZoneFailsafeDuty(
-        host: session.host,
-        username: session.username,
-        password: session.password,
-        known_hosts_path: session.known_hosts_path,
-        config_path: config_path,
-      )
-        OpenBmcSensorFailsafeDuty =>
-          openbmc.PasswordSshTransport.FanSensorFailsafeDuty(
-        host: session.host,
-        username: session.username,
-        password: session.password,
-        known_hosts_path: session.known_hosts_path,
-        config_path: config_path,
-      )
-        OpenBmcPositiveHysteresis =>
-          openbmc.PasswordSshTransport.FanPositiveHysteresis(
-        host: session.host,
-        username: session.username,
-        password: session.password,
-        known_hosts_path: session.known_hosts_path,
-        config_path: config_path,
-      )
-        OpenBmcNegativeHysteresis =>
-          openbmc.PasswordSshTransport.FanNegativeHysteresis(
-        host: session.host,
-        username: session.username,
-        password: session.password,
-        known_hosts_path: session.known_hosts_path,
-        config_path: config_path,
-      )
-        OpenBmcReadingCount =>
-          openbmc.PasswordSshTransport.FanReadingCount(
-        host: session.host,
-        username: session.username,
-        password: session.password,
-        known_hosts_path: session.known_hosts_path,
-        config_path: config_path,
-      )
-        OpenBmcOutputCount =>
-          openbmc.PasswordSshTransport.FanOutputCount(
-        host: session.host,
-        username: session.username,
-        password: session.password,
-        known_hosts_path: session.known_hosts_path,
-        config_path: config_path,
-      )
-        OpenBmcReadingAt { index } =>
-          openbmc.PasswordSshTransport.FanReadingAt(
-        host: session.host,
-        username: session.username,
-        password: session.password,
-        known_hosts_path: session.known_hosts_path,
-        config_path: config_path,
-        index: index,
-      )
-        OpenBmcOutputAt { index } =>
-          openbmc.PasswordSshTransport.FanOutputAt(
-        host: session.host,
-        username: session.username,
-        password: session.password,
-        known_hosts_path: session.known_hosts_path,
-        config_path: config_path,
-        index: index,
-      )
-        OpenBmcFanControllerCount =>
-          openbmc.PasswordSshTransport.FanControllerCount(
-        host: session.host,
-        username: session.username,
-        password: session.password,
-        known_hosts_path: session.known_hosts_path,
-        config_path: config_path,
-      )
-        OpenBmcFanControllerNameAt { index } =>
-          openbmc.PasswordSshTransport.FanControllerNameAt(
-        host: session.host,
-        username: session.username,
-        password: session.password,
-        known_hosts_path: session.known_hosts_path,
-        config_path: config_path,
-        index: index,
-      )
-        OpenBmcFanInputCountAt { fan_index } =>
-          openbmc.PasswordSshTransport.FanInputCountAt(
-        host: session.host,
-        username: session.username,
-        password: session.password,
-        known_hosts_path: session.known_hosts_path,
-        config_path: config_path,
-        fan_index: fan_index,
-      )
-        OpenBmcFanInputAt { fan_index, input_index } =>
-          openbmc.PasswordSshTransport.FanInputAt(
-        host: session.host,
-        username: session.username,
-        password: session.password,
-        known_hosts_path: session.known_hosts_path,
-        config_path: config_path,
-        fan_index: fan_index,
-        input_index: input_index,
-      )
-      }
-    OpenBmcFanConfigValidate { config_path } =>
-      openbmc.PasswordSshTransport.FanConfigValidate(
-        host: session.host,
-        username: session.username,
-        password: session.password,
-        known_hosts_path: session.known_hosts_path,
-        config_path: config_path,
-      )
-    OpenBmcFanConfigVerify { config_path, desired } =>
-      openbmc.PasswordSshTransport.FanConfigVerify(
-        host: session.host,
-        username: session.username,
-        password: session.password,
-        known_hosts_path: session.known_hosts_path,
-        config_path: config_path,
-        desired_json: openbmc_fan_config_desired_json(desired: desired),
-      )
     OpenBmcPathIsWritable { path } =>
       openbmc.PasswordSshTransport.PathIsWritable(
         host: session.host,
@@ -1574,18 +1447,134 @@ fn openbmc_fan_config_stepwise_count_result(outcome: JqOutcome) -> OpenBmcIntege
   }
 }
 
-fn openbmc_fan_config_raw(
-  session: PasswordSshSession,
-  config_path: NonEmptyStr,
+// THE FAN-CONFIG SCALAR POPULATION, DISSOLVED AT THE ROOT. The raw sshpass/ssh argv rows in
+// openbmc_password_ssh_transport (FanMinimumDuty through FanInputAt) are gone; each query now
+// lowers to the SAME JqInvocation the StepwiseCount migration proved (DESIGN 18): a semantic
+// program from the data row below -- byte-identical to the old argv program word -- the binding
+// value as canonical JSON (json_int lexeme = the decimal word the old {index} substitution
+// spelled), the file operand after the program, and a JqOutcome decode that reads no success:
+// Bool. The transport sees one grammar-owned command string via RunCommand, never argv.
+data openbmc_fan_config_minimum_duty_program: String = "[.zones[] | select(any(.pids[]; .name == \"TEMP_SOC\" and .type == \"stepwise\"))][0].minThermalOutput | floor"
+data openbmc_fan_config_zone_failsafe_duty_program: String = "[.zones[] | select(any(.pids[]; .name == \"TEMP_SOC\" and .type == \"stepwise\"))][0].failsafePercent | floor"
+data openbmc_fan_config_sensor_failsafe_duty_program: String = "[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0].failsafePercent | floor"
+data openbmc_fan_config_positive_hysteresis_program: String = "[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0].pid.positiveHysteresis | floor"
+data openbmc_fan_config_negative_hysteresis_program: String = "[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0].pid.negativeHysteresis | floor"
+data openbmc_fan_config_reading_count_program: String = "[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0].pid.reading | length"
+data openbmc_fan_config_output_count_program: String = "[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0].pid.output | length"
+data openbmc_fan_config_reading_at_program: String = "[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0].pid.reading | to_entries | sort_by(.key | tonumber) | .[$index].value | floor"
+data openbmc_fan_config_output_at_program: String = "[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0].pid.output | to_entries | sort_by(.key | tonumber) | .[$index].value | floor"
+data openbmc_fan_config_controller_count_program: String = "[.zones[].pids[] | select(.type == \"fan\")] | length"
+data openbmc_fan_config_controller_name_at_program: String = "[.zones[].pids[] | select(.type == \"fan\")][$index].name"
+data openbmc_fan_config_input_count_at_program: String = "[.zones[].pids[] | select(.type == \"fan\")][$fan_index].inputs | length"
+data openbmc_fan_config_input_at_program: String = "[.zones[].pids[] | select(.type == \"fan\")][$fan_index].inputs[$input_index]"
+data openbmc_fan_config_validate_program: String = "empty"
+data openbmc_fan_config_verify_program: String = "([.zones[] | select(any(.pids[]; .name == \"TEMP_SOC\" and .type == \"stepwise\"))]) as $zones | ([.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")]) as $pids | ([.zones[].pids[] | select(.name == $desired.fan_pid_entry and .type == \"fan\")]) as $fans | (($zones | length) == 1) and (($pids | length) == 1) and (($fans | length) == 1) and ($zones[0].minThermalOutput == $desired.minimum) and ($zones[0].failsafePercent == $desired.zone_failsafe_duty) and ($pids[0].failsafePercent == $desired.sensor_failsafe) and ($pids[0].pid.positiveHysteresis == $desired.positive_hysteresis) and ($pids[0].pid.negativeHysteresis == $desired.negative_hysteresis) and ($pids[0].pid.reading == ($desired.readings | to_entries | map(\{key: (.key | tostring), value: .value}) | from_entries)) and ($pids[0].pid.output == ($desired.outputs | to_entries | map(\{key: (.key | tostring), value: .value}) | from_entries)) and ($fans[0].inputs == $desired.fan_inputs)"
+
+fn openbmc_fan_config_scalar_program(query: OpenBmcFanConfigQuery) -> String {
+  match query {
+    OpenBmcMinimumDuty => openbmc_fan_config_minimum_duty_program
+    OpenBmcZoneFailsafeDuty => openbmc_fan_config_zone_failsafe_duty_program
+    OpenBmcSensorFailsafeDuty => openbmc_fan_config_sensor_failsafe_duty_program
+    OpenBmcPositiveHysteresis => openbmc_fan_config_positive_hysteresis_program
+    OpenBmcNegativeHysteresis => openbmc_fan_config_negative_hysteresis_program
+    OpenBmcReadingCount => openbmc_fan_config_reading_count_program
+    OpenBmcOutputCount => openbmc_fan_config_output_count_program
+    OpenBmcReadingAt { index: index } => openbmc_fan_config_reading_at_program
+    OpenBmcOutputAt { index: index } => openbmc_fan_config_output_at_program
+    OpenBmcFanControllerCount => openbmc_fan_config_controller_count_program
+    OpenBmcFanControllerNameAt { index: index } => openbmc_fan_config_controller_name_at_program
+    OpenBmcFanInputCountAt { fan_index: fan_index } => openbmc_fan_config_input_count_at_program
+    OpenBmcFanInputAt { fan_index: fan_index, input_index: input_index } => openbmc_fan_config_input_at_program
+  }
+}
+
+fn openbmc_fan_config_scalar_bindings(query: OpenBmcFanConfigQuery) -> List<JqBinding> {
+  match query {
+    OpenBmcMinimumDuty =>
+      Empty
+    OpenBmcZoneFailsafeDuty =>
+      Empty
+    OpenBmcSensorFailsafeDuty =>
+      Empty
+    OpenBmcPositiveHysteresis =>
+      Empty
+    OpenBmcNegativeHysteresis =>
+      Empty
+    OpenBmcReadingCount =>
+      Empty
+    OpenBmcOutputCount =>
+      Empty
+    OpenBmcReadingAt { index: index } =>
+      [JqJsonBinding { name: JqBindingName { name: "index" }, value: json_int(n: index) }]
+    OpenBmcOutputAt { index: index } =>
+      [JqJsonBinding { name: JqBindingName { name: "index" }, value: json_int(n: index) }]
+    OpenBmcFanControllerCount =>
+      Empty
+    OpenBmcFanControllerNameAt { index: index } =>
+      [JqJsonBinding { name: JqBindingName { name: "index" }, value: json_int(n: index) }]
+    OpenBmcFanInputCountAt { fan_index: fan_index } =>
+      [JqJsonBinding { name: JqBindingName { name: "fan_index" }, value: json_int(n: fan_index) }]
+    OpenBmcFanInputAt { fan_index: fan_index, input_index: input_index } =>
+      [
+      JqJsonBinding { name: JqBindingName { name: "fan_index" }, value: json_int(n: fan_index) },
+      JqJsonBinding { name: JqBindingName { name: "input_index" }, value: json_int(n: input_index) },
+    ]
+  }
+}
+
+fn openbmc_fan_config_scalar_invocation(
   query: OpenBmcFanConfigQuery,
-) -> PasswordSshExecResult {
-  openbmc_execute(
-    session: session,
-    operation: OpenBmcFanConfigScalar {
-      config_path: config_path,
-      query: query,
-    },
-  )
+  config_path: NonEmptyStr,
+) -> JqInvocation {
+  JqInvocation {
+    program: JqProgram { source: openbmc_fan_config_scalar_program(query: query) },
+    bindings: openbmc_fan_config_scalar_bindings(query: query),
+    input: JqInputFile { path: config_path },
+    output_encoding: JqRawOutput,
+    exit_policy: JqLastResultExit,
+  }
+}
+
+// The decode labels the refusal after the queried field, so a consumer can say WHICH reading is
+// absent or malformed without re-deriving the query. The StepwiseCount decode labels itself the
+// same way ("OpenBMC fan stepwise count is absent").
+fn openbmc_fan_config_scalar_label(query: OpenBmcFanConfigQuery) -> String {
+  match query {
+    OpenBmcMinimumDuty => "minimum duty"
+    OpenBmcZoneFailsafeDuty => "zone failsafe duty"
+    OpenBmcSensorFailsafeDuty => "sensor failsafe duty"
+    OpenBmcPositiveHysteresis => "positive hysteresis"
+    OpenBmcNegativeHysteresis => "negative hysteresis"
+    OpenBmcReadingCount => "reading count"
+    OpenBmcOutputCount => "output count"
+    OpenBmcReadingAt { index: index } => "reading"
+    OpenBmcOutputAt { index: index } => "output"
+    OpenBmcFanControllerCount => "fan controller count"
+    OpenBmcFanControllerNameAt { index: index } => "fan controller name"
+    OpenBmcFanInputCountAt { fan_index: fan_index } => "fan input count"
+    OpenBmcFanInputAt { fan_index: fan_index, input_index: input_index } => "fan input"
+  }
+}
+
+// THE JqOutcome DECODES, PER SHAPE. JqExecutionRefused carries jq's stderr (the transport and
+// the execution refused); JqOutputAbsent is the exit-4 / no-output absence; JqOutputPresent
+// carries the -r raw text. No success: Bool anywhere on this path.
+fn openbmc_fan_config_integer_result(
+  outcome: JqOutcome,
+  label: String,
+) -> OpenBmcIntegerResult {
+  match outcome {
+    JqExecutionRefused { exit_code: _, stderr: stderr } =>
+      OpenBmcIntegerRefused { reason: stderr }
+    JqOutputAbsent =>
+      OpenBmcIntegerRefused { reason: concat("OpenBMC fan config ", label, " is absent") }
+    JqOutputPresent { text: text } =>
+      match parse_int(s: trim(text)) {
+        Absent =>
+          OpenBmcIntegerRefused { reason: concat("OpenBMC fan config ", label, " is not an integer") }
+        Present { value } => OpenBmcIntegerObserved { value: value }
+      }
+  }
 }
 
 fn openbmc_fan_config_integer(
@@ -1593,18 +1582,44 @@ fn openbmc_fan_config_integer(
   config_path: NonEmptyStr,
   query: OpenBmcFanConfigQuery,
 ) -> OpenBmcIntegerResult {
-  let result = openbmc_fan_config_raw(
-    session: session,
-    config_path: config_path,
-    query: query,
-  )
-  if !result.success {
-    OpenBmcIntegerRefused { reason: result.stderr }
-  } else {
-    match parse_int(s: trim(result.stdout)) {
-      Absent => OpenBmcIntegerRefused { reason: "OpenBMC integer response is invalid" }
-      Present { value } => OpenBmcIntegerObserved { value: value }
-    }
+  match jq_invocation_process_plan(
+    invocation: openbmc_fan_config_scalar_invocation(query: query, config_path: config_path),
+  ) {
+    Rejected { diagnostics: _ } =>
+      OpenBmcIntegerRefused { reason: "OpenBMC fan config scalar query could not be lowered to a jq invocation" }
+    Accepted { value: plan, diagnostics: _ } =>
+      match openbmc_remote_jq_execute(session: session, plan: plan) {
+        OpenBmcRemoteJqRefused { cause: cause } =>
+          OpenBmcIntegerRefused { reason: openbmc_remote_jq_refusal_text(cause: cause) }
+        OpenBmcRemoteJqExecuted { observation: observation } =>
+          openbmc_fan_config_integer_result(
+            outcome: jq_classify_observation(plan: plan, observation: observation),
+            label: openbmc_fan_config_scalar_label(query: query),
+          )
+      }
+  }
+}
+
+// Under -r a null last result prints the LITERAL "null" (exit 1 is a legitimate value, not an
+// error). A name query that produced null means the controller is missing, not a controller
+// NAMED "null" -- the same null-is-absence stance the ObjectMapper service-at pin takes (PR
+// #10148 review), expressed here in the decode because the program text stays byte-identical to
+// the dissolved raw argv.
+fn openbmc_fan_config_string_result(
+  outcome: JqOutcome,
+  label: String,
+) -> OpenBmcStringResult {
+  match outcome {
+    JqExecutionRefused { exit_code: _, stderr: stderr } =>
+      OpenBmcStringRefused { reason: stderr }
+    JqOutputAbsent =>
+      OpenBmcStringRefused { reason: concat("OpenBMC fan config ", label, " is absent") }
+    JqOutputPresent { text: text } =>
+      match trim(text) {
+        "" => OpenBmcStringRefused { reason: concat("OpenBMC fan config ", label, " is blank") }
+        "null" => OpenBmcStringRefused { reason: concat("OpenBMC fan config ", label, " is absent") }
+        other => OpenBmcStringObserved { value: other as NonEmptyStr }
+      }
   }
 }
 
@@ -1613,15 +1628,78 @@ fn openbmc_fan_config_string(
   config_path: NonEmptyStr,
   query: OpenBmcFanConfigQuery,
 ) -> OpenBmcStringResult {
-  let result = openbmc_fan_config_raw(
-    session: session,
-    config_path: config_path,
-    query: query,
-  )
-  if !result.success || trim(result.stdout) == "" {
-    OpenBmcStringRefused { reason: result.stderr }
-  } else {
-    OpenBmcStringObserved { value: trim(result.stdout) as NonEmptyStr }
+  match jq_invocation_process_plan(
+    invocation: openbmc_fan_config_scalar_invocation(query: query, config_path: config_path),
+  ) {
+    Rejected { diagnostics: _ } =>
+      OpenBmcStringRefused { reason: "OpenBMC fan config scalar query could not be lowered to a jq invocation" }
+    Accepted { value: plan, diagnostics: _ } =>
+      match openbmc_remote_jq_execute(session: session, plan: plan) {
+        OpenBmcRemoteJqRefused { cause: cause } =>
+          OpenBmcStringRefused { reason: openbmc_remote_jq_refusal_text(cause: cause) }
+        OpenBmcRemoteJqExecuted { observation: observation } =>
+          openbmc_fan_config_string_result(
+            outcome: jq_classify_observation(plan: plan, observation: observation),
+            label: openbmc_fan_config_scalar_label(query: query),
+          )
+      }
+  }
+}
+
+// VALIDATE AND VERIFY READ THE EXIT CONTRACT, NOT success: Bool. Validation runs `jq empty`:
+// JqProgramExit exits 0 with no output on a parseable config, so the absence IS the success
+// (present-or-absent => valid; a jq error is the refusal). Verification runs `jq -e` on the
+// boolean and-chain: JqLastResultExit reports 0 for true and 1 for false, both as Present text;
+// only a jq error refuses.
+fn openbmc_fan_config_validate_invocation(config_path: NonEmptyStr) -> JqInvocation {
+  JqInvocation {
+    program: JqProgram { source: openbmc_fan_config_validate_program },
+    bindings: Empty,
+    input: JqInputFile { path: config_path },
+    output_encoding: JqJsonOutput,
+    exit_policy: JqProgramExit,
+  }
+}
+
+fn openbmc_fan_config_validate_result(outcome: JqOutcome) -> OpenBmcBoolResult {
+  match outcome {
+    JqExecutionRefused { exit_code: _, stderr: stderr } =>
+      OpenBmcBoolRefused { reason: stderr }
+    JqOutputAbsent => OpenBmcBoolObserved { value: true }
+    JqOutputPresent { text: _ } => OpenBmcBoolObserved { value: true }
+  }
+}
+
+fn openbmc_fan_config_verify_invocation(
+  config_path: NonEmptyStr,
+  desired: OpenBmcFanConfigDesired,
+) -> JqInvocation {
+  JqInvocation {
+    program: JqProgram { source: openbmc_fan_config_verify_program },
+    bindings: [
+      JqJsonBinding {
+        name: JqBindingName { name: "desired" },
+        value: openbmc_fan_config_desired_value(desired: desired),
+      }
+    ],
+    input: JqInputFile { path: config_path },
+    output_encoding: JqJsonOutput,
+    exit_policy: JqLastResultExit,
+  }
+}
+
+fn openbmc_fan_config_verify_result(outcome: JqOutcome) -> OpenBmcBoolResult {
+  match outcome {
+    JqExecutionRefused { exit_code: _, stderr: stderr } =>
+      OpenBmcBoolRefused { reason: stderr }
+    JqOutputAbsent =>
+      OpenBmcBoolRefused { reason: "OpenBMC fan config verification produced no result" }
+    JqOutputPresent { text: text } =>
+      match trim(text) {
+        "true" => OpenBmcBoolObserved { value: true }
+        "false" => OpenBmcBoolObserved { value: false }
+        other => OpenBmcBoolRefused { reason: other }
+      }
   }
 }
 
@@ -2031,25 +2109,44 @@ fn openbmc_fan_config_observe(
 fn openbmc_fan_config_validate(
   session: PasswordSshSession,
   config_path: NonEmptyStr,
-) -> PasswordSshExecResult {
-  openbmc_execute(
-    session: session,
-    operation: OpenBmcFanConfigValidate { config_path: config_path },
-  )
+) -> OpenBmcBoolResult {
+  match jq_invocation_process_plan(
+    invocation: openbmc_fan_config_validate_invocation(config_path: config_path),
+  ) {
+    Rejected { diagnostics: _ } =>
+      OpenBmcBoolRefused { reason: "OpenBMC fan config validation could not be lowered to a jq invocation" }
+    Accepted { value: plan, diagnostics: _ } =>
+      match openbmc_remote_jq_execute(session: session, plan: plan) {
+        OpenBmcRemoteJqRefused { cause: cause } =>
+          OpenBmcBoolRefused { reason: openbmc_remote_jq_refusal_text(cause: cause) }
+        OpenBmcRemoteJqExecuted { observation: observation } =>
+          openbmc_fan_config_validate_result(
+            outcome: jq_classify_observation(plan: plan, observation: observation),
+          )
+      }
+  }
 }
 
 fn openbmc_fan_config_verify(
   session: PasswordSshSession,
   config_path: NonEmptyStr,
   desired: OpenBmcFanConfigDesired,
-) -> PasswordSshExecResult {
-  openbmc_execute(
-    session: session,
-    operation: OpenBmcFanConfigVerify {
-      config_path: config_path,
-      desired: desired,
-    },
-  )
+) -> OpenBmcBoolResult {
+  match jq_invocation_process_plan(
+    invocation: openbmc_fan_config_verify_invocation(config_path: config_path, desired: desired),
+  ) {
+    Rejected { diagnostics: _ } =>
+      OpenBmcBoolRefused { reason: "OpenBMC fan config verification could not be lowered to a jq invocation" }
+    Accepted { value: plan, diagnostics: _ } =>
+      match openbmc_remote_jq_execute(session: session, plan: plan) {
+        OpenBmcRemoteJqRefused { cause: cause } =>
+          OpenBmcBoolRefused { reason: openbmc_remote_jq_refusal_text(cause: cause) }
+        OpenBmcRemoteJqExecuted { observation: observation } =>
+          openbmc_fan_config_verify_result(
+            outcome: jq_classify_observation(plan: plan, observation: observation),
+          )
+      }
+  }
 }
 
 fn openbmc_fan_config_project_local(
