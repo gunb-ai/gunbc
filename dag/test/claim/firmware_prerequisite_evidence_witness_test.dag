@@ -2,7 +2,6 @@ module test.claim.firmware_prerequisite_evidence_witness_test
 
 import std.types { Bool, List }
 import std.optional { Present, Absent }
-import extdeps.boards.types { AsrockRackAltrad8ud1l2t }
 import extdeps.firmware.types {
   BmcController,
   FirmwarePrerequisiteObservation,
@@ -20,12 +19,7 @@ import extdeps.firmware.types {
   firmware_semantic_version,
   prerequisite_evidence_verdict,
 }
-import extdeps.boards.asrock_rack {
-  asrock_altrad8ud_bios_3_10_openbmc_release,
-  asrock_altrad8ud_bios_310_push_accepted_at_bmc_322,
-  asrock_altrad8ud_bios_310_push_refused_at_bmc_207,
-  asrock_altrad8ud_bios_openbmc_prerequisite_evidence,
-}
+import extdeps.boards.asrock_rack { asrock_altrad8ud_bios_3_10_openbmc_release, asrock_altrad8ud_bios_310_push_accepted_at_bmc_322, asrock_altrad8ud_bios_310_push_refused_at_bmc_207, asrock_altrad8ud_bios_openbmc_prerequisite_evidence, asrock_altrad8ud_board_authority }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -36,7 +30,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // answer, so a two-element list cannot distinguish them however it is
 // ordered. Only a second refusal forces the fold to choose.
 data synthetic_lower_refusal: FirmwarePrerequisiteObservation = FirmwarePrerequisiteObservation {
-  board: AsrockRackAltrad8ud1l2t,
+  board: asrock_altrad8ud_board_authority,
   subject: HostBios,
   image_kind: OpenBmcWebUiTar,
   gating_target: BmcController,

@@ -1,0 +1,26 @@
+module test.fixture.board_fru_observation
+
+import std.optional { Present }
+import extdeps.board_authority { BoardFruIdentity, BoardFruObservation, BoardFruRead }
+
+// FRU board-area readings as SUPPLIED VALUES for witnesses that need a host's observed board. The
+// two committed reads carry exactly the fields of the captured `ipmitool fru print` texts
+// (artifacts/bmc/mtcollins1-controller-fru-2026-09-12.txt and
+// artifacts/bmc/mtjade1-ipmitool-fru-print-192.168.1.246-2026-10-04T110207Z.txt); the claim that
+// the real producer reads those texts into these shapes is gunbc board_authority_binding's
+// inhabitance witness. The ASRock read is a board with no binding row.
+data collins_fru_read: BoardFruObservation = BoardFruRead { fru: BoardFruIdentity {
+  manufacturer: "FOXCONN", product: "Mt. Collins", part_number: Present { value: "02030A800-600-G" }
+} }
+
+data jade_fru_read: BoardFruObservation = BoardFruRead { fru: BoardFruIdentity {
+  manufacturer: "WIWYNN", product: "Mt.Jade Motherboard", part_number: Present { value: "B81.03010.0041" }
+} }
+
+data asrock_fru_read: BoardFruObservation = BoardFruRead { fru: BoardFruIdentity {
+  manufacturer: "ASRockRack", product: "ALTRAD8UD-1L2T", part_number: none
+} }
+
+data gigabyte_fru_read: BoardFruObservation = BoardFruRead { fru: BoardFruIdentity {
+  manufacturer: "GIGABYTE", product: "MP72-HB0", part_number: none
+} }

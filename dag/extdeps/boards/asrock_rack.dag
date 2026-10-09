@@ -44,6 +44,7 @@ import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity
 import std.affine_space { point2 }
 import std.orthogonal_geometry { AxisAlignedRectangle2, OrthogonalConstruction, axis_aligned_rectangle2 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.board_authority { BoardAuthorityRef }
 import extdeps.standards.micro_atx { MountingLocationId, LocB, LocC, LocF, LocH, LocJ, LocL, LocM, LocR, LocS }
 import extdeps.cpu.types { CpuSocket }
 import extdeps.cpu.ampere { ampere_lga4926_socket }
@@ -81,8 +82,16 @@ data asrock_altrad8ud_srv3_nbd_proxy_ws_dry_run_authority: ExternalAuthority = E
   }
 }
 
+data asrock_altrad8ud_board_authority: BoardAuthorityRef = BoardAuthorityRef {
+  subject: DeclarationRef {
+    module_path: "extdeps.boards.asrock_rack",
+    decl_name: "asrock_altrad8ud_1l2t_catalog",
+    field: WholeDeclaration
+  }
+}
+
 data asrock_altrad8ud_1l2t_catalog: BaseboardCatalogRow = BaseboardCatalogRow {
-  model: AsrockRackAltrad8ud1l2t,
+  model: asrock_altrad8ud_board_authority,
   model_label: "ASRock Rack ALTRAD8UD-1L2T",
   vendor: asrock_rack,
   bmc_firmware: OpenBmc,
@@ -367,7 +376,7 @@ fn live_probe_confirms_nbd_slot_ws_absent() -> Bool {
 // versioned and separately flashed: srv4 runs BMC 03.22.00 and still fails to
 // boot, so "this host is on the current firmware" is not a single fact.
 data asrock_altrad8ud_bios_3_10_instant_flash_release: FirmwareReleaseRow = FirmwareReleaseRow {
-  board: AsrockRackAltrad8ud1l2t,
+  board: asrock_altrad8ud_board_authority,
   target: HostBios,
   version: firmware_semantic_version(major: 3, minor: 10, patch: 0),
   released_on: 1776124800000,
@@ -388,7 +397,7 @@ data asrock_altrad8ud_bios_3_10_instant_flash_release: FirmwareReleaseRow = Firm
 }
 
 data asrock_altrad8ud_bios_3_10_openbmc_release: FirmwareReleaseRow = FirmwareReleaseRow {
-  board: AsrockRackAltrad8ud1l2t,
+  board: asrock_altrad8ud_board_authority,
   target: HostBios,
   version: firmware_semantic_version(major: 3, minor: 10, patch: 0),
   released_on: 1776124800000,
@@ -429,7 +438,7 @@ data asrock_altrad8ud_bios_3_10_obmc_manifest_purpose: NonEmptyStr = "xyz.openbm
 data asrock_altrad8ud_bios_3_10_obmc_manifest_machine_name: NonEmptyStr = "altrad8ud-1l2t"
 
 data asrock_altrad8ud_bmc_3_22_00_release: FirmwareReleaseRow = FirmwareReleaseRow {
-  board: AsrockRackAltrad8ud1l2t,
+  board: asrock_altrad8ud_board_authority,
   target: BmcController,
   version: firmware_semantic_version(major: 3, minor: 22, patch: 0),
   released_on: 1776124800000,
@@ -474,7 +483,7 @@ data asrock_altrad8ud_firmware_release_catalog: List<FirmwareReleaseRow> = [
 // the minimum evidence rather than an inference from the vendor page (which
 // states no such dependency at all).
 data asrock_altrad8ud_bios_310_push_refused_at_bmc_207: FirmwarePrerequisiteObservation = FirmwarePrerequisiteObservation {
-  board: AsrockRackAltrad8ud1l2t,
+  board: asrock_altrad8ud_board_authority,
   subject: HostBios,
   image_kind: OpenBmcWebUiTar,
   gating_target: BmcController,
@@ -486,7 +495,7 @@ data asrock_altrad8ud_bios_310_push_refused_at_bmc_207: FirmwarePrerequisiteObse
 }
 
 data asrock_altrad8ud_bios_310_push_accepted_at_bmc_322: FirmwarePrerequisiteObservation = FirmwarePrerequisiteObservation {
-  board: AsrockRackAltrad8ud1l2t,
+  board: asrock_altrad8ud_board_authority,
   subject: HostBios,
   image_kind: OpenBmcWebUiTar,
   gating_target: BmcController,
@@ -515,11 +524,11 @@ data asrock_altrad8ud_bios_openbmc_prerequisite_evidence: List<FirmwarePrerequis
 // modules installed in it — note in particular that the four-module
 // population is A1+B1+E1+F1 and is NOT one module per channel.
 data asrock_altrad8ud_documented_dimm_populations: List<DimmPopulation> = [
-  DimmPopulation { board: AsrockRackAltrad8ud1l2t, slots: ["A1"], authority: extdeps_external_authority_anchor },
-  DimmPopulation { board: AsrockRackAltrad8ud1l2t, slots: ["A1", "E1"], authority: extdeps_external_authority_anchor },
-  DimmPopulation { board: AsrockRackAltrad8ud1l2t, slots: ["A1", "B1", "E1", "F1"], authority: extdeps_external_authority_anchor },
+  DimmPopulation { board: asrock_altrad8ud_board_authority, slots: ["A1"], authority: extdeps_external_authority_anchor },
+  DimmPopulation { board: asrock_altrad8ud_board_authority, slots: ["A1", "E1"], authority: extdeps_external_authority_anchor },
+  DimmPopulation { board: asrock_altrad8ud_board_authority, slots: ["A1", "B1", "E1", "F1"], authority: extdeps_external_authority_anchor },
   DimmPopulation {
-    board: AsrockRackAltrad8ud1l2t,
+    board: asrock_altrad8ud_board_authority,
     slots: ["A1", "B1", "C1", "D1", "E1", "F1", "G1", "H1"],
     authority: extdeps_external_authority_anchor,
   },

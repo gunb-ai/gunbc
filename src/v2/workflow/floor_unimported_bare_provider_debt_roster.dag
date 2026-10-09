@@ -166,7 +166,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/extdeps/container/oci/reference.dag", name: "append", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/container/oci/reference.dag", name: "get", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/container/oci/reference.dag", name: "tag", standing: Retired { cause: NotAReference } },
-  UnimportedBareProviderDisposition { file: "dag/extdeps/cooling/dynatron.dag", name: "ampere_lga4926_cooling_mount", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/extdeps/cooling/dynatron.dag", name: "ampere_lga4926_cooling_mount", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/cpu/ampere_altra_memory_controller.dag", name: "any", standing: Retired { cause: BindsWithoutDeclaration } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/cpu/ampere_altra_package.dag", name: "empty_map", standing: Retired { cause: BindsWithoutDeclaration } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/cpu/ampere_altra_package.dag", name: "map_get", standing: Retired { cause: BindsWithoutDeclaration } },
