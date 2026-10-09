@@ -1,4 +1,4 @@
-module test.manual.runner_microvm_network_local_stage_test
+module test.manual.runner_microvm_network_local_stage_probe
 
 import std.types { String, NonEmptyStr, FilePath, Bool }
 import std.algebra { trim }

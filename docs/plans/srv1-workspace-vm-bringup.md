@@ -308,7 +308,7 @@ The local network staging writer now creates a private temporary inode in the
 verified directory, fills it, and atomically replaces the exact staged destination.
 The existing scope admission, root-custody checks and exact byte readback remain
 required. The manual native filesystem control
-`test.manual.runner_microvm_network_local_stage_test.local_stage_replaces_owned_bytes_wet`
+`test.manual.runner_microvm_network_local_stage_probe.local_stage_replaces_owned_bytes_wet`
 passes creation, changed-content replacement, replay, 0600 mode, trailing-newline
 preservation, out-of-scope refusal and scratch cleanup. The out-of-scope control
 uses an existing allowed directory, so it distinguishes admission refusal from a
@@ -360,3 +360,22 @@ its storage; it is not deletion/recreation to make drift look absent.
 All thirteen focused cell-effect and fleet-plan checks pass, including the actual
 slot-specific add path and the restricted repair. All 8,279 source files parse,
 and formatting checks pass. Live repair and commissioning remain outstanding.
+
+The read-only cell plan at `ce5bf60b507` records generation 20 and refuses
+`fabric-cell-srv1.slice`, the structural parent created by systemd for slot 13.
+It was not applied. The namespace census correctly observes both parent and child;
+the classifier lacked a subject for proper ancestors. Discovery now derives them
+from the local enrolled cell names through the existing systemd hierarchy authority
+and retains them without granting ownership or satisfying a cell address. Unrelated
+slices and ancestor-looking filesystem entries still refuse. The new controls use
+the actual srv1 two-unit census and production observation admission.
+
+Controller installation and full readback at `ce5bf60b507` pass. CI run
+[37903218933](https://github.com/gunb-ai/gunbc/actions/runs/37903218933) passes
+seed, emit-build and generated checks, but floor discovery refuses the manual
+filesystem probe's `*_test.dag` filename because it declares no enrolled test.
+It is renamed `runner_microvm_network_local_stage_probe.dag`; its manual entry and
+behavior are unchanged. The observer's first broader batch passes all six new
+ancestor controls and exposes four stale single-cell/unenrolled-slot fixtures:
+srv3 now enrolls slot 7 too. The isolated classification test now supplies only
+its selected slot's readback, and foreign-probe controls use slots 99 and 100.
