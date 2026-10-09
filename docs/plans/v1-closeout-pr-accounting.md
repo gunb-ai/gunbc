@@ -137,10 +137,10 @@ These are drafts, red, superseded or WIP, per the manager's report or a side cha
 | PR | Title | Draft / merge state | Note |
 | --- | --- | --- | --- |
 | [#13097](https://github.com/gunb-ai/gunbc/pull/13097) | G1: belt verify through the materialization provider; compute outcomes | ready / BLOCKED | bold-bee: red on T?==T sites until #13549; draft |
+| [#13591](https://github.com/gunb-ai/gunbc/pull/13591) | Resolve free kernel calls to std.primitives identity; infer refuses th | draft / CLEAN | eager-gull: APPROVED (review 78380); stacked on #13588 (in the snapshot via eager-gull); fold once v2-native-cli is confirmed |
 | [#13574](https://github.com/gunb-ai/gunbc/pull/13574) | Interim check-time refusal of list-read == Present{..} | ready / CLEAN | eager-gull: OPERATOR: reverted out (review 78262) |
 | [#13604](https://github.com/gunb-ai/gunbc/pull/13604) | Prepare the required-floor gate once; project policy from that subject | draft / BLOCKED | eager-gull: REQUEST_CHANGES review 78326 (hand .dag walker in seed); reverted |
 | [#13391](https://github.com/gunb-ai/gunbc/pull/13391) | Refuse a product value at a kernel-scalar (or refined) declared type | ready / DIRTY | eager-gull: REQUEST_CHANGES review 78347 (census missing); conflicts main |
-| [#13591](https://github.com/gunb-ai/gunbc/pull/13591) | Resolve free kernel calls to std.primitives identity; infer refuses th | draft / CLEAN | eager-gull: WIP stacked on #13588; native-cli unconfirmed |
 | [#13595](https://github.com/gunb-ai/gunbc/pull/13595) | Reclassify the match-arm proven-disjoint InternalError as a located Ty | draft / CLEAN | eager-gull: depends on #13574; reverted out |
 | [#13576](https://github.com/gunb-ai/gunbc/pull/13576) | DRAFT: floor-control for #13575 (plan forged-probe census) | draft / UNSTABLE | eager-gull: red draft control for #13575 |
 | [#13211](https://github.com/gunb-ai/gunbc/pull/13211) | mtcollins1 runner: dispatch the floor to the attempt's slot and read t | ready / BLOCKED | eager-gull: red: floor 90m cap in fixture-closure-union-emit; needs #13608 newer head 8ff94ca471 |
@@ -267,13 +267,16 @@ This is work that has to go somewhere even though none of it merges now. Each ro
 | N7 filesystem_io refuses in normalize (service_realization_unreachable) | sharp-raven-357 | Needs XL-2 3c (3b-ii is not sufficient). Census in #13637; forwarded to smart-gull-336. NOTE: the XL-2 lane is cancelled, so 3c is unowned |
 | v2-infer PRs validated only by the v1 floor | sharp-raven-357 | Only #13502 and #13308 execute native binaries. Cutting the floor removes the validator unless the claims move to a native job (smart-gull-336 has been told) |
 | Logged follow-ups | sharp-raven-357 | #13436 decimal_digit_of_reduced_units accepts out-of-range Int; #13320 ViaHomomorphism arm admits without installing a conversion; bash_orch_if Rejected=>"" fail-open (partly fixed by #13618) |
-| #13608 newer head 8ff94ca471 (deep-ram-343's emit fix: is_known_variant scan -> carried variant_to_enum; predicted emit 1500s -> 100-300s) | eager-gull-22 | Unverified, no CI. The snapshot takes #13608 at c7c3ef7744. #13211 needs the newer head |
+| #13608 newer head 8ff94ca471 (deep-ram-343's emit fix: is_known_variant scan -> carried variant_to_enum; predicted emit 1500s -> 100-300s) | eager-gull-22 | Review 78369 APPROVES the newer head (behaviour-preserving). Its CI hasn't run. The snapshot takes c7c3ef7744; fold the delta to the newer head once it's green. #13211 needs it |
 | eager-gull closed children | eager-gull-22 | bold-moth, warm-crane, zesty-wren, sleek-koi, sharp-ant and quiet-stag were closed before the no-close directive; their PRs are in this accounting via their re-homing |
 | #13548 unimported-type import migrate | sharp-raven-357 | Review 78338: a hand-listed roster of native bare spellings duplicates is_kernel_type/is_container_type; a second import-list scanner duplicates source_reference_repoint's. Consume both instead |
 | #13630 callee facts on the underived arm | sharp-raven-357 | Review 78359 (§5 fail-open): a refused contract keeps a denotation, so eval dispatches into the body. Gate eval on DerivedGrounding, or carry the recovered Arrow in a separate field |
 | #13541 filter/any retirement (337 files) | sharp-raven-357 | Delete the 15 root scratch scripts (review 78343), rebase, then give it a fresh full review |
 | #13637 XL-2 3c consumer census (docs-only, approved) | sharp-raven-357 | Not merged (docs-only preference; plans bankruptcy). It is the input to the unowned 3c deletion that clears N7 filesystem_io |
 | #13212 starter eval set (49 cases + grader, about 2.1k lines) | valiant-crab-775 / smart-bear-46 | Green and CLEAN. Needs a real PR body and a completed review; its consumer (who runs the eval) should be named |
+| #13579 ancestor-chain binding of import-less bare names | eager-gull-22 | Folded as strictly narrower than main. Under the operator ruling of 2026-10-04 (no ancestor-import leak), the remaining ancestor-chain case should also refuse; that belongs to XL-5's namespace cut |
+| #13640 WorkflowRunArtifact.size_in_bytes: Int | eager-gull-22 / quiet-cat-583 | Review 78346: type it as std.measure ByteSize if revived |
+| #13391 product-at-scalar refusal climb | eager-gull-22 / sharp-ant-136 | Review 78347: add the whole-corpus census of newly refused sites (including dag/ outside the gate) with dispositions, or narrow the CLIMBED claim to the gated population and declare the rest under §4b(3) |
 | session/lively-wren-411 @6194f56012 | bold-bee-114 | Duplicate member_not_a_binder fix, superseded by #13560. No PR; delete the branch |
 | wise-koi-396 (shell-dag live-deploy restart-tailscale) | stern-boar-596 | Nothing was ever pushed; the work is unstarted |
 
@@ -321,6 +324,25 @@ The marshal projected-let drop; negative-literal verdict loss (#13289). Both fro
 ### Archive flush residue
 
 Archiving a session commits its leftover worktree files as a 'WIP' commit and pushes them. That happened on #13648 (.probe_tmp scratch) and #13634 (t_tmp.sh). Any archived manager's branch may carry such a tip commit. Check the tip before reviving or merging one of these branches.
+
+## Mega branch status and plan
+
+- #13653 has been folded (wave-2 conflicts, the #13574 revert, regen; v1_rt.rs is regenerated). #13516 has been folded.
+- calm-bee-170 is folding sharp-raven-357's branch, then #13428, #13643, then eager-gull-22's branch, then the final srv1 regen.
+- Then: the gate cut (smart-gull-336's new single 'witnesses' job), then #13657 re-verified by sharp-eagle-256.
+
+Notes for the remaining merges:
+
+- #13545 (46 T?==T rewrites) overlaps #13600 and #13549 in witness files; either form is fine, keep one that compiles.
+- grounded_principal_witness: #13549 derives counts from ci_runner_sudo_binaries (keep that); then DROP #13545's floor_expected_red_chunk_grounded_principal_transcribed_counts (3 entries) if those claims pass.
+- #13428 (session/lively-bear-843, green, approved) also folds here; conflicts in 03_normalize.dag and body_lowering_fold.dag.
+- #13126 is the grammar-overlap final step; after the fold, the overlap count should be zero.
+- #13453 adds base-fact (claim_executor --base-fact) steps to witnesses.yml via compiler_gate_workflow. smart-gull-336's gate cut owns those files; when the cut is merged, its side wins and the v1-floor base-fact steps go with the floor.
+- #13643 (census, approved review 78351): fold if its pending check is green at fold time.
+- GATE CUT #13658 (smart-gull-336, head e1b851e5a8fb, base main d0f2067): once it's green on its own head, merge it into integration/v1-closeout; its side wins on dag/gunbc/witness/compiler_gate_workflow.dag and .github/workflows/witnesses.yml. OPERATOR RULING (via smart-gull-336): do NOT delete repo_self_slice_cost_control_command. Keep it and the v1_rt list_slice_tests RED/GREEN pair as a LOCAL-ONLY check, named in DESIGN.md's Building & checks local-checks row beside clippy and the v1 unit tests, preserved for later native migration.
+- #13658 head e1b851e5a8fb is SUPERSEDED: the operator wants emit-build + the aggregate collapsed into one required job named 'witnesses' that emits and builds both products fresh (restored native-product hits refused). Wait for smart-gull-336's new green head. Merge it into the mega branch AFTER #13653 (or via main if the operator lands it first); take its side whole on compiler_gate_workflow.dag + witnesses.yml, then regen.
+- After the cut, no required lane checks generated-artifact drift: run tools.generated_artifact_gate main (remotely) before pushing any wave.
+- v1 regen: one emission round (operator 2026-10-04); no fixed-point loop.
 
 ## Notes
 
