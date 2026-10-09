@@ -828,6 +828,10 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // at PINNED 4ec0c7b195 (BuildBuddy 4bb6fc22): eval_steps=730093 vs the 72,300 new-witness
 // ceiling. Trigger: assemble plus infer of a one-module fixture runs under the per-claim budget
 // (gunbc.recurring_failure_mode shared_precondition_re_derived_once_per_claim_frame).
+// gunbc#13558 also rosters rcf_a_generic_variant_construct_at_its_instantiation_is_accepted_and_decided_holds
+// on the existing infer_record_construct_field fill-debt (different subject than N7). Own-frame
+// remasure at e8d54eb643 (BuildBuddy d7b2e20b-cf84-4dc6-9750-9ef95296b756): eval_steps=2887446.
+// Same invocation: supplied wildcard/unbound pair own-frame 55539 / 50280 (under 72,300).
 
 // gunbc#13207 (XL-2 collection concat): its ONE real-path inhabitance claim, kept per the DESIGN section 3
 // witness rule (every other claim in the module supplies its input; sharp-raven-357 approved this member).
