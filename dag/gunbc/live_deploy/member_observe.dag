@@ -1,6 +1,7 @@
 module gunbc.live_deploy.member_observe
 
 import std.types { String, Bool, List, Int, NonEmptyStr, CommitSha, FilePath }
+import std.optional { Optional, Present, Absent }
 import std.algebra { trim }
 import std.content_hash { content_hash_atom }
 import extdeps.crypto.hash { Digest, sha256sum_argv, sha256sum_line_digest }
@@ -159,20 +160,26 @@ fn entry_presence_in_parent(arm: ObservationArm, parent: String, name: String) -
 }
 
 fn entry_presence(arm: ObservationArm, path: String) -> EntryPresence {
+  entry_presence_above(arm: arm, path: path, below: Absent)
+}
+
+// The ancestor walk in tail position, so the Rust realization lowers it to a loop. `below` is the
+// cause read one level down: an ancestor that is present answers with that cause, an absent one
+// answers absent, and the root answers with its own cause -- the same answers the nested walk gave.
+fn entry_presence_above(arm: ObservationArm, path: String, below: Optional<String>) -> EntryPresence {
   let parent = path_parent(path: path)
   let name = path_basename(path: path)
   match entry_presence_in_parent(arm: arm, parent: parent, name: name) {
-    EntryPresent => EntryPresent
+    EntryPresent => match below {
+      Absent => EntryPresent
+      Present { value: cause } => EntryPresenceIndeterminate { cause: cause }
+    }
     EntryAbsent => EntryAbsent
     EntryPresenceIndeterminate { cause } =>
       if parent == "/" {
         EntryPresenceIndeterminate { cause: cause }
       } else {
-        match entry_presence(arm: arm, path: parent) {
-          EntryAbsent => EntryAbsent
-          EntryPresent => EntryPresenceIndeterminate { cause: cause }
-          EntryPresenceIndeterminate { cause: ancestor_cause } => EntryPresenceIndeterminate { cause: ancestor_cause }
-        }
+        entry_presence_above(arm: arm, path: parent, below: Present { value: cause })
       }
   }
 }
