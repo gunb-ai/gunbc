@@ -23,6 +23,7 @@ import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, J
 
 data roadmap_task_schema_id: String = "gunbc.roadmap-task/v1"
 
+fn task_json_obj(value: JsonValue, key: String) -> JsonValue? { json_field_value(r: json_field(obj: value, key: key)) }
 fn task_json_str(value: JsonValue, key: String) -> String? { json_field_value(r: json_field_string(obj: value, key: key)) }
 
 fn task_parse_acceptance(wire: String) -> Acceptance? {
@@ -163,7 +164,7 @@ fn task_execution_decode(value: JsonValue) -> WorkItemExecutionContract? {
 // no authored wire form, so a runtime record cannot forge a derived closing task's lineage.
 fn task_parent_json(p: NodeParent?) -> JsonValue? {
   match p {
-    Absent => Present { value: JsonNull }
+    Absent => none
     Present { value: MemberOf { project, contribution } } => Present { value: json_object(members: [
       json_kv(key: "kind", value: json_string(s: "member-of")),
       json_kv(key: "project", value: json_string(s: project)),
@@ -174,20 +175,18 @@ fn task_parent_json(p: NodeParent?) -> JsonValue? {
   }
 }
 
-fn task_parent_decode(value: JsonValue) -> NodeParent?? {
-  match json_object_unique_member(v: value, key: "parent") {
-    JsonMemberFound { value: JsonNull } => Present { value: none }
-    JsonMemberFound { value: p } => match task_json_str(value: p, key: "kind") {
+fn task_parent_decode(value: JsonValue) -> NodeParent? {
+  match task_json_obj(value: value, key: "parent") { Absent => none Present { value: p } =>
+    match task_json_str(value: p, key: "kind") {
       Present { value: "member-of" } => match task_json_str(value: p, key: "project") { Absent => none Present { value: project } =>
         match task_json_str(value: p, key: "contribution") { Absent => none Present { value: contribution } =>
           if project == "" || contribution == "" { none } else {
-            Present { value: Present { value: MemberOf { project: project, contribution: contribution as NonEmptyStr } } }
+            Present { value: MemberOf { project: project, contribution: contribution as NonEmptyStr } }
           }
         }
       }
       other => none
     }
-    other => none
   }
 }
 
@@ -198,7 +197,7 @@ fn roadmap_task_json(node: RoadmapNode) -> JsonValue? {
         Absent => none
         Present { value: execution } => match task_parent_json(p: node.parent) {
           Absent => none
-          Present { value: parent } => Present { value: json_object(members: [
+          Present { value: parent } => match node.centering { Absent => none Present { value: centering } => Present { value: json_object(members: [
             json_kv(key: "schema", value: json_string(s: roadmap_task_schema_id)),
             json_kv(key: "identity", value: json_string(s: node.identity as String)),
             json_kv(key: "node", value: json_string(s: node.node as String)),
@@ -208,8 +207,8 @@ fn roadmap_task_json(node: RoadmapNode) -> JsonValue? {
             json_kv(key: "execution", value: execution),
             json_kv(key: "owner", value: json_string(s: node.owner)),
             json_kv(key: "parent", value: parent),
-            json_kv(key: "centering", value: match node.centering { Present { value: c } => json_string(s: c as String) Absent => JsonNull }),
-          ]) }
+            json_kv(key: "centering", value: json_string(s: centering as String)),
+          ]) } }
         }
       }
       other => none
@@ -228,14 +227,10 @@ fn task_carriers_decode(value: JsonValue) -> List<Pointer>? {
   }
 }
 
-fn task_centering_decode(value: JsonValue) -> NonEmptyStr?? {
-  match json_object_unique_member(v: value, key: "centering") {
-    JsonMemberFound { value: JsonNull } => Present { value: none }
-    JsonMemberFound { value: _ } => match task_json_str(value: value, key: "centering") {
-      Present { value: c } => if c == "" { none } else { Present { value: Present { value: c as NonEmptyStr } } }
-      Absent => none
-    }
-    other => none
+fn task_centering_decode(value: JsonValue) -> NonEmptyStr? {
+  match task_json_str(value: value, key: "centering") {
+    Present { value: c } => if c == "" { none } else { Present { value: c as NonEmptyStr } }
+    Absent => none
   }
 }
 
@@ -245,12 +240,12 @@ fn roadmap_task_from_json(value: JsonValue) -> RoadmapNode? {
       match task_json_str(value: value, key: "identity") { Absent => none Present { value: identity } =>
       match task_json_str(value: value, key: "node") { Absent => none Present { value: node } =>
       match task_json_str(value: value, key: "owner") { Absent => none Present { value: owner } =>
-      match json_object_unique_member(v: value, key: "ticket") { JsonMemberFound { value: tj } =>
+      match task_json_obj(value: value, key: "ticket") { Absent => none Present { value: tj } =>
       match task_ticket_decode(value: tj) { Absent => none Present { value: ticket } =>
       match task_carriers_decode(value: value) { Absent => none Present { value: carriers } =>
-      match json_object_unique_member(v: value, key: "dispatch") { JsonMemberFound { value: dj } =>
+      match task_json_obj(value: value, key: "dispatch") { Absent => none Present { value: dj } =>
       match task_dispatch_decode(value: dj) { Absent => none Present { value: dispatch } =>
-      match json_object_unique_member(v: value, key: "execution") { JsonMemberFound { value: ej } =>
+      match task_json_obj(value: value, key: "execution") { Absent => none Present { value: ej } =>
       match task_execution_decode(value: ej) { Absent => none Present { value: execution } =>
       match task_parent_decode(value: value) { Absent => none Present { value: parent } =>
       match task_centering_decode(value: value) { Absent => none Present { value: centering } =>
@@ -258,11 +253,10 @@ fn roadmap_task_from_json(value: JsonValue) -> RoadmapNode? {
           Present { value: RoadmapNode {
             identity: identity as RoadmapNodeIdentity, node: node as RoadmapNodeId,
             line: TicketLine { done: false, ticket: ticket }, carriers: carriers, dispatch: dispatch,
-            execution: execution, owner: owner, signoff: Unsigned, parent: parent, centering: centering,
+            execution: execution, owner: owner, signoff: Unsigned, parent: Present { value: parent }, centering: Present { value: centering },
           } }
         }
       } } } } } } } } } } } }
-      other => none
     }
     other => none
   }
