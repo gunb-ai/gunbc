@@ -14,6 +14,10 @@ import gunbc.repository {
   gunbc_private_repository, gunbc_private_repository_numeric_identity
 }
 
+import extdeps.github.app { permission_axis_wire_name, permission_access_wire_name }
+import extdeps.github.effect { contents_write }
+import extdeps.cloud.gcp.secret_ref { secret_ref_version_resource }
+import extdeps.languages.json.emit { json_object, json_array, json_kv, json_string, serialize_json }
 // THE WORKFLOW THIS POOL ADMITS NO LONGER EXISTS (operator ruling 2026-10-09: the heal publisher
 // was deleted with the v1 lanes, because nothing seals a repair candidate for it to publish). The
 // pool's attribute condition still names the file's path, so the path is carried here as the
@@ -22,10 +26,7 @@ import gunbc.repository {
 // secret-accessor binding stand until retired by hand, and that is an external-estate obligation
 // recorded beside gunbc.rung_drop v1_required_lanes_withdrawn.
 data heal_publisher_workflow_path_retired: String = ".github/workflows/heal-publish.yml"
-import extdeps.github.app { permission_axis_wire_name, permission_access_wire_name }
-import extdeps.github.effect { contents_write }
-import extdeps.cloud.gcp.secret_ref { secret_ref_version_resource }
-import extdeps.languages.json.emit { json_object, json_array, json_kv, json_string, serialize_json }
+
 
 // THE PUBLISHER'S OWN FEDERATION, AND WHY IT IS NOT THE REPOSITORY'S.
 //

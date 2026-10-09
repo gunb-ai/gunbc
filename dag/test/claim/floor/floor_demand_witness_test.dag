@@ -5,34 +5,33 @@ import std.measure { byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size
 import std.checked_arithmetic { int_inclusive_max, CheckedIntReady, CheckedIntOverflow }
 import extdeps.toolchain.types { Aarch64, X86_64 }
 import gunbc.floor_demand {
-  floor_execution_requirements,
-  FloorRunCgroupPeakReceipt, FloorRunCgroupPeakMeasured, FloorRunCgroupPeakUnmeasured,
-  floor_peak_reading_kind, UncensoredPeak, ThrottlePin, PeakUnmeasured,
-  floor_cgroup_charge_ceiling, gunbc_floor_cgroup_charge_ceiling,
-  FloorHeldSetStanding, HeldSetUnmeasured, HeldSetMeasured, FloorHeldSetReceipt, FloorMemoryStatBeat,
-  beat_held_set, beat_reclaimable_cache, receipt_peak_beat, receipt_last_unstalled_beat, receipt_held_set_peak,
-  floor_memory_requirement_of, gunbc_floor_held_set_standing, gunbc_floor_memory_stat_receipt_2026_09_19,
+  floor_execution_requirements, FloorRunCgroupPeakReceipt, FloorRunCgroupPeakMeasured,
+  FloorRunCgroupPeakUnmeasured, floor_peak_reading_kind, UncensoredPeak, ThrottlePin,
+  PeakUnmeasured, floor_cgroup_charge_ceiling, gunbc_floor_cgroup_charge_ceiling,
+  FloorHeldSetStanding, HeldSetUnmeasured, HeldSetMeasured, FloorHeldSetReceipt,
+  FloorMemoryStatBeat, beat_held_set, beat_reclaimable_cache, receipt_peak_beat,
+  receipt_last_unstalled_beat, receipt_held_set_peak, floor_memory_requirement_of,
+  gunbc_floor_held_set_standing, gunbc_floor_memory_stat_receipt_2026_09_19,
   gunbc_floor_uncensored_demand_receipt, gunbc_floor_throttle_pin_receipt_2026_09_19,
   gunbc_floor_measured_peak_observation, gunbc_floor_measured_peak_is_uncensored,
   floor_storage_demand, StorageDemandStated, StorageDemandUnrepresentable, held_set_standing_of,
-  HeldSetPeakAt, HeldSetPeakNoBeats, HeldSetPeakUnrepresentable,
-  HeldSetReceiptUnrepresentable,
+  HeldSetPeakAt, HeldSetPeakNoBeats, HeldSetPeakUnrepresentable, HeldSetReceiptUnrepresentable,
   StorageComponentReceipt, storage_components_total, round_up_to_gibibyte_grain,
-  gunbc_floor_storage_components, gunbc_floor_job_wall_receipt_2026_09_19,
-  FloorSeam, SeamStrictPreparation, SeamClaimEvaluationFold, SeamPublication, SeamNotYetEntered, SeamUnrecorded,
-  receipt_peak_seam, PeakAttributedTo, PeakSeamUnattributable,
-  PeakUnattributableCause, PeakBeatSampledBeforeAnySeam, PeakBeatSeamUnrecorded, ReceiptHasNoBeats, ReceiptTorn,
-  gunbc_floor_memory_stat_receipt_2026_09_21, gunbc_floor_memory_stat_receipt_2026_09_23, peak_standing_from_swap_policy,
-  receipt_peak_reading_standing, PeakReadingStanding,
-  PeakIsUncensoredSampledMaximum, PeakIsLowerBound, PeakUnreadable, PeakLowerBoundCause, RunDidNotComplete,
-  PeakBeatWasStalling, SwapCouldAbsorbAnonymousPages, SwapPolicyIsRead, SwapHeldPagesAtPeak, SwapRead, SwapUnread, BeatSwap,
-  RunSwapPolicy, SwapMaxRead, SwapMaxDeclaredUnread, SwapDisabled,
-  BeatStall, StallRead, StallUnread, SeamUnreadable, PeakBeatStallUnread, PeakBeatSeamUnreadable,
-  SeamMovedDuringSample, PeakBeatSeamMovedDuringSample,
-  beat_stall_is_zero, beat_stall_is_positive,
-  SeamArmSetPlanning, SeamInterfaceConsumerPlanning, floor_seam_of_token,
+  gunbc_floor_storage_components, gunbc_floor_job_wall_receipt_2026_09_19, FloorSeam,
+  SeamStrictPreparation, SeamClaimEvaluationFold, SeamPublication, SeamNotYetEntered,
+  SeamUnrecorded, receipt_peak_seam, PeakAttributedTo, PeakSeamUnattributable,
+  PeakUnattributableCause, PeakBeatSampledBeforeAnySeam, PeakBeatSeamUnrecorded, ReceiptHasNoBeats,
+  ReceiptTorn, gunbc_floor_memory_stat_receipt_2026_09_21,
+  gunbc_floor_memory_stat_receipt_2026_09_23, peak_standing_from_swap_policy,
+  receipt_peak_reading_standing, PeakReadingStanding, PeakIsUncensoredSampledMaximum,
+  PeakIsLowerBound, PeakUnreadable, PeakLowerBoundCause, RunDidNotComplete, PeakBeatWasStalling,
+  SwapCouldAbsorbAnonymousPages, SwapPolicyIsRead, SwapHeldPagesAtPeak, SwapRead, SwapUnread,
+  BeatSwap, RunSwapPolicy, SwapMaxRead, SwapMaxDeclaredUnread, SwapDisabled, BeatStall, StallRead,
+  StallUnread, SeamUnreadable, PeakBeatStallUnread, PeakBeatSeamUnreadable, SeamMovedDuringSample,
+  PeakBeatSeamMovedDuringSample, beat_stall_is_zero, beat_stall_is_positive, SeamArmSetPlanning,
+  SeamInterfaceConsumerPlanning, floor_seam_of_token, gunbc_floor_pinned_memory_max,
+  gunbc_floor_pinned_memory_high
 }
-import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import v2.std.algebra { any }
 
 fn receipt(peak: Int, high: Int) -> FloorRunCgroupPeakReceipt {
@@ -266,7 +265,7 @@ test fn the_production_receipt_joins_its_typed_beats_to_the_cited_producer_readi
         && stall_rate_is(b: p, n: 6)
         && byte_size_count(b: p.file) * 100 < byte_size_count(b: p.charge)
         && byte_size_count(b: held) <= byte_size_count(b: p.charge)
-        && byte_size_count(b: held) <= byte_size_count(b: gunbc_runner_slot_desired().memory_max)
+        && byte_size_count(b: held) <= byte_size_count(b: gunbc_floor_pinned_memory_max)
   }
   let thrash_beat_ok = any(r.beats, b => b.beat == 15 && stall_rate_is(b: b, n: 66940))
   let unstalled_ok = match receipt_last_unstalled_beat(r: r) {
@@ -276,12 +275,14 @@ test fn the_production_receipt_joins_its_typed_beats_to_the_cited_producer_readi
   !r.run_completed && r.beats_sampled > 0 && count(r.beats) == 4 && peak_ok && thrash_beat_ok && unstalled_ok
 }
 
-// THE PIN WAS TAKEN UNDER THE CURRENT ROW, which is what makes it a finding about the row rather
-// than about a line that no longer exists.
+// THE PIN WAS TAKEN UNDER THE ROW OF ITS DAY, which gunbc.floor_demand now carries as its own
+// envelope rows: the live gunbc.runner_slot_desired moved on 2026-10-09 with the v1 withdrawal, and
+// the floor no longer runs in any slot, so joining its receipts to the live row would assert a
+// relation between a dead instrument and a slot it never inhabited.
 test fn the_pin_receipt_was_armed_at_the_declared_throttle_line() -> Bool {
   match gunbc_floor_throttle_pin_receipt_2026_09_19 {
     FloorRunCgroupPeakMeasured { run_id: _, runner_unit: _, cgroup_peak: _, armed_memory_high: h, floor_outcome: _ } =>
-      byte_size_count(b: h) == byte_size_count(b: gunbc_runner_slot_desired().memory_high)
+      byte_size_count(b: h) == byte_size_count(b: gunbc_floor_pinned_memory_high)
     FloorRunCgroupPeakUnmeasured => false
   }
 }
