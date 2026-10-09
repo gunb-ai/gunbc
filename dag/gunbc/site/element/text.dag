@@ -1,0 +1,102 @@
+module gunbc.site.element.text
+
+import std.types { List, String }
+import extdeps.google.issue_tracker {
+  IssueTrackerMeasuredText,
+  IssueTrackerMeasuredInk, IssueTrackerInkText, IssueTrackerInkMuted, IssueTrackerInkAction, IssueTrackerInkCode,
+  IssueTrackerMeasuredCase, IssueTrackerCaseAuthored, IssueTrackerCaseUppercase,
+  issue_tracker_measured_type_scale,
+}
+import gunbc.design.material { CssDecl, decl }
+import gunbc.design.scale { scale_var }
+import gunbc.site.element.tokens {
+  face_var, text_size_token, text_leading_token, text_tracking_token, text_tracks, raw_var,
+}
+import gunbc.site.element.palette { palette_var, palette_action_ink_var, SlotText, SlotTextDim, SlotCodeInk }
+import extdeps.languages.css.properties { Color, FontFamily, FontSize, FontWeight, LetterSpacing, LineHeight, TextTransform }
+
+// The nine text roles of the internal tools frontend. A role adopts one measured row of the
+// product's type scale and produces its declarations from tokens, so an element states which
+// role its text plays and never a size, weight or face. These are the roles the element modules
+// use; gunbc.design.typography InterfaceText still serves the pages that have not migrated.
+type ElementText
+  = ElementBody
+  | ElementLabel
+  | ElementCardLabel
+  | ElementSectionHeading
+  | ElementControl
+  | ElementTitle
+  | ElementProseHeading
+  | ElementIdentifier
+  | ElementCode
+
+data element_text_roles: List<ElementText> = [
+  ElementBody, ElementLabel, ElementCardLabel, ElementSectionHeading, ElementControl,
+  ElementTitle, ElementProseHeading, ElementIdentifier, ElementCode,
+]
+
+fn element_text_name(role: ElementText) -> String {
+  match role {
+    ElementBody => "Body"
+    ElementLabel => "Label"
+    ElementCardLabel => "CardLabel"
+    ElementSectionHeading => "SectionHeading"
+    ElementControl => "Control"
+    ElementTitle => "Title"
+    ElementProseHeading => "ProseHeading"
+    ElementIdentifier => "Identifier"
+    ElementCode => "Code"
+  }
+}
+
+fn element_text_measure(role: ElementText) -> IssueTrackerMeasuredText {
+  match role {
+    ElementBody => issue_tracker_measured_type_scale.body
+    ElementLabel => issue_tracker_measured_type_scale.field_label
+    ElementCardLabel => issue_tracker_measured_type_scale.card_label
+    ElementSectionHeading => issue_tracker_measured_type_scale.section_heading
+    ElementControl => issue_tracker_measured_type_scale.control
+    ElementTitle => issue_tracker_measured_type_scale.title
+    ElementProseHeading => issue_tracker_measured_type_scale.markdown_heading
+    ElementIdentifier => issue_tracker_measured_type_scale.chip
+    ElementCode => issue_tracker_measured_type_scale.inline_code
+  }
+}
+
+fn measured_ink_var(ink: IssueTrackerMeasuredInk) -> String {
+  match ink {
+    IssueTrackerInkText => palette_var(slot: SlotText)
+    IssueTrackerInkMuted => palette_var(slot: SlotTextDim)
+    IssueTrackerInkAction => palette_action_ink_var()
+    IssueTrackerInkCode => palette_var(slot: SlotCodeInk)
+  }
+}
+
+fn measured_case_value(c: IssueTrackerMeasuredCase) -> String {
+  match c {
+    IssueTrackerCaseAuthored => "none"
+    IssueTrackerCaseUppercase => "uppercase"
+  }
+}
+
+fn measured_text_decls(m: IssueTrackerMeasuredText) -> List<CssDecl> {
+  [
+    decl(prop: FontFamily, value: face_var(face: m.face)),
+    decl(prop: FontSize, value: scale_var(t: text_size_token(m: m))),
+    decl(prop: LineHeight, value: scale_var(t: text_leading_token(m: m))),
+    decl(prop: FontWeight, value: to_string(m.weight)),
+    decl(prop: Color, value: measured_ink_var(ink: m.ink)),
+    decl(prop: TextTransform, value: measured_case_value(c: m.letter_case)),
+    decl(prop: LetterSpacing, value: if text_tracks(m: m) { raw_var(t: text_tracking_token(m: m)) } else { "normal" }),
+  ]
+}
+
+fn element_text_decls(role: ElementText) -> List<CssDecl> {
+  measured_text_decls(m: element_text_measure(role: role))
+}
+
+// The label of a small button: the product sets it one size down from the control role, and
+// nothing else about it changes.
+fn element_control_small_size_decls() -> List<CssDecl> {
+  [decl(prop: FontSize, value: scale_var(t: text_size_token(m: issue_tracker_measured_type_scale.control_small)))]
+}

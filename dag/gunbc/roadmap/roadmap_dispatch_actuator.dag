@@ -51,8 +51,17 @@ import extdeps.git { shape_git_worktree_add_argv, shape_git_worktree_add_detache
 import std.measure { ByteSize, byte_size_count, Kibibyte }
 import std.algebra { trim }
 import extdeps.systemd.systemctl
-import extdeps.systemd { systemd_unit_property_wire, SystemdUnitProperty, LoadState, SubState, ExecMainStatus }
-import extdeps.systemd.systemd_run { systemd_run_user_transient_arguments, systemd_run_property }
+import extdeps.systemd {
+  systemd_unit_property_wire, SystemdUnitProperty, LoadState, SubState, ExecMainStatus,
+  MemoryMax, WorkingDirectoryProperty, StandardOutputProperty, StandardErrorProperty,
+  ProtectSystemProperty, ProtectHomeProperty, PrivateTmpProperty, ReadWritePathsProperty,
+  RemainAfterExitProperty,
+}
+import extdeps.exec.command { ArgvCommand }
+import extdeps.systemd.systemd_run {
+  SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
+  systemd_run_user_transient_command, systemd_run_command_argument_words,
+}
 import gunbc.compute.unit_bounds { UnitProcessBounds, compute_grant_unit_properties }
 import extdeps.tmux {
   shape_tmux_new_session_argv,
@@ -1473,10 +1482,14 @@ fn dispatch_attempt_review_verdict_basename(head_sha: String, criterion_key: Str
   join([head_sha, ".", criterion_key, ".json"], "")
 }
 
-// ONE EVENTS STREAM PER LAUNCH. A reviewer is launched per (criterion, head), an auditor per head and
-// a supervisor per escalation turn; a path shared across launches let a later launch rewrite an
-// earlier one's stream, which erased that launch's token usage from the per-attempt metering
-// (gunbc.roadmap_attempt_metering). The launch discriminator is in the name.
+fn dispatch_attempt_audit_events_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head_sha: String) -> String {
+  join([dispatch_attempt_audit_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", head_sha, ".provider-events.jsonl"], "")
+}
+
+fn dispatch_attempt_supervisor_events_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, turn: Int) -> String {
+  join([dispatch_attempt_supervisor_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/t", to_string(value: turn), ".provider-events.jsonl"], "")
+}
+
 fn dispatch_attempt_review_events_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, criterion_key: String, head_sha: String) -> String {
   join([dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", criterion_key, "@", head_sha, ".provider-events.jsonl"], "")
 }
@@ -1505,17 +1518,17 @@ fn dispatch_review_unit_properties(
   working_directory: String,
   log_path: String,
   review_dir: String,
-) -> List<String> {
+) -> List<SystemdRunProperty> {
   [
-    systemd_run_property(name: "MemoryMax", value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max))),
-    systemd_run_property(name: "WorkingDirectory", value: working_directory),
-    systemd_run_property(name: "StandardOutput", value: join(["append:", log_path], "")),
-    systemd_run_property(name: "StandardError", value: join(["append:", log_path], "")),
-    systemd_run_property(name: "ProtectSystem", value: "strict"),
-    systemd_run_property(name: "ProtectHome", value: "read-only"),
-    systemd_run_property(name: "PrivateTmp", value: "yes"),
-    systemd_run_property(name: "ReadWritePaths", value: review_dir),
-    systemd_run_property(name: "RemainAfterExit", value: "yes"),
+    SystemdRunProperty { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
+    SystemdRunProperty { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr },
+    SystemdRunProperty { property: StandardOutputProperty, value: join(["append:", log_path], "") as NonEmptyStr },
+    SystemdRunProperty { property: StandardErrorProperty, value: join(["append:", log_path], "") as NonEmptyStr },
+    SystemdRunProperty { property: ProtectSystemProperty, value: "strict" as NonEmptyStr },
+    SystemdRunProperty { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
+    SystemdRunProperty { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
+    SystemdRunProperty { property: ReadWritePathsProperty, value: review_dir as NonEmptyStr },
+    SystemdRunProperty { property: RemainAfterExitProperty, value: "yes" as NonEmptyStr },
   ]
 }
 
@@ -1557,8 +1570,16 @@ fn gunbc_harness_review_argv(
 // fleet ssh context's safe-segment law (gunbc.fleet_known_hosts_anchor fleet_ssh_attempt_identity)
 // demands of the attempt identity it consumes as a path segment -- the pre-fix reviewer built it
 // from the absolute verdict path and every lane's seat bind refused before any ssh leg.
-fn dispatch_review_unit_argv(
-  systemd_run_program: FilePath,
+// THE BELT LAYER RUNS THE RESOLVED PROGRAM, not the spelling: the instance toolchain declares where
+// systemd-run lives, and that declaration is the only thing the invoking host is allowed to assert
+// about an unobserved host's program location (extdeps.exec.command
+// program_spelling_is_an_observation_claim). The option and command words are untouched -- they are
+// the one projection's; only the head is substituted.
+fn dispatch_unit_exec_argv(command: ArgvCommand, resolved_program: FilePath) -> HostExecArgv {
+  host_exec_argv(program: resolved_program as String, args: systemd_run_command_argument_words(command: command))
+}
+
+fn dispatch_review_unit_command(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
   attempt_key: String,
@@ -1566,30 +1587,27 @@ fn dispatch_review_unit_argv(
   brief: String,
   head_sha: String,
   criterion_key: String,
-) -> HostExecArgv {
-  host_exec_argv(
-    program: systemd_run_program as String,
-    args: systemd_run_user_transient_arguments(
-      unit: dispatch_review_unit_name(node_id: node_id as String, attempt_key: attempt_key, criterion_key: criterion_key),
-      properties: dispatch_review_unit_properties(
-        instance: instance,
-        working_directory: instance.repo_root as String,
-        log_path: dispatch_attempt_review_log_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
-        review_dir: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-      ),
-      setenv_bindings: [],
-      command_argv: gunbc_harness_review_argv(
-        gunbc_program: instance.serve_binary as String,
-        repo_root: instance.repo_root as String,
-        worktree_path: worktree_path,
-        brief: brief,
-        timeout_program: instance.toolchain.timeout as String,
-        request_scratch_path: dispatch_attempt_review_request_scratch_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
-        events_path: dispatch_attempt_review_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key, head_sha: head_sha),
-        verdict_dir: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-        verdict_name: dispatch_attempt_review_verdict_basename(head_sha: head_sha, criterion_key: criterion_key),
-        attempt_identity: dispatch_reviewer_attempt_identity(node_id: node_id as String, attempt_key: attempt_key, criterion_key: criterion_key, head_sha: head_sha),
-      ),
+) -> SystemdRunCommandReading {
+  systemd_run_user_transient_command(
+    unit: dispatch_review_unit_name(node_id: node_id as String, attempt_key: attempt_key, criterion_key: criterion_key),
+    properties: dispatch_review_unit_properties(
+      instance: instance,
+      working_directory: instance.repo_root as String,
+      log_path: dispatch_attempt_review_log_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
+      review_dir: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+    ),
+    setenv_bindings: [],
+    command_argv: gunbc_harness_review_argv(
+      gunbc_program: instance.serve_binary as String,
+      repo_root: instance.repo_root as String,
+      worktree_path: worktree_path,
+      brief: brief,
+      timeout_program: instance.toolchain.timeout as String,
+      request_scratch_path: dispatch_attempt_review_request_scratch_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
+      events_path: dispatch_attempt_review_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key, head_sha: head_sha),
+      verdict_dir: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+      verdict_name: dispatch_attempt_review_verdict_basename(head_sha: head_sha, criterion_key: criterion_key),
+      attempt_identity: dispatch_reviewer_attempt_identity(node_id: node_id as String, attempt_key: attempt_key, criterion_key: criterion_key, head_sha: head_sha),
     ),
   )
 }
@@ -1610,54 +1628,51 @@ fn dispatch_attempt_audit_verdict_path_for_instance(instance: HostDashboardInsta
   join([dispatch_attempt_audit_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", dispatch_attempt_audit_verdict_basename(head_sha: head_sha)], "")
 }
 
-fn dispatch_attempt_audit_events_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, head_sha: String) -> String {
-  join([dispatch_attempt_audit_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", head_sha, ".provider-events.jsonl"], "")
-}
-
 fn dispatch_audit_unit_name(node_id: String, attempt_key: String) -> NonEmptyStr {
   join(["gunbc-audit-", node_id, "-", attempt_key, ".service"], "") as NonEmptyStr
 }
 
 data gunbc_harness_auditor_function: String = "harness_auditor_cli"
 
-fn dispatch_audit_unit_argv(
-  systemd_run_program: FilePath,
+// Each launch writes its events to its OWN per-launch path (head-hash for the auditor, turn for
+// the supervisor): a path shared across launches let a later launch rewrite an earlier one's
+// stream, which erased that launch's token usage from the per-attempt metering — the metering
+// reader opens exactly these per-launch paths (roadmap_attempt_metering), so the writer and the
+// reader must name the same path expression, which the actuator witness pins on both sides.
+fn dispatch_audit_unit_command(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
   attempt_key: String,
   worktree_path: String,
   brief: String,
   head_sha: String,
-) -> HostExecArgv {
+) -> SystemdRunCommandReading {
   let dir = dispatch_attempt_audit_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  host_exec_argv(
-    program: systemd_run_program as String,
-    args: systemd_run_user_transient_arguments(
-      unit: dispatch_audit_unit_name(node_id: node_id as String, attempt_key: attempt_key),
-      properties: dispatch_review_unit_properties(
-        instance: instance,
-        working_directory: instance.repo_root as String,
-        log_path: join([dir, "/auditor-stdout.log"], ""),
-        review_dir: dir,
-      ),
-      setenv_bindings: [],
-      command_argv: [
-        instance.serve_binary as String,
-        "run",
-        "--source-root", join([instance.repo_root as String, "/dag"], ""),
-        "--source-root", join([instance.repo_root as String, "/src/v2"], ""),
-        "--entry", join([instance.repo_root as String, "/", gunbc_harness_worker_entry], ""),
-        "--function", gunbc_harness_auditor_function,
-        "--arg", join(["worktree=", worktree_path], ""),
-        "--arg", join(["brief=", brief], ""),
-        "--arg", join(["timeout_program=", instance.toolchain.timeout as String], ""),
-        "--arg", join(["request_scratch_path=", dir, "/harness-request.json"], ""),
-        "--arg", join(["events_path=", dispatch_attempt_audit_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha)], ""),
-        "--arg", join(["verdict_dir=", dir], ""),
-        "--arg", join(["verdict_name=", dispatch_attempt_audit_verdict_basename(head_sha: head_sha)], ""),
-        "--arg", join(["attempt_identity=", dispatch_auditor_attempt_identity(node_id: node_id as String, attempt_key: attempt_key, head_sha: head_sha)], ""),
-      ],
+  systemd_run_user_transient_command(
+    unit: dispatch_audit_unit_name(node_id: node_id as String, attempt_key: attempt_key),
+    properties: dispatch_review_unit_properties(
+      instance: instance,
+      working_directory: instance.repo_root as String,
+      log_path: join([dir, "/auditor-stdout.log"], ""),
+      review_dir: dir,
     ),
+    setenv_bindings: [],
+    command_argv: [
+      instance.serve_binary as String,
+      "run",
+      "--source-root", join([instance.repo_root as String, "/dag"], ""),
+      "--source-root", join([instance.repo_root as String, "/src/v2"], ""),
+      "--entry", join([instance.repo_root as String, "/", gunbc_harness_worker_entry], ""),
+      "--function", gunbc_harness_auditor_function,
+      "--arg", join(["worktree=", worktree_path], ""),
+      "--arg", join(["brief=", brief], ""),
+      "--arg", join(["timeout_program=", instance.toolchain.timeout as String], ""),
+      "--arg", join(["request_scratch_path=", dir, "/harness-request.json"], ""),
+      "--arg", join(["events_path=", dispatch_attempt_audit_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha)], ""),
+      "--arg", join(["verdict_dir=", dir], ""),
+      "--arg", join(["verdict_name=", dispatch_attempt_audit_verdict_basename(head_sha: head_sha)], ""),
+      "--arg", join(["attempt_identity=", dispatch_auditor_attempt_identity(node_id: node_id as String, attempt_key: attempt_key, head_sha: head_sha)], ""),
+    ],
   )
 }
 
@@ -1676,10 +1691,6 @@ fn dispatch_supervisor_unit_name(node_id: String, attempt_key: String, turn: Int
   join(["gunbc-supervisor-", node_id, "-", attempt_key, "-t", to_string(value: turn), ".service"], "") as NonEmptyStr
 }
 
-fn dispatch_attempt_supervisor_events_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, turn: Int) -> String {
-  join([dispatch_attempt_supervisor_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/t", to_string(value: turn), ".provider-events.jsonl"], "")
-}
-
 fn dispatch_supervisor_attempt_identity(node_id: String, attempt_key: String, turn: Int) -> String {
   join(["supervisor:", node_id, "-", attempt_key, "-t", to_string(value: turn)], "")
 }
@@ -1691,44 +1702,40 @@ data gunbc_harness_supervisor_function: String = "harness_supervisor_cli"
 // record convene at most one session -- a second convene over the same record names the same unit,
 // and the belt's liveness gate reads that. The worktree stays read-only to the session, as the
 // reviewer's is: the supervisor adjudicates the checkpoint; it does not edit it.
-fn dispatch_supervisor_unit_argv(
-  systemd_run_program: FilePath,
+fn dispatch_supervisor_unit_command(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,
   attempt_key: String,
   turn: Int,
   worktree_path: String,
   brief: String,
-) -> HostExecArgv {
+) -> SystemdRunCommandReading {
   let dir = dispatch_attempt_supervisor_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
-  host_exec_argv(
-    program: systemd_run_program as String,
-    args: systemd_run_user_transient_arguments(
-      unit: dispatch_supervisor_unit_name(node_id: node_id as String, attempt_key: attempt_key, turn: turn),
-      properties: dispatch_review_unit_properties(
-        instance: instance,
-        working_directory: instance.repo_root as String,
-        log_path: join([dir, "/supervisor-stdout.log"], ""),
-        review_dir: dir,
-      ),
-      setenv_bindings: [],
-      command_argv: [
-        instance.serve_binary as String,
-        "run",
-        "--source-root", join([instance.repo_root as String, "/dag"], ""),
-        "--source-root", join([instance.repo_root as String, "/src/v2"], ""),
-        "--entry", join([instance.repo_root as String, "/", gunbc_harness_worker_entry], ""),
-        "--function", gunbc_harness_supervisor_function,
-        "--arg", join(["worktree=", worktree_path], ""),
-        "--arg", join(["brief=", brief], ""),
-        "--arg", join(["timeout_program=", instance.toolchain.timeout as String], ""),
-        "--arg", join(["request_scratch_path=", dir, "/harness-request.json"], ""),
-        "--arg", join(["events_path=", dispatch_attempt_supervisor_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, turn: turn)], ""),
-        "--arg", join(["verdict_dir=", dir], ""),
-        "--arg", join(["verdict_name=", supervisor_verdict_basename as String], ""),
-        "--arg", join(["attempt_identity=", dispatch_supervisor_attempt_identity(node_id: node_id as String, attempt_key: attempt_key, turn: turn)], ""),
-      ],
+  systemd_run_user_transient_command(
+    unit: dispatch_supervisor_unit_name(node_id: node_id as String, attempt_key: attempt_key, turn: turn),
+    properties: dispatch_review_unit_properties(
+      instance: instance,
+      working_directory: instance.repo_root as String,
+      log_path: join([dir, "/supervisor-stdout.log"], ""),
+      review_dir: dir,
     ),
+    setenv_bindings: [],
+    command_argv: [
+      instance.serve_binary as String,
+      "run",
+      "--source-root", join([instance.repo_root as String, "/dag"], ""),
+      "--source-root", join([instance.repo_root as String, "/src/v2"], ""),
+      "--entry", join([instance.repo_root as String, "/", gunbc_harness_worker_entry], ""),
+      "--function", gunbc_harness_supervisor_function,
+      "--arg", join(["worktree=", worktree_path], ""),
+      "--arg", join(["brief=", brief], ""),
+      "--arg", join(["timeout_program=", instance.toolchain.timeout as String], ""),
+      "--arg", join(["request_scratch_path=", dir, "/harness-request.json"], ""),
+      "--arg", join(["events_path=", dispatch_attempt_supervisor_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, turn: turn)], ""),
+      "--arg", join(["verdict_dir=", dir], ""),
+      "--arg", join(["verdict_name=", supervisor_verdict_basename as String], ""),
+      "--arg", join(["attempt_identity=", dispatch_supervisor_attempt_identity(node_id: node_id as String, attempt_key: attempt_key, turn: turn)], ""),
+    ],
   )
 }
 
@@ -2255,11 +2262,8 @@ data cursor_provider_spawn_unwired_reason: NonEmptyStr = "cursor dispatch inner 
 // mint is one function: the unit's --arg and the attempt state's binding file cannot drift apart.
 // node id plus attempt key is the same uniqueness (the key hashes the id and the spawn instant) in
 // a form that is a safe path segment by construction.
-// A REVIEWER'S OR AUDITOR'S LAUNCH IDENTITY NAMES ONE LAUNCH, rendered injectively. The seat ledger
-// and the per-attempt metering (gunbc.roadmap_attempt_metering) key on it, so two launches -- the same
-// criterion at two heads, or the auditor at two heads -- may never render the same text: each part is
-// length-prefixed and the head is a part, as it is of their events streams. The result is a safe
-// path segment (no '/').
+// Length-prefixed identity parts (main #13208): each part becomes "<len>.<part>" so a part
+// carrying a separator still yields a safe path segment.
 fn dispatch_launch_identity(kind: String, parts: List<String>) -> String {
   join([kind, ":", join(map(parts, p => join([to_string(string_length(s: p)), ".", p], "")), ".")], "")
 }
@@ -2655,17 +2659,17 @@ fn dispatch_worker_unit_properties(
   worker_log_path: String,
   granted: Kibibyte,
   process_bounds: UnitProcessBounds,
-) -> List<String> {
+) -> List<SystemdRunProperty> {
   concat(
     compute_grant_unit_properties(granted: granted, working_directory: working_directory, process_bounds: Present { value: process_bounds }),
     [
-      systemd_run_property(name: "StandardOutput", value: join(["append:", worker_log_path], "")),
-      systemd_run_property(name: "StandardError", value: join(["append:", worker_log_path], "")),
-      systemd_run_property(name: "ProtectSystem", value: "strict"),
-      systemd_run_property(name: "ProtectHome", value: "read-only"),
-      systemd_run_property(name: "PrivateTmp", value: "yes"),
-      systemd_run_property(name: "ReadWritePaths", value: dispatch_worker_writable_paths(instance: instance)),
-      systemd_run_property(name: "RemainAfterExit", value: "yes"),
+      SystemdRunProperty { property: StandardOutputProperty, value: join(["append:", worker_log_path], "") as NonEmptyStr },
+      SystemdRunProperty { property: StandardErrorProperty, value: join(["append:", worker_log_path], "") as NonEmptyStr },
+      SystemdRunProperty { property: ProtectSystemProperty, value: "strict" as NonEmptyStr },
+      SystemdRunProperty { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
+      SystemdRunProperty { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
+      SystemdRunProperty { property: ReadWritePathsProperty, value: dispatch_worker_writable_paths(instance: instance) as NonEmptyStr },
+      SystemdRunProperty { property: RemainAfterExitProperty, value: "yes" as NonEmptyStr },
     ],
   )
 }
@@ -2706,7 +2710,7 @@ type DispatchWorkerUnitPlan {
   inner_argv: List<String>
 }
 
-fn dispatch_worker_unit_properties_for_plan(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, granted: Kibibyte, process_bounds: UnitProcessBounds) -> List<String> {
+fn dispatch_worker_unit_properties_for_plan(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, granted: Kibibyte, process_bounds: UnitProcessBounds) -> List<SystemdRunProperty> {
   dispatch_worker_unit_properties(
     instance: instance,
     working_directory: plan.working_directory,
@@ -2716,15 +2720,12 @@ fn dispatch_worker_unit_properties_for_plan(instance: HostDashboardInstance, pla
   )
 }
 
-fn dispatch_worker_unit_run(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, granted: Kibibyte, process_bounds: UnitProcessBounds) -> HostExecArgv {
-  host_exec_argv(
-    program: plan.systemd_run_program as String,
-    args: systemd_run_user_transient_arguments(
-      unit: plan.unit,
-      properties: dispatch_worker_unit_properties_for_plan(instance: instance, plan: plan, granted: granted, process_bounds: process_bounds),
-      setenv_bindings: [],
-      command_argv: plan.inner_argv,
-    ),
+fn dispatch_worker_unit_command(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, granted: Kibibyte, process_bounds: UnitProcessBounds) -> SystemdRunCommandReading {
+  systemd_run_user_transient_command(
+    unit: plan.unit,
+    properties: dispatch_worker_unit_properties_for_plan(instance: instance, plan: plan, granted: granted, process_bounds: process_bounds),
+    setenv_bindings: [],
+    command_argv: plan.inner_argv,
   )
 }
 

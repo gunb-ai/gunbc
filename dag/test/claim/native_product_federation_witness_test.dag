@@ -1,0 +1,55 @@
+module test.claim.native_product_federation
+
+import std.types { Bool, String, List }
+import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_admit }
+import gunbc.auth.gcp_iam_converge { gcp_iam_converge_targets }
+import gunbc.auth.github_gcp_federation { github_wif_pool_id }
+import gunbc.native_product_federation {
+  native_product_read_federation, native_product_write_federation, native_product_write_claim_pins,
+  native_product_write_attribute_condition, native_product_read_service_account, native_product_write_service_account,
+}
+
+fn queue_claims() -> List<OidcClaimPin> {
+  map(native_product_write_claim_pins(), p => p)
+}
+
+// The accepting control: the merge queue's presented claims are admitted by the write provider.
+test fn the_merge_queue_run_is_admitted_to_the_write_federation() -> Bool {
+  claim_pins_admit(pins: native_product_write_claim_pins(), claims: queue_claims())
+}
+
+// The refusing controls: a pull_request event, another repository and a missing event are each refused.
+test fn a_pull_request_or_foreign_run_is_refused_by_the_write_federation() -> Bool {
+  let pins = native_product_write_claim_pins()
+  let pr = map(pins, p => if (p.claim as String) == "event_name" { OidcClaimPin { claim: p.claim, value: "pull_request" } } else { p })
+  let foreign = map(pins, p => if (p.claim as String) == "repository_id" { OidcClaimPin { claim: p.claim, value: "1" } } else { p })
+  let no_event = filter(pins, p => (p.claim as String) != "event_name")
+  !claim_pins_admit(pins: pins, claims: pr) && !claim_pins_admit(pins: pins, claims: foreign) && !claim_pins_admit(pins: pins, claims: no_event)
+}
+
+test fn the_write_condition_names_the_queue_event() -> Bool {
+  native_product_write_attribute_condition().contains("assertion.event_name == 'merge_group'")
+}
+
+// Each account holds exactly one cell, on its own token's pinned version, and the two accounts differ.
+test fn each_account_holds_exactly_one_pinned_cell_on_its_own_token() -> Bool {
+  let r = native_product_read_federation()
+  let w = native_product_write_federation()
+  r.secret_grants.length() == 1 && w.secret_grants.length() == 1
+    && r.secret_grants.all(g => (g.target.secret as String) == "cloudflare-r2-cache-blobs-read-token" && (g.target.version as String) == "1")
+    && w.secret_grants.all(g => (g.target.secret as String) == "cloudflare-r2-cache-blobs-write-token" && (g.target.version as String) == "1")
+    && (native_product_read_service_account as String) != (native_product_write_service_account as String)
+}
+
+// The read side reuses the repository's github-oidc pool; the write side has its own pool, so the
+// repository-wide principal set cannot reach the write account.
+test fn the_write_account_is_not_reachable_from_the_repository_pool() -> Bool {
+  let w = native_product_write_federation()
+  (w.pool_id as String) != (github_wif_pool_id as String) && !w.principal_set.contains(github_wif_pool_id as String)
+}
+
+// Deleting the roster row must fail this: both federations are converge targets.
+test fn both_federations_are_converge_targets() -> Bool {
+  let ids = map(gcp_iam_converge_targets, f => f.service_account_id as String)
+  ids.any(i => i == "native-product-read") && ids.any(i => i == "native-product-write")
+}

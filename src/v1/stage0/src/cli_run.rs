@@ -92,6 +92,7 @@ pub mod declaration_index;
 pub mod derived_row_roster;
 mod emitted_crate_workspace_host;
 mod native_lane_runner;
+mod native_product_cache;
 pub mod reach_base_standings;
 pub mod required_ci_measurement;
 mod required_floor_runner;
@@ -145,7 +146,8 @@ pub fn source_root_ingest_module_identities_for_ci(
 }
 pub use entry_resolve::{
     load_sources_for_entry, process_shared_index, resolve_entry_graph, resolve_entry_with_index,
-    resolve_stage_totals, source_root_ingest_content_hash_fnv1a64, whole_tree_resolved_ctx,
+    resolve_seeded_compile_closure, resolve_stage_totals, source_root_ingest_content_hash_fnv1a64,
+    whole_tree_resolved_ctx,
 };
 mod live_read_decode;
 pub(crate) use live_read_decode::*;
@@ -24974,6 +24976,101 @@ pub fn render_selected_entry_closure_overlap_json(m: &SelectedEntryClosureOverla
     ));
     out.push_str("\"}");
     out
+}
+
+/// One selected claim and what its evaluation observed. `module_path` is the entry's AUTHORED
+/// module name (read off the `module` line by the module index), which is what the claim's label
+/// is minted from (`gunbc.discovery_census` `site_label`).
+pub struct ClaimRouteMember {
+    pub module_path: String,
+    pub function: String,
+    pub outcome: ClaimOutcome,
+    pub eval_steps: u64,
+    pub cpu_ms: u128,
+}
+
+/// THE CLAIM ROUTE'S EXECUTOR: the floor's discovery authority over the modules the operand can
+/// reach, then the floor's claim evaluation over the claims it selects.
+///
+/// NOTHING HERE DECIDES WHAT A CLAIM IS. Which `test` declarations a source enrolls is
+/// `floor_discovery_rows_over_sources` -- the same per-file authority fold the required floor runs,
+/// over a narrower subject -- and whether a claim held is `run_claim_measured`, the evaluation
+/// `claim_batch` and the floor share. The caller supplies two predicates: `module_selected`
+/// narrows the SUBJECT before discovery (an operand naming one module never pays for a corpus
+/// walk), and `claim_selected` narrows discovery's rows to the operand's own population.
+///
+/// One context per ENTRY, as `claim_batch` builds it: every claim of a module shares that module's
+/// resolved graph, and the eval-call memo is released at each claim's frame exit. Floor ADMISSION
+/// policy -- gate prefixes, prepared-subject exclusions, eval-step budget tiers -- is deliberately
+/// not applied: that is the `//:required` aggregate's question, and this route answers what a
+/// named claim OBSERVED, the distinction `gunbc.target_invocation` keeps for every direct
+/// invocation.
+pub fn run_claim_route(
+    source_roots: &[String],
+    module_selected: &dyn Fn(&str) -> bool,
+    claim_selected: &dyn Fn(&str, &str) -> bool,
+) -> Result<Vec<ClaimRouteMember>, String> {
+    let index = process_shared_index(source_roots);
+    let mut selected: Vec<(&String, &Rc<v1_compiler_compile::SourceFile>)> = index
+        .source_files
+        .iter()
+        .filter(|(module_path, _)| module_selected(module_path))
+        .collect();
+    if selected.is_empty() {
+        return Ok(Vec::new());
+    }
+    selected.sort_by(|a, b| a.0.cmp(b.0));
+    let module_for_path: std::collections::HashMap<String, String> = selected
+        .iter()
+        .map(|(m, sf)| (sf.path.replace('\\', "/"), (*m).clone()))
+        .collect();
+    let (graph, indices) = resolve_workspace_entry(source_roots, FLOOR_DISCOVERY_PRODUCER_ENTRY)
+        .map_err(|e| format!("floor discovery authority resolve: {e}"))?;
+    let frame = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let rows =
+        floor_discovery_rows_over_sources(&frame, selected.iter().map(|(_, sf)| sf.as_ref()))
+            .map_err(|refusal| refusal.rendered())?;
+    let mut groups: Vec<(String, String, Vec<String>)> = Vec::new();
+    for row in rows {
+        let Some(module_path) = module_for_path.get(row.entry.as_str()) else {
+            return Err(format!(
+                "cause=FloorDiscoveryEntryOutsideSubject entry={} — the discovery authority \
+                 enrolled an entry the selected subject does not hold",
+                row.entry
+            ));
+        };
+        if !claim_selected(module_path, &row.function) {
+            continue;
+        }
+        match groups.last_mut() {
+            Some((entry, _, functions)) if *entry == row.entry => functions.push(row.function),
+            _ => groups.push((row.entry, module_path.clone(), vec![row.function])),
+        }
+    }
+    let mut members = Vec::new();
+    for (entry, module_path, functions) in groups {
+        let (graph, source_indices) = resolve_entry_with_index(&index, &entry)
+            .map_err(|e| format!("resolve {entry}: {e}"))?;
+        let closure_subject = closure_subject_for_entry(&index, &entry)
+            .map_err(|e| format!("closure subject {entry}: {e}"))?;
+        let ctx = make_eval_context(
+            &graph,
+            source_indices,
+            v1_interpreter::ExecutionMode::Hermetic,
+        );
+        for function in functions {
+            let (outcome, receipt) = run_claim_measured(&ctx, &closure_subject, &function);
+            v1_interpreter::eval_call_memo_frame_exit(&ctx);
+            members.push(ClaimRouteMember {
+                module_path: module_path.clone(),
+                function,
+                outcome,
+                eval_steps: receipt.eval_steps,
+                cpu_ms: receipt.cpu_nanos / 1_000_000,
+            });
+        }
+    }
+    Ok(members)
 }
 
 pub fn discover_floor_witness_roster(
