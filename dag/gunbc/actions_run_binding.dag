@@ -128,6 +128,20 @@ fn admit_run_revision(binding: ActionsRunBinding, expected: String) -> RunRevisi
   }
 }
 
+// A DISPATCH MAY OMIT expected_revision. The checkout is then the event sha (github.sha), and that
+// is R. A present expected_revision still has to match the checkout; a malformed value still refuses.
+fn admit_optional_expected_revision(binding: ActionsRunBinding) -> RunRevisionAdmission {
+  match read_expected_revision() {
+    ExpectedRevisionPresent { revision: expected_r } => admit_run_revision(binding: binding, expected: expected_r)
+    ExpectedRevisionAbsent { variable: _, detail: d } =>
+      if starts_with(s: d, prefix: "not a 40-digit") {
+        RunRevisionRefused { expected: d, observed: binding.run_revision }
+      } else {
+        RunRevisionAdmitted { revision: binding.run_revision }
+      }
+  }
+}
+
 // GITHUB_WORKFLOW_REF is `<repository>/<workflow path>@<ref>`; the binding names a FILE when the
 // prefix up to the `@` is exactly repository + "/" + path.
 fn run_binding_names_workflow_file(binding: ActionsRunBinding, workflow_path: String) -> Bool {

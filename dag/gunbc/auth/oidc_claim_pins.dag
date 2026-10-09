@@ -3,7 +3,6 @@ module gunbc.auth.oidc_claim_pins
 import std.types { Bool, List, NonEmptyStr, String }
 import gunbc.repository { gunbc_repository, gunbc_repository_numeric_identity }
 import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
-import gunbc.repo_identity { gunbc_default_branch_name }
 
 // ── ONE LIST OF PINS, TWO PROJECTIONS ───────────────────────────────────────────────────────────
 // A dedicated federation's membership rule is a list of GitHub OIDC claims pinned to values. The CEL
@@ -12,51 +11,81 @@ import gunbc.repo_identity { gunbc_default_branch_name }
 // not on a second description of it. This was the Mt. Collins boot federation's; the GCP IAM
 // converge's observe federation (gunbc.auth.gcp_iam_converge_federation) is the second job pinned
 // the same way, so the shape moved here rather than being written twice.
+// Equality is the default pin. Prefix is the branch-agnostic form of `workflow_ref`: GitHub
+// concatenates the workflow FILE and the git ref into one claim (`path.yml@refs/heads/<branch>`),
+// so an equality pin at main is a branch pin, and a pull-request or tag ref is a different prefix.
+type OidcClaimRelation
+  = OidcClaimEquals
+  | OidcClaimStartsWith
+
 type OidcClaimPin {
   claim: NonEmptyStr
   value: String
+  relation: OidcClaimRelation
+}
+
+fn oidc_equals(claim: NonEmptyStr, value: String) -> OidcClaimPin {
+  OidcClaimPin { claim: claim, value: value, relation: OidcClaimEquals }
+}
+
+fn oidc_starts_with(claim: NonEmptyStr, value: String) -> OidcClaimPin {
+  OidcClaimPin { claim: claim, value: value, relation: OidcClaimStartsWith }
+}
+
+fn claim_pin_cel(p: OidcClaimPin) -> String {
+  match p.relation {
+    OidcClaimEquals => join(["assertion.", p.claim as String, " == '", p.value, "'"], "")
+    OidcClaimStartsWith => join(["assertion.", p.claim as String, ".startsWith('", p.value, "')"], "")
+  }
 }
 
 fn claim_pins_attribute_condition(pins: List<OidcClaimPin>) -> String {
-  join(map(pins, p => join(["assertion.", p.claim as String, " == '", p.value, "'"], "")), " && ")
+  join(map(pins, p => claim_pin_cel(p: p)), " && ")
 }
 
 // A presented token's claims, as the provider sees them. An absent claim is simply not in the list,
-// which is how a job with no environment presents.
-fn claim_value_is(claims: List<OidcClaimPin>, pin: OidcClaimPin) -> Bool {
-  filter(claims, c => (c.claim as String) == (pin.claim as String) && c.value == pin.value).length() > 0
+// which is how a job with no environment presents. Presented claims are compared by name and
+// VALUE; their own `relation` is ignored (the pin's relation is the predicate).
+fn claim_satisfies_pin(claims: List<OidcClaimPin>, pin: OidcClaimPin) -> Bool {
+  filter(claims, c => (c.claim as String) == (pin.claim as String) && match pin.relation {
+    OidcClaimEquals => c.value == pin.value
+    OidcClaimStartsWith => starts_with(s: c.value, prefix: pin.value)
+  }).length() > 0
 }
 
 fn claim_pins_admit(pins: List<OidcClaimPin>, claims: List<OidcClaimPin>) -> Bool {
-  filter(pins, p => !claim_value_is(claims: claims, pin: p)).length() == 0
+  filter(pins, p => !claim_satisfies_pin(claims: claims, pin: p)).length() == 0
 }
 
-// THE FLEET-CONVERGE WORKFLOW FILE AT MAIN, as GitHub asserts it in `workflow_ref`.
-fn fleet_converge_workflow_ref_at_main() -> String {
+// THE FLEET-CONVERGE WORKFLOW FILE ON ANY BRANCH. GitHub's `workflow_ref` is
+// `<owner/repo>/<path>@<git-ref>`. The prefix stops at `@refs/heads/` so a tag dispatch and a
+// pull-merge ref are refused, and a session-branch dispatch is admitted. The separate `ref ==
+// refs/heads/main` pin is gone: it was the same branch lock written twice.
+fn fleet_converge_workflow_ref_heads_prefix() -> String {
   join([
     gunbc_repository.full_name as String, "/",
     artifact_path(a: FleetConvergeYamlArtifact),
-    "@refs/heads/", gunbc_default_branch_name
+    "@refs/heads/"
   ], "")
 }
 
 data workflow_dispatch_event_name: String = "workflow_dispatch"
 
 // THE PINS EVERY FLEET-CONVERGE FEDERATION SHARES, at WORKFLOW grain: this repository by numeric
-// identity, the workflow file at main, and a dispatch on main. A job-grain federation adds the job's
-// own `environment`; a federation for jobs that declare none (fleet-cloud-convergence) stops here.
+// identity, this workflow file on a branch, and a workflow_dispatch event. A job-grain federation
+// adds the job's own `environment`; a federation for jobs that declare none (fleet-cloud-convergence)
+// stops here. Pull requests present event_name pull_request and are refused.
 fn fleet_converge_workflow_claim_pins() -> List<OidcClaimPin> {
   [
-    OidcClaimPin { claim: "repository_id", value: to_string(gunbc_repository_numeric_identity.repository_id) },
-    OidcClaimPin { claim: "repository_owner_id", value: to_string(gunbc_repository_numeric_identity.owner_id) },
-    OidcClaimPin { claim: "workflow_ref", value: fleet_converge_workflow_ref_at_main() },
-    OidcClaimPin { claim: "ref", value: concat("refs/heads/", gunbc_default_branch_name) },
-    OidcClaimPin { claim: "event_name", value: workflow_dispatch_event_name },
+    oidc_equals(claim: "repository_id", value: to_string(gunbc_repository_numeric_identity.repository_id)),
+    oidc_equals(claim: "repository_owner_id", value: to_string(gunbc_repository_numeric_identity.owner_id)),
+    oidc_starts_with(claim: "workflow_ref", value: fleet_converge_workflow_ref_heads_prefix()),
+    oidc_equals(claim: "event_name", value: workflow_dispatch_event_name),
   ]
 }
 
 // THE PINS EVERY DEDICATED FLEET-CONVERGE JOB SHARES: the workflow pins and the job's own
 // `environment` -- the one job-grain claim GitHub asserts.
 fn fleet_converge_job_claim_pins(environment: NonEmptyStr) -> List<OidcClaimPin> {
-  concat(fleet_converge_workflow_claim_pins(), [OidcClaimPin { claim: "environment", value: environment as String }])
+  concat(fleet_converge_workflow_claim_pins(), [oidc_equals(claim: "environment", value: environment as String)])
 }
