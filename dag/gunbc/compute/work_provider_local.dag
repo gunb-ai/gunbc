@@ -68,13 +68,16 @@ import gunbc.compute.host_capacity {
   compute_capacity_subject, compute_capacity_store, compute_release_on,
 }
 import std.measure { kibibyte }
+import std.content_hash { serialize_content_hash }
+import std.materialization_provider { ComputeWorkRequest, request_key, compute_work_demand_nature }
+import std.materialization_ladder { FreshEffect, IdempotentEffect, PureComputation, WorldRead }
 import gunbc.compute.work_request {
   WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
-  WorkToolchainIdentity, work_identity, work_identity_hex, work_default_build, work_declared_outputs,
+  WorkToolchainIdentity, work_toolchain_observed, rustc_verbose_host_triple, work_default_build, work_declared_outputs,
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
   WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
-  CheckoutUnavailable, StoreUnavailable,
+  CheckoutUnavailable, StoreUnavailable, FreshEffectNotServed,
   ToolchainUnobserved, DependencyNotSucceeded, SubjectUnresolved, UnitMemoryGrantExceeded, UnitEndingUnclassifiable,
   work_outcome_wire, work_outcome_ending, work_outcome_ending_of, work_operation_canonical, work_outcome_identity, StoredOutcomeRead, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_decode, stored_outcome_is_success,
 }
@@ -156,16 +159,47 @@ type ToolchainObservation
   | ToolchainObservationRefused { detail: String }
 
 fn compute_observe_toolchain(instance: HostDashboardInstance) -> ToolchainObservation {
-  match compute_exec(program: compute_program(instance: instance, cap: RustcCapability), workdir: instance.repo_root as String, args: ["--version"]) {
-    ComputeExecFailed { exit_code, stdout: _, stderr } => ToolchainObservationRefused { detail: join(["rustc --version exited ", to_string(value: exit_code), ": ", stderr], "") }
-    ComputeExecOk { stdout: rustc_line, stderr: _ } =>
-      match compute_exec(program: sccache_installed_binary_path, workdir: instance.repo_root as String, args: ["--version"]) {
-        ComputeExecFailed { exit_code, stdout: _, stderr } => ToolchainObservationRefused { detail: join(["sccache --version exited ", to_string(value: exit_code), ": ", stderr], "") }
-        ComputeExecOk { stdout: cache_line, stderr: _ } =>
-          if trim(s: rustc_line) == "" || trim(s: cache_line) == "" {
-            ToolchainObservationRefused { detail: "rustc or sccache printed an empty version line" }
-          } else {
-            ToolchainObserved { toolchain: WorkToolchainIdentity { rustc_version: trim(s: rustc_line) as NonEmptyStr, cache_release: trim(s: cache_line) as NonEmptyStr } }
+  let repo = instance.repo_root as String
+  compute_toolchain_decide(
+    rustc: compute_exec(program: compute_program(instance: instance, cap: RustcCapability), workdir: repo, args: ["-vV"]),
+    cargo: compute_exec(program: compute_program(instance: instance, cap: CargoCapability), workdir: repo, args: ["--version"]),
+    cache: compute_exec(program: sccache_installed_binary_path, workdir: repo, args: ["--version"]),
+    provider: compute_exec(program: compute_program(instance: instance, cap: GitWorkspaceCapability), workdir: repo, args: ["rev-parse", "HEAD:dag/gunbc/compute"]),
+  )
+}
+
+// PURE: four readings in, one execution identity or a located refusal out. Every axis must have been
+// read and be non-empty, and the triple must be found in rustc's own report; a missing axis is a
+// refusal, never a default, because a key with a hole names a different computation than it claims.
+fn compute_toolchain_decide(rustc: ComputeExec, cargo: ComputeExec, cache: ComputeExec, provider: ComputeExec) -> ToolchainObservation {
+  match rustc {
+    ComputeExecFailed { exit_code, stdout: _, stderr } => ToolchainObservationRefused { detail: join(["rustc -vV exited ", to_string(value: exit_code), ": ", stderr], "") }
+    ComputeExecOk { stdout: verbose, stderr: _ } =>
+      match cargo {
+        ComputeExecFailed { exit_code, stdout: _, stderr } => ToolchainObservationRefused { detail: join(["cargo --version exited ", to_string(value: exit_code), ": ", stderr], "") }
+        ComputeExecOk { stdout: cargo_line, stderr: _ } =>
+          match cache {
+            ComputeExecFailed { exit_code, stdout: _, stderr } => ToolchainObservationRefused { detail: join(["sccache --version exited ", to_string(value: exit_code), ": ", stderr], "") }
+            ComputeExecOk { stdout: cache_line, stderr: _ } =>
+              match provider {
+                ComputeExecFailed { exit_code, stdout: _, stderr } => ToolchainObservationRefused { detail: join(["the provider's source revision could not be read (git rev-parse exited ", to_string(value: exit_code), "): ", stderr], "") }
+                ComputeExecOk { stdout: provider_tree, stderr: _ } =>
+                  match rustc_verbose_host_triple(verbose: verbose) {
+                    Absent => ToolchainObservationRefused { detail: "rustc -vV reported no host: line, so the target triple is unobserved" }
+                    Present { value: triple } =>
+                      if trim(s: verbose) == "" || triple == "" || trim(s: cargo_line) == "" || trim(s: cache_line) == "" || trim(s: provider_tree) == "" {
+                        ToolchainObservationRefused { detail: "an execution-identity reading was empty (rustc -vV, its host triple, cargo, sccache or the provider revision)" }
+                      } else {
+                        ToolchainObserved { toolchain: work_toolchain_observed(
+                          rustc_verbose: trim(s: verbose) as NonEmptyStr,
+                          target_triple: triple as NonEmptyStr,
+                          cargo_version: trim(s: cargo_line) as NonEmptyStr,
+                          cache_release: trim(s: cache_line) as NonEmptyStr,
+                          provider_revision: trim(s: provider_tree) as NonEmptyStr,
+                        ) }
+                      }
+                  }
+              }
           }
       }
   }
@@ -1488,6 +1522,15 @@ fn compute_lease_drop_record(dropped: LeaseDrop, layout: ComputeLayout) -> HostR
   }
 }
 
+// THE WORK'S IDENTITY IS THE MATERIALIZATION PROVIDER'S KEY, not a second one. It is derived from
+// the ComputeWorkRequest family's judgment contract (std.materialization_provider), so the tree,
+// the operation and the observed execution identity are the only things that move it, and the key a
+// store will be asked for at the cutover is byte-for-byte the name this provider already files the
+// work under.
+fn compute_work_identity(subject: WorkSubject, op: WorkOperation, toolchain: WorkToolchainIdentity) -> String {
+  serialize_content_hash(hash: request_key(req: ComputeWorkRequest { subject: subject, operation: op, toolchain: toolchain })) as String
+}
+
 fn compute_provide_leaf(
   instance: HostDashboardInstance,
   commit: String,
@@ -1496,7 +1539,7 @@ fn compute_provide_leaf(
   toolchain: WorkToolchainIdentity,
   dependency_store: String,
 ) -> ProvideResult {
-  let identity = work_identity_hex(id: work_identity(subject: subject, op: op, toolchain: toolchain))
+  let identity = compute_work_identity(subject: subject, op: op, toolchain: toolchain)
   let layout = compute_layout(instance: instance, identity_hex: identity)
   let attached = compute_read_stored_outcome(layout: layout)
   if stored_outcome_is_success(r: attached) {
@@ -1832,7 +1875,33 @@ fn compute_unspawned_summary() -> SystemdRunWaitSummary {
 
 // PROVIDE, WITH THE BUILD DEPENDENCY RESOLVED FIRST. The build of the same subject is itself a
 // request: attached if stored, produced once otherwise, and compile/claims consume its store.
+// A WET CLAIM RUN IS A FRESH EFFECT AND THIS PROVIDER DOES NOT SERVE ONE (ruling on gunbc#13072,
+// item 2). Its identity is the request key, and every request with that key shares one lease, one
+// work directory and one stored outcome -- so a second identical wet run would attach to the first,
+// memoizing what std.materialization_provider classifies FreshEffect and the ladder answers Recompute.
+// Serving it needs an execution-occurrence identity beside the demand identity, which the ladder
+// cutover introduces; until then the request refuses before anything is observed or run. The
+// classification is the contract's own (std.materialization_provider compute_work_demand_nature, a
+// fold over the operation alone), read here rather than re-derived, so a future FreshEffect operation
+// refuses without this function changing.
+fn compute_operation_admission(op: WorkOperation) -> String? {
+  match compute_work_demand_nature(operation: op) {
+    FreshEffect => Present { value: "the request's contract classifies it FreshEffect, and this provider has no occurrence identity, so a repeat would attach to a prior run's outcome; run it hermetic or through the materialization cutover" }
+    IdempotentEffect => none
+    PureComputation => none
+    WorldRead { staleness_envelope_declared: _ } => Present { value: "the request's contract classifies it a WorldRead, which this provider's key does not cover" }
+  }
+}
+
 fn compute_provide(instance: HostDashboardInstance, commit: String, op: WorkOperation) -> ProvideResult {
+  match compute_operation_admission(op: op) {
+    Present { value: why } =>
+      compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: FreshEffectNotServed { detail: why } }, subject: ExactTree { tree: compute_null_tree() }, op: op)
+    Absent => compute_provide_admitted(instance: instance, commit: commit, op: op)
+  }
+}
+
+fn compute_provide_admitted(instance: HostDashboardInstance, commit: String, op: WorkOperation) -> ProvideResult {
   match compute_observe_toolchain(instance: instance) {
     ToolchainObservationRefused { detail } =>
       compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: ToolchainUnobserved { detail: detail } }, subject: ExactTree { tree: compute_null_tree() }, op: op)
@@ -1864,7 +1933,7 @@ fn compute_provide_dependent(instance: HostDashboardInstance, commit: String, su
       r: compute_provide_leaf(instance: instance, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency_store: compute_layout(instance: instance, identity_hex: build_identity).store_dir),
       carried: provide_result_host_record(r: build))
   } else {
-    let identity = work_identity_hex(id: work_identity(subject: subject, op: op, toolchain: toolchain))
+    let identity = compute_work_identity(subject: subject, op: op, toolchain: toolchain)
     provide_result_with_host_record(
       r: compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: DependencyNotSucceeded { dependency_identity: provide_result_identity(r: build), ending: provide_result_ending(r: build) } }, subject: subject, op: op),
       carried: provide_result_host_record(r: build))
