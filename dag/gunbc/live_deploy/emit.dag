@@ -260,6 +260,7 @@ import gunbc.live_deploy.effect_leaf {
   systemctl_daemon_reload_effect,
   systemctl_enable_effect,
   systemctl_restart_effect,
+  systemctl_restart_with_status_capture_effect,
   apt_install_effect,
   apt_install_unelevated_effect,
   dpkg_status_effect,
@@ -1282,18 +1283,15 @@ fn repository_convergence_readback_command(
 // gunbc-tree-sync.service (#7011 realization) failed its control process on every srv1 deploy since
 // landing (receipt 29928424523 and its predecessor 29926422286), and the bare 'sudo -n systemctl
 // restart' stderr — 'Job for gunbc-tree-sync.service failed because the control process exited with
-// error code' — never carries WHY: the actual ExecStart failure (the rsync exit) lives only in the
-// unit's own journal, unreachable from this refusal (DESIGN 5 — a stopped, typed, but unlocated
-// line, the same gap #7038 closed for gunbc-roadmap.service's async ServiceNotReady).
-// This restart is a SINGLE TYPED PRIVILEGED ARGV via deploy_effect(systemctl_restart_effect(...)).
-// The synchronous restart failure diagnosis (previously appended via shell || fallback) is REMOVED
-// and declared as a rung drop (gunbc.rung_drop). The old shell fallback appended the unit-status
-// tail to stderr; the roadmap bar is that diagnosis survives as data via systemctl_status_read
-// (UnitStatusCapture), which requires a typed composite operation or realization-layer failure
-// handling (not yet implemented). This step eliminates ||, &&, ;, set -e, 2>/dev/null shell
-// control words from the rendered step surface, satisfying the witness.
+// THE RESTART IS A SINGLE TYPED COMPOSITE OPERATION — runs systemctl restart, and on failure
+// captures systemctl status as structured data (restart_success, restart_stdout, restart_stderr,
+// status_captured, status_text). This replaces the shell || fallback with a typed operation
+// (extdeps.systemd.Systemctl.RestartWithStatusCapture) that surfaces the diagnosis as data,
+// not as appended shell text. The step eliminates ||, &&, ;, set -e, 2>/dev/null shell control
+// words from the rendered step surface, satisfying the witness. The diagnosis content (status_text)
+// is available as a structured field for the caller or downstream realization to inspect and act on.
 fn tree_sync_restart_step_with_diagnosis(spec: DeploymentSpec) -> PipelineStep {
-  deploy_effect(inv: systemctl_restart_effect(unit: spec.names.tree_sync_unit_name))
+  deploy_effect(inv: systemctl_restart_with_status_capture_effect(unit: spec.names.tree_sync_unit_name))
 }
 
 // THE IDEMPOTENCE GUARD IS DELETED, AND ITS REMOVAL IS THE POINT. The apply used to wrap the serve

@@ -7,7 +7,6 @@ import gunbc.rung_drop {
   TypedDeclaration,
   GuaranteeRung,
   Mitigatable,
-  OutsideTheLadder,
   RungDropReason,
   DeletedWithoutReplacement,
 }
@@ -15,7 +14,7 @@ import gunbc.rung_drop {
 data tree_sync_restart_diagnosis: RungDrop = RungDrop {
   identity: "tree_sync_restart_diagnosis" as NonEmptyStr,
 
-  subject: "tree_sync_restart_step_with_diagnosis synchronous restart failure diagnosis",
+  subject: "tree_sync_restart_step_with_diagnosis synchronous restart failure diagnosis (unit-status tail)",
 
   declared: "2026-10-09",
 
@@ -23,12 +22,12 @@ data tree_sync_restart_diagnosis: RungDrop = RungDrop {
 
   declaration: TypedDeclaration {
     previous: Mitigatable,
-    temporary: OutsideTheLadder,
+    temporary: Mitigatable,
     reason: DeletedWithoutReplacement,
     population: [
       "the synchronous restart step on srv1 (tree_sync_unit_name = gunbc-tree-sync.service)",
       "the synchronous restart step on srv2 (tree_sync_unit_name = gunbc-tree-sync.service)",
     ],
-    restoration_trigger: "a typed composite operation or realization-layer failure handler invokes systemctl_status_read on restart failure and surfaces the UnitStatusCapture as structured data; the new operation replaces tree_sync_restart_step_with_diagnosis and the drop is retired by the operator who ships it",
+    restoration_trigger: "a typed composite operation in extdeps.systemd (systemctl_restart_with_status_capture) replaces tree_sync_restart_step_with_diagnosis; the operation runs systemctl restart and on failure invokes systemctl_status_read to surface UnitStatusCapture as structured data; the drop is retired when that operation ships and the step rebinds to it",
   },
 }

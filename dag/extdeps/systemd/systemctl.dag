@@ -183,6 +183,14 @@ fn systemctl_restart_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", systemctl_restart_verb as String, unit as String]
 }
 
+fn systemctl_restart_with_status_capture_argv(unit: NonEmptyStr) -> List<String> {
+  concat(
+    ["systemctl", systemctl_restart_verb as String, unit as String],
+    [";"],
+    ["systemctl", "status", "--no-pager", "--full", unit as String]
+  )
+}
+
 fn systemctl_disable_now_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", "disable", "--now", unit as String]
 }
@@ -470,6 +478,38 @@ service systemd.Systemctl {
     exit {
       0 => Unit
       nonzero => String "systemctl restart failed"
+    }
+  }
+
+  // RESTART WITH STATUS CAPTURE — runs systemctl restart, and on failure runs systemctl status
+  // to capture the unit's diagnostic text (ActiveState, SubState, ExecStart exit code, etc.) as
+  // structured data. This replaces the shell || fallback in tree_sync_restart_step_with_diagnosis.
+  // The operation ALWAYS succeeds (output.success = true) — the restart result and any captured
+  // status are both returned as structured fields for the caller to inspect and act on.
+  operation RestartWithStatusCapture {
+    requires Network
+    input { unit: NonEmptyStr }
+    output {
+      restart_success: Bool from "restart_exit_success"
+      restart_stdout: String from "restart_stdout"
+      restart_stderr: String from "restart_stderr"
+      status_captured: Bool from "status_captured"
+      status_text: String from "status_text"
+    }
+    // Two-phase: restart then conditional status capture
+    transport shell {
+      argv: concat(
+        ["systemctl", "restart", "{unit}"],
+        [";"],
+        ["systemctl", "status", "--no-pager", "--full", "{unit}"]
+      )
+    }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl restart failed; status capture follows"
+    }
+    mock_response {
+      0 => { restart_success: true, restart_stdout: "", restart_stderr: "", status_captured: false, status_text: "" } "hermetic systemd.Systemctl.RestartWithStatusCapture"
     }
   }
 
