@@ -1646,23 +1646,39 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
             _ => None,
         }
     };
-    let plan = (|| -> Result<(Vec<String>, String, String, String), String> {
-        let requests = match &read("native_serve_probe_requests")? {
+    // The requests depend on the peer's bound port, which only exists once the peer is up, so they
+    // are read from the reader module with that port as its argument -- still every byte there.
+    let requests_for_peer_port = |peer_port: i64| -> Result<Vec<String>, String> {
+        let value = crate::v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "native_serve_probe_requests",
+            &[(
+                Some("peer_port".to_string()),
+                crate::v1_interpreter::Value::Int(peer_port),
+            )],
+            true,
+        )
+        .map_err(|cause| {
+            format!("{label_name}: {READER} native_serve_probe_requests failed: {cause}")
+        })?;
+        match &value {
             crate::v1_interpreter::Value::List(items) => items
                 .iter()
                 .map(|item| text(item).ok_or("a request is not a String".to_string()))
-                .collect::<Result<Vec<String>, String>>()?,
-            _ => return Err("native_serve_probe_requests is not a List".to_string()),
-        };
+                .collect::<Result<Vec<String>, String>>(),
+            _ => Err("native_serve_probe_requests is not a List".to_string()),
+        }
+    };
+    let plan = (|| -> Result<(String, String, String), String> {
         let release = text(&read("native_serve_probe_release_revision")?)
             .ok_or("the release revision is not a String")?;
         let refused = text(&read("native_serve_probe_refused_revision")?)
             .ok_or("the refused revision is not a String")?;
         let deadline = text(&read("native_serve_probe_request_deadline_ms")?)
             .ok_or("the request deadline is not a String")?;
-        Ok((requests, release, refused, deadline))
+        Ok((release, refused, deadline))
     })();
-    let (requests, release, refused, deadline) = match plan {
+    let (release, refused, deadline) = match plan {
         Ok(plan) => plan,
         Err(cause) => {
             return InvocationOutcome {
@@ -1677,7 +1693,7 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
         &release,
         &refused,
         &deadline,
-        &requests,
+        &requests_for_peer_port,
     ) {
         Ok(run) => run,
         Err(cause) => {
@@ -1692,6 +1708,14 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
         (
             Some("announcement".to_string()),
             crate::v1_interpreter::Value::Str(run.announcement.clone().into()),
+        ),
+        (
+            Some("peer_announcement".to_string()),
+            crate::v1_interpreter::Value::Str(run.peer_announcement.clone().into()),
+        ),
+        (
+            Some("peer_port".to_string()),
+            crate::v1_interpreter::Value::Int(run.peer_port),
         ),
         (
             Some("responses".to_string()),

@@ -1107,6 +1107,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         EffectfulSelfRecursionUnrealized { name: s(), span: no_span() },
         ModuleFilenameCollision { filename: s(), modules: istrings(), span: no_span() },
         EmittedSymbolCollision { symbol: s(), identities: istrings(), span: no_span() },
+        NativeEffectRealizationRefused { entry: s(), refusals: istrings(), span: no_span() },
         EffectSummaryIncompleteAtFunctionValue { caller: s(), span: no_span() },
         EffectSummaryIncompleteAtLocalBinding { caller: s(), name: s(), span: no_span() },
         CallArgumentNameUnknown { callee: s(), argument: s(), declared: istrings(), span: no_span() },
@@ -1117,6 +1118,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         EqualityOnFunctionMember { type_name: s(), member: s(), span: no_span() },
         EqualityMemberUnjudgeable { type_name: s(), member: s(), span: no_span() },
         EqualityOptionalityMismatch { optional_side: s(), span: no_span() },
+        EqualityAgainstPresentOnListRead { list_read: s(), operator: s(), span: no_span() },
         TypeArgumentArityMismatch { type_name: s(), supplied: 0, declared: 0, span: no_span() },
         OccurrenceTransportViolation {
             refusal: Rc::new(crate::std_occurrence_identity::OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity { diagnostic_span: no_span() }),
@@ -1599,6 +1601,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         }
         CompilerDiagnostic::ModuleFilenameCollision { .. } => "ModuleFilenameCollision",
         CompilerDiagnostic::EmittedSymbolCollision { .. } => "EmittedSymbolCollision",
+        CompilerDiagnostic::NativeEffectRealizationRefused { .. } => {
+            "NativeEffectRealizationRefused"
+        }
         CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { .. } => {
             "EffectSummaryIncompleteAtFunctionValue"
         }
@@ -1616,6 +1621,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::EqualityOnFunctionMember { .. } => "EqualityOnFunctionMember",
         CompilerDiagnostic::EqualityMemberUnjudgeable { .. } => "EqualityMemberUnjudgeable",
         CompilerDiagnostic::EqualityOptionalityMismatch { .. } => "EqualityOptionalityMismatch",
+        CompilerDiagnostic::EqualityAgainstPresentOnListRead { .. } => {
+            "EqualityAgainstPresentOnListRead"
+        }
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
         CompilerDiagnostic::SourceAnnotationRefused { .. } => "SourceAnnotationRefused",
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => "ContainerSpellingUnrecognized",
@@ -1717,6 +1725,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::EffectfulSelfRecursionUnrealized { name, .. } => name.clone(),
         CompilerDiagnostic::ModuleFilenameCollision { filename, .. } => filename.clone(),
         CompilerDiagnostic::EmittedSymbolCollision { symbol, .. } => symbol.clone(),
+        CompilerDiagnostic::NativeEffectRealizationRefused {
+            entry, refusals, ..
+        } => format!(
+            "{entry}: {}",
+            refusals.iter().cloned().collect::<Vec<_>>().join("; ")
+        ),
         CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { caller, .. } => caller.clone(),
         CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding { caller, .. } => caller.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { argument, .. } => argument.clone(),
@@ -1732,6 +1746,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::EqualityOptionalityMismatch { optional_side, .. } => {
             optional_side.clone()
         }
+        CompilerDiagnostic::EqualityAgainstPresentOnListRead { list_read, .. } => list_read.clone(),
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => {
             "(occurrence-transport-refusal)".to_string()
         }

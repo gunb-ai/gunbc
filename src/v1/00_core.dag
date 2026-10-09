@@ -432,6 +432,7 @@ type CompilerDiagnostic
   | EffectfulSelfRecursionUnrealized { name: String, span: SourceSpan }
   | ModuleFilenameCollision { filename: String, modules: List<String>, span: SourceSpan }
   | EmittedSymbolCollision { symbol: String, identities: List<String>, span: SourceSpan }
+  | NativeEffectRealizationRefused { entry: String, refusals: List<String>, span: SourceSpan }
   | EffectSummaryIncompleteAtFunctionValue { caller: String, span: SourceSpan }
   | EffectSummaryIncompleteAtLocalBinding { caller: String, name: String, span: SourceSpan }
   | CallArgumentNameUnknown { callee: String, argument: String, declared: List<String>, span: SourceSpan }
@@ -442,6 +443,7 @@ type CompilerDiagnostic
   | EqualityOnFunctionMember { type_name: String, member: String, span: SourceSpan }
   | EqualityMemberUnjudgeable { type_name: String, member: String, span: SourceSpan }
   | EqualityOptionalityMismatch { optional_side: String, span: SourceSpan }
+  | EqualityAgainstPresentOnListRead { list_read: String, operator: String, span: SourceSpan }
   | TypeArgumentArityMismatch { type_name: String, supplied: Int, declared: Int, span: SourceSpan }
   | TypeArgumentKindMismatch { type_name: String, param_name: String, kind_name: String, supplied: String, span: SourceSpan }
   | TypeParameterInValuePosition { name: String, span: SourceSpan }
@@ -666,6 +668,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     EffectfulSelfRecursionUnrealized { name: _, span: s } => s
     ModuleFilenameCollision { filename: _, modules: _, span: s } => s
     EmittedSymbolCollision { symbol: _, identities: _, span: s } => s
+    NativeEffectRealizationRefused { entry: _, refusals: _, span: s } => s
     EffectSummaryIncompleteAtFunctionValue { caller: _, span: s } => s
     EffectSummaryIncompleteAtLocalBinding { caller: _, name: _, span: s } => s
     CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: s } => s
@@ -676,6 +679,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     EqualityOnFunctionMember { type_name: _, member: _, span: s } => s
     EqualityMemberUnjudgeable { type_name: _, member: _, span: s } => s
     EqualityOptionalityMismatch { optional_side: _, span: s } => s
+    EqualityAgainstPresentOnListRead { list_read: _, operator: _, span: s } => s
     TypeArgumentArityMismatch { type_name: _, supplied: _, declared: _, span: s } => s
     TypeArgumentKindMismatch { type_name: _, param_name: _, kind_name: _, supplied: _, span: s } => s
     TypeParameterInValuePosition { name: _, span: s } => s
@@ -776,6 +780,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     EffectfulSelfRecursionUnrealized { name: n, span: _ } => concat("effectful declaration '", n, "' calls itself outside tail position: the Rust realization lowers tail calls to a loop, but non-tail async recursion has no realization. Put the recursive call in tail position or move it into a pure helper.")
     ModuleFilenameCollision { filename: f, modules: ms, span: _ } => concat("module filename collision: ", to_string(value: ms |> count), " modules render one emitted file name '", f, "': ", join(ms, separator: ", "), " — module_to_filename maps '.' to '_', so these names are indistinguishable at the emitted path; rename one module segment")
     EmittedSymbolCollision { symbol: s, identities: ids, span: _ } => concat("emitted symbol collision: ", to_string(value: ids |> count), " authored identities render one emitted symbol '", s, "': ", join(ids, separator: ", "), " — two authored identities one emitted scope cannot hold apart (an undotted service with a type's name, a type spelled with `__`, dotted services differing only in first-letter case or in a segment's leading or trailing `_`); rename one")
+    NativeEffectRealizationRefused { entry: e, refusals: rs, span: _ } => concat("native effect realization refused for entry '", e, "': ", join(rs, separator: "; "), " (v1.compiler.emit NativeEffectRealizationAdmission: the rendered main binds only admitted handlers, so an unadmitted effect refuses here rather than failing to build or link)")
     EffectSummaryIncompleteAtFunctionValue { caller: c, span: _ } => concat("effect summary incomplete: ", c, " calls through a function value, whose callee is chosen at runtime, so its effects are unknown rather than empty — the caller's summary is a lower bound, not the answer")
     EffectSummaryIncompleteAtLocalBinding { caller: c, name: n, span: _ } => concat(concat(concat(concat("effect summary incomplete: ", c), " calls the local binding '"), n), "', whose effects this pass cannot join through the registry, so the caller's summary is a lower bound rather than the answer")
     CallArgumentNameUnknown { callee: c, argument: a, declared: ds, span: _ } =>
@@ -794,6 +799,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("equality admission for '", t, "' cannot be judged: ", m, " — '==' is refused rather than admitted on an unjudged member")
     EqualityOptionalityMismatch { optional_side: side, span: _ } =>
       concat("'==' compares an optional value with a required one (the ", side, " operand is optional): no declared coercion lifts T into T?, so the comparison has no single meaning -- match on the optional")
+    EqualityAgainstPresentOnListRead { list_read: r, operator: o, span: _ } =>
+      concat("'", o, "' against Present { .. } on the result of '", r, "' has no single meaning on every route (the interpreter returns the bare element, the emitted program a real optional, so the comparison is wrong or a runtime error on one route) -- match on the optional instead: match <read> { Present { value: v } => v ", o, " .., Absent => ", if o == "==" { "false" } else { "true" }, " }")
     TypeArgumentArityMismatch { type_name: t, supplied: s, declared: d, span: _ } =>
       concat("type argument arity mismatch applying '", t, "': ", to_string(value: s), " type argument(s) supplied, ", to_string(value: d), " type parameter(s) declared")
     TypeArgumentKindMismatch { type_name: t, param_name: p, kind_name: k, supplied: sup, span: _ } =>
@@ -922,6 +929,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     EffectfulSelfRecursionUnrealized { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ModuleFilenameCollision { filename: _, modules: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EmittedSymbolCollision { symbol: _, identities: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    NativeEffectRealizationRefused { entry: _, refusals: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EffectSummaryIncompleteAtFunctionValue { caller: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     EffectSummaryIncompleteAtLocalBinding { caller: _, name: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
@@ -932,6 +940,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     EqualityOnFunctionMember { type_name: _, member: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EqualityMemberUnjudgeable { type_name: _, member: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EqualityOptionalityMismatch { optional_side: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    EqualityAgainstPresentOnListRead { list_read: _, operator: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TypeArgumentArityMismatch { type_name: _, supplied: _, declared: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TypeArgumentKindMismatch { type_name: _, param_name: _, kind_name: _, supplied: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TypeParameterInValuePosition { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }

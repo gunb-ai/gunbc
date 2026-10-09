@@ -155,11 +155,17 @@ test fn the_adrift_line_names_the_epoch_and_every_detached_host() -> Bool {
 test fn the_participation_query_asks_for_established_connections_to_the_exact_peer() -> Bool {
   let argv = ss_established_to_peer_argv(peer: t_peer)
   argv.length() == 8
-    && argv.first() == "/usr/bin/ss"
+    && (match argv.first() {
+        Present { value: v } => v == "/usr/bin/ss"
+        Absent => false
+      })
     && any(argv, a => a == "-H")
     && any(argv, a => a == "state")
     && any(argv, a => a == "established")
-    && argv.skip(n: 7).first() == (t_peer as String)
+    && (match argv.skip(n: 7).first() {
+        Present { value: v } => v == (t_peer as String)
+        Absent => false
+      })
 }
 
 // AN EMPTY COMPLETED ENUMERATION IS ZERO, NOT A REFUSAL. This is the boundary the head/rank pair

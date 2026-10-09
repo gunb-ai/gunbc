@@ -57,7 +57,7 @@ import v1.std.core { Unmarked, declaration_provenance_of,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
   InternalError, TypeMismatch, UnresolvedType, TypeParameterInValuePosition, TextRepresentationUnidentifiedAtBoundary, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse, TextCrossingHasNoImplicitRoute, KernelMintShapeMismatch,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
-  EqualityOnFunctionMember, EqualityMemberUnjudgeable, EqualityOptionalityMismatch,
+  EqualityOnFunctionMember, EqualityMemberUnjudgeable, EqualityOptionalityMismatch, EqualityAgainstPresentOnListRead,
   TypeArgumentArityMismatch,
   resource_use_name_at, resource_use_resource,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
@@ -82,7 +82,7 @@ import v1.std.core { Unmarked, declaration_provenance_of,
   MatchPattern, Bind, VariantPattern, Wildcard, LitPattern, StringPart, variant_node_fields,
   make_field_binding_node, field_binding_name_at, field_binding_pattern,
   let_value, let_body, lambda_body,
-  foreach_collection, foreach_body, method_receiver, method_arg_nodes,
+  foreach_collection, foreach_body, method_receiver, expr_child_at, method_arg_nodes,
   match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch,
   index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value,
   binop_left, binop_right,
@@ -124,7 +124,7 @@ import v1.compiler.infer_method {
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.coercion { provenance_realizes_natively }
-import v1.compiler.infer_env {
+import v1.compiler.infer_env { overlay_skips_kernel_name,
   text_representation_by_identity, text_crossing_by_identity, host_text_into_structural_sequence, text_representations_cross, text_representation_is_text_arm, text_representation_is_unidentified,
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
@@ -189,7 +189,7 @@ import v1.compiler.infer_sigs {
 }
 import v1.compiler.infer_emit_info {
   TypeRepr, StructRepr, EnumRepr,
-  TypeSummary, EmitGraphInfo, EmitInfoBuildState,
+  TypeSummary, EmitGraphInfo, EmitInfoBuildState, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared, TypeSummaryQuestion, QuestionDecided, QuestionNameAmbiguous, QuestionNotDeclared, type_summary_lookup, empty_type_summary_index, is_enum_in_summaries,
   empty_emit_graph_info, empty_type_env, lookup_emit_type_summary,
   build_struct_field_summaries, build_enum_field_summaries,
   add_emit_item_summary, derive_variant_to_enum, close_fn_fields, empty_type_decl_index, type_decl_index_with_qualified_names
@@ -746,7 +746,7 @@ fn variant_reference_inferred_node(expected: Node?, name: String, owner_name: St
 
 // THE IDENTITY OF AN ARM WHOSE OWNER IS A KERNEL MINT. A mint that a
 // gunbc.structural_realization_bindings kernel_mint_declaration_rows row binds to a corpus
-// declaration answers with THAT declaration (the kernel Optional is v2.std.optional Optional), so
+// declaration answers with THAT declaration (the kernel Optional is std.optional Optional), so
 // the arm has one identity whether it was reached through `T?` or through an import. A mint with
 // no row is a kernel type or it is unrecovered, as before.
 fn kernel_mint_parent_identity(minted_name: String) -> VariantParentIdentity {
@@ -1848,6 +1848,39 @@ fn record_lit_expanded_from_expected(type_name: String?, expected: Node?, scope:
             }
           }
         Absent => none
+      }
+    Absent => none
+  }
+}
+
+// A VARIANT LITERAL OF A GENERIC OWNER IS AN APPLICATION OF THAT OWNER WHEN ITS CONTEXT SAYS WHICH.
+// The arm above widens a variant literal to its owner DECLARATION: the expansion that still carries
+// the declaration's formals as params (`Result<ok, err>`). The expected type -- a declared return, a
+// typed let, a fold init whose fold sits in result position -- is the authored APPLICATION of the
+// same declaration (`Result<List<DnsLabel>, DomainNameParseError>`), and every reader before this
+// one dropped its arguments by resolving it back to the declaration (record_lit_expected_coproduct).
+// So the literal typed as an uninstantiated declaration, and each consumer downstream compensated
+// or failed: fold_accumulator_is_unapplied_generic re-derives an accumulator from the step's
+// return, which is itself such a literal, and extdeps.dns.domain_name parse_dns_label_list's
+// `labels |> list_push(label)` reached the emitter with `labels` typed by the formal `ok`
+// (gunbc native broker, E0599). The application is admitted only when the expected's head resolves
+// to the SAME binding as the owner (rc identity, never a spelling comparison) and the owner is
+// generic; anything else answers none and the literal keeps the declaration exactly as before.
+// ONLY A COPRODUCT OWNER. A struct literal never takes this arm: its fields are instantiated from
+// the expected type by record_lit_instantiated_fields, and its type stays the declaration, which
+// the Rust emitter's shared-carrier decision reads by the declaration's name. Measured: admitting a
+// generic STRUCT here (v2.std.artifact generated_artifact_validation, a Validation<Artifact> data
+// row) dropped its Rc carrier and was the one new error on the v2 self-host closure (E0308).
+fn variant_literal_expected_application(owner: Node, expected: Node?, scope: InferScope) -> Node? {
+  if (owner.params |> count) == 0 || owner.connective != Disj { return none }
+  match expected {
+    Present { value: exp } =>
+      if exp.connective != NoConnective || (exp.children |> count) == 0 { none }
+      else {
+        match lookup_type_for(env: scope.type_env, node: exp) {
+          Present { value: head } => if rc_ptr_eq(head, owner) { Present { value: with_required_cardinality(n: exp) } } else { none }
+          Absent => none
+        }
       }
     Absent => none
   }
@@ -3515,6 +3548,66 @@ fn equality_operand_is_optional(n: Node, source_indices: Map<String, NewlineInde
   }
 }
 
+// INTERIM WALL (scaffold, operator-approved by default via escalation msg_66f62924; dissolves when
+// the interpreter and the emitted program agree on one Optional value for a list read (vehicle: gunbc#13488's
+// design, which alone does not retire it), whereupon this arm is deleted and its cases
+// become ordinary regression controls). The checker types a list read (first/last/get/index/min/max)
+// as T?, the interpreter returns the bare element, so `read == Present { .. }` is false or a
+// cross-representation error there and true on the emitted route (failure modes
+// optional_equality_answers_by_representation, list_index_typed_optional_but_realized_as_the_bare_element).
+fn equality_operand_list_read_name(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  match n.expr_data {
+    ExprMethodCall { method_semantics: ms } =>
+      match ms {
+        Present { value: v } =>
+          match v {
+            AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: _ } =>
+              if equality_receiver_is_list(receiver: method_receiver(texpr: n), source_indices: source_indices) { equality_list_read_leaf(name: md.name) } else { "" }
+            _ => ""
+          }
+        _ => ""
+      }
+    ExprIndex =>
+      if equality_receiver_is_list(receiver: index_base(texpr: n), source_indices: source_indices) { "index" } else { "" }
+    ExprCall { call_semantics: cs, descent_evidence: _ } =>
+      match call_semantics_target(cs: cs) {
+        RuntimePrimitiveCall { primitive_name: pn, projected_from: _ } =>
+          if equality_receiver_is_list(receiver: arg_value(n: expr_child_at(texpr: n, index: 0, role: "call argument")), source_indices: source_indices) { equality_list_read_leaf(name: pn) } else { "" }
+        _ => ""
+      }
+    _ => ""
+  }
+}
+
+// The wall is about the LIST read, so the receiver's resolved type decides, not the call's spelling: a
+// user fn or a Map/other-type method named `get` that returns a real T? has one meaning and stays admitted.
+fn equality_receiver_is_list(receiver: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match receiver.inferred {
+    Present { value: Resolved { node: rt } } =>
+      node_is_element_collection(n: rt, source_indices: source_indices)
+        && qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: rt)) == "List"
+    _ => false
+  }
+}
+
+fn equality_list_read_leaf(name: String) -> String {
+  let leaf = qualified_last_segment(name: name)
+  if leaf == "first" || leaf == "last" || leaf == "get" || leaf == "index" || leaf == "min" || leaf == "max" { leaf } else { "" }
+}
+
+fn equality_operand_is_present_literal(n: Node) -> Bool {
+  match n.expr_data {
+    ExprRecordLit { parent_enum: _ } => qualified_last_segment(name: n.name) == "Present"
+    _ => false
+  }
+}
+
+fn equality_present_on_list_read(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  if equality_operand_is_present_literal(n: right) { equality_operand_list_read_name(n: left, source_indices: source_indices) }
+  else if equality_operand_is_present_literal(n: left) { equality_operand_list_read_name(n: right, source_indices: source_indices) }
+  else { "" }
+}
+
 fn equality_admission_refusal_diag(r: EqualityAdmissionRefusal, span: SourceSpan) -> CompilerDiagnostic {
   if r.member_judged {
     EqualityOnFunctionMember { type_name: r.type_name, member: r.member, span: span }
@@ -3555,6 +3648,9 @@ fn equality_admission_diags(op: BinOp, left_typed: Node, right_typed: Node, scop
       || (lt.inferred != none && is_compiler_error(inferred: lt.inferred.value))
       || (rt.inferred != none && is_compiler_error(inferred: rt.inferred.value)) {
       []
+    } else if equality_present_on_list_read(left: left_typed, right: right_typed, source_indices: source_indices) != "" {
+      [make_error_node(diagnostic: EqualityAgainstPresentOnListRead { list_read: equality_present_on_list_read(left: left_typed, right: right_typed, source_indices: source_indices), operator: match op { Eq => "=="
+          _ => "!=" }, span: span }, module_name: scope.module_name)]
     } else if equality_operand_is_optional(n: left_typed, source_indices: source_indices) != equality_operand_is_optional(n: right_typed, source_indices: source_indices) {
       let side = if equality_operand_is_optional(n: left_typed, source_indices: source_indices) { "left" } else { "right" }
       [make_error_node(diagnostic: EqualityOptionalityMismatch { optional_side: side, span: span }, module_name: scope.module_name)]
@@ -7066,16 +7162,15 @@ type UnresolvedMethodFrontierRow {
   dissolution: DissolutionCondition
 }
 
+// THE extdeps.dns.domain_name list_push ROW IS DELETED, observed 0 (an equality, so it is deleted,
+// not lowered), and its recorded cause was a misattribution corrected here rather than carried:
+// `ok` was not the variant's name but the owner's FORMAL. The payload `labels` was bound out of an
+// accumulator typed as the uninstantiated declaration Result<ok, err>, because the fold's
+// constructor init `Ok { value: .. }` widened to its owner declaration and dropped the expected
+// application. variant_literal_expected_application types that literal as the declared return's
+// application, so the receiver is List<DnsLabel> and the method resolves at tier0.
 fn unresolved_method_frontier() -> List<UnresolvedMethodFrontierRow> {
   [
-    {
-      module_name: "extdeps.dns.domain_name",
-      method: "list_push",
-      occurrences: 1,
-      receiver_shape: "Primitive(ok)",
-      cause: "receiver is a coproduct payload bound by pattern destructuring, which arrives typed as the VARIANT name rather than the field type.",
-      dissolution: unbound_dissolution(description: "coproduct payload binding typed as the field type, at which point the receiver is List and DECIDABLE")
-    },
     {
       module_name: "v1.compiler.trace",
       method: "map",
@@ -7231,7 +7326,7 @@ fn validate_cast(source_inferred: InferredNode?, target_name: String, span: Sour
 // with the absence intact, so it is left to validate_cast.
 //
 // WAS `source_name == "Optional"`, and a BARE-SPELLING comparison is the defect: authored
-// names reach here qualified as often as not, so a source typed `v2.std.optional.Optional`
+// names reach here qualified as often as not, so a source typed `std.optional.Optional`
 // was not recognised as optional at all and its cast escaped OptionalCastNotEliminated
 // entirely. qualified_last_segment is the authority this file already uses for exactly this
 // question (nominal_call_arg_brand_mismatch, is_set_collection); asking it here is using the
@@ -11195,7 +11290,12 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     }
     let expected_optional_parent = Present { value: "Optional" }
     let is_present_ctor = type_name.value == "Present" && local_variant_parent == expected_optional_parent
-    let resolved_node = if is_present_ctor {
+    let applied_expected_owner = if is_present_ctor { none } else {
+      variant_literal_expected_application(owner: raw_resolved, expected: expected, scope: scope)
+    }
+    let resolved_node = if applied_expected_owner != none {
+      applied_expected_owner.value
+    } else if is_present_ctor {
       let val_field = fi_infer_results |> filter(fir => field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices) == "value") |> first
       match val_field {
         Present { value: val_fir } => with_optional_cardinality(n: resolved_type(n: val_fir.infer_result.typed))
@@ -14970,6 +15070,15 @@ fn transparent_alias_identity_agrees(index: SymbolIndex, left: String, right: St
     }
 }
 
+// A MODULE'S NAMED IMPORTS, leaf -> the module it is imported from, read from its import nodes: the
+// import half of v1.compiler.infer_env bare_occurrence_binding.
+fn file_named_imports_of(module_node: Node, source_indices: Map<String, NewlineIndex>) -> Map<String, String> {
+  module_imports(n: module_node) |> filter(imp => !import_is_all(n: imp)) |> fold(init: empty_map(), f: (acc, imp) =>
+    let from_module = import_module_path_at(imp: imp, source_indices: source_indices)
+    import_specific_names_at(n: imp, source_indices: source_indices) |> fold(init: acc, f: (inner, name) => map_insert(inner, name, from_module))
+  )
+}
+
 fn build_symbol_index_census_raw_nodes(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
   let corpus_variant_counts = corpus_disj_variant_name_counts_nodes(module_nodes: module_nodes, source_indices: source_indices)
   let corpus_item_counts = corpus_item_name_counts_nodes(module_nodes: module_nodes, source_indices: source_indices)
@@ -14999,7 +15108,11 @@ fn build_symbol_index_census_raw_nodes(module_nodes: List<Node>, source_indices:
     services: folded.services,
     transparent_alias_rep: transparent_alias_representatives(
       module_nodes: module_nodes, source_indices: source_indices, item_counts: corpus_item_counts),
-    type_head_exposures: type_head_exposure_census(module_nodes: module_nodes, source_indices: source_indices)
+    type_head_exposures: type_head_exposure_census(module_nodes: module_nodes, source_indices: source_indices),
+    file_modules: module_nodes |> fold(init: empty_map(), f: (acc, module_node) =>
+      map_insert(acc, module_node.span.file, authored_name_at(source_indices: source_indices, node: module_node))),
+    module_named_imports: module_nodes |> fold(init: empty_map(), f: (acc, module_node) =>
+      map_insert(acc, authored_name_at(source_indices: source_indices, node: module_node), file_named_imports_of(module_node: module_node, source_indices: source_indices)))
   }
 }
 
@@ -15209,7 +15322,7 @@ fn census_bare_fill_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Ma
       Absent => acc
     }
   )
-  SymbolIndex { entries: index.entries, global_bare: global2, services: services2, transparent_alias_rep: index.transparent_alias_rep, type_head_exposures: index.type_head_exposures }
+  SymbolIndex { entries: index.entries, global_bare: global2, services: services2, transparent_alias_rep: index.transparent_alias_rep, type_head_exposures: index.type_head_exposures, file_modules: index.file_modules, module_named_imports: index.module_named_imports }
 }
 
 fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
@@ -15228,7 +15341,7 @@ fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, 
     }
   )
   let fill = census_bare_fill_with_resolved_fn_sigs(index: index, source_indices: source_indices)
-  SymbolIndex { entries: entries2, global_bare: fill.global_bare, services: fill.services, transparent_alias_rep: fill.transparent_alias_rep, type_head_exposures: fill.type_head_exposures }
+  SymbolIndex { entries: entries2, global_bare: fill.global_bare, services: fill.services, transparent_alias_rep: fill.transparent_alias_rep, type_head_exposures: fill.type_head_exposures, file_modules: fill.file_modules, module_named_imports: fill.module_named_imports }
 }
 
 fn build_symbol_index_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
@@ -15268,7 +15381,9 @@ fn symbol_index_with_bare_fill(closure: SymbolIndex, tree: SymbolIndex) -> Symbo
   SymbolIndex {
     entries: closure.entries, global_bare: global2, services: services2,
     transparent_alias_rep: map_merge(tree.transparent_alias_rep, closure.transparent_alias_rep),
-    type_head_exposures: map_merge(tree.type_head_exposures, closure.type_head_exposures)
+    type_head_exposures: map_merge(tree.type_head_exposures, closure.type_head_exposures),
+    file_modules: map_merge(tree.file_modules, closure.file_modules),
+    module_named_imports: map_merge(tree.module_named_imports, closure.module_named_imports)
   }
 }
 
@@ -15307,20 +15422,14 @@ fn symbol_index_with_qualified_fill(closure: SymbolIndex, fill: SymbolIndex) -> 
   SymbolIndex {
     entries: entries2, global_bare: closure.global_bare, services: closure.services,
     transparent_alias_rep: map_merge(fill.transparent_alias_rep, closure.transparent_alias_rep),
-    type_head_exposures: map_merge(fill.type_head_exposures, closure.type_head_exposures)
+    type_head_exposures: map_merge(fill.type_head_exposures, closure.type_head_exposures),
+    file_modules: map_merge(fill.file_modules, closure.file_modules),
+    module_named_imports: map_merge(fill.module_named_imports, closure.module_named_imports)
   }
 }
 
 data direct_import_export_precedence_note: String = "Direct-selected exports beat transitive leaks (2026-07-16, the #6663 x #6686 main-red). The ancestry union folds each direct import's WHOLE flattened cache (its own exports AND everything it inherited), so a later import's transitively-leaked homonym could overlay an earlier import's OWN export that this module's import statement explicitly selects - import v2.std.algebra { Monoid } lost 'Monoid' to dag-root std.algebra riding v2.std.node's ancestry via std.types, and #6663's field-presence wall read the wrong shape at 28 sites. This overlay re-applies, in import order, each direct import's OWN export surface (interface.env.str_bindings - locals only, never its ancestry) restricted to the names the import statement makes visible (specific_names; is_all = the parent's whole local surface, type-variable names filtered per the std.types precedent). Winner semantics: direct-selected vs transitive leak = direct wins (lexical nearest-wins, the containment ruling one hop out - the sanctioned 1c universe is own declarations UNION direct import lists); direct vs direct = unchanged import-order overlay-wins (the ledgered peer-fork ruling, 2026-07-11: later import wins, conflict stays LEDGERED on binding_forks); leak vs leak = unchanged union winner; KERNEL names are never overridden (overlay_skips_kernel_name: kernel_type_set, the container_type_arity names List/Set/Map/Witness, plus Unit/Optional/Present/Absent) - the kernel scope layer stays positionally above imports per the same ruling, because builtin typing (first, skip, string ops) grounds on kernel identities and the v2 substrate models of those concepts (v2.std.collection List=FreeMonoid, Optional; v2.std.text String) are the known dual-representation debt, resolved corpus-wide by kernel-wins today. KERNEL INSTALLATION IS INDEPENDENT OF IMPORT CARDINALITY (build_ancestry_precedence, 2026-08-31): the kernel overlay applies unconditionally over the import union and both type-env builders consume the one producer - the former shape skipped the overlay when a module had exactly one import, so kernel identity won or lost by ancestry occupancy (a leak-dependent regime: identical imports, different realizations). Full precedence, nearest first: locals > kernel > direct-selected > transitive union. The fork LEDGER is untouched - rows still record every union conflict; this layer only corrects which binding serves lookups. DISSOLVES WHEN namespace Rule-1 lands (containment tree is the naming authority; imports become parse errors) - the union leak itself disappears and this overlay with it. Receipt: direct_import_precedence_over_transitive_leak_test (green arm = selected name resolves the selected module's shape regardless of import order; red control = the field wall still refuses the true shape's missing fields, with that arm's modules placed so the homonym is census-UNAMBIGUOUS by containment (realleaf under the consumer's own parent, leakleaf under a sibling parent) - a census-ambiguous name stands the wall down BY DESIGN (presence_check_census_gate_note), so without that placement the control asserts a diagnostic the gate exists to suppress and silently measures the gate instead of the overlay; ledger arm = the fork row is still recorded)."
 
-fn overlay_skips_kernel_name(name: String) -> Bool {
-  is_kernel_type(name: name)
-    || is_container_type(name: name)
-    || name == "Unit"
-    || name == "Optional"
-    || name == "Present"
-    || name == "Absent"
-}
 
 fn overlay_direct_import_exports(ancestry_str_bindings: Map<String, TypeBinding>, resolved_imports: List<ResolvedImport>, parent_index: Map<String, TypedModule>) -> Map<String, TypeBinding> {
   fold(resolved_imports, init: ancestry_str_bindings, f: (acc, imp) =>
@@ -15384,7 +15493,7 @@ fn build_ancestry_precedence(resolved_imports: List<ResolvedImport>, parent_inde
 
 // THE SEED'S ONE MINT OF THE OPTIONAL COPRODUCT. `T?` resolves to this node in every kernel scope
 // this module builds; it was written out three times, once per builder. It is a mint and not the
-// declaration: a module that uses `T?` need not hold v2.std.optional in its closure. Which
+// declaration: a module that uses `T?` need not hold std.optional in its closure. Which
 // declaration it stands for is gunbc.structural_realization_bindings kernel_mint_declaration_rows,
 // and kernel_mint_shape_diagnostics refuses if the two stop agreeing.
 fn kernel_optional_type_node() -> Node {
@@ -17326,16 +17435,12 @@ type EnumVariantShapeSets {
   positional_payload: Set<String>
 }
 
-fn enum_variant_shape_sets_for_item(acc: EnumVariantShapeSets, item: Node, si: Map<String, NewlineIndex>, type_summaries: Map<String, TypeSummary>) -> EnumVariantShapeSets {
+fn enum_variant_shape_sets_for_item(acc: EnumVariantShapeSets, item: Node, si: Map<String, NewlineIndex>, type_summaries: TypeSummaryIndex) -> EnumVariantShapeSets {
   let item_name = authored_name_at(source_indices: si, node: item)
-  let is_enum = match map_get(type_summaries, item_name) {
-    Present { value: summary } => match summary.repr {
-      EnumRepr { unit_only: _ } => true
-      _ => false
-    }
-    Absent => false
-  }
-  if is_enum {
+  if match is_enum_in_summaries(type_summaries: type_summaries, type_name: item_name) {
+    QuestionDecided { value: v } => v
+    _ => false
+  } {
     item.children |> fold(init: acc, f: (vacc, variant) =>
       let qualified = concat(item_name, "::", authored_name_at(source_indices: si, node: variant))
       let is_positional_payload = variant_has_positional_payload_shape(variant: variant, source_indices: si)
@@ -17351,7 +17456,7 @@ fn enum_variant_shape_sets_for_item(acc: EnumVariantShapeSets, item: Node, si: M
   } else { acc }
 }
 
-fn build_enum_variant_shape_sets(modules: List<TypedModule>, type_summaries: Map<String, TypeSummary>) -> EnumVariantShapeSets {
+fn build_enum_variant_shape_sets(modules: List<TypedModule>, type_summaries: TypeSummaryIndex) -> EnumVariantShapeSets {
   modules |> fold(init: EnumVariantShapeSets { fielded: empty_set(), positional_payload: empty_set() }, f: (acc, m) =>
     m.items |> fold(init: acc, f: (inner, item) =>
       enum_variant_shape_sets_for_item(acc: inner, item: item, si: m.type_env.source_indices, type_summaries: type_summaries)
@@ -17435,7 +17540,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
     Absent => empty_symbol_index()
   }
   let init = EmitInfoBuildState {
-    type_summaries: empty_map(),
+    type_summaries: empty_type_summary_index(),
     type_decl_items: type_decl_index_with_qualified_names(index: empty_type_decl_index(), qualified_names: qualified_names),
     fn_decl_items: empty_map(),
     structural_alias_fn_surface_names: empty_map(),

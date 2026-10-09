@@ -96,20 +96,15 @@ use serde::Serialize;
 pub(crate) fn owned_data_initializer_from_body(
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    variant_to_enum: &im::HashMap<String, String>,
+    emit_info: &crate::v1_compiler_infer_emit_info::EmitGraphInfo,
     entry_path: &str,
     decl_name: &str,
     body: &Rc<Node>,
     type_annotation: Option<&Rc<Node>>,
 ) -> Result<OwnedDataDeclInitializer, String> {
-    let resolved_initializer = resolved_initializer_decl_ref(
-        graph,
-        source_indices,
-        variant_to_enum,
-        body,
-        type_annotation,
-    )
-    .map_err(|e| format!("{entry_path}: owned data '{decl_name}': {e}"))?;
+    let resolved_initializer =
+        resolved_initializer_decl_ref(graph, source_indices, emit_info, body, type_annotation)
+            .map_err(|e| format!("{entry_path}: owned data '{decl_name}': {e}"))?;
     if is_resolved_bool_witness_claim(&resolved_initializer) {
         let (witness_entry, witness_function) =
             extract_bool_witness_transport(body, source_indices);
@@ -135,7 +130,7 @@ pub(crate) fn owned_data_initializer_from_body(
 pub fn owned_data_decls_for_entry(
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    variant_to_enum: &im::HashMap<String, String>,
+    emit_info: &crate::v1_compiler_infer_emit_info::EmitGraphInfo,
     entry_path: &str,
     entry_module: &str,
 ) -> Result<Vec<OwnedDataDeclRecord>, String> {
@@ -195,7 +190,7 @@ pub fn owned_data_decls_for_entry(
         let initializer = owned_data_initializer_from_body(
             graph,
             source_indices,
-            variant_to_enum,
+            emit_info,
             entry_path,
             &decl_name,
             body,

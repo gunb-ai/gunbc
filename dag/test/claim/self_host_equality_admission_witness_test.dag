@@ -146,6 +146,71 @@ test fn optional_compared_with_optional_stays_admitted() -> Bool {
   eq_admitted(source: optionality_both_optional_green_source)
 }
 
+// INTERIM WALL on `list-read == Present { .. }` (scaffold, operator-approved by default via
+// escalation msg_66f62924; it dissolves when the interpreter and the emitted program agree on one Optional value for a list read (vehicle: gunbc#13488's design, which alone does not retire it),
+// at which point the production arm is deleted and these become ordinary regression controls).
+// The four cases are sleek-carp-686's reproductions: the interpreter returns the bare element
+// from first(), so cases 1-3 answered a runtime error or a silent false while the emitted
+// program answered true. The match spelling is the positive control and must stay admitted.
+data list_read_present_int_red_source: String = "module eq_probe_list_read_int\ndata ints: List<Int> = [1, 2]\nfn r() -> Bool { ints.first() == Present { value: 1 } }\n"
+
+data list_read_present_variant_red_source: String = "module eq_probe_list_read_variant\ntype Kind = KA | KB\ndata kinds: List<Kind> = [KA, KB]\nfn r() -> Bool { kinds.first() == Present { value: KA } }\n"
+
+data list_read_present_skip_red_source: String = "module eq_probe_list_read_skip\ntype Kind = KA | KB\ndata kinds: List<Kind> = [KA, KB]\nfn r() -> Bool { kinds.skip(n: 1).first() == Present { value: KB } }\n"
+
+data list_read_match_green_source: String = "module eq_probe_list_read_match\ntype Kind = KA | KB\ndata kinds: List<Kind> = [KA, KB]\nfn r() -> Bool {\n  match kinds.first() {\n    Present { value: k } => k == KA\n    Absent => false\n  }\n}\n"
+
+test fn int_list_read_equal_present_refuses_blocking() -> Bool {
+  eq_blocking_count(source: list_read_present_int_red_source, wanted: "EqualityAgainstPresentOnListRead") == 1
+}
+
+test fn variant_list_read_equal_present_refuses_blocking() -> Bool {
+  eq_blocking_count(source: list_read_present_variant_red_source, wanted: "EqualityAgainstPresentOnListRead") == 1
+}
+
+test fn skipped_list_read_equal_present_refuses_blocking() -> Bool {
+  eq_blocking_count(source: list_read_present_skip_red_source, wanted: "EqualityAgainstPresentOnListRead") == 1
+}
+
+test fn list_read_match_stays_admitted() -> Bool {
+  eq_admitted(source: list_read_match_green_source)
+}
+
+// Review 77880: the wall keys on the List receiver, not the spelling `get`. A user fn named `get`
+// that returns a real Int? has one meaning on every route and must not be refused as a list read.
+data user_get_present_green_source: String = "module eq_probe_user_get\nfn get(n: Int) -> Int? { Present { value: n } }\nfn r() -> Bool { get(n: 1) == Present { value: 1 } }\n"
+
+// The operation is recognised by its resolved declaration identity, never its spelling: a user fn named
+// `get` whose first parameter IS a List passes the receiver test and must still not be walled.
+data user_get_over_list_green_source: String = "module eq_probe_user_get_list\nfn get(xs: List<Int>) -> Int? { Present { value: 1 } }\nfn r() -> Bool { get(xs: [1, 2]) == Present { value: 1 } }\n"
+
+test fn user_fn_named_get_over_a_list_stays_unwalled() -> Bool {
+  eq_blocking_count(source: user_get_over_list_green_source, wanted: "EqualityAgainstPresentOnListRead") == 0
+}
+
+// The wall claims `!=` as well as `==`; the diagnostic carries the operator so its guidance does not reverse the meaning.
+data list_read_present_ne_red_source: String = "module eq_probe_list_read_ne\ndata ints: List<Int> = [1, 2]\nfn r() -> Bool { ints.first() != Present { value: 1 } }\n"
+
+test fn list_read_not_equal_present_refuses_blocking() -> Bool {
+  eq_blocking_count(source: list_read_present_ne_red_source, wanted: "EqualityAgainstPresentOnListRead") == 1
+}
+
+data bracket_index_present_red_source: String = "module eq_probe_bracket\ndata ints: List<Int> = [1, 2]\nfn r() -> Bool { ints[0] == Present { value: 1 } }\n"
+
+test fn bracket_index_equal_present_refuses_blocking() -> Bool {
+  eq_blocking_count(source: bracket_index_present_red_source, wanted: "EqualityAgainstPresentOnListRead") == 1
+}
+
+data map_index_present_green_source: String = "module eq_probe_map_index\ndata m: Map<String, Int> = \{ \"a\": 1 }\nfn r() -> Bool { m[\"a\"] == Present { value: 1 } }\n"
+
+test fn map_bracket_index_stays_unwalled() -> Bool {
+  eq_blocking_count(source: map_index_present_green_source, wanted: "EqualityAgainstPresentOnListRead") == 0
+}
+
+test fn user_fn_named_get_stays_unwalled() -> Bool {
+  eq_blocking_count(source: user_get_present_green_source, wanted: "EqualityAgainstPresentOnListRead") == 0
+}
+
 // C5 (gunbc.recurring_failure_mode bare_value_admitted_where_optional_is_declared), AT THE DECLARED RETURN: a fn declared `-> T?` whose body produces a bare T. No
 // declared coercion lifts T into T?, and the Rust emission refused it (E0308, gunbc.running_release_
 // identity running_release_member_string). The red is a bare-Int body under `-> Int?`; the controls
