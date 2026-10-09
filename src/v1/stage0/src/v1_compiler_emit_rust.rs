@@ -10126,20 +10126,12 @@ pub fn reference_derived_use_line_plan(
     emitted_source: String,
 ) -> Rc<ReferenceDerivedUseLinePlan> {
     {
-        let module_source = match Rc::new({
-            let mut __result = Vec::new();
-            for tm in typed_modules.iter().cloned() {
-                if (crate::v1_std_core::authored_name_at(source_indices.clone(), tm.module.clone())
-                    == this_module_name.clone())
-                {
-                    __result.push(tm);
-                }
-            }
-            __result
-        })
-        .first()
-        .cloned()
-        {
+        let module_source = match typed_module_by_name(
+            this_module_name.clone(),
+            typed_modules.clone(),
+            source_indices.clone(),
+            module_index.clone(),
+        ) {
             Some(tm) => module_authored_source_text(tm.module.clone(), source_indices.clone()),
             std::option::Option::None => "".to_string(),
         };
