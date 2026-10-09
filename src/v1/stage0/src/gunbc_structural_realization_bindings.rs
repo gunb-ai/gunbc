@@ -111,8 +111,6 @@ pub fn kernel_grounding_rows() -> Rc<Vec<Rc<KernelGrounding>>> {
                 Rc::new(vec![Rc::new(KernelGrounding {
         source_kind: LiteralSourceKind::KernelIntLiteral,
         carrier: crate::std_decl_ref::decl_ref("std.nat".to_string(), "Nat".to_string()),
-        min: Some(0),
-        max: std::option::Option::None,
     })])
             };
         }
