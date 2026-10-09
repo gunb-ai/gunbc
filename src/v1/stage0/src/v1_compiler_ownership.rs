@@ -1290,7 +1290,7 @@ pub fn analyze_single_fold(
             Some(a) => crate::v1_std_core::arg_value(a.clone()),
             std::option::Option::None => method_call.clone(),
         };
-        let fold_lambda_node = match args.clone().get((1) as usize).cloned() {
+        let fold_lambda_node = match args.clone().iter().cloned().skip(1 as usize).next() {
             Some(a) => crate::v1_std_core::arg_value(a.clone()),
             std::option::Option::None => method_call.clone(),
         };

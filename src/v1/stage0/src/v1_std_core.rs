@@ -2856,15 +2856,7 @@ pub fn match_scrutinee(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn match_arm_nodes(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
-    Rc::new(
-        texpr
-            .children
-            .clone()
-            .iter()
-            .cloned()
-            .skip(1 as usize)
-            .collect::<Vec<_>>(),
-    )
+    Rc::new(v1_rt::list_skip(&texpr.children.clone(), 1))
 }
 
 pub fn binop_left(texpr: Rc<Node>) -> Rc<Node> {
@@ -2964,15 +2956,7 @@ pub fn method_receiver(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn method_arg_nodes(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
-    Rc::new(
-        texpr
-            .children
-            .clone()
-            .iter()
-            .cloned()
-            .skip(1 as usize)
-            .collect::<Vec<_>>(),
-    )
+    Rc::new(v1_rt::list_skip(&texpr.children.clone(), 1))
 }
 
 pub fn expr_method_name_at(
@@ -3002,17 +2986,9 @@ pub fn lambda_param_names_at(
 ) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for n in Rc::new(
-            texpr
-                .children
-                .clone()
-                .iter()
-                .cloned()
-                .skip(1 as usize)
-                .collect::<Vec<_>>(),
-        )
-        .iter()
-        .cloned()
+        for n in Rc::new(v1_rt::list_skip(&texpr.children.clone(), 1))
+            .iter()
+            .cloned()
         {
             __result.push(authored_name_at(source_indices.clone(), n.clone()));
         }

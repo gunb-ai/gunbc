@@ -193,14 +193,10 @@ pub fn type_summary_lookup(index: Rc<TypeSummaryIndex>, key: String) -> Rc<TypeS
                                 .map(|s| s.to_string())
                                 .collect::<Vec<_>>(),
                         );
-                        let enum_part = Rc::new(
-                            parts
-                                .clone()
-                                .iter()
-                                .cloned()
-                                .take(v1_rt::int_sub((parts.clone().len() as i64), 1) as usize)
-                                .collect::<Vec<_>>(),
-                        )
+                        let enum_part = Rc::new(v1_rt::list_take(
+                            &parts.clone(),
+                            v1_rt::int_sub((parts.clone().len() as i64), 1),
+                        ))
                         .join(&"::".to_string());
                         let variant_part = match parts.clone().last().cloned() {
                             Some(v) => v.clone(),

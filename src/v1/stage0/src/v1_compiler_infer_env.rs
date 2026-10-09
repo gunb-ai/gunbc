@@ -1359,14 +1359,7 @@ pub fn segment_lcp_len(a: Rc<Vec<String>>, b: Rc<Vec<String>>) -> i64 {
                         Some(bh) => {
                             if (bh.clone() == seg.clone()) {
                                 Rc::new(SegmentLcpScan {
-                                    remaining: Rc::new(
-                                        acc.remaining
-                                            .clone()
-                                            .iter()
-                                            .cloned()
-                                            .skip(1 as usize)
-                                            .collect::<Vec<_>>(),
-                                    ),
+                                    remaining: Rc::new(v1_rt::list_skip(&acc.remaining.clone(), 1)),
                                     matched: v1_rt::int_add(acc.matched.clone(), 1),
                                     live: true,
                                 })
@@ -1850,13 +1843,10 @@ pub fn qualified_all_but_last(name: String) -> String {
             "".to_string()
         } else {
             {
-                let scan = Rc::new(
-                    segs.clone()
-                        .iter()
-                        .cloned()
-                        .take(v1_rt::int_sub(seg_count.clone(), 1) as usize)
-                        .collect::<Vec<_>>(),
-                )
+                let scan = Rc::new(v1_rt::list_take(
+                    &segs.clone(),
+                    v1_rt::int_sub(seg_count.clone(), 1),
+                ))
                 .iter()
                 .cloned()
                 .fold("".to_string(), |acc: String, seg: String| {
