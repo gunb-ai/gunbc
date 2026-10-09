@@ -35,3 +35,18 @@ data repo_self_warning_denial: List<String> = ["-D", "warnings"]
 fn repo_self_warning_denial_rustflags() -> String {
   join(repo_self_warning_denial, " ")
 }
+
+// SEED PATH REMAP FOR BYTE-IDENTICAL RELEASE BINARIES ACROSS CHECKOUT ROOTS. Native product
+// producer_compiler is the SHA-256 of the running gunbc; without remap, rustc embeds the
+// runner's absolute checkout and two hosts of one tree cannot HIT. The FROM side is GitHub's
+// workspace expression so each job remaps its own root to `.`. Warning denial is still the
+// policy row; this function only concatenates the seed-build flag the generator must set.
+fn repo_self_seed_build_rustflags() -> String {
+  join(
+    [
+      repo_self_warning_denial_rustflags(),
+      " --remap-path-prefix=${{ github.workspace }}=."
+    ],
+    ""
+  )
+}

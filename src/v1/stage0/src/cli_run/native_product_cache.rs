@@ -23,17 +23,11 @@
 //!
 //! EVERY AXIS ERRS TOWARD A MISS. A miss costs one build; a stale hit serves a compiler that does
 //! not correspond to the tree. So the axes are over-approximations of relevance, never under:
-//! the producer is rustc's own per-crate dep-info for the units THIS running seed linked
-//! (`<crate>-<extra-filename>.d` whose extra-filename matches the binary cargo placed beside
-//! `deps/`), not cargo's combined beside-binary `.d` and not the newest `.d` by mtime (a later
-//! `cargo check` or alternate-feature build can plant a decoy). File contents are hashed together
-//! with the seed's semantic build config (workspace and package profile/features and
-//! `RUSTFLAGS` as compiled — `GUNBC_SEED_SEMANTIC_BUILD_CONFIG`; the existing
-//! `build_configuration` axis is the EMITTED crate). Manifests in that stamp are named by
-//! workspace-relative paths, not `CARGO_MANIFEST_DIR` absolutes. OUT_DIR files are keyed as
-//! `build/<pkg>/out/<rel>`, not the rustc-spelled host path. Registry crates are Cargo.lock plus
-//! the toolchain axis. Ambiguous extra-filename attribution, a directory, or an unreadable entry is a
-//! counted MISS (`producer_dep_info`), never a lane refusal and never a whole-tree fallback. The
+//! the producer is the running seed executable itself (`/proc/self/exe` bytes). That captures
+//! sources, profile, `.cargo/config.toml` overrides, flags and features by construction. Seed
+//! builds remap the checkout path (`--remap-path-prefix=<checkout>=.`) so the same tree hashes
+//! the same across runner directories. An unreadable executable is a counted MISS
+//! (`producer_dep_info`), never a lane refusal and never a whole-tree fallback. The
 //! closure and the census-only declaration universe are hashed at content grain (a span-insensitive
 //! heads hash would narrow the latter and is a declared next step, not assumed here).
 //!
@@ -72,8 +66,8 @@ fn hex(bytes: &[u8]) -> String {
 /// the key would have been.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum DeriveKeyError {
-    /// rustc's per-crate dep-info was missing, listed a directory, or named an unreadable file.
-    /// Named cause `producer_dep_info`. Never a lane refusal.
+    /// The running seed executable could not be read. Named cause `producer_dep_info`.
+    /// Never a lane refusal.
     ProducerInputsUnobserved {
         cause: String,
     },
@@ -88,382 +82,24 @@ fn miss(cause: impl Into<String>) -> DeriveKeyError {
     }
 }
 
-/// Hash compiled-input contents, keyed by identity (workspace-relative, or a portable
-/// `build/<pkg>/out/<rel>` name for an OUT_DIR file). A directory or unreadable path is a counted
-/// MISS, never a skipped member and never a whole-tree fallback.
-fn hash_compiled_inputs(entries: &[(String, PathBuf)]) -> Result<String, DeriveKeyError> {
-    if entries.is_empty() {
-        return Err(miss(
-            "NativeProductProducerEmpty — rustc dep-info named no compiled file",
-        ));
+/// SHA-256 of the process image that is deriving the key. Prefer `/proc/self/exe` so a
+/// deleted-or-replaced path still hashes the bytes that are running.
+fn running_seed_image() -> Result<PathBuf, DeriveKeyError> {
+    let proc = PathBuf::from("/proc/self/exe");
+    if proc.exists() {
+        return Ok(proc);
     }
-    let mut sorted = entries.to_vec();
-    sorted.sort_by(|a, b| a.0.cmp(&b.0));
-    let mut h = sha2::Sha256::new();
-    let mut prev: Option<String> = None;
-    for (key, path) in &sorted {
-        if prev.as_deref() == Some(key.as_str()) {
-            continue;
-        }
-        prev = Some(key.clone());
-        if path.is_dir() {
-            return Err(miss(format!(
-                "rustc dep-info names directory {key}, which has no file contents to hash"
-            )));
-        }
-        let bytes = std::fs::read(path).map_err(|e| miss(format!("{key}: {e}")))?;
-        h.update((key.len() as u64).to_le_bytes());
-        h.update(key.as_bytes());
-        h.update((bytes.len() as u64).to_le_bytes());
-        h.update(&bytes);
-    }
-    Ok(format!("{:x}", h.finalize()))
+    std::env::current_exe().map_err(|e| miss(format!("current_exe: {e}")))
 }
 
-fn rustc_extra_filename(stem: &str) -> Option<(&str, &str)> {
-    let idx = stem.rfind('-')?;
-    let (crate_name, extra) = stem.split_at(idx);
-    let extra = extra.strip_prefix('-')?;
-    if crate_name.is_empty() || extra.is_empty() || !extra.chars().all(|c| c.is_ascii_hexdigit()) {
-        return None;
+/// Producer axis: the running seed. An unreadable image is `ProducerInputsUnobserved`.
+fn producer_axis(_workspace: &Path) -> Result<String, DeriveKeyError> {
+    let path = running_seed_image()?;
+    let bytes = std::fs::read(&path).map_err(|e| miss(format!("{}: {e}", path.display())))?;
+    if bytes.is_empty() {
+        return Err(miss(format!("{} is empty", path.display())));
     }
-    Some((crate_name, extra))
-}
-
-/// `.../build/<pkg>-<hash>/out/...` — cargo's generated-sources directory, which may sit
-/// outside the workspace when `CARGO_TARGET_DIR` does.
-fn is_cargo_out_dir_file(path: &Path) -> bool {
-    portable_out_dir_identity(path).is_some()
-}
-
-/// Host-independent identity for a cargo OUT_DIR file. The rustc extra-filename on the
-/// package directory and the `CARGO_TARGET_DIR` prefix are not declared producer inputs.
-fn portable_out_dir_identity(path: &Path) -> Option<String> {
-    let parts: Vec<String> = path
-        .iter()
-        .map(|s| s.to_string_lossy().replace('\\', "/"))
-        .collect();
-    let build_idx = parts.iter().position(|p| p == "build")?;
-    let pkg = parts.get(build_idx + 1)?;
-    if parts.get(build_idx + 2).map(String::as_str) != Some("out") {
-        return None;
-    }
-    let rest = &parts[build_idx + 3..];
-    if rest.is_empty() {
-        return None;
-    }
-    let pkg = rustc_extra_filename(pkg)
-        .map(|(crate_name, _)| crate_name.to_string())
-        .unwrap_or_else(|| pkg.clone());
-    Some(format!("build/{pkg}/out/{}", rest.join("/")))
-}
-
-fn producer_entry_key(workspace: &Path, prerequisite: &str) -> (String, PathBuf) {
-    let raw = PathBuf::from(prerequisite);
-    let path = if raw.is_absolute() {
-        raw
-    } else {
-        workspace.join(prerequisite)
-    };
-    if let Ok(rel) = path.strip_prefix(workspace) {
-        return (rel.to_string_lossy().replace('\\', "/"), path);
-    }
-    if let Some(id) = portable_out_dir_identity(&path) {
-        return (id, path);
-    }
-    (prerequisite.replace('\\', "/"), path)
-}
-
-fn keep_compiled_prerequisite(workspace: &Path, prerequisite: &str) -> bool {
-    let (_, path) = producer_entry_key(workspace, prerequisite);
-    if let Ok(rel) = path.strip_prefix(workspace) {
-        let rel = rel.to_string_lossy().replace('\\', "/");
-        if rel.starts_with(".git/") || rel == ".git" {
-            return false;
-        }
-        return true;
-    }
-    is_cargo_out_dir_file(&path)
-}
-
-fn rustc_artifact_crate_and_extra(filename: &str) -> Option<(String, String)> {
-    let stem = filename
-        .strip_suffix(".rmeta")
-        .or_else(|| filename.strip_suffix(".rlib"))
-        .or_else(|| filename.strip_suffix(".d"))
-        .unwrap_or(filename);
-    let stem = stem.strip_prefix("lib").unwrap_or(stem);
-    let (crate_name, extra) = rustc_extra_filename(stem)?;
-    Some((crate_name.to_string(), extra.to_string()))
-}
-
-fn files_are_the_same_image(a: &Path, b: &Path) -> bool {
-    let Ok(ma) = std::fs::metadata(a) else {
-        return false;
-    };
-    let Ok(mb) = std::fs::metadata(b) else {
-        return false;
-    };
-    if !ma.is_file() || !mb.is_file() || ma.len() != mb.len() {
-        return false;
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        if ma.dev() == mb.dev() && ma.ino() == mb.ino() {
-            return true;
-        }
-    }
-    match (std::fs::read(a), std::fs::read(b)) {
-        (Ok(x), Ok(y)) => x == y,
-        _ => false,
-    }
-}
-
-/// The rustc extra-filename of the unit cargo linked into `exe`. Ambiguous or unbound → MISS.
-fn extra_filename_matching_exe(
-    exe: &Path,
-    deps_dir: &Path,
-    rustc_crate: &str,
-) -> Result<String, DeriveKeyError> {
-    if let Some(name) = exe.file_name().and_then(|n| n.to_str()) {
-        if let Some((crate_name, extra)) = rustc_artifact_crate_and_extra(name) {
-            if crate_name == rustc_crate {
-                return Ok(extra);
-            }
-        }
-    }
-    let prefix = format!("{rustc_crate}-");
-    let mut extras = Vec::new();
-    let entries = std::fs::read_dir(deps_dir).map_err(|e| {
-        miss(format!(
-            "rustc deps directory {} unreadable: {e}",
-            deps_dir.display()
-        ))
-    })?;
-    for entry in entries {
-        let entry = entry.map_err(|e| miss(format!("listing {}: {e}", deps_dir.display())))?;
-        let name = entry.file_name();
-        let Some(name) = name.to_str() else { continue };
-        if name.ends_with(".d") || name.ends_with(".rmeta") || name.ends_with(".rlib") {
-            continue;
-        }
-        let Some(rest) = name.strip_prefix(&prefix) else {
-            continue;
-        };
-        if rest.is_empty() || !rest.chars().all(|c| c.is_ascii_hexdigit()) {
-            continue;
-        }
-        if files_are_the_same_image(exe, &entry.path()) {
-            extras.push(rest.to_string());
-        }
-    }
-    extras.sort();
-    extras.dedup();
-    match extras.as_slice() {
-        [one] => Ok(one.clone()),
-        [] => Err(miss(format!(
-            "running seed {} is not any {rustc_crate}-<hash> image in {}",
-            exe.display(),
-            deps_dir.display()
-        ))),
-        _ => Err(miss(format!(
-            "running seed {} matches multiple {rustc_crate} extra-filenames {extras:?}; producer key refuses rather than guessing",
-            exe.display()
-        ))),
-    }
-}
-
-fn bound_dep_info_records(
-    deps_dir: &Path,
-    bin_crate: &str,
-    bin_extra: &str,
-) -> Result<Vec<PathBuf>, DeriveKeyError> {
-    use std::collections::{BTreeSet, VecDeque};
-    let mut queue = VecDeque::from([(bin_crate.to_string(), bin_extra.to_string())]);
-    let mut seen = BTreeSet::new();
-    let mut records = Vec::new();
-    while let Some((crate_name, extra)) = queue.pop_front() {
-        if !seen.insert((crate_name.clone(), extra.clone())) {
-            continue;
-        }
-        let record = deps_dir.join(format!("{crate_name}-{extra}.d"));
-        let text = std::fs::read_to_string(&record)
-            .map_err(|e| miss(format!("{}: {e}", record.display())))?;
-        records.push(record);
-        for prerequisite in super::checker_dependency::parse_dep_info_prerequisites(&text) {
-            let Some(filename) = Path::new(&prerequisite)
-                .file_name()
-                .and_then(|n| n.to_str())
-            else {
-                continue;
-            };
-            if let Some((dep_crate, dep_extra)) = rustc_artifact_crate_and_extra(filename) {
-                queue.push_back((dep_crate, dep_extra));
-            }
-        }
-    }
-    Ok(records)
-}
-
-fn cargo_package_name(manifest_text: &str) -> Option<String> {
-    let mut in_package = false;
-    for line in manifest_text.lines() {
-        let t = line.trim();
-        if t.starts_with('[') {
-            in_package = t == "[package]";
-            continue;
-        }
-        if in_package {
-            if let Some(rest) = t.strip_prefix("name") {
-                let rest = rest.trim().strip_prefix('=')?.trim();
-                let name = rest.trim_matches('"').trim_matches('\'').to_string();
-                if !name.is_empty() {
-                    return Some(name);
-                }
-            }
-        }
-    }
-    None
-}
-
-fn rustc_crate_name(package: &str) -> String {
-    package.replace('-', "_")
-}
-
-const LINKED_PARTITION_CRATES: &str = "src/v1/stage0/linked_partition_crates.generated.txt";
-
-fn linked_partition_rustc_crates(workspace: &Path) -> Result<Vec<String>, DeriveKeyError> {
-    let listing = workspace.join(LINKED_PARTITION_CRATES);
-    let text = std::fs::read_to_string(&listing)
-        .map_err(|e| miss(format!("{}: {e}", listing.display())))?;
-    let mut crates = Vec::new();
-    for line in text.lines().map(str::trim) {
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        let manifest = workspace.join(line).join("Cargo.toml");
-        let body = std::fs::read_to_string(&manifest)
-            .map_err(|e| miss(format!("{}: {e}", manifest.display())))?;
-        let package = cargo_package_name(&body).ok_or_else(|| {
-            miss(format!(
-                "{} has no [package] name, so its rustc crate is unknown",
-                manifest.display()
-            ))
-        })?;
-        crates.push(rustc_crate_name(&package));
-    }
-    if crates.is_empty() {
-        return Err(miss(
-            "linked-partition-crates projection named no crate; the seed's infer crate would be missing from the producer key",
-        ));
-    }
-    Ok(crates)
-}
-
-fn entries_from_rustc_dep_info(
-    workspace: &Path,
-    text: &str,
-) -> Result<Vec<(String, PathBuf)>, DeriveKeyError> {
-    let mut out = Vec::new();
-    for prerequisite in super::checker_dependency::parse_dep_info_prerequisites(text) {
-        if !keep_compiled_prerequisite(workspace, &prerequisite) {
-            continue;
-        }
-        let (key, path) = producer_entry_key(workspace, &prerequisite);
-        if path.is_dir() {
-            return Err(miss(format!(
-                "rustc dep-info names directory {key}, which has no file contents to hash"
-            )));
-        }
-        out.push((key, path));
-    }
-    Ok(out)
-}
-
-fn bin_rustc_crate(exe: &Path) -> Result<String, DeriveKeyError> {
-    let stem = exe.file_stem().and_then(|s| s.to_str()).ok_or_else(|| {
-        miss(format!(
-            "running seed {} has no rustc crate name",
-            exe.display()
-        ))
-    })?;
-    Ok(rustc_crate_name(stem))
-}
-
-fn crate_names_in_dep_info_records(records: &[PathBuf]) -> Vec<String> {
-    let mut names = Vec::new();
-    for record in records {
-        let Some(stem) = record.file_stem().and_then(|s| s.to_str()) else {
-            continue;
-        };
-        if let Some((crate_name, _)) = rustc_extra_filename(stem) {
-            names.push(crate_name.to_string());
-        }
-    }
-    names
-}
-
-fn observe_rustc_compiled_inputs(
-    workspace: &Path,
-) -> Result<Vec<(String, PathBuf)>, DeriveKeyError> {
-    let exe = std::env::current_exe().map_err(|e| miss(format!("current_exe: {e}")))?;
-    let Some(profile_dir) = exe.parent() else {
-        return Err(miss("running seed has no parent directory"));
-    };
-    let deps_dir = profile_dir.join("deps");
-    if !deps_dir.is_dir() {
-        return Err(miss(format!(
-            "rustc deps directory {} is absent; producer key needs the seed cargo built in this workspace",
-            deps_dir.display()
-        )));
-    }
-    let bin_crate = bin_rustc_crate(&exe)?;
-    let extra = extra_filename_matching_exe(&exe, &deps_dir, &bin_crate)?;
-    let records = bound_dep_info_records(&deps_dir, &bin_crate, &extra)?;
-    let present = crate_names_in_dep_info_records(&records);
-    for crate_name in linked_partition_rustc_crates(workspace)? {
-        if !present.iter().any(|c| c == &crate_name) {
-            return Err(miss(format!(
-                "linked partition crate {crate_name} is not among the rustc units bound to {}; producer key misses rather than picking a newest .d",
-                exe.display()
-            )));
-        }
-    }
-    let mut entries = Vec::new();
-    for record in &records {
-        let text = std::fs::read_to_string(record)
-            .map_err(|e| miss(format!("{}: {e}", record.display())))?;
-        entries.extend(entries_from_rustc_dep_info(workspace, &text)?);
-    }
-    let lock = workspace.join("Cargo.lock");
-    if !lock.is_file() {
-        return Err(miss(
-            "Cargo.lock is unreadable; registry crates have no producer coverage",
-        ));
-    }
-    entries.push(("Cargo.lock".into(), lock));
-    Ok(entries)
-}
-
-/// Mix the seed's compiled semantic build config into the producer digest. Identical `.rs` and
-/// lockfile with a different `[profile.release]` or `RUSTFLAGS` is a different producer.
-fn fold_producer(seed_semantic_build_config: &str, compiled_digest: &str) -> String {
-    hex(format!(
-        "seed_semantic_build_config={seed_semantic_build_config};compiled={compiled_digest}"
-    )
-    .as_bytes())
-}
-
-/// Producer axis: rustc's compiled-file set for the units this seed linked, plus the seed's
-/// semantic build config. Not cargo's combined beside-binary `.d`. An unobserved set is
-/// `ProducerInputsUnobserved`, never a walk of `src/v1`.
-fn producer_axis(workspace: &Path) -> Result<String, DeriveKeyError> {
-    let compiled = hash_compiled_inputs(&observe_rustc_compiled_inputs(workspace)?)?;
-    Ok(fold_producer(
-        env!("GUNBC_SEED_SEMANTIC_BUILD_CONFIG"),
-        &compiled,
-    ))
+    Ok(format!("{:x}", sha2::Sha256::digest(&bytes)))
 }
 
 fn sources_axis(sources: &[std::rc::Rc<crate::v1_compiler_compile::SourceFile>]) -> String {
@@ -1059,161 +695,46 @@ mod tests {
         assert!(text.contains("\"cause\":\"auth\"") && text.contains("\"outcome\":\"miss\""));
     }
 
-    fn compiled(workspace: &Path, rel: &str) -> (String, PathBuf) {
-        (rel.to_string(), workspace.join(rel))
-    }
-
-    // Control: a commit that touches only .git or unrelated docs leaves the producer digest.
-    // A compiled .rs change moves it.
     #[test]
-    fn a_seed_file_outside_the_compiled_set_leaves_the_producer_key_unchanged() {
-        let root = scratch("producer-set");
-        std::fs::create_dir_all(root.join("src")).unwrap();
-        std::fs::create_dir_all(root.join("docs")).unwrap();
-        std::fs::create_dir_all(root.join(".git")).unwrap();
-        std::fs::write(root.join("src/compiled.rs"), b"seed").unwrap();
-        std::fs::write(root.join("docs/note.md"), b"docs").unwrap();
-        std::fs::write(root.join(".git/HEAD"), b"ref: refs/heads/main\n").unwrap();
-        let set = vec![compiled(&root, "src/compiled.rs")];
-        let h0 = hash_compiled_inputs(&set).unwrap();
-        std::fs::write(root.join("docs/note.md"), b"docs-changed").unwrap();
-        std::fs::write(root.join(".git/HEAD"), b"ref: refs/heads/other\n").unwrap();
-        assert_eq!(h0, hash_compiled_inputs(&set).unwrap());
-        std::fs::write(root.join("src/compiled.rs"), b"seed-changed").unwrap();
-        assert_ne!(h0, hash_compiled_inputs(&set).unwrap());
-    }
-
-    #[test]
-    fn a_changed_out_dir_file_changes_the_producer_key() {
-        let root = scratch("producer-out");
-        let out_root = scratch("producer-target");
-        let gen = out_root
-            .join("release")
-            .join("build")
-            .join("v1-compiler-deadbeef")
-            .join("out")
-            .join("generated.rs");
-        std::fs::create_dir_all(gen.parent().unwrap()).unwrap();
-        std::fs::write(&gen, b"gen-1").unwrap();
-        std::fs::write(root.join("src.rs"), b"src").unwrap();
-        let out_entry = producer_entry_key(&root, &gen.to_string_lossy());
-        assert_eq!(out_entry.0, "build/v1-compiler/out/generated.rs");
-        let set = vec![compiled(&root, "src.rs"), out_entry];
-        let h0 = hash_compiled_inputs(&set).unwrap();
-        std::fs::write(&gen, b"gen-2").unwrap();
-        assert_ne!(
-            h0,
-            hash_compiled_inputs(&[
-                compiled(&root, "src.rs"),
-                producer_entry_key(&root, &gen.to_string_lossy()),
-            ])
-            .unwrap()
-        );
-        assert!(keep_compiled_prerequisite(&root, &gen.to_string_lossy()));
-    }
-
-    #[test]
-    fn out_dir_identity_is_portable_across_target_roots() {
-        let workspace = scratch("producer-out-ws");
-        let a = scratch("target-a")
-            .join("release")
-            .join("build")
-            .join("v1-compiler-aaaa")
-            .join("out")
-            .join("generated.rs");
-        let b = scratch("target-b")
-            .join("debug")
-            .join("build")
-            .join("v1-compiler-bbbb")
-            .join("out")
-            .join("generated.rs");
-        std::fs::create_dir_all(a.parent().unwrap()).unwrap();
-        std::fs::create_dir_all(b.parent().unwrap()).unwrap();
-        std::fs::write(&a, b"same-gen").unwrap();
-        std::fs::write(&b, b"same-gen").unwrap();
-        let ka = producer_entry_key(&workspace, &a.to_string_lossy());
-        let kb = producer_entry_key(&workspace, &b.to_string_lossy());
-        assert_eq!(ka.0, kb.0);
-        assert_eq!(ka.0, "build/v1-compiler/out/generated.rs");
+    fn producer_axis_is_the_sha256_of_the_running_executable() {
+        let path = running_seed_image().unwrap();
+        let bytes = std::fs::read(&path).unwrap();
         assert_eq!(
-            hash_compiled_inputs(&[ka]).unwrap(),
-            hash_compiled_inputs(&[kb]).unwrap()
+            producer_axis(&super::super::process_workspace_root()).unwrap(),
+            format!("{:x}", sha2::Sha256::digest(&bytes))
         );
     }
 
     #[test]
-    fn a_directory_or_unreadable_compiled_entry_is_a_counted_miss() {
-        let root = scratch("producer-dir");
-        std::fs::create_dir_all(root.join("src")).unwrap();
-        let dir_err = hash_compiled_inputs(&[compiled(&root, "src")])
-            .expect_err("a directory must not mint a producer digest");
-        assert!(
-            matches!(dir_err, DeriveKeyError::ProducerInputsUnobserved { .. }),
-            "{dir_err:?}"
-        );
-        let missing = hash_compiled_inputs(&[("src/gone.rs".into(), root.join("src/gone.rs"))])
-            .expect_err("an unreadable file must not mint a producer digest");
-        assert!(
-            matches!(missing, DeriveKeyError::ProducerInputsUnobserved { .. }),
-            "{missing:?}"
-        );
-    }
-
-    #[test]
-    fn rustc_dep_info_without_cargo_toml_is_the_compiled_set() {
-        let root = scratch("rustc-d");
-        std::fs::create_dir_all(root.join("src")).unwrap();
-        std::fs::write(root.join("src/lib.rs"), b"lib").unwrap();
-        std::fs::write(root.join("src/v1_compiler_infer.rs"), b"infer").unwrap();
-        let bin_d = format!(
-            "{}: {}\n",
-            root.join("deps/gunbc-abcd.d").display(),
-            root.join("src/lib.rs").display()
-        );
-        let infer_d = format!(
-            "{}: {}\n",
-            root.join("deps/v1_stage0_v1_infer-abcd.d").display(),
-            root.join("src/v1_compiler_infer.rs").display()
-        );
-        let bin = entries_from_rustc_dep_info(&root, &bin_d).unwrap();
-        let infer = entries_from_rustc_dep_info(&root, &infer_d).unwrap();
-        assert!(bin.iter().any(|(k, _)| k == "src/lib.rs"));
-        assert!(infer.iter().any(|(k, _)| k == "src/v1_compiler_infer.rs"));
-        assert!(!keep_compiled_prerequisite(
-            &root,
-            &root.join(".git/HEAD").to_string_lossy()
-        ));
-    }
-
-    #[test]
-    fn an_empty_compiled_set_is_a_miss_not_a_key() {
-        let err = hash_compiled_inputs(&[])
-            .expect_err("an empty compiled set must not mint a producer digest");
-        assert!(
-            matches!(err, DeriveKeyError::ProducerInputsUnobserved { .. }),
-            "{err:?}"
-        );
-    }
-
-    // Inhabitance: the unit-test harness is not target/<profile>/gunbc, so rustc's seed
-    // crate-graph dep-info is not beside it. producer_axis must miss, not walk src/v1.
-    #[test]
-    fn linked_partition_crates_include_the_infer_crate() {
-        let crates =
-            linked_partition_rustc_crates(&super::super::process_workspace_root()).unwrap();
-        assert!(
-            crates.iter().any(|c| c == "v1_stage0_v1_infer"),
-            "partition rustc units {crates:?} must include the infer crate; gunbc-<hash>.d alone omits it"
-        );
-    }
-
-    #[test]
-    fn this_test_binary_does_not_mint_a_producer_key() {
-        let err = producer_axis(&super::super::process_workspace_root())
-            .expect_err("a test binary has no rustc seed-graph dep-info beside it");
-        assert!(
-            matches!(err, DeriveKeyError::ProducerInputsUnobserved { .. }),
-            "{err:?}"
+    fn a_changed_seed_image_moves_the_producer_digest() {
+        let a = format!("{:x}", sha2::Sha256::digest(b"seed-image-a"));
+        let b = format!("{:x}", sha2::Sha256::digest(b"seed-image-b"));
+        assert_ne!(a, b);
+        let k0 = assemble_key(AxisInputs {
+            producer_compiler: a.clone(),
+            source_closure: "c".into(),
+            toolchain: "t".into(),
+            build_configuration: "b".into(),
+            entry: "e".into(),
+        });
+        let k1 = assemble_key(AxisInputs {
+            producer_compiler: b,
+            source_closure: "c".into(),
+            toolchain: "t".into(),
+            build_configuration: "b".into(),
+            entry: "e".into(),
+        });
+        assert_ne!(k0.digest, k1.digest);
+        assert_eq!(
+            k0.digest,
+            assemble_key(AxisInputs {
+                producer_compiler: a,
+                source_closure: "c".into(),
+                toolchain: "t".into(),
+                build_configuration: "b".into(),
+                entry: "e".into(),
+            })
+            .digest
         );
     }
 
@@ -1227,77 +748,5 @@ mod tests {
         assert!(text.contains("\"key\":null"));
         assert!(text.contains("\"cause\":\"producer_dep_info\""));
         assert!(text.contains("\"outcome\":\"miss\""));
-    }
-
-    #[test]
-    fn a_seed_build_config_only_change_moves_the_producer_key() {
-        let compiled = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-        let with_overflow = fold_producer("overflow-checks=true", compiled);
-        let wrap = fold_producer("overflow-checks=false", compiled);
-        assert_ne!(
-            with_overflow, wrap,
-            "identical compiled files with a different seed profile/RUSTFLAGS must not share a producer digest"
-        );
-        assert_eq!(
-            with_overflow,
-            fold_producer("overflow-checks=true", compiled)
-        );
-    }
-
-    #[test]
-    fn a_newer_decoy_dep_info_is_not_selected_for_this_exe() {
-        let root = scratch("decoy-d");
-        let deps = root.join("deps");
-        std::fs::create_dir_all(&deps).unwrap();
-        let exe = root.join("gunbc");
-        std::fs::write(&exe, b"this-seed-image").unwrap();
-        std::fs::write(deps.join("gunbc-aaaa"), b"this-seed-image").unwrap();
-        std::fs::write(
-            deps.join("gunbc-aaaa.d"),
-            format!(
-                "{}: {}\n",
-                deps.join("gunbc-aaaa.d").display(),
-                root.join("src/real.rs").display()
-            ),
-        )
-        .unwrap();
-        std::fs::write(deps.join("gunbc-bbbb"), b"other-feature-image").unwrap();
-        std::fs::write(
-            deps.join("gunbc-bbbb.d"),
-            format!(
-                "{}: {}\n",
-                deps.join("gunbc-bbbb.d").display(),
-                root.join("src/decoy.rs").display()
-            ),
-        )
-        .unwrap();
-        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(60);
-        let decoy_d = std::fs::File::open(deps.join("gunbc-bbbb.d")).unwrap();
-        decoy_d.set_modified(later).unwrap();
-        let extra = extra_filename_matching_exe(&exe, &deps, "gunbc").unwrap();
-        assert_eq!(extra, "aaaa");
-        let records = bound_dep_info_records(&deps, "gunbc", &extra).unwrap();
-        assert_eq!(records.len(), 1);
-        assert!(records[0].ends_with("gunbc-aaaa.d"));
-        let text = std::fs::read_to_string(&records[0]).unwrap();
-        assert!(text.contains("real.rs"));
-        assert!(!text.contains("decoy.rs"));
-    }
-
-    #[test]
-    fn ambiguous_extra_filename_is_a_counted_miss() {
-        let root = scratch("ambiguous-d");
-        let deps = root.join("deps");
-        std::fs::create_dir_all(&deps).unwrap();
-        let exe = root.join("gunbc");
-        std::fs::write(&exe, b"same-bytes").unwrap();
-        std::fs::write(deps.join("gunbc-aaaa"), b"same-bytes").unwrap();
-        std::fs::write(deps.join("gunbc-bbbb"), b"same-bytes").unwrap();
-        let err = extra_filename_matching_exe(&exe, &deps, "gunbc")
-            .expect_err("two matching extras must not pick by mtime");
-        assert!(
-            matches!(err, DeriveKeyError::ProducerInputsUnobserved { .. }),
-            "{err:?}"
-        );
     }
 }

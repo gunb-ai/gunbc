@@ -34,7 +34,7 @@ import gunbc.ci_runner_target { ci_runner_target_ram_speed_budget, selected_ci_r
 import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_ram_speed_ceiling }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.toolchain_workflow_steps { toolchain_pin_rustup_default_step }
-import gunbc.repo_self_warning_policy { repo_self_warning_denial_rustflags }
+import gunbc.repo_self_warning_policy { repo_self_seed_build_rustflags }
 import v2.workflow.ci_workflow_run_emit {
   ci_native_cache_root_script,
   ci_toolchain_home_isolation_steps,
@@ -195,7 +195,7 @@ fn ci_setup_rust_step() -> Step {
       value: [
         kv(key: "components", value: yaml_string(s: "rustfmt")),
         kv(key: "cache", value: yaml_bool(b: false)),
-        kv(key: "rustflags", value: yaml_string(s: repo_self_warning_denial_rustflags()))
+        kv(key: "rustflags", value: yaml_string(s: repo_self_seed_build_rustflags()))
       ]
     },
     env: Present {

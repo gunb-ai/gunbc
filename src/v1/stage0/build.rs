@@ -1,4 +1,3 @@
-use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::process::Command;
 
@@ -326,7 +325,6 @@ fn main() {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
         .expect("gunbc build: Cargo did not supply CARGO_MANIFEST_DIR to the build script");
     watch_linked_partition_crates(Path::new(&manifest_dir));
-    stamp_seed_semantic_build_config(Path::new(&manifest_dir));
     let unguarded = unguarded_recursive_value_walkers(&Path::new(&manifest_dir).join("src"));
     assert!(
         unguarded.is_empty(),
@@ -390,75 +388,4 @@ fn main() {
         }
     };
     println!("cargo:rustc-env=GUNBC_BUILD_IDENTITY={identity}");
-}
-
-/// THE SEED'S SEMANTIC BUILD CONFIG, stamped into the binary. The native product key's
-/// `build_configuration` axis is the EMITTED crate's cargo flags, not this seed's. Overflow
-/// checks, RUSTFLAGS and package features change seed behaviour with identical `.rs` and
-/// lockfile, so they belong on `producer_compiler`. Hashed at build-script time so the running
-/// binary names the config it was compiled with, not a later dirty tree.
-fn stamp_seed_semantic_build_config(manifest_dir: &Path) {
-    println!("cargo:rerun-if-env-changed=CARGO_ENCODED_RUSTFLAGS");
-    println!("cargo:rerun-if-env-changed=PROFILE");
-    let workspace_manifest = manifest_dir.join("../../..").join("Cargo.toml");
-    println!("cargo:rerun-if-changed={}", workspace_manifest.display());
-    let mut hasher = Sha256::new();
-    let profile = std::env::var("PROFILE").unwrap_or_default();
-    hasher.update(b"profile=");
-    hasher.update(profile.as_bytes());
-    hasher.update(b";rustflags=");
-    hasher.update(
-        std::env::var("CARGO_ENCODED_RUSTFLAGS")
-            .unwrap_or_default()
-            .as_bytes(),
-    );
-    hasher.update(b";features=");
-    let mut features: Vec<String> = std::env::vars()
-        .filter_map(|(k, _)| k.strip_prefix("CARGO_FEATURE_").map(str::to_string))
-        .collect();
-    features.sort();
-    for feature in &features {
-        hasher.update(feature.as_bytes());
-        hasher.update(b",");
-        println!("cargo:rerun-if-env-changed=CARGO_FEATURE_{feature}");
-    }
-    let repo_root = manifest_dir.join("../../..");
-    let mut manifests = vec![
-        ("Cargo.toml".to_string(), workspace_manifest),
-        (
-            "src/v1/stage0/Cargo.toml".to_string(),
-            manifest_dir.join("Cargo.toml"),
-        ),
-    ];
-    let listing = manifest_dir.join(LINKED_PARTITION_CRATES_PROJECTION);
-    if let Ok(text) = std::fs::read_to_string(&listing) {
-        for line in text.lines().map(str::trim) {
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
-            manifests.push((
-                format!("{line}/Cargo.toml"),
-                repo_root.join(line).join("Cargo.toml"),
-            ));
-        }
-    }
-    manifests.sort_by(|a, b| a.0.cmp(&b.0));
-    hasher.update(b";manifests=");
-    for (name, manifest) in &manifests {
-        println!("cargo:rerun-if-changed={}", manifest.display());
-        hasher.update((name.len() as u64).to_le_bytes());
-        hasher.update(name.as_bytes());
-        hasher.update(b"=");
-        match std::fs::read(manifest) {
-            Ok(bytes) => {
-                hasher.update((bytes.len() as u64).to_le_bytes());
-                hasher.update(&bytes);
-            }
-            Err(_) => hasher.update(b"unreadable"),
-        }
-    }
-    println!(
-        "cargo:rustc-env=GUNBC_SEED_SEMANTIC_BUILD_CONFIG={:x}",
-        hasher.finalize()
-    );
 }

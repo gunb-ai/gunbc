@@ -64,9 +64,7 @@ libc = "0.2"
 # The recursive-Value-walker census in build.rs parses the crate's sources (a grep would be
 # satisfiable by a comment); syn is already in the lockfile through the derive crates.
 syn = { version = "2", features = ["full", "visit"] }
-# Semantic seed build-config stamp (profile + encoded RUSTFLAGS + manifest bytes) for the
-# native product producer axis. Same crate as the lib; not a second hash authority.
-sha2 = "0.10"
+
 [[bin]]
 name = "gunbc"
 path = "src/main.rs"
