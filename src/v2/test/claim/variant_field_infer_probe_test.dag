@@ -903,7 +903,7 @@ fn vfp_ub_acc_arm(field_target: Node) -> Node {
       Edge {
         label: core_edge_label(marker: MatchArmPatternEdge),
         target: construct_node(
-          reference: declaration_reference_node(qn: [^vfp_ub, ^Acc], occurrence_id: vfp_occ(n: 112)),
+          reference: declaration_reference_node(qn: [^vfp_ub, ^Out, ^Acc], occurrence_id: vfp_occ(n: 112)),
           field_edges: [Edge { label: Authored { name: ^value }, target: field_target }],
           source: vfp_t_atom_at(n: 113)
         )
@@ -921,7 +921,7 @@ fn vfp_ub_rej_arm() -> Node {
       Edge {
         label: core_edge_label(marker: MatchArmPatternEdge),
         target: construct_node(
-          reference: declaration_reference_node(qn: [^vfp_ub, ^Rej], occurrence_id: vfp_occ(n: 115)),
+          reference: declaration_reference_node(qn: [^vfp_ub, ^Out, ^Rej], occurrence_id: vfp_occ(n: 115)),
           field_edges: [],
           source: vfp_t_atom_at(n: 116)
         )
@@ -944,7 +944,7 @@ fn vfp_ub_match(acc_arm: Node) -> Node {
   )
 }
 
-fn vfp_ub_tree(acc_arm: Node) -> ResolvedTree {
+fn vfp_ub_tree(acc_arm: Node, scrutinee_declared: Optional<Node>) -> ResolvedTree {
   ResolvedTree {
     root: vfp_ub_match(acc_arm: acc_arm),
     symbol_index: empty_symbol_index(),
@@ -954,7 +954,7 @@ fn vfp_ub_tree(acc_arm: Node) -> ResolvedTree {
       OccurrenceId { value: 111 },
       LexicalBinding {
         binder_site: vfp_occ(n: 119),
-        declared: optional_present(value: vfp_out_of_t()),
+        declared: scrutinee_declared,
         value: optional_absent(),
         owed_formal: optional_absent()
       }
@@ -980,11 +980,33 @@ fn vfp_named_unused_field() -> Node {
 }
 
 fn vfp_supplied_wildcard_resolved() -> Outcome<ResolvedTree> {
-  Accepted { value: vfp_ub_tree(acc_arm: vfp_ub_acc_arm(field_target: vfp_wildcard_field())), diagnostics: None }
+  Accepted {
+    value: vfp_ub_tree(
+      acc_arm: vfp_ub_acc_arm(field_target: vfp_wildcard_field()),
+      scrutinee_declared: optional_present(value: vfp_out_of_t())
+    ),
+    diagnostics: None
+  }
 }
 
 fn vfp_supplied_unbound_binder_resolved() -> Outcome<ResolvedTree> {
-  Accepted { value: vfp_ub_tree(acc_arm: vfp_ub_acc_arm(field_target: vfp_named_unused_field())), diagnostics: None }
+  Accepted {
+    value: vfp_ub_tree(
+      acc_arm: vfp_ub_acc_arm(field_target: vfp_named_unused_field()),
+      scrutinee_declared: optional_present(value: vfp_out_of_t())
+    ),
+    diagnostics: None
+  }
+}
+
+fn vfp_supplied_underived_scrutinee_unused_binder_resolved() -> Outcome<ResolvedTree> {
+  Accepted {
+    value: vfp_ub_tree(
+      acc_arm: vfp_ub_acc_arm(field_target: vfp_named_unused_field()),
+      scrutinee_declared: optional_absent()
+    ),
+    diagnostics: None
+  }
 }
 
 test fn vfp_payload_binder_derived_type_misses_an_unlisted_site_holds() -> Bool {
@@ -1117,6 +1139,10 @@ test fn vfp_the_unbound_formal_payload_binder_refuses_at_infer_holds() -> Bool {
 
 test fn vfp_the_unbound_formal_wildcard_field_still_infers_holds() -> Bool {
   vfp_supplied_infer_terminal(resolved: vfp_supplied_wildcard_resolved()) == ^infers
+}
+
+test fn vfp_an_unused_formal_binder_refuses_when_the_scrutinee_is_underived_holds() -> Bool {
+  vfp_supplied_infer_terminal(resolved: vfp_supplied_underived_scrutinee_unused_binder_resolved()) == ^infer_reason_pattern_payload_formal_uninstantiated
 }
 
 // THE N7 SHAPE: Outcome<T>-shaped reconstruct — a payload binder consumed as a construct field

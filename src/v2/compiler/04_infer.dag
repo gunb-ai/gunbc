@@ -70,7 +70,7 @@ import std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_last_segment, qualified_name_to_dotted_string }
+import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_init, qualified_name_last_segment, qualified_name_to_dotted_string }
 import v2.std.node_query { BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child, is_wildcard_pattern }
 import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
 import v2.std.grammar { node_atom_identity_optional }
@@ -6817,28 +6817,17 @@ fn infer_match_arm_child_frame(parent: Node, frame: InferFrame, acc: InferGather
         infer_frame_inherited(frame: frame)
       } else {
         match lookup_inferred_facts_in_entries(entries: acc.entries, key: scrutinee) {
-          Absent => infer_frame_inherited(frame: frame)
+          Absent => infer_match_arm_refuse_unpaid_or_inherit(frame: frame, arm: edge.target, resolved: resolved)
           Present { value: facts } =>
             match inferred_facts_resolved_type(facts: facts) {
-              Violates { diagnostic: _ } => infer_frame_inherited(frame: frame)
+              Violates { diagnostic: _ } => infer_match_arm_refuse_unpaid_or_inherit(frame: frame, arm: edge.target, resolved: resolved)
               Holds { value: scrutinee_type } =>
                 match infer_match_coproduct_of_type(scrutinee_type: scrutinee_type, resolved: resolved) {
-                  CoproductNotDeclared => infer_frame_inherited(frame: frame)
-                  CoproductArityMismatch => infer_frame_inherited(frame: frame)
+                  CoproductNotDeclared => infer_match_arm_refuse_unpaid_or_inherit(frame: frame, arm: edge.target, resolved: resolved)
+                  CoproductArityMismatch => infer_match_arm_refuse_unpaid_or_inherit(frame: frame, arm: edge.target, resolved: resolved)
                   CoproductRead { coproduct: coproduct } =>
                     match infer_match_arm_binder_types(arm: edge.target, coproduct: coproduct) {
-                      MatchArmFormalUndischarged { at: at } =>
-                        InferFrame {
-                          instances: frame.instances,
-                          binder_types: frame.binder_types,
-                          entering: InferFrameEnteredRefused {
-                            refused: diagnostics_singleton(d: Diagnostic {
-                              reason: ^infer_reason_pattern_payload_formal_uninstantiated,
-                              at: node_locus(node: at),
-                              correction: Unavailable { reason: ExternalContractUnknown }
-                            })
-                          }
-                        }
+                      MatchArmFormalUndischarged { at: at } => infer_match_arm_formal_refused(frame: frame, at: at)
                       MatchArmBinders { rows: rows } =>
                         InferFrame {
                           instances: frame.instances,
@@ -6849,6 +6838,57 @@ fn infer_match_arm_child_frame(parent: Node, frame: InferFrame, acc: InferGather
                 }
             }
         }
+      }
+  }
+}
+
+// Cannot CoproductRead: instantiate from no scrutinee arguments (empty instances). An unpaid
+// formal-payload binder refuses at this grain; inherit only when the arm owes none.
+fn infer_match_arm_formal_refused(frame: InferFrame, at: Node) -> InferFrame {
+  InferFrame {
+    instances: frame.instances,
+    binder_types: frame.binder_types,
+    entering: InferFrameEnteredRefused {
+      refused: diagnostics_singleton(d: Diagnostic {
+        reason: ^infer_reason_pattern_payload_formal_uninstantiated,
+        at: node_locus(node: at),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
+    }
+  }
+}
+
+fn infer_match_arm_refuse_unpaid_or_inherit(frame: InferFrame, arm: Node, resolved: ResolvedTree) -> InferFrame {
+  match find_core_child(root: arm, marker: MatchArmPatternEdge) {
+    Rejected { diagnostics: _ } => infer_frame_inherited(frame: frame)
+    Accepted { value: pat, diagnostics: _ } =>
+      match construct_tag_path_optional(n: pat) {
+        Absent => infer_frame_inherited(frame: frame)
+        Present { value: arm_path } =>
+          match qualified_name_init(qn: arm_path) {
+            Empty => infer_frame_inherited(frame: frame)
+            Cons { head: _, tail: _ } =>
+              match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: qualified_name_init(qn: arm_path)) {
+                Absent => infer_frame_inherited(frame: frame)
+                Present { value: declared } =>
+                  match declared.kind {
+                    TypeNode { connective: Disj } =>
+                      match infer_match_arm_binder_types(
+                        arm: arm,
+                        coproduct: InferMatchCoproduct {
+                          path: qualified_name_init(qn: arm_path),
+                          variants: declared,
+                          instances: infer_no_type_variable_instances()
+                        }
+                      ) {
+                        MatchArmFormalUndischarged { at: at } => infer_match_arm_formal_refused(frame: frame, at: at)
+                        MatchArmBinders { rows: _ } => infer_frame_inherited(frame: frame)
+                      }
+                    TypeNode { connective: _ } => infer_frame_inherited(frame: frame)
+                    ComputationNode { behavior: _ } => infer_frame_inherited(frame: frame)
+                  }
+              }
+          }
       }
   }
 }
