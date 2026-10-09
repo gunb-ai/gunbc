@@ -8,14 +8,12 @@ type ObrKind = ObrFirst | ObrSecond
 
 data obr_kinds: List<ObrKind> = [ObrFirst, ObrSecond]
 
-// EXPECTED RED (v2.workflow.floor_expected_red, chunk optional_equality_by_representation): the
-// method-form specimen of gunbc.recurring_failure_mode optional_equality_answers_by_representation
-// over a data list of variant rows. The interpreter's `first` yields the raw element, the literal is
-// held as Present, and `==` answers false. When `first` realizes the modeled optional the roster row
-// is deleted and this claim stays as the regression control (DESIGN 4b(4)).
-test fn a_present_first_equals_its_present_literal() -> Bool {
-  obr_kinds.first() == Present { value: ObrFirst }
-}
+// The RED specimen (`obr_kinds.first() == Present { value: ObrFirst }`, false by representation) is no
+// longer executable: gunbc.compile EqualityAgainstPresentOnListRead refuses that spelling at check time
+// (src/v1/04_infer.dag equality_operand_list_read_name), so it is held by the check-time controls in
+// test.claim.self_host_equality_admission_witness (DESIGN 4b(4): the discriminating RED stays enrolled,
+// there as a refusal control). An enrolled expected-red must reach its subject and answer, which a
+// refused program cannot.
 
 // POSITIVE CONTROL: the same read on the same list, eliminated by a match, answers by value.
 test fn a_match_on_the_present_first_reads_its_value() -> Bool {
