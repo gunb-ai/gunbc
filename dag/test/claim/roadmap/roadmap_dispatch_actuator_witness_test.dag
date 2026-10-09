@@ -25,7 +25,6 @@ import gunbc.roadmap_status { DerivableLine, Unsigned }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_spawner { next_spawnable, dispatch_brief_template, node_title }
-import gunbc.roadmap_authority { declared_roadmap_nodes }
 import std.upsert_decision {
   Absent,
   Apply,
@@ -1238,37 +1237,89 @@ test fn witness_continuation_origin_branches_the_worktree_from_the_prior_attempt
   }
 }
 
-// THE AUTHORITY ROW, READ BY THE TEST ITSELF. The drift controls below require the preamble to
-// carry the arc's title AS THE AUTHORITY DECLARES IT, so the expectation is projected here rather
-// than transcribed: editing the authority row moves this expectation with it, and a hand-copied
-// preamble goes red.
-fn authority_node_opt(id: String) -> RoadmapNode? {
-  (declared_roadmap_nodes() |> filter(n => (n.node as String) == id)).first()
+// THE SUPPLIED UNROOTED SPECIMEN (§3: a witness discriminates at one interface). The claims below
+// judge the refusal an unrooted chain produces, so the unrooted node is built HERE -- a row with no
+// parent -- rather than borrowed from the live roadmap authority, whose parents change for
+// unrelated reasons (#13052 gave the former live specimen one and turned both claims red).
+fn unrooted_specimen_id() -> String { "fixture-unrooted-specimen" }
+
+fn specimen_row(parent: NodeParent?) -> RoadmapNode {
+  RoadmapNode {
+    identity: "rnfx_R2PE6DBK7RVVR2NHNQN0" as RoadmapNodeIdentity,
+    node: roadmap_dispatch_actuator_nid(s: unrooted_specimen_id()),
+    line: TicketLine {
+      done: false,
+      ticket: TicketFields {
+        headline: "Specimen headline",
+        brief: "Specimen brief",
+        displaced_cost: "none",
+        current_state: "fixture",
+        first_slice: "fixture",
+        red_control: "fixture",
+        out_of_scope: "fixture",
+        handback: "fixture",
+        updates: [],
+        authored_on: "",
+        last_verified_on: "",
+      },
+    },
+    carriers: [],
+    dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
+    execution: ExecutionContractUnspecified,
+    owner: "",
+    signoff: Unsigned,
+    parent: parent,
+    centering: none,
+  }
+}
+
+fn unrooted_specimen() -> RoadmapNode { specimen_row(parent: none) }
+
+fn rooted_twin_specimen() -> RoadmapNode { specimen_row(parent: Present { value: AdmittedRoot }) }
+
+fn unrooted_specimen_resolution() -> AlignmentResolution {
+  alignment_resolve_chain(
+    chain: alignment_chain(node_id: unrooted_specimen_id(), nodes: [unrooted_specimen()]),
+    turns_elapsed: 1,
+    state: alignment_base_cadence_state(),
+  )
+}
+
+// THE DISCRIMINATOR AND THE INHABITANCE CHECK: the real lineage rule and the real chain derivation
+// refuse the parentless row and accept the same row once it declares AdmittedRoot, so the refusal
+// below is the rule's, not a fixture artifact. Not tied to any live node id.
+test fn the_real_lineage_rule_refuses_an_unrooted_row_and_roots_its_twin() -> Bool {
+  !lineage_is_rooted(w: lineage_walk(node_id: unrooted_specimen_id(), nodes: [unrooted_specimen()]))
+    && lineage_is_rooted(w: lineage_walk(node_id: unrooted_specimen_id(), nodes: [rooted_twin_specimen()]))
+    && (match alignment_resolve_chain(
+      chain: alignment_chain(node_id: unrooted_specimen_id(), nodes: [rooted_twin_specimen()]),
+      turns_elapsed: 1,
+      state: alignment_base_cadence_state(),
+    ) {
+      AlignmentReady { chain: _, due_levels: _, rendered_prompt: _ } => true
+      AlignmentUnresolved { cause: _ } => false
+    })
 }
 
 // THE ONE-AUTHORITY PREAMBLE (review finding 2026-09-26): the preamble IS the resolution's
 // rendered_prompt — gunbc.roadmap.roadmap_alignment owns the alignment answer and this lane only
-// concatenates. For the REAL node 2-scm-git-upstream-model -- an accepted history row that declares
-// no parent -- the derived chain refuses UNROOTED, so the honest preamble is the refusal marker
+// concatenates. For a SUPPLIED row that declares
+// no parent the derived chain refuses UNROOTED, so the honest preamble is the refusal marker
 // naming where the walk halted (review 5354823380), never a confident projection rendered while
 // execution proceeded.
 test fn the_preamble_names_the_derived_refusal_for_an_unrooted_node() -> Bool {
-  let resolution = alignment_resolve(
-    node_id: "2-scm-git-upstream-model",
-    turns_elapsed: 2,
-    state: alignment_base_cadence_state(),
-  )
+  let resolution = unrooted_specimen_resolution()
   let preamble = dispatch_continuation_alignment_preamble(resolution: resolution)
   match resolution {
     AlignmentUnresolved { cause } =>
       preamble.contains("Alignment UNRESOLVED")
         && (match cause {
           AlignmentWalkUnrooted { at, walked } =>
-            at == "2-scm-git-upstream-model" && count(walked) == 0
+            at == unrooted_specimen_id() && count(walked) == 0
           AlignmentRowUndeclared { node_id: _ } => false
           AlignmentNestingCyclic { node_id: _ } => false
         })
-        && string_contains(s: preamble, pattern: "2-scm-git-upstream-model")
+        && string_contains(s: preamble, pattern: unrooted_specimen_id())
     AlignmentReady { chain: _, due_levels: _, rendered_prompt: _ } => false
   }
 }
@@ -1333,38 +1384,30 @@ test fn the_alignment_preamble_is_continuation_only_and_follows_the_verdict() ->
     })
 }
 
-// NO SPAWN ON AN UNRESOLVED CHAIN — THE REAL PRODUCER, THE REAL AUTHORITY (the review finding's
-// discriminating control). The production node 2-scm-git-upstream-model's chain refuses UNROOTED
-// on the live authority (an accepted history row that declares no parent, review 5354823380); the
-// same resolution the belt derives at spawn time is handed to the real
-// spawn fold, and the fold's answer is DispatchSpawnRefused at the alignment gate — the Refused
-// arm carries no DispatchSpawnCommands, so zero spawn commands exist: no worktree add, no state
-// prepare, no session container. Execution cannot proceed on a chain the authority cannot read.
-//
-// The subject moved on 2026-09-30, when the former subject (extended-admission-cardinality) got its
-// parent: an accepted history row with no parent stays unrooted by construction of the lineage
-// rule, so it keeps this control discriminating without a row kept unrooted for the purpose.
+// NO SPAWN ON AN UNRESOLVED CHAIN — THE REAL PRODUCER, A SUPPLIED UNROOTED ROW (the review
+// finding's discriminating control). The supplied parentless row's chain refuses UNROOTED through
+// the real derivation (review 5354823380); the same resolution the belt derives at spawn time is
+// handed to the real spawn fold, and the fold's answer is DispatchSpawnRefused at the alignment
+// gate — the Refused arm carries no DispatchSpawnCommands, so zero spawn commands exist: no
+// worktree add, no state prepare, no session container. The rooted twin (see the lineage claim)
+// resolves Ready, so removing the unrooted refusal turns this control red.
 test fn an_unresolved_alignment_refuses_the_real_spawn_fold_with_zero_commands() -> Bool {
-  match authority_node_opt(id: "2-scm-git-upstream-model") {
-    Absent => false
-    Present { value: node } =>
-      match dispatch_spawn_commands_for_resolved_instance(
-        instance: srv1_lab_dashboard_instance(),
-        node: node,
-        session_uuid: "00000000-0000-4000-8000-000000000004",
-        attempt_key: "feedfacefeedface",
-        provider: CodexDispatchProvider,
-        effort: ReasoningMedium,
-        model: dispatch_codex_default_model,
-        origin: FreshFromBase,
-        resolution: alignment_resolve(node_id: "2-scm-git-upstream-model", turns_elapsed: 1, state: alignment_base_cadence_state()),
-      ) {
-        DispatchSpawnRefused { step, detail } =>
-          step as String == "alignment"
-            && string_contains(s: detail, pattern: "2-scm-git-upstream-model")
-            && string_contains(s: detail, pattern: "admitted root")
-        DispatchSpawnReady { commands: _ } => false
-      }
+  match dispatch_spawn_commands_for_resolved_instance(
+    instance: srv1_lab_dashboard_instance(),
+    node: unrooted_specimen(),
+    session_uuid: "00000000-0000-4000-8000-000000000004",
+    attempt_key: "feedfacefeedface",
+    provider: CodexDispatchProvider,
+    effort: ReasoningMedium,
+    model: dispatch_codex_default_model,
+    origin: FreshFromBase,
+    resolution: unrooted_specimen_resolution(),
+  ) {
+    DispatchSpawnRefused { step, detail } =>
+      step as String == "alignment"
+        && string_contains(s: detail, pattern: unrooted_specimen_id())
+        && string_contains(s: detail, pattern: "admitted root")
+    DispatchSpawnReady { commands: _ } => false
   }
 }
 
