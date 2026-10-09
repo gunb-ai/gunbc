@@ -275,3 +275,29 @@ and allocation dispatch. The final network-path retry passes its 12 checks after
 using the existing command executor and effective-UID reader. All 8,272 source
 files parse, and formatting checks pass. Live reinstallation and network
 convergence are next; no VM has been commissioned, allocated or booted.
+
+Controller installation at `682c32644e84da04dd4e73d334413057a659dbf3` now exits
+successfully, including exact executor/policy and guest-image readback. The network
+plan at that revision also succeeds. Comparison with the installed files finds
+only `LinkLocalAddressing=no` and `IPv6AcceptRA=no` added to the ten enrolled TAP
+configurations; firewall, TAP addresses and IPv4 forwarding remain identical.
+The reviewed apply is running; network convergence is not yet claimed.
+
+Pre-commissioning review found the native executor started its bind interpreter
+alongside the controller in the same 24 GiB slice. The controller already binds
+its journal identity before commissioning effects. The executor now waits for
+that invocation to terminate before its independent bind/readback, keeping those
+two preparations sequential without changing the resource ceiling or recovery
+fences. This fixes the normal start overlap; recovery-path aggregate memory has
+not been measured. No live commissioning OOM is claimed.
+
+The manual transport experiment used `export_executor` from
+`dag/test/claim/workspace_commissioning_executor_witness_test.dag` and the local
+`target/srv1-bringup-evidence/executor-bind-order-controls.py` driver against
+`target/workspace-commissioning-executor.sh`. The Python driver is local dev
+tooling, excluded from the committed substrate by `gunbc.repo_workspace`; these
+results are not claimed as an ongoing CI regression gate.
+All eight revised-script cases pass: normal start, invocation replacement,
+surviving PID, refused finish, wait, settle, complete and drain. The optional
+`--reject-active-bind-script` control against the installed `682c32644e8`
+predecessor refuses its premature bind, distinguishing the two schedules.
