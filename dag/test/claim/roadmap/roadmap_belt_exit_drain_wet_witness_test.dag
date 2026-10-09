@@ -4,7 +4,7 @@ import extdeps.shell
 import std.types { Bool, String, List, NonEmptyStr }
 import gunbc.host_layout { attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
-  attempt_exit_record_observe, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable, AttemptWorkerRole,
+  attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptObligationRole, attempt_exit_record_observe, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable, AttemptWorkerRole,
   attempt_exit_stage_list, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused, AttemptExitSpoolStage,
   AttemptExitStageNames, AttemptExitStageUnreadable,
 }
@@ -14,7 +14,7 @@ import gunbc.roadmap_belt_actuate {
   belt_exit_entries_settle_at, belt_exit_entries_claim_at, BeltExitClaimed, BeltExitClaimRefused, belt_exec, ExecOk, ExecFailed, ExecRefused,
 }
 import gunbc.roadmap_dispatch_actuator {
-  host_exec_argv, AttemptUnitAbsent, AttemptUnitStartRecorded, attempt_worker_unit_observation_of, worker_process_from_attempt_unit,
+  host_exec_argv, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitObservation, AttemptUnitStartRecorded, attempt_worker_unit_observation_of, worker_process_from_attempt_unit,
 }
 import gunbc.worker_lifecycle { WorkerProcessExited }
 
@@ -76,6 +76,14 @@ fn sweep_started_for_attempt(drained: BeltExitDrain) -> Bool {
   }
 }
 
+fn gone() -> AttemptUnitObservation {
+  AttemptUnitAbsent
+}
+
+fn live() -> AttemptUnitObservation {
+  AttemptUnitActive
+}
+
 fn handed(node_id: String, attempt_key: String) -> BeltObligationEnqueue {
   BeltObligationStarted { unit: belt_attempt_obligation_unit_name(node_id: node_id, attempt_key: attempt_key) }
 }
@@ -92,7 +100,7 @@ data reviewer_exit: String = "wet-node+feedfacefeedface+review.conformance-leasi
 test fn a_recorded_worker_exit_is_handed_to_its_attempt_and_leaves_the_inbox() -> Bool {
   let root = fresh_spool(tag: "worker")
   let wrote = record(root: root, name: worker_exit)
-  let drained = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() })
+  let drained = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => gone())
   let handed_to_attempt = match drained {
     BeltExitDrained { entries, launch } =>
       count(entries) == 1
@@ -112,7 +120,7 @@ test fn a_recorded_worker_exit_is_handed_to_its_attempt_and_leaves_the_inbox() -
 test fn a_reviewer_exit_queues_no_launch_and_a_malformed_entry_is_refused() -> Bool {
   let root = fresh_spool(tag: "reviewer")
   let wrote = record(root: root, name: reviewer_exit) && record(root: root, name: "not-a-record")
-  let drained = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() })
+  let drained = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => gone())
   let shape = match drained {
     BeltExitDrained { entries, launch } =>
       (match launch { Absent => true _ => false })
@@ -130,7 +138,7 @@ test fn a_reviewer_exit_queues_no_launch_and_a_malformed_entry_is_refused() -> B
 test fn a_collected_workers_exit_is_read_from_the_spool_alone() -> Bool {
   let root = fresh_spool(tag: "collected")
   let wrote = record(root: root, name: worker_exit)
-  let drained = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() })
+  let drained = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => gone())
   let unsettled = belt_exit_entries_settle_at(root: root, claimed: claimed_of(root: root))
   let unit = "gunbc-attempt-wet-node-feedfacefeedface.service" as NonEmptyStr
   let verdict = worker_process_from_attempt_unit(
@@ -153,10 +161,10 @@ test fn a_collected_workers_exit_is_read_from_the_spool_alone() -> Bool {
 test fn an_exit_after_the_final_observation_stays_queued_until_a_later_runs_claim_settles_it() -> Bool {
   let root = fresh_spool(tag: "cut-a")
   let first = record(root: root, name: worker_exit)
-  let d1 = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() })
+  let d1 = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => gone())
   let claim = claimed_of(root: root)
   let second = record(root: root, name: reviewer_exit)
-  let d2 = belt_exit_drain_at(root: root, enqueue: (n, k) => held(node_id: n, attempt_key: k), launch: fn() { launched() })
+  let d2 = belt_exit_drain_at(root: root, enqueue: (n, k) => held(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => live())
   let unsettled = belt_exit_entries_settle_at(root: root, claimed: claim)
   let after_first_run = claim == [worker_exit]
     && names_at(root: root, stage: AttemptExitDone) == [worker_exit]
@@ -175,12 +183,12 @@ test fn an_exit_after_the_final_observation_stays_queued_until_a_later_runs_clai
 test fn an_exit_after_settlement_is_swept_to_a_new_run_once_the_unit_is_gone() -> Bool {
   let root = fresh_spool(tag: "cut-b")
   let first = record(root: root, name: worker_exit)
-  let d1 = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() })
+  let d1 = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => gone())
   let unsettled = belt_exit_entries_settle_at(root: root, claimed: claimed_of(root: root))
   let late = record(root: root, name: reviewer_exit)
-  let while_held = belt_exit_drain_at(root: root, enqueue: (n, k) => held(node_id: n, attempt_key: k), launch: fn() { launched() })
+  let while_held = belt_exit_drain_at(root: root, enqueue: (n, k) => held(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => gone())
   let still_queued = names_at(root: root, stage: AttemptExitQueued) == [reviewer_exit] && !(names_at(root: root, stage: AttemptExitDone) == [worker_exit, reviewer_exit])
-  let unit_gone = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() })
+  let unit_gone = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => gone())
   let new_run_claim = claimed_of(root: root)
   let settled = belt_exit_entries_settle_at(root: root, claimed: new_run_claim)
   first && late && count(unsettled) == 0 && still_queued && sweep_started_for_attempt(drained: unit_gone)
@@ -188,22 +196,82 @@ test fn an_exit_after_settlement_is_swept_to_a_new_run_once_the_unit_is_gone() -
     && count(names_at(root: root, stage: AttemptExitDone)) == 2
 }
 
-// CUT C -- THE UNIT OR THE HOST IS GONE WHILE AN ENTRY IS QUEUED (a reboot loses the transient unit, no
-// event is left to deliver). The drain runs with an EMPTY inbox, the sweep alone finds the queued entry
-// and starts its attempt's run, and that run's claim -- adopting a dead predecessor's running entry as
-// well -- is the only thing that moves either to done.
-test fn a_queued_or_dead_claimed_exit_needs_no_new_event_to_reach_done_under_a_runs_claim() -> Bool {
+// CUT C -- THE UNIT OR THE HOST IS GONE WHILE AN ENTRY IS QUEUED. The drain runs with an EMPTY inbox, the
+// sweep alone finds the queued entry and starts its attempt's run, and that run's claim is the only thing
+// that moves it to done.
+test fn a_queued_exit_needs_no_new_event_to_reach_done_under_a_runs_claim() -> Bool {
   let root = fresh_spool(tag: "cut-c")
   let first = record(root: root, name: worker_exit)
-  let handed_once = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() })
-  let dead_run_claim = claimed_of(root: root)
-  let late = record(root: root, name: reviewer_exit)
-  let queued_after = belt_exit_drain_at(root: root, enqueue: (n, k) => held(node_id: n, attempt_key: k), launch: fn() { launched() })
-  let sweep_only = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() })
+  let handed_once = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => gone())
+  let sweep_only = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => gone())
   let adopted = claimed_of(root: root)
   let settled = belt_exit_entries_settle_at(root: root, claimed: adopted)
-  first && late && dead_run_claim == [worker_exit] && sweep_started_for_attempt(drained: sweep_only)
-    && count(adopted) == 2 && any(adopted, e => e == worker_exit) && any(adopted, e => e == reviewer_exit)
-    && count(settled) == 0 && count(names_at(root: root, stage: AttemptExitRunning)) == 0 && count(names_at(root: root, stage: AttemptExitQueued)) == 0
-    && count(names_at(root: root, stage: AttemptExitDone)) == 2
+  first && sweep_started_for_attempt(drained: sweep_only) && adopted == [worker_exit]
+    && count(settled) == 0 && count(names_at(root: root, stage: AttemptExitQueued)) == 0 && names_at(root: root, stage: AttemptExitDone) == [worker_exit]
+}
+
+// RED (a) -- A LONE ORPHANED CLAIM, NO OTHER EVENT (bold-bee-114, 2026-10-09). The entry was queued, a run
+// claimed it into `running`, and the run died before its receipt (host or user-manager restart: no hook ran).
+// Inbox and queued are EMPTY and the unit is absent; the drain -- all a boot establishes -- must return the
+// claim to queued, start the attempt, and the new run must adopt it and settle it to done under its claim.
+test fn a_lone_orphaned_claim_is_recovered_by_the_drain_alone() -> Bool {
+  let root = fresh_spool(tag: "orphan-a")
+  let first = record(root: root, name: worker_exit)
+  let handed_once = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => gone())
+  let dead_run_claim = claimed_of(root: root)
+  let stranded = names_at(root: root, stage: AttemptExitRunning) == [worker_exit] && count(names_at(root: root, stage: AttemptExitInbox)) == 0 && count(names_at(root: root, stage: AttemptExitQueued)) == 0
+  let boot = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => gone())
+  let adopted = claimed_of(root: root)
+  let settled = belt_exit_entries_settle_at(root: root, claimed: adopted)
+  first && dead_run_claim == [worker_exit] && stranded && sweep_started_for_attempt(drained: boot) && adopted == [worker_exit]
+    && count(settled) == 0 && count(names_at(root: root, stage: AttemptExitRunning)) == 0 && names_at(root: root, stage: AttemptExitDone) == [worker_exit]
+}
+
+// A claim whose unit is LIVE is not an orphan: the drain leaves it in running and starts nothing.
+test fn a_claim_held_by_a_live_unit_is_not_reclaimed() -> Bool {
+  let root = fresh_spool(tag: "orphan-live")
+  let first = record(root: root, name: worker_exit)
+  let handed_once = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => gone())
+  let claimed = claimed_of(root: root)
+  let again = belt_exit_drain_at(root: root, enqueue: (n, k) => held(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => live())
+  first && claimed == [worker_exit] && names_at(root: root, stage: AttemptExitRunning) == [worker_exit] && count(names_at(root: root, stage: AttemptExitQueued)) == 0
+}
+
+data obligation_exit: String = "wet-node+feedfacefeedface+obligation+0123456789abcdef0123456789abcdef+timeout+killed+TERM"
+
+// RED (b) -- THE CLAIMANT IS KILLED BY ITS OWN RuntimeMaxSec. The unit's stop hook (the production
+// attempt_exit_hook for AttemptObligationRole) records an `obligation` entry while the unit is still
+// stopping. A drain that finds the unit live must NOT consume it; the next drain, the unit gone, returns
+// the orphaned claim to queued, consumes the entry, starts the attempt, and the run adopts and settles.
+test fn a_claimant_killed_at_its_run_bound_is_rescued_by_its_stop_hook_entry() -> Bool {
+  let root = fresh_spool(tag: "orphan-b")
+  let hook_renders = match attempt_exit_hook(instance_root: root, node_id: "wet-node", attempt_key: "feedfacefeedface", role: AttemptObligationRole) {
+    AttemptExitHookRendered { exec_line } => string_contains(s: exec_line as String, pattern: "+obligation+") && string_contains(s: exec_line as String, pattern: attempt_exit_inbox_dir(instance_root: root))
+    AttemptExitHookRefused { reason: _ } => false
+  }
+  let first = record(root: root, name: worker_exit)
+  let handed_once = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => gone())
+  let dead_run_claim = claimed_of(root: root)
+  let hook = record(root: root, name: obligation_exit)
+  let while_stopping = belt_exit_drain_at(root: root, enqueue: (n, k) => held(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => live())
+  let kept = names_at(root: root, stage: AttemptExitInbox) == [obligation_exit] && names_at(root: root, stage: AttemptExitRunning) == [worker_exit]
+  let after_exit = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => gone())
+  let adopted = claimed_of(root: root)
+  let settled = belt_exit_entries_settle_at(root: root, claimed: adopted)
+  hook_renders && first && hook && dead_run_claim == [worker_exit] && kept && sweep_started_for_attempt(drained: after_exit) && adopted == [worker_exit]
+    && count(settled) == 0 && count(names_at(root: root, stage: AttemptExitInbox)) == 0 && count(names_at(root: root, stage: AttemptExitRunning)) == 0
+    && any(names_at(root: root, stage: AttemptExitDone), e => e == worker_exit) && any(names_at(root: root, stage: AttemptExitDone), e => e == obligation_exit)
+}
+
+// A SETTLED RUN'S HOOK ENTRY STARTS NOTHING (the loop guard): running is empty, so consuming the entry
+// enqueues no unit and the exits stop there.
+test fn a_settled_runs_hook_entry_is_consumed_and_starts_nothing() -> Bool {
+  let root = fresh_spool(tag: "orphan-settled")
+  let hook = record(root: root, name: obligation_exit)
+  let drained = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() }, observe: (n, k) => gone())
+  let quiet = match drained {
+    BeltExitDrained { entries, launch } => count(entries) == 0 && launch == none
+    BeltExitDrainRefused { reason: _ } => false
+  }
+  hook && quiet && count(names_at(root: root, stage: AttemptExitInbox)) == 0 && names_at(root: root, stage: AttemptExitDone) == [obligation_exit]
 }

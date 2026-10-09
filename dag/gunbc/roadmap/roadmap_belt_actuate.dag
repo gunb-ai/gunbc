@@ -225,7 +225,7 @@ import gunbc.worker_lifecycle {
 import gunbc.dispatch_selection { default_provider_selection_request, SizingProfileExpectation, NoDerivedSizingExpectation, sizing_profile_expectation }
 import gunbc.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var, instance_receipts_dir }
 import extdeps.systemd.systemd_run { systemd_run_user_transient_command, SystemdRunProperty, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
-import extdeps.systemd { WorkingDirectoryProperty, RuntimeMaxSecProperty, CollectModeProperty, MemoryMax, systemd_time_span_of_seconds }
+import extdeps.systemd { ExecStopPostProperty, WorkingDirectoryProperty, RuntimeMaxSecProperty, CollectModeProperty, MemoryMax, systemd_time_span_of_seconds }
 import std.measure { byte_size_count }
 import gunbc.deploy_transition {
   ActuationAdmission,
@@ -563,7 +563,7 @@ import gunbc.roadmap.roadmap_belt_obligation {
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptUnitRole, AttemptReviewerRole, AttemptAuditorRole,
-  attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused,
+  attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptObligationRole,
   attempt_exit_record_observe, AttemptExitRecordNone, AttemptExitRecordFound, AttemptExitRecordUnreadable,
   AttemptWorkerRole, attempt_unit_role_token,
   attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
@@ -13857,16 +13857,20 @@ fn belt_obligation_unit_command(
   unit: NonEmptyStr,
   function: String,
   args: List<String>,
+  stop_hook: NonEmptyStr?,
 ) -> SystemdRunCommandReading {
   let repo = instance.repo_root as String
   systemd_run_user_transient_command(
     unit: unit,
-    properties: [
+    properties: concat([
       SystemdRunProperty { property: WorkingDirectoryProperty, value: repo as NonEmptyStr },
       SystemdRunProperty { property: RuntimeMaxSecProperty, value: systemd_time_span_of_seconds(d: belt_tick_run_bound) },
       SystemdRunProperty { property: CollectModeProperty, value: "inactive-or-failed" as NonEmptyStr },
       SystemdRunProperty { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
-    ],
+    ], match stop_hook {
+      Present { value: hook } => [SystemdRunProperty { property: ExecStopPostProperty, value: hook }]
+      Absent => [] as List<SystemdRunProperty>
+    }),
     setenv_bindings: [SystemdSetenvBinding { name: belt_spawn_workdir_env_var, value: repo as NonEmptyStr }],
     command_argv: concat([
       instance.serve_binary as String,
@@ -13901,19 +13905,19 @@ fn belt_obligation_hold_decision(observation: AttemptUnitObservation) -> BeltObl
   }
 }
 
-fn belt_obligation_enqueue(instance: HostDashboardInstance, unit: NonEmptyStr, function: String, args: List<String>) -> BeltObligationEnqueue {
+fn belt_obligation_enqueue(instance: HostDashboardInstance, unit: NonEmptyStr, function: String, args: List<String>, stop_hook: NonEmptyStr?) -> BeltObligationEnqueue {
   match belt_obligation_hold_decision(observation: attempt_unit_observation(unit: unit)) {
     BeltObligationIsHeld => BeltObligationHeld { unit: unit }
     BeltObligationHoldUnread { reason } => BeltObligationEnqueueRefused { unit: unit, reason: join(["the user manager could not be asked whether the unit is loaded: ", reason], "") }
-    BeltObligationMayStart => belt_obligation_start(instance: instance, unit: unit, function: function, args: args)
+    BeltObligationMayStart => belt_obligation_start(instance: instance, unit: unit, function: function, args: args, stop_hook: stop_hook)
   }
 }
 
-fn belt_obligation_start(instance: HostDashboardInstance, unit: NonEmptyStr, function: String, args: List<String>) -> BeltObligationEnqueue {
+fn belt_obligation_start(instance: HostDashboardInstance, unit: NonEmptyStr, function: String, args: List<String>, stop_hook: NonEmptyStr?) -> BeltObligationEnqueue {
   match instance.toolchain.systemd_run {
     Absent => BeltObligationEnqueueRefused { unit: unit, reason: join(["the toolchain for host ", instance.host_identity as String, " declares no systemd-run, and an obligation runs in its own transient unit"], "") }
     Present { value: systemd_run } =>
-      match belt_obligation_unit_command(instance: instance, unit: unit, function: function, args: args) {
+      match belt_obligation_unit_command(instance: instance, unit: unit, function: function, args: args, stop_hook: stop_hook) {
         SystemdRunCommandRefused { cause: why } => BeltObligationEnqueueRefused { unit: unit, reason: systemd_run_option_words_refused_cause_detail(cause: why) }
         SystemdRunCommandReady { command: command } =>
           match belt_exec(cmd: dispatch_unit_exec_argv(command: command, resolved_program: systemd_run), workdir: belt_observe_workdir as String) {
@@ -13928,13 +13932,26 @@ fn belt_obligation_start(instance: HostDashboardInstance, unit: NonEmptyStr, fun
 data belt_attempt_obligations_function: String = "belt_attempt_obligations_cli"
 data belt_instance_obligation_function: String = "belt_instance_obligation_cli"
 
+// THE ATTEMPT UNIT'S OWN STOP HOOK (claimant-terminal rescue, bold-bee-114 2026-10-09). When the run that
+// claimed an exit ends for any reason -- settled, killed at RuntimeMaxSec, stopped with its manager -- the
+// manager runs this hook and it records an `obligation` exit entry for the attempt. The drain consumes
+// that entry only once the unit is gone, and before it does it moves any claim the dead run left in
+// `running` back to `queued`, so a lone orphaned claim starts a new run with no other event. The entry
+// is unconditional (a typed argv cannot test "settled"); a settled run leaves nothing to move, so it
+// costs one drain and starts nothing, which is why it cannot loop.
 fn belt_attempt_obligations_enqueue(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> BeltObligationEnqueue {
-  belt_obligation_enqueue(
-    instance: instance,
-    unit: belt_attempt_obligation_unit_name(node_id: node_id, attempt_key: attempt_key),
-    function: belt_attempt_obligations_function,
-    args: [join(["node_id=", node_id], ""), join(["attempt_key=", attempt_key], "")],
-  )
+  let unit = belt_attempt_obligation_unit_name(node_id: node_id, attempt_key: attempt_key)
+  match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptObligationRole) {
+    AttemptExitHookRefused { reason } => BeltObligationEnqueueRefused { unit: unit, reason: join(["the attempt unit's stop hook could not be rendered: ", reason as String], "") }
+    AttemptExitHookRendered { exec_line } =>
+      belt_obligation_enqueue(
+        instance: instance,
+        unit: unit,
+        function: belt_attempt_obligations_function,
+        args: [join(["node_id=", node_id], ""), join(["attempt_key=", attempt_key], "")],
+        stop_hook: Present { value: exec_line },
+      )
+  }
 }
 
 fn belt_instance_obligation_enqueue(instance: HostDashboardInstance, kind: BeltInstanceObligationKind) -> BeltObligationEnqueue {
@@ -13943,6 +13960,7 @@ fn belt_instance_obligation_enqueue(instance: HostDashboardInstance, kind: BeltI
     unit: belt_instance_obligation_unit_name(instance_id: instance.instance_id as String, kind: kind),
     function: belt_instance_obligation_function,
     args: [join(["kind=", belt_instance_obligation_kind_key(kind: kind)], "")],
+    stop_hook: Absent,
   )
 }
 
@@ -14244,20 +14262,83 @@ fn belt_exit_entry_is_worker(entry: String) -> Bool {
   }
 }
 
-fn belt_exit_drain_at(root: String, enqueue: fn(String, String) -> BeltObligationEnqueue, launch: fn() -> BeltObligationEnqueue) -> BeltExitDrain {
+// THE ORPHAN RECONCILIATION: a `running` entry whose attempt unit is not live has no owner, so it goes
+// back to `queued` where the sweep starts a new run that adopts it. Both rescues end here -- the stop
+// hook's `obligation` entry (the unit ended while the manager was up) and the drain's own start (boot,
+// where no hook ran) -- so a lone orphaned claim recovers with no exit, answer, launch or operator
+// action. A live unit keeps its claim; an unreadable manager leaves it and says so.
+fn belt_exit_running_reconcile_at(root: String, observe: fn(String, String) -> AttemptUnitObservation) -> List<BeltExitDrainEntry> {
+  match attempt_exit_stage_list(instance_root: root, stage: AttemptExitRunning) {
+    AttemptExitStageUnreadable { reason } => [BeltExitEntryRefused { entry: "running", reason: reason }]
+    AttemptExitStageNames { names } =>
+      names |> flat_map(n => match attempt_exit_entry_decode(entry_name: n) {
+        AttemptExitEntryMalformed { entry_name: _, reason } => [BeltExitEntryRefused { entry: n, reason: join(["running entry is not an exit record: ", reason], "") }]
+        AttemptExitEntryDecoded { record } =>
+          match observe(record.node_id, record.attempt_key) {
+            AttemptUnitActive => [] as List<BeltExitDrainEntry>
+            AttemptUnitUnreadable { reason } => [BeltExitEntryRefused { entry: n, reason: join(["the user manager could not say whether the claiming unit is live: ", reason], "") }]
+            AttemptUnitAbsent => belt_exit_orphan_requeue_at(root: root, entry: n)
+            AttemptUnitFinished { exit_status: _ } => belt_exit_orphan_requeue_at(root: root, entry: n)
+          }
+      })
+  }
+}
+
+fn belt_exit_orphan_requeue_at(root: String, entry: String) -> List<BeltExitDrainEntry> {
+  match belt_exit_entry_move_at(root: root, entry: entry, from: AttemptExitRunning, to: AttemptExitQueued) {
+    Absent => [] as List<BeltExitDrainEntry>
+    Present { value: why } => [BeltExitEntryRefused { entry: entry, reason: join(["an orphaned claim could not be returned to queued: ", why], "") }]
+  }
+}
+
+fn belt_exit_entry_is_obligation(entry: String) -> Bool {
+  match attempt_exit_entry_decode(entry_name: entry) {
+    AttemptExitEntryDecoded { record } => record.role == attempt_unit_role_token(role: AttemptObligationRole)
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+}
+
+// THE OBLIGATION ENTRY IS A WAKE-UP, NOT A HAND-OFF. Consumed (inbox -> done) only once its attempt's unit
+// is gone -- the hook writes while the unit is still stopping, and consuming it then would lose the very
+// rescue it exists for; a live unit leaves it in the inbox and the level fires again. It is never enqueued.
+fn belt_exit_obligation_entry_at(root: String, entry: String, observe: fn(String, String) -> AttemptUnitObservation) -> List<BeltExitDrainEntry> {
+  match attempt_exit_entry_decode(entry_name: entry) {
+    AttemptExitEntryMalformed { entry_name: _, reason } => [BeltExitEntryRefused { entry: entry, reason: reason }]
+    AttemptExitEntryDecoded { record } =>
+      match observe(record.node_id, record.attempt_key) {
+        AttemptUnitActive => [] as List<BeltExitDrainEntry>
+        AttemptUnitUnreadable { reason } => [BeltExitEntryRefused { entry: entry, reason: join(["the user manager could not say whether the unit is live: ", reason], "") }]
+        AttemptUnitAbsent => belt_exit_obligation_entry_consume_at(root: root, entry: entry)
+        AttemptUnitFinished { exit_status: _ } => belt_exit_obligation_entry_consume_at(root: root, entry: entry)
+      }
+  }
+}
+
+fn belt_exit_obligation_entry_consume_at(root: String, entry: String) -> List<BeltExitDrainEntry> {
+  match belt_exit_entry_move_at(root: root, entry: entry, from: AttemptExitInbox, to: AttemptExitDone) {
+    Absent => [] as List<BeltExitDrainEntry>
+    Present { value: why } => [BeltExitEntryRefused { entry: entry, reason: join(["the obligation entry could not be moved to done: ", why], "") }]
+  }
+}
+
+fn belt_exit_drain_at(root: String, enqueue: fn(String, String) -> BeltObligationEnqueue, launch: fn() -> BeltObligationEnqueue, observe: fn(String, String) -> AttemptUnitObservation) -> BeltExitDrain {
   match attempt_exit_stage_list(instance_root: root, stage: AttemptExitInbox) {
     AttemptExitStageUnreadable { reason } => BeltExitDrainRefused { reason: reason }
-    AttemptExitStageNames { names } =>
+    AttemptExitStageNames { names: inbox } => {
+      let reconciled = belt_exit_running_reconcile_at(root: root, observe: observe)
+      let rescues = inbox |> filter(n => belt_exit_entry_is_obligation(entry: n))
+      let names = inbox |> filter(n => !belt_exit_entry_is_obligation(entry: n))
       BeltExitDrained {
-        entries: concat(
+        entries: concat(concat(reconciled, rescues |> flat_map(n => belt_exit_obligation_entry_at(root: root, entry: n, observe: observe))), concat(
           names |> map(n => belt_exit_entry_drain_at(root: root, entry: n, enqueue: enqueue)),
           belt_exit_queued_sweep_at(root: root, skip: names |> flat_map(n => match attempt_exit_entry_decode(entry_name: n) {
             AttemptExitEntryDecoded { record } => [join([record.node_id, "/", record.attempt_key], "")]
             AttemptExitEntryMalformed { entry_name: _, reason: _ } => [] as List<String>
           }), enqueue: enqueue),
-        ),
+        )),
         launch: if any(names, n => belt_exit_entry_is_worker(entry: n)) { Present { value: launch() } } else { none },
       }
+    }
   }
 }
 
@@ -14266,6 +14347,7 @@ fn belt_exit_drain_for_instance(instance: HostDashboardInstance) -> BeltExitDrai
     root: instance.instance_root as String,
     enqueue: (node_id, attempt_key) => belt_attempt_obligations_enqueue(instance: instance, node_id: node_id, attempt_key: attempt_key),
     launch: fn() { belt_instance_obligation_enqueue(instance: instance, kind: LaunchObligation) },
+    observe: (node_id, attempt_key) => attempt_unit_observation(unit: belt_attempt_obligation_unit_name(node_id: node_id, attempt_key: attempt_key)),
   )
 }
 

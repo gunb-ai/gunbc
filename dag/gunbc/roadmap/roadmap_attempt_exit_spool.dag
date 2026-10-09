@@ -69,12 +69,14 @@ type AttemptUnitRole
   = AttemptWorkerRole
   | AttemptReviewerRole { criterion_key: String, head_sha: String }
   | AttemptAuditorRole { head_sha: String }
+  | AttemptObligationRole
 
 fn attempt_unit_role_token(role: AttemptUnitRole) -> String {
   match role {
     AttemptWorkerRole => "worker"
     AttemptReviewerRole { criterion_key, head_sha } => join(["review.", criterion_key, ".", head_sha], "")
     AttemptAuditorRole { head_sha } => join(["audit.", head_sha], "")
+    AttemptObligationRole => "obligation"
   }
 }
 

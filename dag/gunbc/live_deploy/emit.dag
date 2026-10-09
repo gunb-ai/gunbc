@@ -922,10 +922,16 @@ fn apply_publication_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
 // while its attempt's unit was held, or that a lost unit or a reboot left behind, starts the drain
 // again with no other event, and the drain's sweep hands it to a run.
 //
+// THE DRAIN SERVICE IS ALSO WANTED BY multi-user.target: starting once at boot is the reconciliation that
+// returns a claim orphaned by a reboot (no stop hook ran) to `queued`. The path unit cannot do it -- the
+// orphan sits in `running`, and DirectoryNotEmpty= on a directory a long run legitimately holds would
+// re-trigger while the run lives and fail the path unit at its rate limit. A unit that ends while the
+// manager is up is rescued by its own stop hook instead (belt_attempt_obligations_enqueue).
+//
 // THE PUBLICATION ANSWER PATH IS AN EDGE: answers are kept, not moved, so a level would fire forever.
 // A change while discovery is running is coalesced into that run; discovery reads every attempt's
 // evidence, so the coalesced answer is still seen.
-fn live_deploy_belt_event_service_unit_file(spec: DeploymentSpec, description: String, function: String) -> SystemdUnitFile {
+fn live_deploy_belt_event_service_unit_file(spec: DeploymentSpec, description: String, function: String, install: SystemdInstallSection) -> SystemdUnitFile {
   let svc = spec.service
   ServiceUnitFile {
     unit: [
@@ -950,16 +956,16 @@ fn live_deploy_belt_event_service_unit_file(spec: DeploymentSpec, description: S
         " --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function ", function,
       ], "") as NonEmptyStr },
     ])),
-    install: NotInstallable,
+    install: install,
   }
 }
 
 fn live_deploy_belt_exit_drain_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
-  live_deploy_belt_event_service_unit_file(spec: spec, description: "gunbc roadmap belt exit drain (hands recorded unit exits to their attempt obligations)", function: "belt_exit_drain_cli")
+  live_deploy_belt_event_service_unit_file(spec: spec, description: "gunbc roadmap belt exit drain (hands recorded unit exits to their attempt obligations)", function: "belt_exit_drain_cli", install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] })
 }
 
 fn live_deploy_belt_discovery_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
-  live_deploy_belt_event_service_unit_file(spec: spec, description: "gunbc roadmap belt discovery (queues outstanding obligations, bounded)", function: "belt_discover_once_cli")
+  live_deploy_belt_event_service_unit_file(spec: spec, description: "gunbc roadmap belt discovery (queues outstanding obligations, bounded)", function: "belt_discover_once_cli", install: NotInstallable)
 }
 
 fn live_deploy_belt_exit_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
@@ -2910,6 +2916,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
       apply_belt_unit_file_install_step(stage_name: deployment_belt_answer_path_unit_name(names: spec.names), dest: deployment_belt_answer_path_unit_path(names: spec.names)),
       apply_belt_unit_file_install_step(stage_name: deployment_belt_exit_path_unit_name(names: spec.names), dest: art.path),
       deploy_effect(inv: systemctl_daemon_reload_effect()),
+      deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_exit_drain_service_unit_name(names: spec.names))),
       deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_exit_path_unit_name(names: spec.names))),
       deploy_effect(inv: systemctl_restart_effect(unit: deployment_belt_exit_path_unit_name(names: spec.names))),
       deploy_effect(inv: systemctl_enable_effect(unit: deployment_belt_answer_path_unit_name(names: spec.names))),
