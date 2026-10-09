@@ -159,7 +159,7 @@ import gunbc.live_deploy.spec {
   deployment_tree_remote_unit_name,
   deployment_belt_exit_path_unit_name, deployment_belt_exit_drain_service_unit_name, deployment_belt_answer_path_unit_name, deployment_belt_discovery_service_unit_name,
   deployment_belt_exit_drain_service_unit_path, deployment_belt_answer_path_unit_path, deployment_belt_discovery_service_unit_path,
-  deployment_belt_service_unit_path,
+  deployment_belt_service_unit_path, deployment_belt_unit_install_target,
   deployment_publication_service_unit_name,
   deployment_publication_timer_unit_name,
   deployment_publication_service_unit_path,
@@ -961,7 +961,7 @@ fn live_deploy_belt_event_service_unit_file(spec: DeploymentSpec, description: S
 }
 
 fn live_deploy_belt_exit_drain_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
-  live_deploy_belt_event_service_unit_file(spec: spec, description: "gunbc roadmap belt exit drain (hands recorded unit exits to their attempt obligations)", function: "belt_exit_drain_cli", install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] })
+  live_deploy_belt_event_service_unit_file(spec: spec, description: "gunbc roadmap belt exit drain (hands recorded unit exits to their attempt obligations)", function: "belt_exit_drain_cli", install: Installable { directives: [WantedBy { target: deployment_belt_unit_install_target(names: spec.names) }] })
 }
 
 fn live_deploy_belt_discovery_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {

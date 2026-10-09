@@ -836,6 +836,16 @@ fn deployment_belt_exit_path_unit_path(names: DeploymentNames) -> NonEmptyStr {
   join(["/etc/systemd/system/", deployment_belt_exit_path_unit_name(names: names) as String], "") as NonEmptyStr
 }
 
+// THE BOOT TARGET FOLLOWS THE MANAGER THE UNIT IS INSTALLED INTO. Every belt unit this deployment emits is
+// written under /etc/systemd/system, so it belongs to the SYSTEM manager, whose boot target is
+// multi-user.target; a user manager would install under a user unit directory and boot at default.target
+// (and only if the principal lingers). The dispatched attempt and worker units are transient units in the
+// principal's USER manager, but they are started by these system units and are never installed. One
+// derivation, so a unit-directory change cannot leave a boot target naming a manager that never runs it.
+fn deployment_belt_unit_install_target(names: DeploymentNames) -> NonEmptyStr {
+  if starts_with(s: deployment_belt_exit_drain_service_unit_path(names: names) as String, prefix: "/etc/systemd/system/") { "multi-user.target" as NonEmptyStr } else { "default.target" as NonEmptyStr }
+}
+
 fn deployment_belt_exit_drain_service_unit_path(names: DeploymentNames) -> NonEmptyStr {
   join(["/etc/systemd/system/", deployment_belt_exit_drain_service_unit_name(names: names) as String], "") as NonEmptyStr
 }

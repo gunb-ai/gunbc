@@ -51,7 +51,7 @@ import gunbc.live_deploy.spec {
   DeploymentServiceConfig,
   deployment_slice_unit_name,
   deployment_belt_service_unit_name,
-  deployment_belt_exit_drain_service_unit_name, deployment_belt_discovery_service_unit_name,
+  deployment_belt_exit_drain_service_unit_name, deployment_belt_exit_drain_service_unit_path, deployment_belt_unit_install_target, deployment_belt_discovery_service_unit_name,
   gunbc_approval_broker_slice_unit_name,
   gunbc_repository_convergence_slice_unit_name,
   gunbc_approval_broker_unit_name,
@@ -575,6 +575,18 @@ test fn the_exit_path_wakes_the_drain_on_a_non_empty_inbox() -> Bool {
   path_has_line(file: f, line: join(["Unit=", deployment_belt_exit_drain_service_unit_name(names: spec.names) as String], ""))
     && path_has_line(file: f, line: join(["DirectoryNotEmpty=", attempt_exit_inbox_dir(instance_root: spec.service.instance_root as String)], ""))
     && path_has_line(file: f, line: "WantedBy=paths.target")
+}
+
+// THE BOOT RECONCILE'S TARGET MATCHES THE MANAGER THE DRAIN IS INSTALLED INTO: a unit under the system unit
+// directory is wanted by multi-user.target (the system manager), and the derived target is what the
+// emitted drain unit carries -- not a literal. A user-manager install would need default.target.
+test fn the_drain_is_wanted_by_the_boot_target_of_the_manager_it_is_installed_into() -> Bool {
+  let spec = live_spec()
+  let f = live_deploy_belt_exit_drain_service_unit_file(spec: spec)
+  let dest = deployment_belt_exit_drain_service_unit_path(names: spec.names) as String
+  let target = deployment_belt_unit_install_target(names: spec.names) as String
+  path_has_line(file: f, line: join(["WantedBy=", target], ""))
+    && starts_with(s: dest, prefix: "/etc/systemd/system/") && target == "multi-user.target"
 }
 
 test fn the_answer_path_wakes_discovery_on_a_changed_answer_directory() -> Bool {
