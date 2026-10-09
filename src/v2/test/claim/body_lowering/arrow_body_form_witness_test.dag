@@ -483,7 +483,7 @@ test fn arrow_body_form_reference_shape_without_marker_refused_at_resolve_holds(
 
 // FLIPPED (v2.std.node arrow_body_admits_eval_entry): a declaration-reference body enters eval, and the
 // reference refuses or evaluates at its USE -- a `data` constant evaluates to its value
-// (v2.test.claim.compiler.data_reference_value drv_a_data_reference_evaluates_to_its_value), any other
+// (v2.test.claim.compiler.data_reference_value drv_a_data_reference_is_typed_at_its_declared_type_and_evaluates_to_its_value), any other
 // declaration reference refuses with the binding-miss reason. The body's FORM is no longer the refusal.
 test fn arrow_body_form_declaration_reference_is_an_eval_entry_holds() -> Bool {
   arrow_body_admits_eval_entry(form: DeclarationReferenceBody)

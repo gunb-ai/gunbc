@@ -30,9 +30,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the same way, and eval refused the reference with eval_rejected_runtime_binding_lookup_miss.
 
 // THE REAL PATH, ONCE: one source carrying every accepted case, assembled once and read whole by the rows
-// below, so the floor fills it once (v2.workflow.floor_pure_producer_share). An Int constant read by an Int
-// constant, a String constant read by a String constant, and a fn whose body is a constant reference.
-data drv_source: String = "module p\n\ndata k: Int = 7\n\ndata j: Int = k\n\ndata t: String = \"t\"\n\ndata u: String = t\n\nfn callee() -> Int {\n  k\n}\n\nfn consumer() -> Int {\n  callee()\n}\n"
+// below, so the floor fills it once (v2.workflow.floor_pure_producer_share). The smallest source that holds
+// the subject: one constant, a fn whose body is a reference to it, and a call to that fn.
+data drv_source: String = "module p\n\ndata k: Int = 7\n\nfn callee() -> Int {\n  k\n}\n\nfn consumer() -> Int {\n  callee()\n}\n"
 
 // ONE ASSEMBLY, read whole by every real-path row below (the infer rows, the marker row and the eval row),
 // so the floor fills it once. The call-execution route's assembly is used because the eval row needs
@@ -41,9 +41,8 @@ fn drv_assembled() -> Outcome<ResolvedTree> {
   cref_assemble(src: drv_source)
 }
 
-// ONE INFERENCE of that assembly, by a nullary producer the infer row and the eval row both read whole, so
-// the floor fills it once rather than each row paying a full inference (each did, at ~130k eval steps
-// apiece, on an earlier head).
+// THE ONE INFERENCE of that assembly, read by row (1) only: an inferred tree is not a portable served value,
+// so a second reader would pay it again rather than share it.
 fn drv_inferred() -> Outcome<InferredTree> {
   match drv_assembled() {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
@@ -76,14 +75,18 @@ fn drv_eval_reading(o: Outcome<InferredTree>) -> CrefReading {
   }
 }
 
-// (1) EVERY DATA REFERENCE AT A DECLARED POSITION IS ACCEPTED: Int at Int, String at String, and a constant
-// as a fn body at the fn's declared return.
-test fn drv_data_references_at_their_declared_types_are_accepted() -> Bool {
-  drv_reason(o: drv_inferred()) == ^accepted
+// (1) THE ONE REAL-PATH ROW: infer accepts a data reference at its declared position (a constant as a fn
+// body, at the fn's declared return), AND eval agrees -- the call to `callee` evaluates its body `k` to the
+// constant's VALUE 7, not a closure and not the binding-miss refusal it took before. ONE ROW BECAUSE BOTH
+// ASSERTIONS READ ONE INFERENCE and an inferred tree is not a portable served value
+// (ServeCacheValueNotPortable), so two rows would pay the inference twice for no coverage the one row lacks.
+test fn drv_a_data_reference_is_typed_at_its_declared_type_and_evaluates_to_its_value() -> Bool {
+  let o = drv_inferred()
+  drv_reason(o: o) == ^accepted && cref_executes_to(r: drv_eval_reading(o: o), n: 7)
 }
 
-// (2) THE MARKER IS PRODUCED, NOT ONLY SUPPLIED: lowering the real source yields exactly the data Arrows
-// marked (k, j, t, u) and leaves the nullary fn Arrows (callee, consumer) unmarked -- so a nullary fn is not
+// (2) THE MARKER IS PRODUCED, NOT ONLY SUPPLIED: lowering the real source yields exactly the data Arrow
+// marked (k) and leaves the nullary fn Arrows (callee, consumer) unmarked -- so a nullary fn is not
 // mistaken for a constant, which is the meaning fork a marker-free "type every nullary Arrow by its
 // codomain" rule would have been.
 fn drv_marked_arrow_count(o: Outcome<ResolvedTree>) -> Int {
@@ -116,16 +119,9 @@ fn drv_unmarked_arrow_count(o: Outcome<ResolvedTree>) -> Int {
   }
 }
 
-test fn drv_lowering_marks_the_four_data_arrows_and_not_the_two_fn_arrows() -> Bool {
+test fn drv_lowering_marks_the_data_arrow_and_not_the_two_fn_arrows() -> Bool {
   let o = drv_assembled()
-  drv_marked_arrow_count(o: o) == 4 && drv_unmarked_arrow_count(o: o) == 2
-}
-
-// (3) EVAL AGREES WITH INFER: the call to `callee` evaluates its body, the reference `k`, to the constant's
-// VALUE 7 -- not a closure, and not the binding-miss refusal a value-position declaration reference took
-// before. Same source, same assembly route the call-execution rows use (cref_assemble admits `p`).
-test fn drv_a_data_reference_evaluates_to_its_value() -> Bool {
-  cref_executes_to(r: drv_eval_reading(o: drv_inferred()), n: 7)
+  drv_marked_arrow_count(o: o) == 1 && drv_unmarked_arrow_count(o: o) == 2
 }
 
 // (4) TYPING THE REFERENCE AT T IS NOT ADMITTING IT ANYWHERE: a reference to a marked Arrow is typed at
