@@ -5820,9 +5820,9 @@ fn infer_gather_extend_application_instances(
   if !acc.await_transform_row {
     Accepted { value: acc.application_instances, diagnostics: None }
   } else {
-    match acc.node.children {
-      Empty => Accepted { value: acc.application_instances, diagnostics: None }
-      Cons { head: callee, tail: _ } =>
+    match list_at_optional(xs: acc.node.children, index: 0) {
+      Absent => Accepted { value: acc.application_instances, diagnostics: None }
+      Present { value: callee } =>
         if callee.target == edge.target {
           Accepted { value: acc.application_instances, diagnostics: None }
         } else {
@@ -7029,9 +7029,9 @@ fn infer_gather_child_context(parent: Node, frame: InferFrame, acc: InferGatherF
 // the actual that instantiates T (f-before-o) sees no instance; T stays underived and is never
 // minted (infer_operand_declared_type_instantiated). Binder types share InferFrame.binder_types.
 fn infer_application_actual_child_frame(parent: Node, frame: InferFrame, acc: InferGatherFoldAcc, edge: Edge, resolved: ResolvedTree) -> InferFrame {
-  match parent.children {
-    Empty => infer_frame_inherited(frame: frame)
-    Cons { head: callee, tail: _ } =>
+  match list_at_optional(xs: parent.children, index: 0) {
+    Absent => infer_frame_inherited(frame: frame)
+    Present { value: callee } =>
       if callee.target == edge.target {
         infer_frame_inherited(frame: frame)
       } else {
