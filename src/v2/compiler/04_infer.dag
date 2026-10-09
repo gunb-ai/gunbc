@@ -2097,6 +2097,23 @@ type InferMentionsUnfixedAcc {
   found: Bool
 }
 
+type InferUnfixedAtomAcc {
+  instances: List<TypeVariableInstance>
+  id: Symbol
+  found: Bool
+}
+
+fn infer_unfixed_atom_param_step(acc: InferUnfixedAtomAcc, p: Symbol) -> InferUnfixedAtomAcc {
+  InferUnfixedAtomAcc {
+    instances: acc.instances,
+    id: acc.id,
+    found: acc.found || ((p == acc.id) && match type_variable_instance_lookup(instances: acc.instances, binder: acc.id) {
+      Present { value: _ } => false
+      Absent => true
+    })
+  }
+}
+
 fn infer_mentions_unfixed_child_step(acc: InferMentionsUnfixedAcc, c: Node) -> InferMentionsUnfixedAcc {
   InferMentionsUnfixedAcc {
     instances: acc.instances,
@@ -2116,16 +2133,11 @@ fn infer_type_mentions_unfixed_param(
 ) -> Bool {
   match declared.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      fold(type_params, init: InferMentionsUnfixedAcc { instances: instances, type_params: type_params, found: false }, f: fn(acc, p) {
-        InferMentionsUnfixedAcc {
-          instances: acc.instances,
-          type_params: acc.type_params,
-          found: acc.found || ((p == id) && match type_variable_instance_lookup(instances: acc.instances, binder: id) {
-            Present { value: _ } => false
-            Absent => true
-          })
-        }
-      }).found
+      fold(
+        type_params,
+        init: InferUnfixedAtomAcc { instances: instances, id: id, found: false },
+        f: infer_unfixed_atom_param_step
+      ).found
     TypeNode { connective: _ } =>
       fold(
         node_positional_child_targets(node: declared),
