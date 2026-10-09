@@ -24,8 +24,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data megarac_operations: List<MegaRacOperation> = [MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming]
 
+// The operations with an executed standing at the committed 0.32 build. The KVM canvas still has none: the only
+// KVM receipt sits across the reflash, so production admission refuses it.
+data megarac_operations_executed_at_0_32: List<MegaRacOperation> = [MegaRacVirtualMediaAttach, MegaRacSdrSocketNaming]
+
 // THE INHABITANCE CLAIM, AND IT ASSERTS THE ROUTE. The one managed row, mtcollins1, is admitted for every
-// MegaRAC operation the boot drives, and each carrier's endpoint, account and firmware are its binding's
+// MegaRAC operation with an executed standing at its build (the KVM canvas still has none and is refused),
+// and each carrier's endpoint, account and firmware are its binding's
 // own: the endpoint the binding observed, the account the binding carries, and the firmware that
 // observation read. Its observed family turning OpenBMC, its build changing, or its secure standing
 // going Absent turns this red.
@@ -33,7 +38,8 @@ test fn w_the_real_row_is_admitted_for_each_megarac_operation_through_its_bindin
   let hosts = managed_hosts()
   count(hosts) == 1
     && hosts |> all(h => (h.host as String) == (operator_host_mtcollins1 as String)
-      && megarac_operations |> all(op => match admit_megarac_host(host: h, operation: op) {
+      && match admit_megarac_host(host: h, operation: MegaRacKvmCanvasStill) { MegaRacHostRefused { cause: _ } => true  MegaRacHostAdmitted { host: _ } => false }
+      && megarac_operations_executed_at_0_32 |> all(op => match admit_megarac_host(host: h, operation: op) {
         MegaRacHostAdmitted { host: a } =>
           (a.binding.host.host as String) == (operator_host_mtcollins1 as String)
             && a.firmware.family == AmiMegaRac
@@ -175,7 +181,6 @@ test fn w_a_historical_observation_beside_a_known_later_build_mints_no_carrier()
         readings: [megarac_build_reading(endpoint: o.endpoint, identity: o.identity, evidence: fixture_evidence(label: "historical reading"), observed_at: 1000)],
         receipts: [],
         transitions: [megarac_firmware_transition(endpoint: o.endpoint, from: o.identity.firmware, to: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.45.3"), not_before: 2000, not_after: 3000, record: decl_ref(module_path: "fixture", decl_name: "reflash"))],
-        recoveries: [],
       )
       megarac_operations |> all(op => match admit_megarac_host_at_current_build(evidence: ev, host: h, operation: op) {
         MegaRacHostRefused { cause: MegaRacObservationNotCurrent { observed: ob, current: c } } => (ob.raw_version as String) == "0.32" && (c.raw_version as String) == "0.45.3"
@@ -195,7 +200,6 @@ test fn w_a_current_read_build_with_executed_evidence_is_admitted_by_the_shadow_
         readings: [megarac_build_reading(endpoint: o.endpoint, identity: o.identity, evidence: fixture_evidence(label: "current reading"), observed_at: 5000)],
         receipts: [megarac_operation_receipt(operation: MegaRacVirtualMediaAttach, endpoint: o.endpoint, receipt: fixture_evidence(label: "run"), executed_at: 6000)],
         transitions: [],
-        recoveries: [],
       )
       (match admit_megarac_host_at_current_build(evidence: ev, host: h, operation: MegaRacVirtualMediaAttach) { MegaRacHostAdmitted { host: _ } => true  MegaRacHostRefused { cause: _ } => false })
         && (match admit_megarac_host_at_current_build(evidence: ev, host: h, operation: MegaRacKvmCanvasStill) { MegaRacHostRefused { cause: MegaRacOperationNotGrounded { operation: _, identity: _ } } => true  _ => false })

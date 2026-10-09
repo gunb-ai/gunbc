@@ -26,7 +26,6 @@ both arms are asserted.
 | `test.claim.mtcollins1_census_image_local_wet` | `a_failed_or_partial_or_disagreeing_workload_emits_no_token_by_real_execution`, `a_workload_larger_than_capacity_refuses_at_preflight_by_real_execution` | fixed `/tmp/gunbc-wl-counter`, `/tmp/gunbc-wl-dd-marker` writable by this runner user (shared `/tmp`, sticky bit) | open: #12467 (per-claim temp dir), covers both paths |
 | `test.claim.spark.pair_serving_d0_front_door_real_execution` | `a_vacated_port_reads_as_no_response_by_real_execution`, `a_failed_connect_fences_under_an_active_head_unit_and_suspends_only_under_a_quiet_one_by_real_execution`, `a_listener_behind_a_failed_connect_is_read_on_the_host_and_fences_by_real_execution` | a just-vacated loopback port stays unbound; `/proc/net/tcp` shows no other runner's listener on it | **owned by crisp-lynx-364** — not touched here |
 | `test.claim.fabric.fabric_storage_file_store_wet_witness` | `a_put_or_advance_by_a_principal_the_store_areas_do_not_admit_is_refused_by_the_real_file_store` | runner executes as a non-root uid (`shell.Chmod.RecursiveReadOnly` does not bind root) | #12658: uid→outcome relation plus an all-uid refusal claim |
-| `test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness` | `a_held_observer_is_admitted_and_its_triggered_still_is_hash_bound`, `a_busy_viewer_slot_refuses_the_observer_and_the_handoff`, `a_connection_lost_mid_boot_is_reported_and_no_still_is_claimed_after_it`, `an_unreadable_canvas_is_acquisition_failed_with_the_browsers_words`, `a_relative_observer_directory_is_resolved_once` | browser toolchain converged for the job user (`gunbc.runner_browser_toolchain` `runner_browser_toolchain_here_wet` reads Ready; observed false on srv1 where `runner_browser_toolchain_converge` had never run) | typed refusal: declared in `v2.workflow.local_repo_wet_terminal` `local_repo_wet_premise_roster`, read before invocation, refused as `WetTerminalHostPremiseUnmet` carrying the toolchain authority's words rather than `WetTerminalVerdictNotExpected`; claims unchanged and still refuse the lane. Restoration trigger: keen-pike-73's floor slot class makes toolchain convergence a floor-pool readiness property |
 
 ## Latent — fixed
 
@@ -75,7 +74,7 @@ are listed for completeness.
 `fabric.fabric_partition_read_wet_witness` (these two leak their temp roots — hygiene, not verdict),
 `host_cli_dependency_wet_witness_test` (both arms accepted — vacuous, not keyed),
 `live_deploy.approval_broker_helper_readback_real_execution`, `materialization_store_local_wet_witness`,
-`megarac_spx_ui_surface_artifact_integrity_witness`, `memory_capture_real_execution_witness`,
+`memory_capture_real_execution_witness`,
 `pre_os_capture_replay_witness`, `provenance_calibration_report_real_execution`,
 `review_sheet_legacy_declaration_wet_witness`, `self_host_logic_seed_unavailable_check_fixture`,
 `serving.serving_availability_bind_wet_witness`, `shell_spawn_refused_real_execution_witness`,

@@ -2242,20 +2242,8 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.megarac_spx_ui_surface_artifact_integrity_witness", function: "committed_spx_ui_surface_hashes_to_the_catalog_identity" },
-      entry: "dag/test/claim/bmc/megarac_spx_ui_surface_artifact_integrity_witness_test.dag",
-      function: "committed_spx_ui_surface_hashes_to_the_catalog_identity",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.megarac_spx_ui_surface_artifact_integrity_witness", function: "committed_spx_ui_surface_agrees_with_every_served_ui_surface_standing" },
-      entry: "dag/test/claim/bmc/megarac_spx_ui_surface_artifact_integrity_witness_test.dag",
-      function: "committed_spx_ui_surface_agrees_with_every_served_ui_surface_standing",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.megarac_spx_ui_surface_artifact_integrity_witness", function: "committed_sol_host_payload_hashes_to_the_positive_control_identity" },
-      entry: "dag/test/claim/bmc/megarac_spx_ui_surface_artifact_integrity_witness_test.dag",
+      identity: WitnessIdentity { module_path: "test.claim.mtcollins_sol_host_payload_integrity_witness", function: "committed_sol_host_payload_hashes_to_the_positive_control_identity" },
+      entry: "dag/test/claim/bmc/mtcollins_sol_host_payload_integrity_witness_test.dag",
       function: "committed_sol_host_payload_hashes_to_the_positive_control_identity",
       expectation: ExpectedToHold {}
     },
@@ -2680,90 +2668,6 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "a_held_observer_is_admitted_and_its_triggered_still_is_hash_bound" },
-      entry: "dag/test/claim/machine_intake/mtcollins1_kvm_observer_protocol_wet_witness_test.dag",
-      function: "a_held_observer_is_admitted_and_its_triggered_still_is_hash_bound",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "a_root_page_that_navigates_cannot_destroy_the_login" },
-      entry: "dag/test/claim/machine_intake/mtcollins1_kvm_observer_protocol_wet_witness_test.dag",
-      function: "a_root_page_that_navigates_cannot_destroy_the_login",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "a_viewer_without_its_feature_list_never_opens_kvm" },
-      entry: "dag/test/claim/machine_intake/mtcollins1_kvm_observer_protocol_wet_witness_test.dag",
-      function: "a_viewer_without_its_feature_list_never_opens_kvm",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "a_busy_viewer_slot_refuses_the_observer_and_the_handoff" },
-      entry: "dag/test/claim/machine_intake/mtcollins1_kvm_observer_protocol_wet_witness_test.dag",
-      function: "a_busy_viewer_slot_refuses_the_observer_and_the_handoff",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "a_connection_lost_mid_boot_is_reported_and_no_still_is_claimed_after_it" },
-      entry: "dag/test/claim/machine_intake/mtcollins1_kvm_observer_protocol_wet_witness_test.dag",
-      function: "a_connection_lost_mid_boot_is_reported_and_no_still_is_claimed_after_it",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "an_unreadable_canvas_is_acquisition_failed_with_the_browsers_words" },
-      entry: "dag/test/claim/machine_intake/mtcollins1_kvm_observer_protocol_wet_witness_test.dag",
-      function: "an_unreadable_canvas_is_acquisition_failed_with_the_browsers_words",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "a_stale_listening_line_from_another_pid_is_not_readiness" },
-      entry: "dag/test/claim/machine_intake/mtcollins1_kvm_observer_protocol_wet_witness_test.dag",
-      function: "a_stale_listening_line_from_another_pid_is_not_readiness",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "a_transport_that_exits_at_once_is_not_serving" },
-      entry: "dag/test/claim/machine_intake/mtcollins1_kvm_observer_protocol_wet_witness_test.dag",
-      function: "a_transport_that_exits_at_once_is_not_serving",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "a_launch_that_cannot_publish_its_pid_stops_its_child" },
-      entry: "dag/test/claim/machine_intake/mtcollins1_kvm_observer_protocol_wet_witness_test.dag",
-      function: "a_launch_that_cannot_publish_its_pid_stops_its_child",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "a_term_ignoring_child_with_an_unpublished_record_is_observed_stopped" },
-      entry: "dag/test/claim/machine_intake/mtcollins1_kvm_observer_protocol_wet_witness_test.dag",
-      function: "a_term_ignoring_child_with_an_unpublished_record_is_observed_stopped",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "an_unreadable_process_state_never_skips_the_kill_of_an_unpublished_child" },
-      entry: "dag/test/claim/machine_intake/mtcollins1_kvm_observer_protocol_wet_witness_test.dag",
-      function: "an_unreadable_process_state_never_skips_the_kill_of_an_unpublished_child",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "a_relative_observer_directory_is_resolved_once" },
-      entry: "dag/test/claim/machine_intake/mtcollins1_kvm_observer_protocol_wet_witness_test.dag",
-      function: "a_relative_observer_directory_is_resolved_once",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "a_record_naming_another_process_is_foreign_and_not_released" },
-      entry: "dag/test/claim/machine_intake/mtcollins1_kvm_observer_protocol_wet_witness_test.dag",
-      function: "a_record_naming_another_process_is_foreign_and_not_released",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "an_owned_process_is_released_and_observed_gone" },
-      entry: "dag/test/claim/machine_intake/mtcollins1_kvm_observer_protocol_wet_witness_test.dag",
-      function: "an_owned_process_is_released_and_observed_gone",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "an_unreadable_incident_is_reported_and_is_not_success" },
       entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
       function: "an_unreadable_incident_is_reported_and_is_not_success",
@@ -3068,26 +2972,6 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
 // without it is never handed this lane (docs/plans/wet-witness-host-premise-census.md).
 fn local_repo_wet_premise_roster() -> List<WetPremisedClaim> {
   [
-    WetPremisedClaim {
-      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "a_held_observer_is_admitted_and_its_triggered_still_is_hash_bound" },
-      premise: RunnerBrowserToolchainReadyForJobUser {}
-    },
-    WetPremisedClaim {
-      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "a_busy_viewer_slot_refuses_the_observer_and_the_handoff" },
-      premise: RunnerBrowserToolchainReadyForJobUser {}
-    },
-    WetPremisedClaim {
-      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "a_connection_lost_mid_boot_is_reported_and_no_still_is_claimed_after_it" },
-      premise: RunnerBrowserToolchainReadyForJobUser {}
-    },
-    WetPremisedClaim {
-      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "an_unreadable_canvas_is_acquisition_failed_with_the_browsers_words" },
-      premise: RunnerBrowserToolchainReadyForJobUser {}
-    },
-    WetPremisedClaim {
-      identity: WitnessIdentity { module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", function: "a_relative_observer_directory_is_resolved_once" },
-      premise: RunnerBrowserToolchainReadyForJobUser {}
-    },
     WetPremisedClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.allocation_client_execution_wet_witness", function: "client_json_reject_keeps_intent" },
       premise: RunnerBrowserToolchainReadyForJobUser {}

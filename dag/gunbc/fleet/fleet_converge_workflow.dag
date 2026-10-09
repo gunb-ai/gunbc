@@ -46,7 +46,6 @@ import gunbc.cloudflare.r2_conditional_put_race_probe { race_probe_receipt_path 
 import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_observation_receipt_path }
 import gunbc.machine_intake_mtcollins1_kvm_observer_observe { mtcollins1_kvm_observer_probe_bound, mtcollins1_kvm_observer_probe_artifact_glob }
 import gunbc.machine_intake_megarac_kvm_still { megarac_kvm_observer_release_allowance }
-import gunbc.machine_intake_mtcollins1_ui_bundle_observe { mtcollins1_ui_bundle_artifact_glob, mtcollins1_ui_bundle_read_bound }
 import gunbc.fabric_writer_identity_observe { fabric_writer_identity_receipt_path }
 import gunbc.fabric.workspace_source { workspace_source_receipt_path }
 import gunbc.fabric.workspace_checkpoint_instrument { workspace_measure_receipt_path, workspace_restore_receipt_path, workspace_source_object_env }
@@ -159,7 +158,6 @@ import gunbc.ci_spec {
   gunbc_ci_app_key_version_verify_mint_script,
   gunbc_ci_app_key_version_verify_verdict_invoke,
   gunbc_ci_mtcollins1_fan_observe_invoke,
-  gunbc_ci_mtcollins1_ui_bundle_observe_invoke,
   gunbc_ci_mtcollins1_kvm_observer_observe_invoke,
   gunbc_ci_mtcollins1_kvm_observer_release_invoke,
   gunbc_ci_fabric_writer_identity_observe_invoke,
@@ -368,7 +366,6 @@ type FleetConvergeWorkflowMode
   | MtCollins1Boot
   | PairServingD0
   | MtCollins1FanObserve
-  | MtCollins1UiBundleObserve
   | MtCollins1KvmObserverObserve
   | FabricWriterIdentityObserve
   | MtCollins1CensusImagePublish
@@ -450,7 +447,6 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     PrinterWorkflow => "printer"
     PairServingD0 => "pair_serving_d0"
     MtCollins1FanObserve => "mtcollins1_fan_observe"
-    MtCollins1UiBundleObserve => "mtcollins1_ui_bundle_observe"
     MtCollins1KvmObserverObserve => "mtcollins1_kvm_observer_observe"
     FabricWriterIdentityObserve => "fabric_writer_identity_observe"
     MtCollins1CensusImagePublish => "mtcollins1_census_image_publish"
@@ -483,7 +479,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, SparkV41CheckpointMaterialize, SparkV41RowStoreEncode, SparkV41RowStoreReadback, SparkV41EngramDifferential, SparkRuntimeImageProduce, SparkRuntimeImageDistribute, SparkArmGroupLoad, SparkArmCheckpointMaterialize, SparkArmGroupObserve, SparkArmGroupLaunchPlan, SparkArmGroupLaunch, SparkV41ServingLoad, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, ApprovalDeviceEnrolmentCodeIssue, MtCollins1Boot, MtCollins1FanObserve, MtCollins1UiBundleObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, FabricWriterIdentityObserve, PairServingD0, MicrovmRunnerGroupEnsure, GcpIamConverge, NamecheapObserve, PrinterWorkflow]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, SparkV41CheckpointMaterialize, SparkV41RowStoreEncode, SparkV41RowStoreReadback, SparkV41EngramDifferential, SparkRuntimeImageProduce, SparkRuntimeImageDistribute, SparkArmGroupLoad, SparkArmCheckpointMaterialize, SparkArmGroupObserve, SparkArmGroupLaunchPlan, SparkArmGroupLaunch, SparkV41ServingLoad, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, ApprovalDeviceEnrolmentCodeIssue, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, FabricWriterIdentityObserve, PairServingD0, MicrovmRunnerGroupEnsure, GcpIamConverge, NamecheapObserve, PrinterWorkflow]
 // WHICH RELEASE PRODUCT A MODE'S JOB RUNS, NAMED PER MODE WITH NO WILDCARD (as the scope and fleet-key
 // matches above name theirs). A mode whose steps run only gunbc and claim_executor declares the
 // compiler pair (gunbc.fleet_release_bins_key compiler_pair_release_product): its build job then
@@ -554,7 +550,6 @@ fn fleet_converge_mode_release_product(mode: FleetConvergeWorkflowMode) -> Fleet
     ApprovalDeviceEnrolmentCodeIssue => CompilerPairOnly
     MtCollins1Boot => SixteenBinaryPack
     MtCollins1FanObserve => SixteenBinaryPack
-    MtCollins1UiBundleObserve => SixteenBinaryPack
     MtCollins1KvmObserverObserve => SixteenBinaryPack
     MtCollins1CensusImagePublish => SixteenBinaryPack
     MtCollins1CensusMemberReadback => SixteenBinaryPack
@@ -672,7 +667,6 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     PrinterWorkflow => none
     PairServingD0 => none
     MtCollins1FanObserve => none
-    MtCollins1UiBundleObserve => none
     MtCollins1KvmObserverObserve => none
     FabricWriterIdentityObserve => none
     MtCollins1CensusImagePublish => none
@@ -820,7 +814,6 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     MtCollins1Boot => FleetSshKeyConsumed
     PairServingD0 => FleetSshKeyConsumed
     MtCollins1FanObserve => FleetSshKeyNotConsumed
-    MtCollins1UiBundleObserve => FleetSshKeyNotConsumed
     MtCollins1KvmObserverObserve => FleetSshKeyNotConsumed
     FabricWriterIdentityObserve => FleetSshKeyNotConsumed
     MtCollins1CensusImagePublish => FleetSshKeyConsumed
@@ -1495,7 +1488,6 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     MtCollins1Boot => ExecutorDomain
     PairServingD0 => SubjectDomain { group: fleet_arm_mutation_group_deepseek_group_a }
     MtCollins1FanObserve => ExecutorDomain
-    MtCollins1UiBundleObserve => ExecutorDomain
     MtCollins1KvmObserverObserve => ExecutorDomain
     FabricWriterIdentityObserve => ExecutorDomain
     MtCollins1CensusImagePublish => ExecutorDomain
@@ -2402,49 +2394,16 @@ fn fleet_converge_mtcollins1_fan_observe_step() -> Step {
   }
 }
 
-// MT. COLLINS' OWN UI BUNDLE AND ITS DIGEST (gunbc.machine_intake_mtcollins1_ui_bundle_observe): the
-// firmware revision over IPMI, then the served source.min.js bytes, only under revision 0.32. Reads
-// only, no web session. The receipt and the bytes are uploaded whatever the outcome, because a refused
-// run's receipt is the one that says why it holds no bytes; a step condition without a status
-// function is implicitly success() and would drop exactly that receipt.
 // A READ-ONLY MT. COLLINS PROBE STEP'S BUDGET IS A FOLD, NEVER A LITERAL, over the step's phases in
 // order, each counted once and rounded once: gunbc run's load of the probe's closure, whose authority is
 // the measured resolve budget (gunbc.fleet_workflow_steps gunbc_ci_gunbc_run_resolve_step_timeout_minutes),
 // then the step's own phases -- for a probe, the credential prelude's one bounded Secret Manager read
 // (gunbc.ci_spec gunbc_ci_sm_max_time; the prelude's other lines are local file writes) and the probe's
 // declared bound; for the always() release, the owned release alone. The flat aux budget
-// is what killed the UI bundle's first wet run (36759368077) while it was still typechecking.
+// is what killed a probe's first wet run while it was still typechecking.
 fn fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: List<Second>) -> Int {
   let secs = fold(phases, gunbc_ci_gunbc_run_resolve_step_timeout_minutes * 60, (acc, p) => acc + (second_count(s: p) as Int))
   (secs + 59) / 60
-}
-
-data fleet_converge_mtcollins1_ui_bundle_observe_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1UiBundleObserve)
-
-fn fleet_converge_mtcollins1_ui_bundle_observe_step() -> Step {
-  RunStep {
-    name: Present { value: "Mt. Collins served UI: firmware revision, then source.min.js, viewer.html and every script they load, each with its sha256 (reads only)" },
-    id: Present { value: "mtcollins1_ui_bundle_observe" },
-    run: gunbc_ci_mtcollins1_ui_bundle_observe_invoke(),
-    shell: none,
-    env: Present { value: [
-      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
-    ] },
-    working_directory: none,
-    if_condition: Present { value: fleet_converge_mtcollins1_ui_bundle_observe_step_if },
-    continue_on_error: none,
-    timeout_minutes: Present { value: fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, mtcollins1_ui_bundle_read_bound()]) }
-  }
-}
-
-fn fleet_converge_mtcollins1_ui_bundle_observe_upload_step() -> Step {
-  fleet_converge_receipt_upload_step(
-    id: "mtcollins1_ui_bundle_observe_upload",
-    name: "Upload Mt. Collins served UI files and receipt",
-    artifact: "mtcollins1-ui-bundle",
-    path: mtcollins1_ui_bundle_artifact_glob,
-    if_condition: join(["always() && ", fleet_converge_mtcollins1_ui_bundle_observe_step_if], "")
-  )
 }
 
 // THE REAL KVM OBSERVER AGAINST THE REAL BMC, NO BOOT (gunbc.machine_intake_mtcollins1_kvm_observer_observe):
@@ -4462,8 +4421,6 @@ fn fleet_converge_job() -> Job {
         fleet_converge_app_key_version_verify_receipt_upload_step(),
         fleet_converge_mtcollins1_fan_observe_step(),
         fleet_converge_mtcollins1_fan_observe_receipt_upload_step(),
-        fleet_converge_mtcollins1_ui_bundle_observe_step(),
-        fleet_converge_mtcollins1_ui_bundle_observe_upload_step(),
         fleet_converge_mtcollins1_kvm_observer_observe_step(),
         fleet_converge_mtcollins1_kvm_observer_release_step(),
         fleet_converge_mtcollins1_kvm_observer_observe_upload_step(),
@@ -4746,7 +4703,6 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     ApprovalDeviceEnrolmentCodeIssue => fleet_converge_shared_job_id
     MtCollins1Boot => "mtcollins1-boot" as NonEmptyStr
     MtCollins1FanObserve => fleet_converge_shared_job_id
-    MtCollins1UiBundleObserve => fleet_converge_shared_job_id
     MtCollins1KvmObserverObserve => fleet_converge_shared_job_id
     MtCollins1CensusImagePublish => fleet_converge_shared_job_id
     MtCollins1CensusMemberReadback => fleet_converge_shared_job_id
