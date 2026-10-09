@@ -219,6 +219,46 @@ fn demand_state_is_settled<V>(s: DemandState<V>) -> Bool {
   demand_state_is_available(s: s) || demand_state_is_refused(s: s)
 }
 
+fn demand_state_is_blocked<V>(s: DemandState<V>) -> Bool {
+  match s {
+    DemandBlocked { cause: _ } => true
+    DemandWaiting => false
+    DemandReady => false
+    DemandLeasePending => false
+    DemandRunning => false
+    DemandSuspended => false
+    DemandCommitPending => false
+    DemandAvailable { value: _ } => false
+    DemandRefused => false
+  }
+}
+
+// A VERDICT THAT OUTLIVES THE PRODUCTION UNDER IT. A production may finish after its own key was found
+// conflicted or after a prerequisite it read refused; its report is counted, but its result answers no
+// demand that still stands, so it does not replace the verdict.
+fn demand_state_stands_over_a_report<V>(s: DemandState<V>) -> Bool {
+  match s {
+    DemandBlocked { cause: c } =>
+      match c {
+        BlockedKeyConflict { stored: _, requested: _ } => true
+        BlockedByRefusedPrerequisite { prerequisite: _ } => true
+        BlockedByCycle { members: _ } => false
+        BlockedByMissingEdge { prerequisite: _ } => false
+        BlockedWaitingForCapacity => false
+        BlockedLookupPending => false
+        BlockedNoDemand => false
+      }
+    DemandWaiting => false
+    DemandReady => false
+    DemandLeasePending => false
+    DemandRunning => false
+    DemandSuspended => false
+    DemandCommitPending => false
+    DemandAvailable { value: _ } => false
+    DemandRefused => false
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 // THE ENTRY: ONE PRODUCTION, MANY ATTACHMENTS
 // ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -234,6 +274,7 @@ type DemandEntry<V> {
   state: DemandState<V>
   attachments: Int
   productions: Int
+  seat_held: Bool
 }
 
 fn demand_entry_new<V>(identity: DemandIdentity, nature: DemandNature) -> DemandEntry<V> {
@@ -242,7 +283,8 @@ fn demand_entry_new<V>(identity: DemandIdentity, nature: DemandNature) -> Demand
     nature: nature,
     state: DemandWaiting,
     attachments: 0,
-    productions: 0
+    productions: 0,
+    seat_held: false
   }
 }
 
@@ -316,13 +358,18 @@ fn demand_entry_state<V>(entry: DemandEntry<V>) -> DemandState<V> {
   entry.state
 }
 
+fn demand_entry_holds_seat<V>(entry: DemandEntry<V>) -> Bool {
+  entry.seat_held
+}
+
 fn demand_entry_with_state<V>(entry: DemandEntry<V>, state: DemandState<V>) -> DemandEntry<V> {
   DemandEntry {
     identity: entry.identity,
     nature: entry.nature,
     state: state,
     attachments: entry.attachments,
-    productions: entry.productions
+    productions: entry.productions,
+    seat_held: entry.seat_held
   }
 }
 
@@ -332,7 +379,21 @@ fn demand_entry_produced<V>(entry: DemandEntry<V>, state: DemandState<V>) -> Dem
     nature: entry.nature,
     state: state,
     attachments: entry.attachments,
-    productions: entry.productions + 1
+    productions: entry.productions + 1,
+    seat_held: entry.seat_held
+  }
+}
+
+// A SETTLEMENT IS THE PRODUCER'S REPORT, AND ONLY THE PRODUCER MOVES THE SEAT. The seat is held exactly
+// while the producer last reported running, whatever verdict the demand's state carries meanwhile.
+fn demand_entry_settled<V>(entry: DemandEntry<V>, state: DemandState<V>, reported: DemandState<V>) -> DemandEntry<V> {
+  DemandEntry {
+    identity: entry.identity,
+    nature: entry.nature,
+    state: state,
+    attachments: entry.attachments,
+    productions: entry.productions + 1,
+    seat_held: demand_state_is_running(s: reported)
   }
 }
 
@@ -342,7 +403,8 @@ fn demand_entry_attached<V>(entry: DemandEntry<V>) -> DemandEntry<V> {
     nature: entry.nature,
     state: entry.state,
     attachments: entry.attachments + 1,
-    productions: entry.productions
+    productions: entry.productions,
+    seat_held: entry.seat_held
   }
 }
 
@@ -506,7 +568,8 @@ fn demand_engine_request<V>(
 // ladder's own nature_eq, not a second one written here. The entry leaves the ready order, its direct
 // dependents are re-derived (they now read a refused prerequisite), and the conflict stands for the
 // rest of the run -- including over a result that was already available, which is no longer a
-// trustworthy answer for either demand.
+// trustworthy answer for either demand. A production already running keeps its seat: the conflict is a
+// verdict about the key, not the end of the work, and the seat is released when that production reports.
 fn demand_engine_key_conflict<V>(
   e: DemandEngine<V>,
   existing: DemandEntry<V>,
@@ -523,7 +586,7 @@ fn demand_engine_key_conflict<V>(
     dependents_of: e.dependents_of,
     prerequisites_of: e.prerequisites_of,
     ready: demand_ready_remove(ready: e.ready, id: id),
-    in_flight: e.in_flight + demand_in_flight_delta(before: demand_entry_state(entry: existing), after: conflict),
+    in_flight: e.in_flight,
     completion_order: e.completion_order,
     readiness_computations: e.readiness_computations,
     entries_visited: e.entries_visited + 1
@@ -638,6 +701,10 @@ fn demand_in_cycle<V>(e: DemandEngine<V>, id: DemandIdentity) -> Bool {
 //
 // A SETTLED DEMAND KEEPS ITS OWN STATE. Recomputing readiness for something already available
 // would discard the value it carries.
+//
+// A DEMAND WHOSE PRODUCTION HOLDS A SEAT KEEPS ITS LIFECYCLE STATE unless a prerequisite now blocks it.
+// Re-deriving it to ready would offer a second admission for work already in flight; a block is a
+// verdict on the demand and lands, while the seat stays with the production until it reports.
 fn demand_readiness<V>(e: DemandEngine<V>, id: DemandIdentity) -> DemandState<V> {
   match demand_engine_entry(e: e, id: id) {
     Absent => DemandBlocked { cause: BlockedNoDemand }
@@ -649,39 +716,44 @@ fn demand_readiness<V>(e: DemandEngine<V>, id: DemandIdentity) -> DemandState<V>
       } else if demand_state_is_key_conflict(s: entry.state) {
         entry.state
       } else {
-        let prereqs = demand_engine_prerequisites(e: e, id: id)
-        let missing = filter(xs: prereqs, predicate: fn(p) { !demand_engine_has(e: e, id: p) })
-        let refused = filter(
-          xs: prereqs,
-          predicate: fn(p) {
-            match demand_engine_entry(e: e, id: p) {
-              Absent => false
-              Present { value: pe } => demand_state_refuses_dependents(s: pe.state)
+        let derived = demand_readiness_from_prerequisites(e: e, id: id)
+        if demand_entry_holds_seat(entry: entry) && !demand_state_is_blocked(s: derived) { entry.state } else { derived }
+      }
+  }
+}
+
+fn demand_readiness_from_prerequisites<V>(e: DemandEngine<V>, id: DemandIdentity) -> DemandState<V> {
+  let prereqs = demand_engine_prerequisites(e: e, id: id)
+  let missing = filter(xs: prereqs, predicate: fn(p) { !demand_engine_has(e: e, id: p) })
+  let refused = filter(
+    xs: prereqs,
+    predicate: fn(p) {
+      match demand_engine_entry(e: e, id: p) {
+        Absent => false
+        Present { value: pe } => demand_state_refuses_dependents(s: pe.state)
+      }
+    }
+  )
+  match missing {
+    Cons { head: m, tail: _ } => DemandBlocked { cause: BlockedByMissingEdge { prerequisite: m } }
+    Empty =>
+      match refused {
+        Cons { head: r, tail: _ } =>
+          DemandBlocked { cause: BlockedByRefusedPrerequisite { prerequisite: r } }
+        Empty =>
+          if for_all(
+            xs: prereqs,
+            predicate: fn(p) {
+              match demand_engine_entry(e: e, id: p) {
+                Absent => false
+                Present { value: pe } => demand_state_is_available(s: pe.state)
+              }
             }
+          ) {
+            DemandReady
+          } else {
+            DemandWaiting
           }
-        )
-        match missing {
-          Cons { head: m, tail: _ } => DemandBlocked { cause: BlockedByMissingEdge { prerequisite: m } }
-          Empty =>
-            match refused {
-              Cons { head: r, tail: _ } =>
-                DemandBlocked { cause: BlockedByRefusedPrerequisite { prerequisite: r } }
-              Empty =>
-                if for_all(
-                  xs: prereqs,
-                  predicate: fn(p) {
-                    match demand_engine_entry(e: e, id: p) {
-                      Absent => false
-                      Present { value: pe } => demand_state_is_available(s: pe.state)
-                    }
-                  }
-                ) {
-                  DemandReady
-                } else {
-                  DemandWaiting
-                }
-            }
-        }
       }
   }
 }
@@ -706,7 +778,8 @@ fn demand_engine_seal<V>(e: DemandEngine<V>) -> DemandEngine<V> {
               nature: entry.nature,
               state: DemandBlocked { cause: BlockedByCycle { members: [entry.identity] } },
               attachments: entry.attachments,
-              productions: entry.productions
+              productions: entry.productions,
+              seat_held: entry.seat_held
             }
           } else {
             entry
@@ -758,7 +831,8 @@ fn demand_engine_reevaluated_states<V>(e: DemandEngine<V>) -> DemandEngine<V> {
           nature: entry.nature,
           state: demand_readiness(e: e, id: entry.identity),
           attachments: entry.attachments,
-          productions: entry.productions
+          productions: entry.productions,
+          seat_held: entry.seat_held
         }
       }
     ),
@@ -843,14 +917,19 @@ fn demand_ready_sync<V>(
 // no demand is ever observably in flight, so the state has nothing to mark; with more than one, the
 // admission must mark it and settlement must clear it, and the delta below is what clears it.
 //
-// IT STAYS DERIVED FROM STATE RATHER THAN HARDCODED for the same reason. Returning 0 with a comment
-// would be correct today and a fail-open the moment that producer lands -- admitting past the seat
-// count because the count was a literal -- and the delta costs nothing while the frontier stands.
-fn demand_in_flight_delta<V>(before: DemandState<V>, after: DemandState<V>) -> Int {
-  if demand_state_is_running(s: after) {
-    if demand_state_is_running(s: before) { 0 } else { 1 }
+// IT STAYS DERIVED RATHER THAN HARDCODED for the same reason. Returning 0 with a comment would be
+// correct today and a fail-open the moment that producer lands -- admitting past the seat count because
+// the count was a literal -- and the delta costs nothing while the frontier stands.
+//
+// IT IS DERIVED FROM THE ENTRY'S SEAT, NOT FROM ITS STATE. A verdict (a key conflict, a refused
+// prerequisite) can replace a running demand's state while its production is still underway; reading
+// the seat off the state would release it at the verdict and lose it at the report. Only the producer's
+// own report moves the seat (demand_entry_settled).
+fn demand_in_flight_delta(before: Bool, after: Bool) -> Int {
+  if after {
+    if before { 0 } else { 1 }
   } else {
-    if demand_state_is_running(s: before) { 0 - 1 } else { 0 }
+    if before { 0 - 1 } else { 0 }
   }
 }
 
@@ -873,7 +952,7 @@ fn demand_ready_rebuild<V>(e: DemandEngine<V>) -> List<DemandIdentity> {
 }
 
 fn demand_in_flight_rebuild<V>(e: DemandEngine<V>) -> Int {
-  length(xs: filter(xs: demand_engine_all_entries(e: e), predicate: fn(entry) { demand_state_is_running(s: entry.state) }))
+  length(xs: filter(xs: demand_engine_all_entries(e: e), predicate: fn(entry) { demand_entry_holds_seat(entry: entry) }))
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -929,8 +1008,9 @@ fn demand_engine_next<V>(e: DemandEngine<V>, offer: DemandLeaseOffer) -> DemandA
 // receipt the A/B cutover compares: two runs of one closure must complete in one order, and an
 // order reconstructed from final states has already lost it.
 //
-// A production that completes after its key was found conflicted still counts as produced, but its
-// result does not replace the conflict: the key names two demands, and neither may read this value.
+// A production that completes after its key was found conflicted, or after a prerequisite it read
+// refused, still counts as produced and releases its seat, but its result does not replace the verdict
+// (demand_state_stands_over_a_report).
 fn demand_engine_settle<V>(
   e: DemandEngine<V>,
   id: DemandIdentity,
@@ -940,15 +1020,19 @@ fn demand_engine_settle<V>(
     Absent => DemandWaiting
     Present { value: prior } => demand_entry_state(entry: prior)
   }
-  let landed = if demand_state_is_key_conflict(s: before) { before } else { state }
+  let held = match map_lookup(m: e.entries, key: id) {
+    Absent => false
+    Present { value: prior } => demand_entry_holds_seat(entry: prior)
+  }
+  let landed = if demand_state_stands_over_a_report(s: before) { before } else { state }
   let settled = DemandEngine {
-    entries: demand_engine_settle_entry(e: e, id: id, state: landed),
+    entries: demand_engine_settle_entry(e: e, id: id, state: landed, reported: state),
     entry_order: e.entry_order,
     relations: e.relations,
     dependents_of: e.dependents_of,
     prerequisites_of: e.prerequisites_of,
     ready: demand_ready_sync(ready: e.ready, id: id, state: landed),
-    in_flight: e.in_flight + demand_in_flight_delta(before: before, after: landed),
+    in_flight: e.in_flight + demand_in_flight_delta(before: held, after: demand_state_is_running(s: state)),
     completion_order: list_snoc_item(xs: e.completion_order, item: id),
     readiness_computations: e.readiness_computations,
     entries_visited: e.entries_visited + 1
@@ -975,12 +1059,13 @@ fn demand_engine_settle<V>(
 fn demand_engine_settle_entry<V>(
   e: DemandEngine<V>,
   id: DemandIdentity,
-  state: DemandState<V>
+  state: DemandState<V>,
+  reported: DemandState<V>
 ) -> Map<DemandIdentity, DemandEntry<V>> {
   match map_lookup(m: e.entries, key: id) {
     Absent => e.entries
     Present { value: entry } =>
-      map_insert(m: e.entries, key: id, value: demand_entry_produced(entry: entry, state: state))
+      map_insert(m: e.entries, key: id, value: demand_entry_settled(entry: entry, state: state, reported: reported))
   }
 }
 

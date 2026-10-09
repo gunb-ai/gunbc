@@ -866,3 +866,35 @@ test fn a_key_conflict_survives_seal_settle_and_rerequest_holds() -> Bool {
       DemandNotAdmitted { cause: _ } => true
     }
 }
+
+// THE CONFLICT DOES NOT END THE WORK UNDER IT. A is running when its key is found conflicted: the
+// seat stays held until A's production reports, and the report releases it without replacing the
+// conflict. Releasing at the conflict would admit past the seat count while A still runs.
+test fn a_conflict_on_a_running_demand_keeps_its_seat_until_it_reports_holds() -> Bool {
+  let running = demand_engine_settle(e: g_chain(), id: g_a(), state: DemandRunning)
+  let conflicted = demand_engine_request(e: running, id: g_a(), nature: FreshEffect)
+  let reported = demand_engine_settle(e: conflicted, id: g_a(), state: DemandAvailable { value: 1 })
+  demand_engine_in_flight(e: running) == 1
+    && demand_engine_in_flight(e: conflicted) == 1
+    && demand_engine_in_flight(e: reported) == 0
+    && g_state_is(e: reported, id: g_a(), want: g_conflict(stored: PureComputation, requested: FreshEffect))
+    && g_state_is(e: reported, id: g_b(), want: DemandBlocked { cause: BlockedByRefusedPrerequisite { prerequisite: g_a() } })
+}
+
+// AND A RUNNING DEPENDENT KEEPS BOTH ITS SEAT AND ITS REFUSAL. B is running on A's value when A's key
+// is found conflicted: B is refused at once and leaves no seat behind it, and when B's production
+// later reports a value, the seat is released and the refusal still stands -- B read an answer to a
+// different demand, so its value answers nothing.
+test fn a_running_dependent_keeps_its_seat_and_refusal_when_a_prerequisite_conflicts_holds() -> Bool {
+  let want_b = DemandBlocked { cause: BlockedByRefusedPrerequisite { prerequisite: g_a() } }
+  let available = demand_engine_settle(e: g_chain(), id: g_a(), state: DemandAvailable { value: 1 })
+  let b_running = demand_engine_settle(e: available, id: g_b(), state: DemandRunning)
+  let conflicted = demand_engine_request(e: b_running, id: g_a(), nature: FreshEffect)
+  let reported = demand_engine_settle(e: conflicted, id: g_b(), state: DemandAvailable { value: 2 })
+  demand_engine_in_flight(e: b_running) == 1
+    && demand_engine_in_flight(e: conflicted) == 1
+    && g_state_is(e: conflicted, id: g_b(), want: want_b)
+    && demand_engine_in_flight(e: reported) == 0
+    && g_state_is(e: reported, id: g_b(), want: want_b)
+    && length(xs: demand_engine_ready_queue(e: reported)) == 0
+}
