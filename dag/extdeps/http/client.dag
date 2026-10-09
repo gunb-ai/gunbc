@@ -188,18 +188,15 @@ service http.Client {
   operation GetQueryStdinWithin {
     requires Network
     input { url: NonEmptyStr, query: String, connect_seconds: NonEmptyStr, max_seconds: NonEmptyStr }
-    output {
-      success: Bool
-      body: String
-    }
+    output { success: Bool from "exit_success", body: String from "stdout" }
     readonly
     transport shell {
       argv: ["curl", "--disable", "-sS", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "--get", "--data-binary", "@-", "-w", "\n%{http_code}", "{url}"]
+      stdin: query
     }
-    stdin: query
     exit {
       0 => Unit
-      nonzero => Unit
+      nonzero => String "bounded GET with stdin query did not complete"
     }
     mock_response {
       0 => { success: false, body: "" } "hermetic: no live HTTP endpoint"
@@ -217,8 +214,8 @@ service http.Client {
     }
     transport shell {
       argv: ["curl", "--disable", "-sS", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "-X", "POST", "--data-binary", "@-", "-w", "\n%{http_code}", "{url}"]
+      stdin: request_body
     }
-    stdin: request_body
     exit {
       0 => Unit
       nonzero => Unit
@@ -239,8 +236,8 @@ service http.Client {
     }
     transport shell {
       argv: ["curl", "--disable", "-sS", "--unix-socket", "{socket}", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "--data-binary", "@-", "-w", "\n%{http_code}", "{url}"]
+      stdin: request_body
     }
-    stdin: request_body
     exit {
       0 => Unit
       nonzero => Unit
