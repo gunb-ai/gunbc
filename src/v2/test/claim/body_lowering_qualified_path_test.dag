@@ -21,9 +21,8 @@ import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.compiler.reference_conservation_admission { conserved_normalize_of_text, no_explained_drops }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { parse_module_prepared }
-import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_lex }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { length, list_snoc_item }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
@@ -529,7 +528,7 @@ fn body_lowering_source_parsed(text: String, file: Symbol) -> Outcome<Node> {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: prepared, diagnostics: _ } =>
       bind_outcome(
-        o: tokenize(text: text, file: file, rules: dag_lex()),
+        o: tokenize_prepared(text: text, file: file, prepared: dag_prepared_lex()),
         f: fn(token_stream) {
           match parse_module_prepared(
             tokens: token_stream,

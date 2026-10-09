@@ -1,9 +1,8 @@
 module v2.test.claim.parse.status_class_pattern
 
 import v2.compiler.parse { parse_module_prepared }
-import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_lex }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
 import v2.std.diagnostic {
   Accepted,
   ByteRange,
@@ -37,7 +36,7 @@ fn status_parse(text: String) -> Outcome<Node> {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: prepared, diagnostics: _ } =>
       bind_outcome(
-        o: tokenize(text: text, file: ^status_class_probe, rules: dag_lex()),
+        o: tokenize_prepared(text: text, file: ^status_class_probe, prepared: dag_prepared_lex()),
         f: fn(token_stream) {
           match parse_module_prepared(tokens: token_stream, prepared: prepared) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -62,7 +61,7 @@ test fn an_exact_status_code_parses_holds() -> Bool { status_parses(pattern: "40
 test fn a_named_status_parses_holds() -> Bool { status_parses(pattern: "nonzero") }
 
 fn token_start(text: String, lexeme: String) -> Int {
-  match tokenize(text: text, file: ^status_class_probe, rules: dag_lex()) {
+  match tokenize_prepared(text: text, file: ^status_class_probe, prepared: dag_prepared_lex()) {
     Rejected { diagnostics: _ } => -1
     Accepted { value: ts, diagnostics: _ } =>
       fold(ts.all, init: -1, f: fn(acc, t) { if acc < 0 && t.lexeme == lexeme { t.start } else { acc } })

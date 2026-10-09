@@ -4,15 +4,14 @@ import v2.compiler.program_assembly {
   ProgramAssemblyLocatedFoldOk,
   ProgramAssemblyLocatedFoldFailed,
   dag_prepared_grammar,
+  dag_prepared_lex,
   program_assembly_fold_step,
   program_assembly_ingest_scope_outcome
 }
 import v2.compiler.source_authority { DagSourceReadWitness }
-import v2.compiler.tokenize { prepare_lex_rules }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import extdeps.communication.medium { Lossless, Medium }
-import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.std.provenance { span_index_empty }
 import std.occurrence_identity { occurrence_id_allocator_initial }

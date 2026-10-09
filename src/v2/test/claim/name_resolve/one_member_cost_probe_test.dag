@@ -10,14 +10,14 @@ import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_i
 import v2.std.declaration_marker { test_marker_channel_empty }
 import v2.compiler.parse { parse_module }
 import v2.compiler.resolve { ResolvedTree }
-import v2.compiler.tokenize { tokenize }
+import v2.compiler.program_assembly { dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
 import v2.extdeps.languages.dag {
   dag_canonical_symbols,
   dag_grammar,
   dag_grammar_atom,
   dag_language_model,
   dag_language_model_surface_empty_prelude,
-  dag_lex,
   dag_named_edge,
   dag_surface_edge,
 }
@@ -177,10 +177,10 @@ test fn language_model_carries_its_canonical_symbols() -> Bool {
 data probe_front_end_source: String = "module probe.one_member\n"
 
 test fn tokenize_parse_one_member_does_not_run_resolve() -> Bool {
-  match tokenize(
+  match tokenize_prepared(
     text: probe_front_end_source,
     file: ^probe_front_end_file,
-    rules: dag_lex()
+    prepared: dag_prepared_lex()
   ) {
     Rejected { diagnostics: _ } => false
     Accepted { value: tokens, diagnostics: _ } =>

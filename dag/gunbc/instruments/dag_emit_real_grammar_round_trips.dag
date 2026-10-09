@@ -4,10 +4,10 @@ import std.types { String, List, Bool }
 import v2.std.algebra { filter }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 import v2.compiler.parse { PreparedGrammar, parse_module_prepared }
-import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.compiler.tokenize { tokenize }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize, tokenize_prepared }
 import v2.extdeps.languages.dag { dag_emit_parse_tree, dag_lex }
-import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, bind_outcome }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, bind_outcome, Diagnostics }
 import v2.std.fn_index { non_empty_diagnostics_list }
 import v2.std.node { Node, content_hash, symbol_lexeme }
 
@@ -40,7 +40,7 @@ type DagEmitRoundTripRow {
 // The grammar is prepared once per round trip and both ingests read it.
 fn dag_round_trip_parse(prepared: PreparedGrammar, text: String) -> Outcome<Node> {
   bind_outcome(
-    o: tokenize(text: text, file: ^dag_emit_round_trip_source, rules: dag_lex()),
+    o: tokenize_prepared(text: text, file: ^dag_emit_round_trip_source, prepared: dag_prepared_lex()),
     f: fn(stream) {
       match parse_module_prepared(tokens: stream, prepared: prepared) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }

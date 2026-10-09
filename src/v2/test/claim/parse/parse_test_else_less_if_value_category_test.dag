@@ -6,9 +6,9 @@ import v2.compiler.body_lowering_fold {
   body_lower_if_expr
 }
 import v2.compiler.parse { PreparedModeled, PreparedVoidGrammar, parse_production_prepared }
-import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_lex, parse_production_emitted_identity_optional }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }
 import v2.std.diagnostic { Accepted, DeclarationLocus, InvariantPortLocus, Locus, NodeLocus, Rejected, SourcePortLocus, Textual, diagnostics_fatal }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol }
@@ -39,7 +39,7 @@ fn elif_parse_as(text: String, production: Symbol) -> Optional<Node> {
       match prepared {
         PreparedVoidGrammar => Absent
         PreparedModeled { modeled: modeled, materialization: m } =>
-          match tokenize(text: text, file: ^elif_probe, rules: dag_lex()) {
+          match tokenize_prepared(text: text, file: ^elif_probe, prepared: dag_prepared_lex()) {
             Rejected { diagnostics: _ } => Absent
             Accepted { value: token_stream, diagnostics: _ } =>
               match parse_production_prepared(

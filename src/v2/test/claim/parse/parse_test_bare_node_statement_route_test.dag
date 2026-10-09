@@ -1,9 +1,9 @@
 module test.claim.parse_test_bare_node_statement_route
 
 import v2.compiler.parse { PreparedModeled, PreparedVoidGrammar, parse_production_prepared }
-import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_lex, parse_production_emitted_identity_optional }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
@@ -34,7 +34,7 @@ fn bns_parse(text: String, file: Symbol, production: Symbol) -> Optional<Node> {
       match prepared {
         PreparedVoidGrammar => Absent
         PreparedModeled { modeled: modeled, materialization: m } =>
-          match tokenize(text: text, file: file, rules: dag_lex()) {
+          match tokenize_prepared(text: text, file: file, prepared: dag_prepared_lex()) {
             Rejected { diagnostics: _ } => Absent
             Accepted { value: token_stream, diagnostics: _ } =>
               match parse_production_prepared(
