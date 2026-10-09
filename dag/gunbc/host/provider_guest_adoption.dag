@@ -29,7 +29,7 @@ import gunbc.fleet_host_backing {
   OwnedMachine,
   ProviderGuest,
   ProviderResourceAwaited,
-  ProviderResourceBound,
+  ProviderResourceAcquired,
   backing_microvm_forbidding_offer,
 }
 import gunbc.fleet_enrollment { HostEnrollmentIntent }
@@ -156,8 +156,8 @@ fn adopt_provider_guest(intent: HostEnrollmentIntent, read: GuestObservationRead
     ProviderGuest { route: _, entitlement: e, resource: r } => match r {
       ProviderResourceAwaited { read_obligation: o } =>
         GuestAdoptionRefused { host: intent.host, cause: ProviderResourceUnread { read_obligation: o } }
-      ProviderResourceBound { resource_id: id } =>
-        adopt_observed_guest(host: intent.host, resource_id: id, entitlement: e, read: read)
+      ProviderResourceAcquired { acquisition: acquired } =>
+        adopt_observed_guest(host: intent.host, resource_id: acquired.resource_id, entitlement: e, read: read)
     }
   }
 }

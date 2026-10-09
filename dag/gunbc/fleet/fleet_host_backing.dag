@@ -5,6 +5,7 @@ import std.decl_ref { DeclarationRef }
 import std.measure { ByteSize, HardwareThreadCount }
 import extdeps.toolchain.types { Architecture }
 import product.fabric.provider_route { ProviderRoute }
+import gunbc.provider_acquisition { ProviderResourceAcquisition }
 
 // WHAT SUPPLIES A FLEET HOST, as a fact separate from what the host is FOR. Backing, provisioning and
 // service intent were one fact in practice -- a CI host was assumed to be an owned machine with a BMC
@@ -31,11 +32,14 @@ type GuestEntitlement {
 
 // THE EXACT PROVIDER RESOURCE. An operation is bound to a provider's resource identifier, never to
 // the display name the provider shows, because a display name can be edited, reused or duplicated.
-// A host enrolled before the identifier has been read carries that as a typed obligation naming what
-// would ground it (DESIGN section 4d), so adoption refuses on it instead of guessing.
+// The binding IS the acquisition (gunbc.provider_acquisition): the identifier, the account it is held
+// under and the credential that drives it arrive together, so no consumer pairs one server's id
+// with another account's credential. A host enrolled before its acquisition is recorded carries that
+// as a typed obligation naming what would ground it (DESIGN section 4d), so adoption refuses on it
+// instead of guessing.
 type ProviderResourceBinding
   = ProviderResourceAwaited { read_obligation: NonEmptyStr }
-  | ProviderResourceBound { resource_id: NonEmptyStr }
+  | ProviderResourceAcquired { acquisition: ProviderResourceAcquisition }
 
 // HOW AN OWNED MACHINE'S OPERATING SYSTEM ARRIVES. This is not implied by ownership: an Ampere
 // Altra server is installed over its BMC's virtual media, while an appliance such as a DGX Spark has

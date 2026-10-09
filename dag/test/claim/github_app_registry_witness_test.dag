@@ -70,8 +70,9 @@ import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.runner_throughput_qualification_route { ephemeral_slot_unit, ephemeral_slot_labels, ephemeral_slot_command }
 import gunbc.runner.runner_jit_deregistration { JitRegistration, jit_registration_of, readback_subject_refusal, DeregistrationReadbackForAnotherSubject }
+import gunbc.host_control_route { bmc_controlled_host, BmcRouteNotBound }
 import gunbc.runner.runner_host_unit_slot {
-  HostUnitSlotStanding, HostUnitSlotBound, HostUnitSlotRefused, HostUnitSlotHostNotBound, host_unit_slot_for, host_unit_slot_listener_argv,
+  HostUnitSlotStanding, HostUnitSlotBound, HostUnitSlotRefused, HostUnitSlotHostNotControlled, host_unit_slot_for, host_unit_slot_listener_argv,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -1365,7 +1366,7 @@ fn group_restricted_to(workflow: NonEmptyStr) -> MicrovmRunnerGroupStanding {
 }
 
 fn host_unit_slot(h: ManagedHost) -> HostUnitSlotStanding {
-  host_unit_slot_for(host: managed_host_binding(host: h), attempt: "q-1", workflow: qualification_workflow)
+  host_unit_slot_for(host: bmc_controlled_host(standing: managed_host_binding(host: h)), attempt: "q-1", workflow: qualification_workflow)
 }
 
 fn host_unit_planned(standing: HostUnitSlotStanding, perms: List<GitHubAppPermission>, group: MicrovmRunnerGroupStanding) -> JitMintPlan {
@@ -1434,11 +1435,11 @@ test fn witness_jit_mint_refuses_a_group_restricted_to_another_workflow() -> Boo
 test fn witness_jit_mint_refuses_a_host_the_managed_host_seam_does_not_bind() -> Bool {
   let unbound = ManagedHostAccessUnobserved { endpoint: BmcControllerEndpoint { host: "fixture-bmc" } }
   match host_unit_planned(
-    standing: host_unit_slot_for(host: unbound, attempt: "q-1", workflow: qualification_workflow),
+    standing: host_unit_slot_for(host: bmc_controlled_host(standing: unbound), attempt: "q-1", workflow: qualification_workflow),
     perms: runner_grant,
     group: group_restricted_to(workflow: qualification_workflow),
   ) {
-    JitMintRefusedSubject { refusal: SubjectHostUnitSlotRefused { refusal: HostUnitSlotHostNotBound { standing: ManagedHostAccessUnobserved { endpoint: e } } } } =>
+    JitMintRefusedSubject { refusal: SubjectHostUnitSlotRefused { refusal: HostUnitSlotHostNotControlled { refusal: BmcRouteNotBound { standing: ManagedHostAccessUnobserved { endpoint: e } } } } } =>
       (e.host as String) == "fixture-bmc"
     _ => false
   }

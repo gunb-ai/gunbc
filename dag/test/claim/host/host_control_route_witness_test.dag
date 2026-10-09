@@ -1,0 +1,82 @@
+module test.claim.host_control_route_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import product.host_identity { HostIdentity }
+import product.supplier.hetzner { hetzner_helsinki_route }
+import extdeps.cloud.hetzner { cax41_catalog }
+import std.decl_ref { decl_ref }
+import gunbc.fleet_host_identity { operator_host_183527, operator_host_3dde7f, operator_host_srv1, operator_host_srv5 }
+import gunbc.fleet_host_backing { ProviderGuest, ProviderResourceAwaited }
+import gunbc.hetzner_cloud_guest { hetzner_cloud_guest_entitlement }
+import gunbc.fleet_enrollment { HostEnrollmentIntent, enrollment_for_host, ci_runner_enrollment_participation }
+import gunbc.host_control_route {
+  HostControlStanding, HostControlled, HostControlRefused, ProviderApiControlRoute, BmcControlRoute,
+  BmcHostNotManaged, NoOutOfBandRoute, ProviderResourceNotAcquired, enrolled_host_control,
+}
+
+fn control_of(host: HostIdentity) -> HostControlStanding? {
+  match enrollment_for_host(host: host) {
+    Absent => none
+    Present { value: e } => Present { value: enrolled_host_control(intent: e) }
+  }
+}
+
+// INHABITANCE, ASSERTING THE ROUTE: each enrolled CAX guest, read off the production roster, is
+// controlled through the provider API under the account its acquisition names, with that account's
+// own Secret Manager credential and the guest's own server id -- so a guest can never be driven with
+// another account's token or another server's id.
+fn guest_controlled_as(host: HostIdentity, resource_id: String) -> Bool {
+  match control_of(host: host) {
+    Present { value: HostControlled { controlled: c } } =>
+      (c.host as String) == (host as String) && match c.route {
+        ProviderApiControlRoute { route: _, acquisition: a } =>
+          (a.resource_id as String) == resource_id
+            && (a.account.account as String) == "default"
+            && (a.account.api_credential.secret as String) == "hetzner-cloud-default-api-key"
+            && (a.account.api_credential.project as String) == "gunbai-secrets"
+        BmcControlRoute { binding: _ } => false
+      }
+    _ => false
+  }
+}
+
+test fn both_cax_guests_are_controlled_through_the_hetzner_project_account() -> Bool {
+  guest_controlled_as(host: operator_host_183527, resource_id: "169308819")
+    && guest_controlled_as(host: operator_host_3dde7f, resource_id: "169308796")
+}
+
+// RED: AN OWNED BOARD THAT gunbc.managed_host DOES NOT BIND HAS NO CONTROL ROUTE, even though it is
+// installed over its BMC. srv1 is enrolled and BMC-installed, and no managed-host row binds it today,
+// so claiming control of it would be claiming a route nobody secured.
+test fn an_owned_board_with_no_managed_host_row_is_not_controlled() -> Bool {
+  match control_of(host: operator_host_srv1) {
+    Present { value: HostControlRefused { refusal: BmcHostNotManaged { host: h } } } => (h as String) == (operator_host_srv1 as String)
+    _ => false
+  }
+}
+
+// RED: AN APPLIANCE THAT PROVISIONS ITSELF THROUGH FIRST BOOT HAS NO OUT-OF-BAND ROUTE, and says so.
+test fn an_appliance_has_no_out_of_band_route() -> Bool {
+  match control_of(host: operator_host_srv5) {
+    Present { value: HostControlRefused { refusal: NoOutOfBandRoute { host: h } } } => (h as String) == (operator_host_srv5 as String)
+    _ => false
+  }
+}
+
+// RED: A GUEST WHOSE ACQUISITION IS NOT RECORDED IS NOT CONTROLLED, carrying its read obligation.
+test fn a_guest_without_a_recorded_acquisition_is_not_controlled() -> Bool {
+  let intent = HostEnrollmentIntent {
+    host: operator_host_3dde7f,
+    participation: ci_runner_enrollment_participation,
+    backing: ProviderGuest {
+      route: hetzner_helsinki_route(),
+      entitlement: hetzner_cloud_guest_entitlement(row: cax41_catalog, offer: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "cax41_catalog")),
+      resource: ProviderResourceAwaited { read_obligation: "record the acquisition of ubuntu-32gb-hel1-1" },
+    },
+  }
+  match enrolled_host_control(intent: intent) {
+    HostControlRefused { refusal: ProviderResourceNotAcquired { host: _, read_obligation: o } } =>
+      (o as String) == "record the acquisition of ubuntu-32gb-hel1-1"
+    _ => false
+  }
+}

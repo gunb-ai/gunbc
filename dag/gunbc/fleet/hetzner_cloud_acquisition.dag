@@ -1,0 +1,33 @@
+module gunbc.hetzner_cloud_acquisition
+
+import gunbc.secret_provision { fleet_secret_ref }
+import gunbc.provider_acquisition { ProviderApiAccount, ProviderResourceAcquisition, OperatorPerformed }
+
+// THE HETZNER CLOUD PROJECT THE FLEET'S GUESTS ARE HELD UNDER. A Hetzner Cloud API token is scoped to
+// exactly one project, so the project is the account and its token is the one credential that may
+// drive these servers. The operator created the token as a Read & Write project token and stored it
+// in Secret Manager on 2026-10-08; gunbc reads it by reference and never holds its value.
+data hetzner_cloud_default_project: ProviderApiAccount = ProviderApiAccount {
+  account: "default",
+  api_credential: fleet_secret_ref(secret_id: "hetzner-cloud-default-api-key"),
+}
+
+// THE TWO CAX41 GUESTS, AS THE OPERATOR ACQUIRED THEM. Every step was performed in the Hetzner Cloud
+// console and relayed into the session that enrolled them; the server ids are the console's own
+// resource numbers. Both servers were recreated on 2026-10-08 (the first pair was replaced), so these
+// rows name the recreated ids.
+data hetzner_cax41_nbg1_1_acquisition: ProviderResourceAcquisition = ProviderResourceAcquisition {
+  resource_id: "169308819",
+  account: hetzner_cloud_default_project,
+  account_established: OperatorPerformed { performed_on: "2026-10-07", relayed: "operator ordered the first CAX41 pair under the default project" },
+  login_key_registered: OperatorPerformed { performed_on: "2026-10-08", relayed: "operator ticked the project's srv2, MacBook and fleet-automation keys at creation; root login from srv2 verified" },
+  resource_acquired: OperatorPerformed { performed_on: "2026-10-08", relayed: "console: cax41 #169308819 ubuntu-32gb-nbg1-1 178.104.134.135 2a01:4f8:1c19:4ed0::/64" },
+}
+
+data hetzner_cax41_hel1_1_acquisition: ProviderResourceAcquisition = ProviderResourceAcquisition {
+  resource_id: "169308796",
+  account: hetzner_cloud_default_project,
+  account_established: OperatorPerformed { performed_on: "2026-10-07", relayed: "operator ordered the first CAX41 pair under the default project" },
+  login_key_registered: OperatorPerformed { performed_on: "2026-10-08", relayed: "operator ticked the project's srv2, MacBook and fleet-automation keys at creation; root login from srv2 verified" },
+  resource_acquired: OperatorPerformed { performed_on: "2026-10-08", relayed: "console: cax41 #169308796 ubuntu-32gb-hel1-1 62.238.115.145 2a01:4f9:c015:a9ca::/64" },
+}

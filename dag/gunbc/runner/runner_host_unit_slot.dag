@@ -7,7 +7,7 @@ import extdeps.github.actions_runner {
   actions_runner_release_2_337_0, actions_runner_base_dir, actions_runner_listener_relative_path,
   actions_runner_listener_run_verb,
 }
-import gunbc.managed_host { ManagedHostBinding, ManagedHostBindingStanding, ManagedHostBound }
+import gunbc.host_control_route { ControlledHost, HostControlStanding, HostControlled, HostControlRefused, HostControlRefusal }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.systemd.systemd_run {
@@ -22,10 +22,10 @@ import gunbc.runner_throughput_qualification_route { ephemeral_slot_unit, epheme
 // realization) -- this module only decides whether a host-unit slot EXISTS, and the mint decides
 // everything else over the sum both bindings inhabit.
 //
-// The host is admitted only through the ManagedHost seam (gunbc.managed_host): a host whose binding
-// standing is anything but ManagedHostBound has no slot, and the refusal carries that standing
-// unchanged rather than a re-coined cause. No mtcollins1_* module is named here; mtcollins1 reaches
-// this fold as the gunbc.managed_host managed_hosts row and nothing else.
+// The host is admitted only as a ControlledHost (gunbc.host_control_route): a host the fleet cannot
+// recover without its OS -- through its BMC or its provider's API -- has no slot, and the refusal
+// carries the route's own refusal unchanged rather than a re-coined cause. No mtcollins1_* module is
+// named here; mtcollins1 reaches this fold through its gunbc.managed_host row and nothing else.
 //
 // The unit, its systemd-run command (the full typed ArgvCommand -- program head included, so a
 // launch seam reading this field gets exactly the invocation the route stages, not a headless
@@ -40,7 +40,7 @@ import gunbc.runner_throughput_qualification_route { ephemeral_slot_unit, epheme
 // (gunbc.credential_argv_exposure), and putting the encoded config there would re-open that class.
 // Placing the credential into the unit's environment is the launch's act, not the registration's.
 type HostUnitSlot sole_constructor {
-  host: ManagedHostBinding
+  host: ControlledHost
   attempt: NonEmptyStr
   workflow: NonEmptyStr
   unit: NonEmptyStr
@@ -50,7 +50,7 @@ type HostUnitSlot sole_constructor {
 }
 
 type HostUnitSlotRefusal
-  = HostUnitSlotHostNotBound { standing: ManagedHostBindingStanding }
+  = HostUnitSlotHostNotControlled { refusal: HostControlRefusal }
   | HostUnitSlotRunnerBinaryUnpublished { binary_release: ActionsRunnerRelease }
   | HostUnitSlotSystemdRunRefused { cause: SystemdRunOptionWordsRefusedCause }
 
@@ -69,13 +69,13 @@ fn host_unit_slot_listener_argv() -> List<String> {
 // THE WORKFLOW IS THE CALLER'S: the slot exists to run one workflow, and the mint refuses a runner
 // group restricted to any other (gunbc.runner_jit_mint plan_jit_mint, over gunbc.runner.jit_registration_subject workflow). It is spelled the way
 // GitHub identifies a selected workflow, `<owner>/<repo>/<path>@<ref>`.
-fn host_unit_slot_for(host: ManagedHostBindingStanding, attempt: NonEmptyStr, workflow: NonEmptyStr) -> HostUnitSlotStanding {
+fn host_unit_slot_for(host: HostControlStanding, attempt: NonEmptyStr, workflow: NonEmptyStr) -> HostUnitSlotStanding {
   match host {
-    ManagedHostBound { binding: b } =>
+    HostControlled { controlled: b } =>
       match actions_runner_binary_artifact_for_arch(binary_release: host_unit_slot_runner_release, arch: Aarch64) {
         Absent => HostUnitSlotRefused { refusal: HostUnitSlotRunnerBinaryUnpublished { binary_release: host_unit_slot_runner_release } }
         Present { value: artifact } => {
-          let unit = ephemeral_slot_unit(host: b.host.host, attempt: attempt)
+          let unit = ephemeral_slot_unit(host: b.host, attempt: attempt)
           match ephemeral_slot_command(unit: unit, desired: gunbc_runner_slot_desired(), command_argv: host_unit_slot_listener_argv()) {
             SystemdRunCommandRefused { cause: why } =>
               HostUnitSlotRefused { refusal: HostUnitSlotSystemdRunRefused { cause: why } }
@@ -86,7 +86,7 @@ fn host_unit_slot_for(host: ManagedHostBindingStanding, attempt: NonEmptyStr, wo
                   attempt: attempt,
                   workflow: workflow,
                   unit: unit,
-                  labels: ephemeral_slot_labels(host: b.host.host, attempt: attempt),
+                  labels: ephemeral_slot_labels(host: b.host, attempt: attempt),
                   argv: command,
                   runner: artifact,
                 },
@@ -94,6 +94,6 @@ fn host_unit_slot_for(host: ManagedHostBindingStanding, attempt: NonEmptyStr, wo
           }
         }
       }
-    other => HostUnitSlotRefused { refusal: HostUnitSlotHostNotBound { standing: other } }
+    HostControlRefused { refusal: r } => HostUnitSlotRefused { refusal: HostUnitSlotHostNotControlled { refusal: r } }
   }
 }

@@ -1,5 +1,7 @@
 module test.claim.provider_guest_adoption_witness
 
+import gunbc.secret_provision { fleet_secret_ref }
+import gunbc.provider_acquisition { ProviderApiAccount, ProviderResourceAcquisition, OperatorPerformed }
 import std.types { Bool, Int, NonEmptyStr }
 import std.decl_ref { decl_ref }
 import std.measure { kibibyte }
@@ -13,7 +15,7 @@ import gunbc.fleet_host_backing {
   BmcVirtualMediaInstall,
   ProviderGuest,
   ProviderResourceAwaited,
-  ProviderResourceBound,
+  ProviderResourceAcquired,
 }
 import gunbc.hetzner_cloud_guest { hetzner_cloud_guest_entitlement }
 import gunbc.fleet_enrollment { HostEnrollmentIntent, ci_runner_enrollment_participation, enrollment_for_host }
@@ -54,7 +56,13 @@ fn bound_guest(entitlement: GuestEntitlement) -> HostEnrollmentIntent {
     backing: ProviderGuest {
       route: hetzner_nuremberg_route(),
       entitlement: entitlement,
-      resource: ProviderResourceBound { resource_id: "60000001" as NonEmptyStr },
+      resource: ProviderResourceAcquired { acquisition: ProviderResourceAcquisition {
+        resource_id: "60000001",
+        account: ProviderApiAccount { account: "fixture-project", api_credential: fleet_secret_ref(secret_id: "fixture-provider-api-key") },
+        account_established: OperatorPerformed { performed_on: "2026-10-08", relayed: "fixture" },
+        login_key_registered: OperatorPerformed { performed_on: "2026-10-08", relayed: "fixture" },
+        resource_acquired: OperatorPerformed { performed_on: "2026-10-08", relayed: "fixture" },
+      } },
     },
   }
 }
