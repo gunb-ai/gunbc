@@ -821,6 +821,16 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // pipeline's per-claim fixed cost of assembling and inferring a one-module fixture, not the test's own work.
 // Trigger: assemble plus infer of a one-module fixture runs under the per-claim budget
 // (gunbc.recurring_failure_mode shared_precondition_re_derived_once_per_claim_frame).
+// gunbc#13621 (a data reference uses its value): its ONE real-path inhabitance claim,
+// drv_a_data_reference_is_typed_at_its_declared_type_and_evaluates_to_its_value, kept per the DESIGN section 3
+// witness rule (the module's other six claims supply their input; sharp-raven-357 approved this member). Measured
+// by that PR's required floor (claim_executor --required-ci --required-lane witnesses) on run 37941635939 at
+// 315f7ec8: 86,566 eval steps against the 72,300 new-witness budget, after the fixture was reduced to one
+// constant, one fn and one call, assembled once (a served shared fill) and inferred once. The residual is the
+// one inference, which the floor cannot share or net because an inferred tree is not a portable served value
+// (cross-claim-share-store-declined cause=ServeCacheValueNotPortable). Trigger: the served-value tier admits
+// an InferredTree as a portable value, SUFFICIENT FOR a one-claim inference fixture to be netted like an
+// assembly -- or the shared_precondition_re_derived_once_per_claim_frame trigger above, whichever lands first.
 data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
     module: "v2.test.claim.body_lowering.fold_operand_structure",
@@ -836,6 +846,12 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
       SingleClaimFillDebtClaim { claim: "xl2_two_failures_in_one_module_are_two_rows_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "xl2_duplicated_path_is_withheld_not_chosen_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "xl2_nested_reference_is_residual_after_the_strip_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.compiler.data_reference_value",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "drv_a_data_reference_is_typed_at_its_declared_type_and_evaluates_to_its_value", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
