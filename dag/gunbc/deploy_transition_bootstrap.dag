@@ -7,6 +7,8 @@ import gunbc.live_deploy.spec {
   deployment_belt_service_unit_name,
   deployment_belt_exit_path_unit_name,
   deployment_belt_answer_path_unit_name,
+  deployment_belt_exit_drain_service_unit_name,
+  deployment_belt_discovery_service_unit_name,
 }
 import gunbc.live_deploy.operations {
   systemctl_mask_now_command,
@@ -85,14 +87,17 @@ fn quiescence_regime(awareness: ReleaseMarkerAwareness) -> QuiescenceRegimeDecis
 
 // THE QUIESCED SET IS EVERY UNIT THAT CAN ACTUATE A RELEASE: the belt's two event path units (a
 // recorded exit or a publication answer starts a unit that queues obligations -- there is no belt
-// timer since dogfood intervention #4), the belt service that queues the launch, and the serve unit,
-// where the HTTP dispatcher lives -- the deploy convergence design record already notes that stopping
+// timer since dogfood intervention #4), the belt service that queues the launch, the drain and discovery services those
+// paths start (static oneshots: masking only the triggers leaves them startable by any other
+// requester), and the serve unit, where the HTTP dispatcher lives -- the deploy convergence design record already notes that stopping
 // only the belt's trigger leaves the click path admitting against a half-published release.
 fn bootstrap_quiesced_units(names: DeploymentNames) -> List<NonEmptyStr> {
   [
     deployment_belt_exit_path_unit_name(names: names),
     deployment_belt_answer_path_unit_name(names: names),
     deployment_belt_service_unit_name(names: names),
+    deployment_belt_exit_drain_service_unit_name(names: names),
+    deployment_belt_discovery_service_unit_name(names: names),
     names.unit_name,
   ]
 }

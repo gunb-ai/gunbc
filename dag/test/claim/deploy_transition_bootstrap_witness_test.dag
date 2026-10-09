@@ -8,6 +8,8 @@ import gunbc.live_deploy.spec {
   deployment_belt_exit_path_unit_name,
   deployment_belt_answer_path_unit_name,
   deployment_belt_service_unit_name,
+  deployment_belt_exit_drain_service_unit_name,
+  deployment_belt_discovery_service_unit_name,
 }
 import gunbc.deploy_transition_bootstrap {
   ReleaseMarkerAwareness,
@@ -127,7 +129,9 @@ test fn an_unobserved_release_refuses_rather_than_widening_to_bootstrap() -> Boo
 // with the HTTP dispatcher -- leaving any one of them armed is the same defect one layer out.
 test fn the_quiesced_set_covers_the_event_paths_the_service_and_the_serve_unit() -> Bool {
   let units = bootstrap_quiesced_units(names: names())
-  units.length() == 4
+  units.length() == 6
+    && any(units, u => u == deployment_belt_exit_drain_service_unit_name(names: names()))
+    && any(units, u => u == deployment_belt_discovery_service_unit_name(names: names()))
     && any(units, u => u == deployment_belt_exit_path_unit_name(names: names()))
     && any(units, u => u == deployment_belt_answer_path_unit_name(names: names()))
     && any(units, u => u == deployment_belt_service_unit_name(names: names()))
