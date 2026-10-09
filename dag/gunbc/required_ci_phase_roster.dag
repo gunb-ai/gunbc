@@ -3,7 +3,7 @@ module gunbc.required_ci_phase_roster
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.measure { Millisecond, millisecond }
 import std.checked_arithmetic { nat_magnitude }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 
 // THE SUBSTRATE AUTHORITY FOR WHICH PHASES REQUIRED CI RUNS, AND WHICH LANE OWNS EACH.
 // gunbc.required_ci_host_verdict_census recorded the gap this module closes: "Phase existence and
