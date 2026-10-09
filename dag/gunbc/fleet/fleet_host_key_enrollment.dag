@@ -1,6 +1,7 @@
 module gunbc.fleet_host_key_enrollment
 
 import std.types { String, Bool, List, NonEmptyStr }
+import gunbc.auth.fleet_convergence_federation { fleet_convergence_principal_set, fleet_convergence_provider_resource }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -762,8 +763,8 @@ data probe_identity_secret_access_requirement: ProbeIdentitySecretAccessRequirem
   pinned_version: fleet_automation_privkey_version_segment(),
   service_account: "fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com",
   service_account_unique_id: "115150029926436834504",
-  wif_principal_set: "principalSet://iam.googleapis.com/projects/582015116396/locations/global/workloadIdentityPools/github-actions/attribute.repository/gunb-ai/gunbc",
-  wif_provider_resource: "projects/582015116396/locations/global/workloadIdentityPools/github-actions/providers/github-oidc",
+  wif_principal_set: fleet_convergence_principal_set(),
+  wif_provider_resource: fleet_convergence_provider_resource(),
   access: "roles/secretmanager.secretAccessor on this one secret only; identity reached exclusively via GitHub OIDC -> WIF exchange (id-token: write on the consumer jobs) — the SA is WIF-only, no SA keys exist or may be minted",
   observed_prior_grant: "serviceAccount:fleet-automation@gunbai-secrets.iam.gserviceaccount.com holds secretAccessor on the same secret (July-era, pre-existing) — recorded, not modified",
   consumer_jobs: ["fleet"],
