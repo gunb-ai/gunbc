@@ -1570,7 +1570,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "v1-interpreter-quarantine",
       owner: "self-host",
       carriers: carrier(path: "dag/gunbc/v1/v1_deletion_plan.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
         headline: "Build the products with the old runner left out entirely",
         boundary: "A rehearsal: build without the old runner included at all, and run the products and the build both cold and warm.",
         displaced_cost: "Proves nothing still reaches for it, which is the thing that actually makes deletion safe.",
@@ -1578,7 +1578,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "Anything that still links to or calls the old runner breaks this build.",
         out_of_scope: "A switch that still includes the runner in the build does not count.",
         handback: "The build contents, the product runs, the build results, and proof nothing depends on it."
-      ), on: "2026-09-30", note: "Not yet centered: after admission.")),
+      ), on: "2026-09-30", note: "Not yet centered: after admission."), on: "2026-10-08", note: "Census #9 retirement population: declaration pools used by decl_index/fn_index/node_reflection, typed_module_cache, whole_pool_closure_edge_index, languages_decl_records_cached and per-context PureCallMemo stay owned by seed replacement. Existing #13482 and #13569 own the typecheck-store consumer and held-session support. Seed retention does not postpone the concrete PureCallMemo binding defect: seed-pure-call-binding repairs or withdraws that unsafe serve independently, without opening a new seed governance program.")),
       dispatch: dispatchable(),
       parent: in_project(project: "v1-deletion-program", contribution: "The products build with the old runner absent."),
     ),
@@ -2627,7 +2627,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "demand-m1b",
       owner: "self-host",
       carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
           headline: "Keys for demand, evaluation and result content",
           boundary: "M1.b: keying relations for the M1.a families, plus moving std.materialization_provider request_key off FNV to an approved family. Absorbs compiler-identity-invariant-under-corpus-commit.",
           displaced_cost: "Without keys, reuse across runs is either unsafe or impossible.",
@@ -2635,7 +2635,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           red_control: "A key hit serves only after the canonical preimage compares equal; a SHA-only compiler identity refuses cross-push reuse.",
           out_of_scope: "Cross-run hit protocol (demand-m1c).",
           handback: "The keying relations landed with their controls."
-        ), on: "2026-09-30", note: "Not yet centered: design cut per keying-relation-design.")),
+        ), on: "2026-09-30", note: "Not yet centered: design cut per keying-relation-design."), on: "2026-10-08", note: "Census at main 2a519d27: floor_pure_producer_share has a closed frozen set of five runtime producers, while admission and evaluated-argument verification already execute. M1.b derives their runtime argument identities and deletes the residual enrollment and seed observer with the qualified replacement. The native demand engine currently uses one fresh engine/context per invocation and module-based keys; do not persist that run-scoped identity without the complete input contract. Surviving 05_eval digests have artifact-witness consumers: migrate those consumers through the existing identity authority, not a cache-to-computation-identity rename.")),
       parent: in_project(project: "demand-engine", contribution: "M1.b gives every demand, evaluation and result a key, so later milestones reuse results by identity rather than by coincidence."),
     ),
     roadmap_node(
@@ -2643,7 +2643,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "demand-m1c",
       owner: "self-host",
       carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
           headline: "Cross-run hits for the native compiler artifact",
           boundary: "M1.c: hit protocol for NativeCompilerArtifactRequest (#12596 open). Absorbs typed-store-cold-warm-measurement and the v1-materialization-kernel residue.",
           displaced_cost: "Every run rebuilds the native compiler artifact from scratch.",
@@ -2651,7 +2651,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           red_control: "A hit whose content fails verification refuses and is never served.",
           out_of_scope: "Dependency derivation (demand-m2).",
           handback: "The hit protocol landed with its cold/warm receipt."
-        ), on: "2026-09-30", note: "Not yet centered: #12596 in flight.")),
+        ), on: "2026-09-30", note: "Not yet centered: #12596 in flight."), on: "2026-10-08", note: "Census correction at main 2a519d27: the seed native-build cache already appends ResolvedBuildContext before .native_ready lookup: observed tool executable bytes/version, admitted environment values and Cargo configuration. Retain that coverage through the self-emitted transport and verified serving protocol. Unrealized(cached_transport_consumer_deletion_not_yet_decided) describes the missing v2-owned host-process realization, not a demonstrated omission from the effective seed key. Source verified; no warm/cold transport run was executed for this review.")),
       parent: in_project(project: "demand-engine", contribution: "M1.c makes the native compiler artifact reusable across runs, the first cross-run hit."),
     ),
     roadmap_node(
@@ -2659,7 +2659,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "demand-m2",
       owner: "self-host",
       carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
           headline: "Dependencies derived, plus a dynamic-demand protocol",
           boundary: "M2 as planned in gunbc.plans.demand_engine_program.",
           displaced_cost: "Authored dependency relations restate flow the program already declares.",
@@ -2667,7 +2667,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           red_control: "A production relation restating derivable flow refuses.",
           out_of_scope: "Scheduler migration (demand-m3b).",
           handback: "The milestone exit as the plan states it."
-        ), on: "2026-09-30", note: "Not yet centered: after M1.")),
+        ), on: "2026-09-30", note: "Not yet centered: after M1."), on: "2026-10-08", note: "Census #8: live_read_classification retains the G2 data-initializer reachability gap and its two expected-red controls (existing work item adhoc-8026d859-7e4). The current required floor uses changed-witness, interface and body-reach selection; no live-read manifest/touched_by consumer was found on that route. Before any classifier-backed skip is activated, follow initializer reach or refuse skipping when coverage is incomplete, then make the existing controls green and remove their quarantine admissions. This semantic prerequisite does not wait for materialization policy.")),
       parent: in_project(project: "demand-engine", contribution: "M2 derives dependencies instead of authoring them, so demand follows the program."),
     ),
     roadmap_node(
@@ -2707,7 +2707,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "demand-m5",
       owner: "self-host",
       carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
           headline: "Widths deleted; realization chosen",
           boundary: "M5a–M5e as five consumer-relative cuts; split into five tasks when M4 lands.",
           displaced_cost: "Hand-authored widths sit where derived demand belongs.",
@@ -2715,7 +2715,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           red_control: "A feature-authored width left behind refuses.",
           out_of_scope: "Stage cuts (demand-m6).",
           handback: "The five cuts landed."
-        ), on: "2026-09-30", note: "Not yet centered: split pending.")),
+        ), on: "2026-09-30", note: "Not yet centered: split pending."), on: "2026-10-08", note: "Census #11/#12: retain governed cross-claim share and the four carried checkout-acquisition rows; derive the carried-input population from actual demand/read-set structure and delete the parallel enrollment with its replacement. Keep changed-argument/input and warm-dispatches-no-effects controls. The native build disk cache still declares uncapped/manual-release retention and no content verification on warm reads. Its bounded-store and self-emitted transport cuts must preserve same-input warm and changed environment/toolchain/config cold-or-refusal controls at the real transport; pure key/path witnesses are not wet rebuild evidence.")),
       parent: in_project(project: "demand-engine", contribution: "M5 deletes feature-authored widths so realization is chosen, not hard-coded."),
     ),
     roadmap_node(
@@ -2771,7 +2771,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "native-memory-parse",
       owner: "self-host",
       carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
           headline: "Correct native parsing and delete the parse memo",
           boundary: "D15 / R2. Deliver #13577 (Recompute) then #13582 (atomic parse-memo deletion, including seed hook, counters, carriers and provider row). Preserve backtracking provenance and the permanent colliding-grammar control. Compile-stage memo work is separate.",
           displaced_cost: "The parse memo reuses abandoned-path occurrence ids, causing false census refusals and incorrect source spans; gunbc#13557 records the dated comparison.",
@@ -2779,7 +2779,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           red_control: "The selected terminal must resolve through its own occurrence id to its expected bytes; swapped terminal spans must fail while uniqueness and index coverage are retained. Old memo behavior makes the collision control fail.",
           out_of_scope: "Compile-stage memo disposition, a worst-case parsing bound, and the unrelated remaining parse/lowering refusals.",
           handback: "Both PRs landed, no parse-memo runtime/carrier/seed references, permanent regression control retained, and the native CLI logic.dag regression cleared. Stop here with the corrected parser; no envelope implementation is required to close this milestone."
-        ), on: "2026-10-08", note: "2026-10-08: #13577 f0e5e776 CI-green and in the merge queue. #13582 is draft, stacked on it; the review's terminal-specific span oracle is committed (427b080e5d: ordered terminal-to-locus check, swapped spans red). Owed: CI on its final main-based head, which needs a push after the retarget. The red5 witness refusal also reproduced on the parent; its cause is unresolved.")),
+        ), on: "2026-10-08", note: "2026-10-08: #13577 f0e5e776 CI-green and in the merge queue. #13582 is draft, stacked on it; the review's terminal-specific span oracle is committed (427b080e5d: ordered terminal-to-locus check, swapped spans red). Owed: CI on its final main-based head, which needs a push after the retarget. The red5 witness refusal also reproduced on the parent; its cause is unresolved."), on: "2026-10-08", note: "Follow-up census: compile-stage memo deletion is now settled (D15 / R2), in the separate native-memory-inert-carriers task. Preserve the parse milestone exit. #13582 moves generic admitted_prescription_in controls onto compile-stage; the next deletion must keep those generic obligations on a surviving ladder subject.")),
       parent: in_project(project: "demand-engine", contribution: "Closes R2 with a corrected parser and deletion, independently of later memory governance."),
     ),
     roadmap_node(
@@ -2845,6 +2845,70 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           handback: "Publish the exact invocation/input/grant/output receipt, peak and accounting/census evidence for one successful governed run. State its coverage and remaining cost, then choose or park the next family. This is the first useful end-to-end stopping point."
         ), on: "2026-10-08", note: "Planned, not dispatch-ready. Hard prerequisite: native-memory-envelope. The workload is not yet selected; neither CLI nor driver retention is a blanket prerequisite. Add the actual dependency after measurement. Advanced continuation triggers and R6-R12 stay in D15.")),
       parent: in_project(project: "demand-engine", contribution: "Proves a complete useful outcome under the resource contract, with honest scope and a clear stopping point."),
+    ),
+    roadmap_node(
+      identity: "rn_VZVDPKCH4BB32C5TZYYGR1CPCB",
+      id: "native-memory-demand-nature",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
+          headline: "Demand requests preserve their effect nature",
+          boundary: "D15 census #10. On an existing demand identity, compare the complete requested and stored DemandNature using std.materialization_ladder nature_eq before any attachment or result serve. Refuse an unequal contract durably. Keep this first fix independent of the memory envelope and carrier deletion.",
+          displaced_cost: "demand_engine_request currently consults only existing.nature, so a Fresh request can attach to a Pure entry and a change of WorldRead envelope is ignored.",
+          first_slice: "Add an executing mismatch control through request and seal/reevaluation; implement a typed conflict that cannot be erased by readiness. Land this bounded fix first, then disposition the separate nonsharing lifecycle case recorded in the note.",
+          red_control: "Pure/Fresh in both orders, Pure/Idempotent and changed WorldRead envelope refuse, including after an Available result and after seal. Equal admitted nature still shares one actual execution. Nonsharing repeat controls observe real admissions/results, not only counters.",
+          out_of_scope: "A new identity framework, disk persistence, multi-seat scheduling, or making this small mismatch PR implement the whole retention program.",
+          handback: "Land the durable nature-conflict fix with production-door controls. Keep the same-Fresh/unenveloped-WorldRead repetition case open until distinct executions are demonstrated or an unsupported repeat is explicitly refused; a counter increment never closes it. Pause after each bounded cut."
+        ), on: "2026-10-08", note: "Source-confirmed at main 2a519d27; no runtime reproduction executed here. demand_readiness currently preserves settled and cycle-blocked states only, so a bare BlockedKeyConflict can be revived. Separate existing defect: two same-key Fresh requests can leave one runnable entry while productions counts bookkeeping. The current native contracts are all PureComputation; no suppressed native Fresh effect is demonstrated. No open nature-fix PR was found.")),
+      parent: in_project(project: "demand-engine", contribution: "Keeps the requested semantic contract intact before further sharing and retention work."),
+    ),
+    roadmap_node(
+      identity: "rn_PN7MJ78M6GGBQ5TJ7KGRWSP9M0",
+      id: "seed-pure-call-binding",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
+          headline: "A seed memo hit preserves argument binding and refusal",
+          boundary: "D15 census #9. PureCallMemo is separate from EvalCallMemo. Its key drops labels from source-ordered arguments and its hit returns before call_function binds or validates them. Preserve the full admitted call binding and purity contract before any serve; a function spelling is not purity evidence.",
+          displaced_cost: "Two calls with equal function/value pointers but exchanged labels can reuse a result for different parameter bindings; a warm hit can also bypass a required invalid-label refusal.",
+          first_slice: "Execute one normal-call witness using a two-list-parameter well_formed function returning its first formal: well_formed(a:x,b:y) then well_formed(b:x,a:y), retaining x and y. Require x then y, plus a warmed invalid-label refusal. Repair the bounded key/admission path or withdraw its unproved serves.",
+          red_control: "Swapped-label calls with the same retained argument instances yield their own results; unknown/duplicate labels still refuse after warming. A same-spelled unqualified or effectful function cannot inherit purity. A positive admitted repeat remains semantically equal.",
+          out_of_scope: "A new seed-wide materialization policy, provider-capacity tuning, or waiting for seed deletion/M1/M4/M5 to preserve call semantics.",
+          handback: "The discriminating normal-call controls execute and the unsafe key/serve is repaired or removed, with no bypass of binding refusal. Record the exact revision and leave remaining seed retirement with its existing owners."
+        ), on: "2026-10-08", note: "High-confidence source counterexample at main 2a519d27, not yet executed in this review. pure_call_memo_key keeps function pointer plus value pointers; eval_call serves it before call_function_inner validates labels and before the later uses check. No duplicate fix PR found. Do not claim a complete purity proof merely by adding labels.")),
+      parent: in_project(project: "eval-memo-admission-rewire-program", contribution: "Closes an immediate call-contract defect without reopening the broader seed optimization program."),
+    ),
+    roadmap_node(
+      identity: "rn_112104V97WZG2HQZKJ0Z416CEK",
+      id: "native-memory-inert-carriers",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
+          headline: "Delete unused memo and preparation carriers",
+          boundary: "D15 / extended R2 and census #1-5. Delete the always-Miss compile-stage memo, its staging wrapper/catalog and only the unused claim-cache machinery, witness-only floor_preparation provider, orphaned FloorExecutionKey routing model and synthetic native_cache_fusion law.",
+          displaced_cost: "Unconsumed admitted mechanisms and self-derived coverage obscure the real execution and retention population.",
+          first_slice: "One bounded deletion PR: preserve then_outcome and the tokenize/parse/normalize/resolve/translate Outcome sequence; remove the unused carriers and their exclusive registries/witnesses. Coordinate with #13582 and retain its surviving generic ladder controls.",
+          red_control: "Ordinary stage results and refusals stay intact; actual interpretation/effect_io and required claim result data survive. Keep inferred_tree_digest and its diagnostic/extent/ByteOffset chain while artifact consumers need them. Preserve WitnessIdentity and qualified names used by terminal/wet ledgers.",
+          out_of_scope: "Bulk deletion of all 05_eval digests or floor2_prepared_subject, relabeling FNV helpers as computation identity, or deleting the real emit-host build cache.",
+          handback: "The named unused population and exclusive catalog references are absent, generic controls remain on surviving subjects, and affected executing consumers qualify. After both parse and compile memo deletions, remove any now-unconsumed empty compiler-provider scaffolding. Remaining artifact-identity migration stays with M1.b."
+        ), on: "2026-10-08", note: "Compile-stage deletion is explicitly ruled by the operator. The narrower #2/#4 boundary follows current consumers: inferred_tree_digest feeds actual artifact store/native-bundle witnesses; WitnessIdentity feeds floor terminal and wet-evidence records. #3 deletes an unconsumed provider abstraction, not the general FnvBucketPreimageVerified exception. #13549 overlaps its witness; #13072 owns provider identity integration. No independent compile-stage deletion PR found.")),
+      parent: in_project(project: "demand-engine", contribution: "Shrinks the materialization inventory without deleting live semantics or preserving dead mechanisms for hypothetical future use."),
+    ),
+    roadmap_node(
+      identity: "rn_CAEF3F4F3316P25F4GSX2R0MA7",
+      id: "native-memory-preparation",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
+          headline: "Prepare invariant grammar and entry facts once",
+          boundary: "D15 census #6/#7/D. OrchEmitPrepared is live and scoped to one medium/registry: prepare demanded construct rows at that scope and carry them. Derive floor-join reach once per normalized entry and join it to claims. Carry FormalProductionIndex and LexLiteralIndex across the remaining repeated preparation boundaries.",
+          displaced_cost: "Per-call preparation or a lazily grown memo restates a fact owned by the grammar, target or entry; repeated index construction adds cost at each reentry.",
+          first_slice: "Take one producer per PR, starting with a concrete repeated index-construction boundary. Use the existing formal/lex index carriers and prepared-row path; move construction to the actual owning scope, then delete the redundant constructor calls or growing memo.",
+          red_control: "Output and refusal behavior remain equal. Unused malformed constructs do not become new mandatory demands; indexes never cross grammar/medium scopes. Floor joins preserve original claim order, duplicate detection and first-refusal behavior. Construction multiplicity is bounded by distinct owning scopes.",
+          out_of_scope: "A new LRU/capacity controller, a cache for every index, or claiming the existing floor reach memo currently repeats the expensive walk per claim.",
+          handback: "Each named preparation cut lands with its repeated construction or memo removed and required semantics preserved. Record completed producers and the next one, then pause; no global governance prerequisite is added."
+        ), on: "2026-10-08", note: "Source review at main 2a519d27: orchestration threads prepared hits into actual emission; floor_join_reach_memoized already amortizes to one walk per entry. grammar resolve_emitted_productions_asked builds an index at its boundary while _in recursion already carries it; preserve that existing work. Serializer row/selected-row entries still construct lexical indexes. Eager preparation must preserve demand/refusal scope.")),
+      parent: in_project(project: "demand-engine", contribution: "Removes repeated derivation using existing carried facts, before deciding whether anything needs caching."),
     ),
     roadmap_node(
       identity: "rn_KQ7EP7P290B24W2FHFW9Y4K1F4",
@@ -3541,7 +3605,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "eval-memo-admission-rewire-program",
       owner: "self-host",
       carriers: carrier(path: "dag/gunbc/recurring_failure_mode/memo_key_rehashes_a_growing_persistent_value.dag"),
-      line: TicketLine { done: false, ticket: updated(
+      line: TicketLine { done: false, ticket: updated(t: updated(
         t: updated(
           t: fields(
         headline: "The seed keys every pure call before admission; the rewires that make retirement landable",
@@ -3557,7 +3621,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         ),
         on: "2026-09-20",
         note: "Four readings this lane took, each recorded with the producer that re-derives it rather than with its number, so a successor re-runs the instrument instead of trusting a figure that has rotted. Producer ranking must come from the required floor run's own required_floor_cross_claim_demand.tsv (evals minus claims), never from claim_batch, which installs no cross-claim roster and therefore charges producers the floor serves warm -- the lane's first ranking was wrong for exactly this reason. The diagnostics_merge repeat count that first looked like hot work is memo-hit verification cost instead, and what separates the two is the interpreter's own memo key trace (its keyed-call, distinct-key and duplicated-key counters), which is the instrument to re-run before treating any repeat count as work. The comparison between a bottom-up grammar resolution that matches all productions per node and the asked-lhs top-down form is re-derived by the bounded A/B harness gunbc#11835 carries, which measures both shapes on the memo-on path; the top-down form won. And claim_batch shares one ctx per entry, so a data row's first-touch cost lands on whichever claim runs first, which makes its per-claim comparisons unsound as a cost instrument regardless of what they report.",
-      ) },
+      ), on: "2026-10-08", note: "Census at main 2a519d27 distinguishes PureCallMemo from EvalCallMemo. PureCallMemo drops argument labels and serves before normal binding; a homonymous well_formed function with swapped labels has the same pointer key but a different result. Its six-name admission also precedes the uses check. seed-pure-call-binding is the bounded correctness cut; first execute the stated control, preserve binding refusals and require identity-qualified purity before any serve. #11741 was closed unmerged and did not retire this separate mechanism.") },
       parent: in_project(project: "v2-compiler-live", contribution: "Primitive egress, interpreter cost and self-host admission are what the self-hosted compiler needs before it is the one that runs."),
     ),
     roadmap_node(
