@@ -5645,9 +5645,26 @@ pub fn required_floor_nominal_subject_seeds(
 }
 
 /// Bootstrap seed lists from policy SOURCE (list literals), not a second Strict-prep.
-/// Assemble uses these; after the one gate prepare, [`required_floor_nominal_subject_seeds_from_prepared`]
-/// evals the same functions and identity-joins. A computed roster that is not a list literal
-/// refuses here rather than silently re-preparing policy.
+///
+/// THIS IS A REAL ORDERING CYCLE, NOT A CONVENIENCE. `claim_scope_for` / eval of
+/// `required_gate_prefixes` needs a prepared graph that already contains
+/// `v2.workflow.required_floor`. The gate prepare's assemble keep-set is computed FROM those
+/// prefixes. Eval-first therefore requires a prior prepare of a subject that includes the policy
+/// module without using the prefixes — which is the separate policy Strict-prep this change
+/// deletes. A second prepare, even a tiny one, is that route again. So the seed lists are read
+/// here as list literals, assemble/prepare once, then eval on that graph is the authority and
+/// [`policy_roster_identity_join`] refuses any difference.
+///
+/// Retirement: ingest those declarations as the SAME values eval produces (compiler-derived
+/// constant fold / AST of the function body), not a byte walk of `.dag` text. Until then this
+/// parse is bootstrap; a form it cannot read REFUSES (`PolicyRosterNotAListLiteral`), it never
+/// skips or falls back to a second prepare.
+///
+/// Assemble uses the bootstrap; after the one gate prepare,
+/// [`required_floor_nominal_subject_seeds_from_prepared`] evals the same functions and
+/// identity-joins. That eval on the floor is the inhabitance claim: deleting the projection
+/// fails to compile `run_required_floor`; deleting the join leaves wet rows as empty stubs and
+/// the wet schedule is not the evalled roster.
 pub fn required_floor_nominal_subject_seeds_from_corpus(
     corpus: &crate::cli_run::SourceCorpusRead,
     _gate_entry_index: &MultiEntryIndex,
@@ -5663,7 +5680,7 @@ fn required_floor_nominal_subject_seeds_from_policy_source(
     let required_gate_authored_modules =
         dag_fn_string_list_literal(&policy_src, "required_gate_authored_modules")?;
     let wet_src = corpus_module_source(corpus, "v2.workflow.local_repo_wet_terminal")?;
-    let local_repo_wet_schedule_rows = wet_entry_module_stubs(&wet_src);
+    let local_repo_wet_schedule_rows = wet_entry_module_stubs(&wet_src)?;
     Ok(RequiredFloorNominalSubjectSeeds {
         required_gate_prefixes,
         required_gate_authored_modules,
@@ -5728,7 +5745,7 @@ fn corpus_module_source(
         })
 }
 
-fn dag_fn_string_list_literal(source: &str, fn_name: &str) -> Result<Vec<String>, String> {
+fn dag_fn_body<'a>(source: &'a str, fn_name: &str) -> Result<&'a str, String> {
     let needle = format!("fn {fn_name}(");
     let fn_at = source.find(&needle).ok_or_else(|| {
         format!(
@@ -5736,24 +5753,93 @@ fn dag_fn_string_list_literal(source: &str, fn_name: &str) -> Result<Vec<String>
         )
     })?;
     let after = &source[fn_at..];
-    if !after.contains("List<String>") {
+    let sig_end = after.find('{').ok_or_else(|| {
+        format!(
+            "REQUIRED-FLOOR REFUSAL cause=PolicyRosterNotAListLiteral fn={fn_name} — no function body"
+        )
+    })?;
+    let sig = &after[..sig_end];
+    if !sig.contains("List<String>") {
         return Err(format!(
-            "REQUIRED-FLOOR REFUSAL cause=PolicyRosterNotAListLiteral fn={fn_name} — not List<String>"
+            "REQUIRED-FLOOR REFUSAL cause=PolicyRosterNotAListLiteral fn={fn_name} — signature is not List<String>"
         ));
     }
-    let brack = after.find('[').ok_or_else(|| {
+    let body_start = fn_at + sig_end + 1;
+    let rest = &source[body_start..];
+    let mut depth = 1i32;
+    let mut in_str = false;
+    let mut escaped = false;
+    let mut slash = false;
+    let mut line_comment = false;
+    for (i, c) in rest.char_indices() {
+        if line_comment {
+            if c == '\n' {
+                line_comment = false;
+            }
+            continue;
+        }
+        if in_str {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            if c == '\\' {
+                escaped = true;
+                continue;
+            }
+            if c == '"' {
+                in_str = false;
+            }
+            continue;
+        }
+        if slash {
+            slash = false;
+            if c == '/' {
+                line_comment = true;
+                continue;
+            }
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=PolicyRosterNotAListLiteral fn={fn_name} — leftover '/'"
+            ));
+        }
+        match c {
+            '/' => slash = true,
+            '"' => in_str = true,
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Ok(&rest[..i]);
+                }
+            }
+            _ => {}
+        }
+    }
+    Err(format!(
+        "REQUIRED-FLOOR REFUSAL cause=PolicyRosterNotAListLiteral fn={fn_name} — unclosed function body"
+    ))
+}
+
+fn dag_fn_string_list_literal(source: &str, fn_name: &str) -> Result<Vec<String>, String> {
+    let body = dag_fn_body(source, fn_name)?;
+    let brack = body.find('[').ok_or_else(|| {
         format!(
             "REQUIRED-FLOOR REFUSAL cause=PolicyRosterNotAListLiteral fn={fn_name} — body is not a list literal"
         )
     })?;
-    let body = &after[brack + 1..];
+    if body[..brack].chars().any(|c| !c.is_whitespace()) {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=PolicyRosterNotAListLiteral fn={fn_name} — body is not a list literal"
+        ));
+    }
+    let list = &body[brack + 1..];
     let mut out: Vec<String> = Vec::new();
     let mut buf = String::new();
     let mut in_str = false;
     let mut escaped = false;
+    let mut slash = false;
     let mut line_comment = false;
-    let chars = body.chars();
-    for c in chars {
+    for c in list.chars() {
         if line_comment {
             if c == '\n' {
                 line_comment = false;
@@ -5778,8 +5864,18 @@ fn dag_fn_string_list_literal(source: &str, fn_name: &str) -> Result<Vec<String>
             buf.push(c);
             continue;
         }
+        if slash {
+            slash = false;
+            if c == '/' {
+                line_comment = true;
+                continue;
+            }
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=PolicyRosterNotAListLiteral fn={fn_name} — leftover '/'"
+            ));
+        }
         if c == '/' {
-            line_comment = true;
+            slash = true;
             continue;
         }
         if c == '"' {
@@ -5801,30 +5897,40 @@ fn dag_fn_string_list_literal(source: &str, fn_name: &str) -> Result<Vec<String>
     ))
 }
 
-fn wet_entry_module_stubs(wet_source: &str) -> Vec<LocalRepoWetScheduledRow> {
+fn wet_entry_module_stubs(wet_source: &str) -> Result<Vec<LocalRepoWetScheduledRow>, String> {
     let mut rows = Vec::new();
     let mut seen = std::collections::HashSet::new();
     let key = "module_path: \"";
     let mut rest = wet_source;
     while let Some(at) = rest.find(key) {
         let after = &rest[at + key.len()..];
-        if let Some(end) = after.find('"') {
-            let module = &after[..end];
-            if seen.insert(module.to_string()) {
-                rows.push(LocalRepoWetScheduledRow {
-                    identity: String::new(),
-                    entry: String::new(),
-                    entry_module: module.to_string(),
-                    function: String::new(),
-                    premise: None,
-                });
-            }
-            rest = &after[end + 1..];
-        } else {
-            break;
+        let Some(end) = after.find('"') else {
+            return Err(
+                "REQUIRED-FLOOR REFUSAL cause=PolicyRosterNotAListLiteral fn=local_repo_wet_schedule \
+                 — unclosed module_path string"
+                    .to_string(),
+            );
+        };
+        let module = &after[..end];
+        if seen.insert(module.to_string()) {
+            rows.push(LocalRepoWetScheduledRow {
+                identity: String::new(),
+                entry: String::new(),
+                entry_module: module.to_string(),
+                function: String::new(),
+                premise: None,
+            });
         }
+        rest = &after[end + 1..];
     }
-    rows
+    if rows.is_empty() {
+        return Err(
+            "REQUIRED-FLOOR REFUSAL cause=PolicyRosterNotAListLiteral fn=local_repo_wet_schedule \
+             — no module_path string literals"
+                .to_string(),
+        );
+    }
+    Ok(rows)
 }
 
 fn policy_roster_identity_join(
@@ -19615,11 +19721,18 @@ mod floor_base_tree_tests {
                 )
             })
             .expect("wet source");
-        let stubs = super::wet_entry_module_stubs(&wet);
+        let stubs = super::wet_entry_module_stubs(&wet).expect("wet stubs");
         assert!(
             stubs.iter().any(|r| r.entry_module.contains("test.claim.")),
             "wet extract dropped every test.claim member: {stubs:?}"
         );
+        let computed = concat!(
+            "fn required_gate_prefixes() -> List<String> { map(xs, x => x) }\n",
+            "fn other() -> List<String> { [\"later\"] }\n"
+        );
+        let err = super::dag_fn_string_list_literal(computed, "required_gate_prefixes")
+            .expect_err("computed body must refuse");
+        assert!(err.contains("PolicyRosterNotAListLiteral"), "{err}");
     }
 
     #[test]
@@ -19637,7 +19750,7 @@ mod floor_base_tree_tests {
     }
 
     #[test]
-    #[ignore = "live-corpus: one gate Strict-prep then identity-join policy members"]
+    #[ignore = "one-off measurement; pairing inhabitance is run_required_floor after the one gate prepare"]
     fn projected_policy_scope_members_match_policy_keep_set() {
         let roots = crate::cli_run::witness_gates::witness_layer_roots();
         let corpus = crate::cli_run::read_source_corpus_once(&roots);
