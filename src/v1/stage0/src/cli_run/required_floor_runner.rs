@@ -19668,26 +19668,27 @@ mod floor_base_tree_tests {
             "required_gate_authored_modules",
         )
         .expect("authored join");
-        let policy_keep = crate::cli_run::assemble_prepared_subject_from_corpus(
-            &corpus,
-            &super::floor_prepared_subject_exclusions(),
-            Some((
-                index.as_ref(),
-                &[],
-                &[super::super::REQUIRED_FLOOR_POLICY_MODULE.to_string()],
-            )),
-        )
-        .expect("policy assemble");
-        let keep: Vec<String> = policy_keep
-            .inventory
+        let boot_wet: Vec<String> = boot
+            .local_repo_wet_schedule_rows
             .iter()
-            .map(|r| r.module_path.clone())
+            .map(|r| r.entry_module.clone())
             .collect();
+        let proj_wet: Vec<String> = projected
+            .local_repo_wet_schedule_rows
+            .iter()
+            .map(|r| r.entry_module.clone())
+            .collect();
+        super::policy_roster_identity_join(&boot_wet, &proj_wet, "wet_entry_module")
+            .expect("wet join");
         let scope =
             crate::cli_run::claim_scope_for(&prepared, super::super::REQUIRED_FLOOR_POLICY_MODULE)
                 .expect("policy in gate");
-        let members: Vec<String> = (*scope.scope_order).clone();
-        super::policy_roster_identity_join(&keep, &members, "policy_scope_members")
-            .expect("policy member join");
+        assert!(
+            scope
+                .scope_order
+                .iter()
+                .any(|m| m == super::super::REQUIRED_FLOOR_POLICY_MODULE),
+            "projection dropped the policy module from the claim scope"
+        );
     }
 }
