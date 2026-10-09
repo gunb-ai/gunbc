@@ -2469,9 +2469,10 @@ pub fn emit_compile_selection(source_roots: &[String]) -> EmitCompileSelection {
     let mut universe: Vec<String> = Vec::new();
     for root in source_roots {
         let mut files = Vec::new();
-        super::collect_dag_files_tolerant(std::path::Path::new(root), &mut files);
+        super::collect_dag_files_tolerant(std::path::Path::new(root), &mut files)
+            .unwrap_or_else(|cause| panic!("emit compile selection over {root}: {cause}"));
         for file in files {
-            universe.push(file.to_string_lossy().to_string());
+            universe.push(file.path().to_string_lossy().to_string());
         }
     }
     universe.sort();

@@ -329,19 +329,16 @@ pub(crate) fn is_cargo_target_output_dir(
 
 pub(crate) fn collect_dag_files_result(
     dir: &std::path::Path,
-    files: &mut Vec<std::path::PathBuf>,
+    files: &mut Vec<derived_row_roster::AcquiredDag>,
 ) -> Result<(), String> {
-    derived_row_roster::ensure_if_row_dir(dir).map_err(|e| {
-        format!(
-            "failed to derive recurring_failure_mode roster in {:?}: {}",
-            dir, e
-        )
-    })?;
     let mut entries: Vec<_> = std::fs::read_dir(dir)
         .map_err(|e| format!("failed to read dir {:?}: {}", dir, e))?
         .map(|e| e.map_err(|e| format!("failed to read dir entry in {:?}: {}", dir, e)))
         .collect::<Result<Vec<_>, String>>()?;
     entries.sort_by_key(|e| e.file_name());
+    // This directory's own `.dag` files are admitted as one listing, so a ledger row directory
+    // contributes its derived roster from the same bytes (`derived_row_roster::acquire_dir_files`).
+    let mut here = Vec::new();
     for entry in entries {
         let path = entry.path();
         if path.is_dir() {
@@ -350,13 +347,14 @@ pub(crate) fn collect_dag_files_result(
             }
             collect_dag_files_result(&path, files)?;
         } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
-            files.push(path);
+            here.push(path);
         }
     }
+    files.extend(derived_row_roster::acquire_dir_files(dir, here)?);
     Ok(())
 }
 
-fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
+fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<derived_row_roster::AcquiredDag>) {
     collect_dag_files_result(dir, files).unwrap_or_else(|e| panic!("{e}"));
 }
 
@@ -405,8 +403,9 @@ fn moduleless_dag_entry_paths_under_root(root_prefix: &str) -> Result<Vec<String
         format!("cannot walk {root_prefix} while taking the module-less population: {cause}")
     })?;
     let mut entry_files: Vec<(String, String)> = Vec::new();
-    for path in paths {
-        let content = std::fs::read_to_string(&path).map_err(|error| {
+    for source in paths {
+        let path = source.path();
+        let content = source.read().map_err(|error| {
             format!(
                 "cannot read {} while taking the module-less population under {root_prefix}: \
                  {error} (the population exists to report which files were dropped from the \
@@ -3511,14 +3510,15 @@ fn for_each_parsed_module_binding(
         let root_path = Path::new(&anchored_root);
         let mut dag_files = Vec::new();
         collect_dag_files(root_path, &mut dag_files);
-        for path in dag_files {
-            let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        for source in dag_files {
+            let path = source.path();
+            let content = source.read().unwrap_or_else(|e| {
                 panic!(
                     "for_each_parsed_module_binding: failed to read {:?}: {}",
                     path, e
                 )
             });
-            let binding = match parse_module_binding(&path, &content) {
+            let binding = match parse_module_binding(path, &content) {
                 Ok(ModuleBindingOutcome::Bound(binding)) => binding,
                 Ok(ModuleBindingOutcome::ModuleBindingUnclassified) => continue,
                 // Fail-closed, but the line stops with a TYPED, LOCATED refusal
@@ -3531,7 +3531,7 @@ fn for_each_parsed_module_binding(
                     continue;
                 }
             };
-            visit(root_idx, &path, binding);
+            visit(root_idx, path, binding);
         }
     }
     refuse_unparseable_module_sources(&refusals);
@@ -4521,9 +4521,11 @@ fn regen_input_sources_over_roots(
 
     // Seed: every `.dag` under the entry root that declares a module path.
     let mut seeds: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
-    for path in &entry_paths {
-        let content =
-            std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    for source in &entry_paths {
+        let path = source.path();
+        let content = source
+            .read()
+            .map_err(|e| format!("read {}: {e}", path.display()))?;
         let rel = workspace_relative_repo_path(&path.to_string_lossy());
         if extract_module_path(&content).is_some() {
             seeds.push(Rc::new(v1_compiler_compile::SourceFile {
@@ -4624,12 +4626,13 @@ pub(crate) fn is_test_dag(path: &str) -> bool {
 pub(crate) fn corpus_dag_files() -> Vec<(String, String)> {
     let mut paths = Vec::new();
     for root in witness_layer_roots() {
-        collect_dag_files_tolerant(&Path::new(&anchor_source_root(&root)), &mut paths);
+        collect_dag_files_tolerant(&Path::new(&anchor_source_root(&root)), &mut paths)
+            .unwrap_or_else(|cause| panic!("corpus walk over {root}: {cause}"));
     }
     let mut out = Vec::new();
     for p in paths {
-        let rel = repo_rel(&p);
-        if let Ok(content) = std::fs::read_to_string(&p) {
+        let rel = repo_rel(p.path());
+        if let Ok(content) = p.read() {
             out.push((rel, content));
         }
     }
@@ -4701,11 +4704,13 @@ fn try_build_module_index(source_roots: &[String]) -> Result<ModuleSourceIndex, 
         }
         let mut dag_files = Vec::new();
         collect_dag_files_result(root_path, &mut dag_files)?;
-        for path in dag_files {
-            let content = std::fs::read_to_string(&path)
+        for source in dag_files {
+            let path = source.path();
+            let content = source
+                .read()
                 .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
             if let Some(module_path) = extract_module_path(&content) {
-                let rel_path = module_index_path_key(&path);
+                let rel_path = module_index_path_key(path);
                 let rel_forward = rel_path.clone();
                 if manifest_stub_superseded_by_overlay(&rel_forward, source_roots, root_idx) {
                     continue;
@@ -4820,11 +4825,13 @@ fn try_index_source_root_into_module_index(
     let mut dag_files = Vec::new();
     collect_dag_files_result(root_path, &mut dag_files)?;
     let mut within_root: HashMap<String, String> = HashMap::new();
-    for path in dag_files {
-        let content = std::fs::read_to_string(&path)
+    for source in dag_files {
+        let path = source.path();
+        let content = source
+            .read()
             .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
         if let Some(module_path) = extract_module_path(&content) {
-            let rel_path = module_index_path_key(&path);
+            let rel_path = module_index_path_key(path);
             if pool_fill_only {
                 if index.contains_key(&module_path) {
                     continue;
@@ -4868,14 +4875,16 @@ fn load_compile_clean_entry_sources(
     if first_root.is_dir() {
         let mut dag_paths = Vec::new();
         collect_dag_files(first_root, &mut dag_paths);
-        for path in dag_paths {
+        for source in dag_paths {
+            let path = source.path();
             let rel = workspace_relative_repo_path(&path.to_string_lossy());
             if let Some(filter) = entry_path_filter {
                 if !filter.contains(&rel) {
                     continue;
                 }
             }
-            let content = std::fs::read_to_string(&path)
+            let content = source
+                .read()
                 .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
             entry_files.push((path.to_string_lossy().to_string(), content));
         }
@@ -5356,8 +5365,8 @@ pub const RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL: &str =
 /// deleted; the index stays, because which file declares a module is what any import walk needs.
 fn dag_module_index(
     roots: &[PathBuf],
-) -> Result<std::collections::HashMap<String, Vec<PathBuf>>, String> {
-    let mut index: std::collections::HashMap<String, Vec<PathBuf>> =
+) -> Result<std::collections::HashMap<String, Vec<derived_row_roster::AcquiredDag>>, String> {
+    let mut index: std::collections::HashMap<String, Vec<derived_row_roster::AcquiredDag>> =
         std::collections::HashMap::new();
     for root in roots {
         if !root.exists() {
@@ -5365,11 +5374,12 @@ fn dag_module_index(
         }
         let mut dag_paths = Vec::new();
         collect_dag_files(root, &mut dag_paths);
-        for path in dag_paths {
-            let content = std::fs::read_to_string(&path)
-                .map_err(|e| format!("read {}: {e}", path.display()))?;
+        for source in dag_paths {
+            let content = source
+                .read()
+                .map_err(|e| format!("read {}: {e}", source.path().display()))?;
             if let Some(module_path) = extract_module_path(&content) {
-                index.entry(module_path).or_default().push(path);
+                index.entry(module_path).or_default().push(source);
             }
         }
     }
@@ -10587,6 +10597,18 @@ fn entry_source_from_index_or_disk(
     entry_path: &str,
 ) -> Result<Rc<v1_compiler_compile::SourceFile>, String> {
     let path = std::path::Path::new(entry_path);
+    // A DERIVED LEDGER ROSTER HAS NO FILE: it is contributed to the index in memory by source
+    // acquisition (`derived_row_roster::acquire_dir_files`), so an entry naming it is answered from
+    // the index the loader built, never from a file that would have to be written first.
+    if !path.exists() && derived_row_roster::is_derived_roster_path(entry_path) {
+        let wanted = workspace_relative_repo_path(entry_path);
+        if let Some(indexed) = index
+            .values()
+            .find(|s| workspace_relative_repo_path(&s.path) == wanted)
+        {
+            return Ok(indexed.clone());
+        }
+    }
     if !path.is_file() {
         return Err(format!(
             "entry file does not exist or is not a file: {}",
@@ -17456,7 +17478,7 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
     if roots.is_empty() {
         return Err(vec!["parse sweep called with no roots".to_string()]);
     }
-    let mut dag_paths: Vec<std::path::PathBuf> = Vec::new();
+    let mut dag_paths: Vec<derived_row_roster::AcquiredDag> = Vec::new();
     // PER-ROOT, so the empty-walk refusal below is per root: one root going missing must not
     // be absorbed by another root's files (the empty-observation narrow, DESIGN §5).
     for root in roots {
@@ -17464,14 +17486,11 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
         let before = dag_paths.len();
         let mut stack: Vec<std::path::PathBuf> = vec![root_dir.clone()];
         while let Some(dir) = stack.pop() {
-            // Derive gitignored `gunbc.recurring_failure_mode.roster` before this directory's
-            // listing, so the required-CI index contains the module the parse join reads.
-            derived_row_roster::ensure_if_row_dir(&dir).map_err(|e| {
-                vec![format!(
-                    "failed to derive recurring_failure_mode roster in {}: {e}",
-                    dir.display()
-                )]
-            })?;
+            // This directory's `.dag` files are admitted as one listing after the walk of its
+            // entries, so a ledger row directory contributes its derived roster IN MEMORY and the
+            // required-CI index contains the module the parse join reads -- with nothing written
+            // under the root.
+            let mut here: Vec<std::path::PathBuf> = Vec::new();
             let read_dir = match std::fs::read_dir(&dir) {
                 Ok(d) => d,
                 Err(e) => return Err(vec![format!("read_dir {}: {e}", dir.display())]),
@@ -17511,9 +17530,11 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
                     }
                     stack.push(path);
                 } else if path.extension().map(|ext| ext == "dag").unwrap_or(false) {
-                    dag_paths.push(path);
+                    here.push(path);
                 }
             }
+            dag_paths
+                .extend(derived_row_roster::acquire_dir_files(&dir, here).map_err(|e| vec![e])?);
         }
 
         // AN EMPTY WALK REFUSES, PER ROOT. Zero files found is not zero errors — it is the
@@ -17526,7 +17547,7 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
             )]);
         }
     }
-    dag_paths.sort();
+    dag_paths.sort_by(|a, b| a.path().cmp(b.path()));
 
     let errors: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let count = Arc::new(AtomicUsize::new(0));
@@ -17537,13 +17558,13 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
     // Each file gets its own `Rc<HashMap>` — no shared parse state — so parsing is
     // embarrassingly parallel. Thread panics propagate via scope (fail-closed).
     std::thread::scope(|scope| {
-        for path in &dag_paths {
+        for source in &dag_paths {
             let errors = Arc::clone(&errors);
             let count = Arc::clone(&count);
             let records = Arc::clone(&records);
-            let path = path.clone();
+            let path = source.path().to_path_buf();
             scope.spawn(move || {
-                let content = match std::fs::read_to_string(&path) {
+                let content = match source.read() {
                     Ok(c) => c,
                     Err(e) => {
                         errors
@@ -22502,7 +22523,7 @@ pub fn discover_owned_data_decls(
 
     let mut files = Vec::new();
     collect_dag_files(scan_path, &mut files);
-    files.retain(|p| !path_excluded(p, exclude_subpaths));
+    files.retain(|p| !path_excluded(p.path(), exclude_subpaths));
 
     // The process-shared index, so every entry's reference closure reads the one parse per file
     // the floor's other closure walks already hold.
@@ -22512,9 +22533,11 @@ pub fn discover_owned_data_decls(
     let mut groups: Vec<DiscoveryResolveGroup> = Vec::new();
     let mut group_split_collisions: Vec<String> = Vec::new();
     let mut entry_count = 0usize;
-    for path in files {
+    for source in files {
+        let path = source.path();
         let entry = path.to_string_lossy().to_string();
-        let content = std::fs::read_to_string(&path)
+        let content = source
+            .read()
             .map_err(|e| format!("failed to read {:?}: {}", path, e))?;
         if !entry_likely_has_unified_claim_owned_data(&content) {
             continue;
@@ -24297,25 +24320,31 @@ pub(crate) fn dag_tree_holds_any_file(dir: &Path) -> bool {
     false
 }
 
-pub(crate) fn collect_dag_files_tolerant(dir: &Path, out: &mut Vec<PathBuf>) {
-    // This walk swallows unreadable directories. Write failure here must not abort it;
-    // `run_dag_parse_sweep` is the loud required-CI writer.
-    let _ = derived_row_roster::ensure_if_row_dir(dir);
+/// Tolerant of unreadable DIRECTORIES (they are skipped), never of a ledger row directory whose
+/// roster cannot be derived: a legacy physical roster or an unreadable row file is returned as a
+/// located refusal, because swallowing it would hand the caller a short or stale roster.
+pub(crate) fn collect_dag_files_tolerant(
+    dir: &Path,
+    out: &mut Vec<derived_row_roster::AcquiredDag>,
+) -> Result<(), String> {
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
-        Err(_) => return,
+        Err(_) => return Ok(()),
     };
+    let mut here = Vec::new();
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
             if is_cargo_target_output_dir(dir, &path) {
                 continue;
             }
-            collect_dag_files_tolerant(&path, out);
+            collect_dag_files_tolerant(&path, out)?;
         } else if path.extension().and_then(|e| e.to_str()) == Some("dag") {
-            out.push(path);
+            here.push(path);
         }
     }
+    out.extend(derived_row_roster::acquire_dir_files(dir, here)?);
+    Ok(())
 }
 
 fn scan_test_decl_names(content: &str) -> Vec<String> {
@@ -25168,11 +25197,13 @@ pub fn construction_authority_graph_unresolved(
         std::collections::HashMap::new();
     let mut authorities: Vec<(String, String, String)> = Vec::new();
     for root in source_roots {
-        let mut dag_files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(Path::new(root), &mut dag_files);
+        let mut dag_files = Vec::new();
+        collect_dag_files_tolerant(Path::new(root), &mut dag_files)?;
         dag_files.sort();
-        for path in dag_files {
-            let content = std::fs::read_to_string(&path)
+        for source in dag_files {
+            let path = source.path();
+            let content = source
+                .read()
                 .map_err(|e| format!("read {}: {e}", path.display()))?;
             let file = path.to_string_lossy().into_owned();
             for (module_path, decl_name) in wall_now_authority_refs(&content) {
@@ -29151,12 +29182,14 @@ pub fn discover_source_root_reads(
     let mut dag_files = Vec::new();
     collect_dag_files(scan_path, &mut dag_files);
 
-    for path in dag_files {
+    for source in dag_files {
+        let path = source.path();
         let rel_forward = path.to_string_lossy().replace('\\', "/");
         if path_matches_any_subpath(&rel_forward, exclude_subpaths) {
             continue;
         }
-        let content = std::fs::read_to_string(&path)
+        let content = source
+            .read()
             .map_err(|e| format!("failed to read {:?}: {}", path, e))?;
         let module_path = extract_module_path(&content).ok_or_else(|| {
             format!(
@@ -29971,10 +30004,11 @@ fn collect_layer_import_scoped_paths(roots: &[String]) -> HashSet<String> {
         if !root_path.is_dir() {
             continue;
         }
-        let mut dag_files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut dag_files);
+        let mut dag_files = Vec::new();
+        collect_dag_files_tolerant(root_path, &mut dag_files)
+            .unwrap_or_else(|cause| panic!("layer-import scope over {root}: {cause}"));
         for file in dag_files {
-            scoped.insert(rel_path_for_layer_import(&file));
+            scoped.insert(rel_path_for_layer_import(file.path()));
         }
     }
     scoped
@@ -29992,10 +30026,11 @@ fn importer_roots_have_importless_dag_files(roots: &[String]) -> bool {
         if !root_path.is_dir() {
             continue;
         }
-        let mut dag_files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut dag_files);
+        let mut dag_files = Vec::new();
+        collect_dag_files_tolerant(root_path, &mut dag_files)
+            .unwrap_or_else(|cause| panic!("importless preflight over {root}: {cause}"));
         for file in dag_files {
-            let content = match std::fs::read_to_string(&file) {
+            let content = match file.read() {
                 Ok(c) => c,
                 Err(_) => continue,
             };
@@ -30023,18 +30058,19 @@ fn project_layer_import_syntax_facts(
     if !root_path.is_dir() {
         return;
     }
-    let mut dag_files: Vec<PathBuf> = Vec::new();
-    collect_dag_files_tolerant(root_path, &mut dag_files);
+    let mut dag_files = Vec::new();
+    collect_dag_files_tolerant(root_path, &mut dag_files)
+        .unwrap_or_else(|cause| panic!("[layer-import] declared root {root}: {cause}"));
     dag_files.sort();
     for file in dag_files {
-        let content = match std::fs::read_to_string(&file) {
+        let content = match file.read() {
             Ok(c) => c,
             Err(_) => continue,
         };
         if extract_import_paths(&content).is_empty() {
             continue;
         }
-        let rel = rel_path_for_layer_import(&file);
+        let rel = rel_path_for_layer_import(file.path());
         let importer = extract_module_path(&content).unwrap_or_default();
         let layer = layer_prefix_from_dotted_module(&importer);
         for import_module in extract_import_paths(&content) {
@@ -36417,9 +36453,10 @@ mod import_closure_equivalence_tests {
         let mut entries = BTreeSet::new();
         for root in default_source_roots() {
             let mut dag_files = Vec::new();
-            super::collect_dag_files_tolerant(Path::new(&root), &mut dag_files);
+            super::collect_dag_files_tolerant(Path::new(&root), &mut dag_files)
+                .expect("acquire witness layer root");
             for path in dag_files {
-                let rel = workspace_relative_repo_path(&path.to_string_lossy());
+                let rel = workspace_relative_repo_path(&path.path().to_string_lossy());
                 if !rel.ends_with("_test.dag") || floor_discovery_path_excluded(&rel) {
                     continue;
                 }

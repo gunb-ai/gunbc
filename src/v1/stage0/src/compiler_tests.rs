@@ -39,26 +39,35 @@ mod compiler_tests {
         root: &std::path::Path,
         out: &mut Vec<(String, String)>,
     ) {
-        crate::cli_run::derived_row_roster::ensure_if_row_dir_or_panic(dir);
         if let Ok(entries) = std::fs::read_dir(dir) {
+            let mut here = Vec::new();
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() {
                     collect_dag_recursive(&path, root, out);
                 } else if path.extension().map_or(false, |e| e == "dag") {
-                    let rel = path
-                        .strip_prefix(root)
-                        .unwrap()
-                        .to_string_lossy()
-                        .to_string();
-                    // Test fixtures (e.g. fact_cardinality_split_brace.dag) are not modules.
-                    if rel.contains("/tests/") {
-                        continue;
-                    }
-                    let content = std::fs::read_to_string(&path)
-                        .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
-                    out.push((rel, content));
+                    here.push(path);
                 }
+            }
+            // Admitted per directory, so a ledger row directory contributes its derived roster
+            // in memory (`derived_row_roster::acquire_dir_files`) rather than as a written file.
+            let acquired = crate::cli_run::derived_row_roster::acquire_dir_files(dir, here)
+                .unwrap_or_else(|e| panic!("{e}"));
+            for source in acquired {
+                let path = source.path();
+                let rel = path
+                    .strip_prefix(root)
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string();
+                // Test fixtures (e.g. fact_cardinality_split_brace.dag) are not modules.
+                if rel.contains("/tests/") {
+                    continue;
+                }
+                let content = source
+                    .read()
+                    .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
+                out.push((rel, content));
             }
         }
     }
