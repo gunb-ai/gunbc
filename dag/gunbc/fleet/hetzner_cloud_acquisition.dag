@@ -1,15 +1,25 @@
 module gunbc.hetzner_cloud_acquisition
 
-import gunbc.secret_provision { fleet_secret_ref }
+import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
+import std.types { List }
 import gunbc.provider_acquisition { ProviderApiAccount, ProviderResourceAcquisition, OperatorPerformed }
+import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_accessor_grant }
 
 // THE HETZNER CLOUD PROJECT THE FLEET'S GUESTS ARE HELD UNDER. A Hetzner Cloud API token is scoped to
 // exactly one project, so the project is the account and its token is the one credential that may
 // drive these servers. The operator created the token as a Read & Write project token and stored it
-// in Secret Manager on 2026-10-08; gunbc reads it by reference and never holds its value.
+// in Secret Manager on 2026-10-08; gunbc reads it by reference and never holds its value. Version 1
+// is pinned: its metadata was read on 2026-10-08 as ENABLED, and it is the only version.
 data hetzner_cloud_default_project: ProviderApiAccount = ProviderApiAccount {
   account: "default",
-  api_credential: fleet_secret_ref(secret_id: "hetzner-cloud-default-api-key"),
+  api_credential: secret_ref_pin_version(ref: fleet_secret_ref(secret_id: "hetzner-cloud-default-api-key"), version: "1"),
+}
+
+// THE ONE CELL THE CONTROLLER NEEDS ON THE TOKEN: read its pinned version's payload. Granted to the
+// fleet convergence principal by gunbc.auth.gcp_iam_converge, never to an operator session; the
+// controller never adds a version, so no viewer or versionAdder cell is owed.
+fn hetzner_cloud_api_grants() -> List<SecretAccessGrant> {
+  [secret_accessor_grant(target: hetzner_cloud_default_project.api_credential)]
 }
 
 // THE TWO CAX41 GUESTS, AS THE OPERATOR ACQUIRED THEM. Every step was performed in the Hetzner Cloud

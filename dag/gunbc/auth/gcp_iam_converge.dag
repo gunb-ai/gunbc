@@ -1,5 +1,6 @@
 module gunbc.auth.gcp_iam_converge
 
+import gunbc.hetzner_cloud_acquisition { hetzner_cloud_api_grants }
 import std.types { Int, List, NonEmptyStr, String, Bool, Secret, Map }
 import std.measure { Second, second, second_count }
 import std.content_hash { Sha256Digest, sha256_hex_digest, as_content_hash_cryptographic }
@@ -301,6 +302,7 @@ type GrantSet {
 
 data gcp_iam_converge_grant_sets: List<GrantSet> = [
   GrantSet { label: "r2 mint custody cells", grants: r2_mint_custody_grants() },
+  GrantSet { label: "hetzner cloud provider api", grants: hetzner_cloud_api_grants() },
 ]
 
 // ONE SECRET CARRIES SEVERAL CELLS (viewer, versionAdder, accessor), so a grant set is planned and

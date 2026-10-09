@@ -1,0 +1,206 @@
+module extdeps.cloud.hetzner_cloud_api
+import std.resources { Network }
+
+import std.types { Int, NonEmptyStr, String, Secret }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// THE HETZNER CLOUD API, v1: the operation surface for servers and the actions they run. It is its
+// own module rather than rows in extdeps.cloud.hetzner, which carries the product's catalog and
+// published pages: the API is an independently versioned interface over that product (DESIGN §3,
+// external upstream decomposition), and a `service` declaration binds its first name segment in every
+// importer, so it stays out of the module the pricing consumers import.
+//
+// Only what the fleet's per-job reset reads is modeled: one server read, the rebuild action, and the
+// action read that says whether it finished. Every field below is one the reference documents for
+// that response; nothing here is inferred from an observed response.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.hetzner.cloud/reference/cloud" }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cloud.hetzner_cloud_api",
+      decl_name: "hetzner_cloud_api_base",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data hetzner_cloud_api_base: NonEmptyStr = "https://api.hetzner.cloud/v1"
+
+// EVERY REFUSED RESPONSE CARRIES `{"error": {"code", "message"}}`, whose code is a documented token
+// (not_found, unauthorized, forbidden, locked, conflict, rate_limit_exceeded, ...).
+type HetznerCloudApiError {
+  code: String
+  message: String
+}
+
+type HetznerServerResponse {
+  id: Int
+  name: String
+  status: String
+}
+
+type HetznerActionResponse {
+  id: Int
+  command: String
+  status: String
+  progress: Int
+}
+
+// A PROJECT TOKEN IS THE BEARER CREDENTIAL: Hetzner scopes every API token to exactly one project, so
+// a token reads and acts only on that project's servers.
+//
+// REBUILD REPLACES THE SERVER'S DISK WITH THE IMAGE AND KEEPS THE SERVER: its id, addresses and the
+// project's SSH keys stay. Its response is the action that performs it; the rebuild is done only when
+// that action reads back as success (hcloud.Actions Get).
+service hcloud.Servers {
+  config {
+    endpoint: hetzner_cloud_api_base
+    auth: Bearer
+    auth_input: auth_token
+  }
+
+  operation Get {
+    requires Network
+    input {
+      auth_token: Secret
+      server_id: Int
+    }
+    output {
+      id: Int from "server/id"
+      name: String from "server/name"
+      status: String from "server/status"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/servers/\{server_id\}"
+    }
+    response {
+      200 => HetznerServerResponse
+      401 => HetznerCloudApiError
+      403 => HetznerCloudApiError
+      404 => HetznerCloudApiError
+      429 => HetznerCloudApiError
+      5xx => HetznerCloudApiError
+    }
+  }
+
+  operation Rebuild {
+    requires Network
+    input {
+      auth_token: Secret
+      server_id: Int
+      image: String
+    }
+    output {
+      id: Int from "action/id"
+      command: String from "action/command"
+      status: String from "action/status"
+      progress: Int from "action/progress"
+    }
+    transport rest {
+      method: POST,
+      path: "/servers/\{server_id\}/actions/rebuild",
+      body: { image: image }
+    }
+    response {
+      201 => HetznerActionResponse
+      401 => HetznerCloudApiError
+      403 => HetznerCloudApiError
+      404 => HetznerCloudApiError
+      409 => HetznerCloudApiError
+      422 => HetznerCloudApiError
+      423 => HetznerCloudApiError
+      429 => HetznerCloudApiError
+      5xx => HetznerCloudApiError
+    }
+  }
+}
+
+service hcloud.Actions {
+  config {
+    endpoint: hetzner_cloud_api_base
+    auth: Bearer
+    auth_input: auth_token
+  }
+
+  operation Get {
+    requires Network
+    input {
+      auth_token: Secret
+      action_id: Int
+    }
+    output {
+      id: Int from "action/id"
+      command: String from "action/command"
+      status: String from "action/status"
+      progress: Int from "action/progress"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/actions/\{action_id\}"
+    }
+    response {
+      200 => HetznerActionResponse
+      401 => HetznerCloudApiError
+      403 => HetznerCloudApiError
+      404 => HetznerCloudApiError
+      429 => HetznerCloudApiError
+      5xx => HetznerCloudApiError
+    }
+  }
+}
+
+// ── the documented status vocabularies, parsed rather than compared as strings ──────────────────
+
+type HetznerActionStatus = HetznerActionRunning | HetznerActionSuccess | HetznerActionError
+
+type HetznerActionStatusReading
+  = HetznerActionStatusKnown { status: HetznerActionStatus }
+  | HetznerActionStatusUnknown { wire: String }
+
+fn parse_hetzner_action_status(wire: String) -> HetznerActionStatusReading {
+  if wire == "running" { HetznerActionStatusKnown { status: HetznerActionRunning } }
+  else if wire == "success" { HetznerActionStatusKnown { status: HetznerActionSuccess } }
+  else if wire == "error" { HetznerActionStatusKnown { status: HetznerActionError } }
+  else { HetznerActionStatusUnknown { wire: wire } }
+}
+
+// ── classified outcomes ─────────────────────────────────────────────────────────────────────────
+
+// A REFUSED EXCHANGE IS THE TRANSPORT'S OWN extdeps.transports.rest RestRefusal, carried unchanged.
+type HetznerServerRead
+  = HetznerServerObserved { server: HetznerServerResponse }
+  | HetznerServerReadRefused { refusal: RestRefusal }
+
+type HetznerActionRead
+  = HetznerActionObserved { action: HetznerActionResponse, status: HetznerActionStatus }
+  | HetznerActionStatusUnrecognized { action: HetznerActionResponse }
+  | HetznerActionReadRefused { refusal: RestRefusal }
+
+fn classify_hetzner_server_get(outcome: RestResult<HetznerServerResponse>) -> HetznerServerRead {
+  match outcome {
+    RestAnswered { answer: a } => HetznerServerObserved { server: a }
+    RestRefused { refusal: r } => HetznerServerReadRefused { refusal: r }
+  }
+}
+
+// THE ACTION, FROM REBUILD'S ANSWER OR FROM A LATER READ: both return the same action object.
+fn classify_hetzner_action(outcome: RestResult<HetznerActionResponse>) -> HetznerActionRead {
+  match outcome {
+    RestAnswered { answer: a } => match parse_hetzner_action_status(wire: a.status) {
+      HetznerActionStatusKnown { status: s } => HetznerActionObserved { action: a, status: s }
+      HetznerActionStatusUnknown { wire: _ } => HetznerActionStatusUnrecognized { action: a }
+    }
+    RestRefused { refusal: r } => HetznerActionReadRefused { refusal: r }
+  }
+}

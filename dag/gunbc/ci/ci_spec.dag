@@ -826,6 +826,11 @@ data gunbc_ci_r2_workspace_object_write_mint_target: GunbcRunStepTarget = GunbcR
   function: "run_workspace_object_write",
 }
 
+data gunbc_ci_hetzner_cloud_server_read_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/hetzner_cloud_server_control.dag",
+  function: "read",
+}
+
 data gunbc_ci_r2_cache_object_read_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
   function: "run_cache_object_read",
@@ -1392,6 +1397,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_r2_workspace_object_read_mint_target,
     gunbc_ci_r2_workspace_object_write_mint_target,
     gunbc_ci_r2_cache_object_read_mint_target,
+    gunbc_ci_hetzner_cloud_server_read_target,
     gunbc_ci_r2_cache_object_write_mint_target,
     gunbc_ci_r2_conditional_put_race_probe_target,
     gunbc_ci_workspace_source_pack_target,
@@ -2699,6 +2705,16 @@ fn gunbc_ci_r2_workspace_object_write_mint_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_r2_workspace_object_write_mint_target.entry,
     function: gunbc_ci_r2_workspace_object_write_mint_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_hetzner_cloud_server_read_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_hetzner_cloud_server_read_target.entry,
+    function: gunbc_ci_hetzner_cloud_server_read_target.function,
     claim_run: false,
     receipt_rel: none
   )
