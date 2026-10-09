@@ -39,10 +39,11 @@ import std.decl_ref { DeclarationRef }
 //
 // THE JOB IS PINNED BY THE ENVIRONMENT CLAIM. OIDC tokens carry no job id; the one job-grain claim
 // GitHub asserts is `environment`, present only for a job that declares one. The honest residue: any
-// job in fleet-converge.yml on a heads ref that declared the same environment would also be admitted,
-// which is the reviewed-file trust the workflow path itself carries. THE RUNNER IS NOT PINNED: the
-// boot runs on the hold store host's self-hosted runner, so `runner_environment == 'github-hosted'`
-// would refuse it; workflow_ref at main plus workflow_dispatch already keeps pull-request code off it.
+// job in that branch's fleet-converge.yml that declared the same environment would also be admitted.
+// The path pin does not pin reviewed-main bytes; the YAML on the dispatched heads ref is the run's
+// workflow (operator 2026-10-09). THE RUNNER IS NOT PINNED: the boot runs on the hold store host's
+// self-hosted runner, so `runner_environment == 'github-hosted'` would refuse it. Pull-request code
+// stays off it because event_name is workflow_dispatch, not because the file was reviewed at main.
 
 // THE LIVE NAMES OF ONE PAIR'S FEDERATION, which ruling (b) keeps byte-identical: they exist in GCP
 // and GitHub today, and a renamed id is a different pool, account, environment or cell to

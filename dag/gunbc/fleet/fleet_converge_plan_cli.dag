@@ -1323,8 +1323,9 @@ data fleet_converge_operator_mode_plan: String = "plan"
 data fleet_converge_operator_mode_apply: String = "apply"
 data fleet_converge_operator_mode_deploy: String = "deploy"
 
-// THE DEPLOY CANDIDATE IS HEAD OF THE CHECKOUT BEING EXECUTED. An empty --candidate-branch admits
-// the observed branch (dev-branch deploy). A named requirement still has to equal the checkout.
+// THE DEPLOY CANDIDATE IS HEAD OF THE CHECKOUT BEING EXECUTED. Operator 2026-10-09: fleet-converge
+// must support an arbitrary branch. An empty --candidate-branch therefore admits the observed
+// branch. A named requirement still has to equal the checkout. An empty observed branch never admits.
 fn fleet_converge_deploy_branch_admits(observed: String, required: String) -> Bool {
   trim(s: observed) != "" && (trim(s: required) == "" || trim(s: observed) == trim(s: required))
 }

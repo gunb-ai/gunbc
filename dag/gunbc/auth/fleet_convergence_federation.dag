@@ -8,7 +8,7 @@ import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_attribute_condition
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, StandingPoolImpersonation }
 import gunbc.gcp_estate_observation { fleet_cloud_convergence_sa_email }
 
-// ── fleet-cloud-convergence IS REACHABLE FROM A FLEET-CONVERGE WORKFLOW_DISPATCH ON A BRANCH, AND NOTHING ELSE ──
+// ── fleet-cloud-convergence IS REACHABLE FROM A FLEET-CONVERGE WORKFLOW_DISPATCH ON A HEADS REF ──
 // The account holds secret access a pull request must never reach (the R2 write-token accessor among
 // it, gunbc.cloudflare.r2_mint_secret_access). Through the repository-wide github-oidc provider any
 // job in the repository -- a pull request's, the merge queue's, heal-publish, witnesses -- could
@@ -16,7 +16,9 @@ import gunbc.gcp_estate_observation { fleet_cloud_convergence_sa_email }
 // fleet-converge workflow FILE on any heads ref (a prefix, because GitHub concatenates file and
 // branch into workflow_ref), and a workflow_dispatch event (the claim-pin shape of every dedicated
 // fleet-converge federation, minus the job `environment`, which the two consumer jobs below do not
-// declare). A pull_request event is refused. Its principal set is this pool alone.
+// declare). A pull_request event is refused. A branch's YAML is author-controlled; minted reach is
+// that dispatch permission plus these pins, not a reviewed-main file. Its principal set is this pool
+// alone.
 //
 // PINNED CONSUMERS (the jobs of fleet-converge.yml that authenticate as this account): `fleet-converge`
 // and `rlm-launch-deployment-receipt`, both workflow_dispatch. They reach it through
