@@ -2091,80 +2091,6 @@ fn infer_declared_type_mentions_free_formal(declared: Node, instances: List<Type
   }
 }
 
-type InferMentionsUnfixedAcc {
-  instances: List<TypeVariableInstance>
-  type_params: List<Symbol>
-  found: Bool
-}
-
-type InferUnfixedAtomAcc {
-  instances: List<TypeVariableInstance>
-  id: Symbol
-  found: Bool
-}
-
-fn infer_unfixed_atom_param_step(acc: InferUnfixedAtomAcc, p: Symbol) -> InferUnfixedAtomAcc {
-  InferUnfixedAtomAcc {
-    instances: acc.instances,
-    id: acc.id,
-    found: acc.found || ((p == acc.id) && match type_variable_instance_lookup(instances: acc.instances, binder: acc.id) {
-      Present { value: _ } => false
-      Absent => true
-    })
-  }
-}
-
-fn infer_mentions_unfixed_child_step(acc: InferMentionsUnfixedAcc, c: Node) -> InferMentionsUnfixedAcc {
-  InferMentionsUnfixedAcc {
-    instances: acc.instances,
-    type_params: acc.type_params,
-    found: acc.found || infer_type_mentions_unfixed_param(
-      declared: c,
-      instances: acc.instances,
-      type_params: acc.type_params
-    )
-  }
-}
-
-fn infer_type_mentions_unfixed_param(
-  declared: Node,
-  instances: List<TypeVariableInstance>,
-  type_params: List<Symbol>
-) -> Bool {
-  match declared.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      fold(
-        type_params,
-        init: InferUnfixedAtomAcc { instances: instances, id: id, found: false },
-        f: infer_unfixed_atom_param_step
-      ).found
-    TypeNode { connective: _ } =>
-      fold(
-        node_positional_child_targets(node: declared),
-        init: InferMentionsUnfixedAcc { instances: instances, type_params: type_params, found: false },
-        f: infer_mentions_unfixed_child_step
-      ).found
-    ComputationNode { behavior: _ } =>
-      fold(
-        node_positional_child_targets(node: declared),
-        init: InferMentionsUnfixedAcc { instances: instances, type_params: type_params, found: false },
-        f: infer_mentions_unfixed_child_step
-      ).found
-  }
-}
-
-fn infer_domain_mentions_unfixed_param(
-  types: List<Node>,
-  instances: List<TypeVariableInstance>,
-  type_params: List<Symbol>
-) -> Bool {
-  fold(
-    types,
-    init: InferMentionsUnfixedAcc { instances: instances, type_params: type_params, found: false },
-    f: infer_mentions_unfixed_child_step
-  ).found
-}
-
 // Substitution descends through the arguments: a compound declared type
 // (`Box<T>`, `FreeMonoid<T>`) is not held with a formal riding inside it -- an argument no
 // instance binds leaves the whole declared type unheld, and the read falls through to the facts
@@ -7268,9 +7194,7 @@ fn infer_application_actual_child_frame(parent: Node, frame: InferFrame, acc: In
               actual: edge.target,
               instances: acc.application_instances,
               pairs: acc.application_pairs,
-              idx: idx,
-              application: parent,
-              entries: acc.entries
+              idx: idx
             ) {
               Absent => frame.binder_types
               Present { value: rows } => infer_append_binder_types(xs: frame.binder_types, ys: rows)
@@ -7285,9 +7209,7 @@ fn infer_application_lambda_expected_binder_types(
   actual: Node,
   instances: List<TypeVariableInstance>,
   pairs: Optional<List<InhabitanceFormalArg>>,
-  idx: Int,
-  application: Node,
-  entries: List<InferredFactsEntry>
+  idx: Int
 ) -> Optional<List<InferBinderType>> {
   match infer_operator_arrow(operator: actual) {
     Absent => optional_absent()
@@ -7304,22 +7226,10 @@ fn infer_application_lambda_expected_binder_types(
               ) {
                 Absent => optional_absent()
                 Present { value: expected } =>
-                  match infer_operator_arrow(operator: expected) {
-                    Absent => optional_absent()
-                    Present { value: _ } =>
-                      match infer_expected_domain_types(expected: expected) {
-                        Absent => optional_absent()
-                        Present { value: types } =>
-                          if infer_domain_mentions_unfixed_param(
-                            types: types,
-                            instances: instances,
-                            type_params: infer_application_type_params(node: application, entries: entries)
-                          ) {
-                            optional_absent()
-                          } else {
-                            infer_lambda_domain_binder_types(lambda: lambda, expected: expected)
-                          }
-                      }
+                  if infer_declared_type_mentions_free_formal(declared: expected, instances: instances) {
+                    optional_absent()
+                  } else {
+                    infer_lambda_domain_binder_types(lambda: lambda, expected: expected)
                   }
               }
           }

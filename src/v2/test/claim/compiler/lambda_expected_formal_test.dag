@@ -71,11 +71,11 @@ fn lef_lambda() -> Node {
   )
 }
 
-fn lef_fn_t_to_u() -> Node {
+fn lef_fn_t_to_t() -> Node {
   anonymous_signature_arrow(
     domain_types: [dag_type_atom_node(identity: ^T)],
-    codomain: dag_type_atom_node(identity: ^U),
-    source: dag_type_atom_node(identity: ^U)
+    codomain: dag_type_atom_node(identity: ^T),
+    source: dag_type_atom_node(identity: ^T)
   )
 }
 
@@ -95,10 +95,7 @@ fn lef_poly_arrow(formals: List<Edge>) -> Node {
         target: node_synthetic(
           kind: TypeNode { connective: Conj },
           children: type_binder_set_children(
-            binders: [
-              Edge { label: Authored { name: ^T }, target: dag_type_atom_node(identity: ^T) },
-              Edge { label: Authored { name: ^U }, target: dag_type_atom_node(identity: ^U) }
-            ],
+            binders: [Edge { label: Authored { name: ^T }, target: dag_type_atom_node(identity: ^T) }],
             source: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
           )
         )
@@ -111,7 +108,7 @@ fn lef_after_arrow() -> Node {
   lef_poly_arrow(
     formals: [
       tpb_formal(name: ^x, declared: ^T),
-      binder_edge(name: ^f, type_node: lef_fn_t_to_u())
+      binder_edge(name: ^f, type_node: lef_fn_t_to_t())
     ]
   )
 }
@@ -119,7 +116,7 @@ fn lef_after_arrow() -> Node {
 fn lef_before_arrow() -> Node {
   lef_poly_arrow(
     formals: [
-      binder_edge(name: ^f, type_node: lef_fn_t_to_u()),
+      binder_edge(name: ^f, type_node: lef_fn_t_to_t()),
       tpb_formal(name: ^x, declared: ^T)
     ]
   )
