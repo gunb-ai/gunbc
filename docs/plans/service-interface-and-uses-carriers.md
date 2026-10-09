@@ -139,7 +139,7 @@ Resolution of this half:
 | 2c | lowering of modifiers and io defaults onto 2a and 2b; discriminating red per refusal row above | the 3 interface-only services | yes |
 | 3a | the realization sibling's model: per-kind declared-binding vocabularies, `HttpStatusClass`, the MIRROR shape and its conformance wall (`v2.compiler.service_realization`), and the symbol-index arm. **DESIGN §3c declared frontier** (trigger: 3b) | — | substrate only |
 | 3b | lowering of transport / config / exit / response / mock_response / `from` into the sibling; the wall runs on every lowered service | the realization-bearing services whose strings do not interpolate, up to the next stage's refusal | yes |
-| 3c | delete `ServiceSetAside` and both set-aside reasons; per-stage located causes for any stage that cannot yet consume the sibling | — | yes |
+| 3c | delete `ServiceSetAside` and both set-aside reasons; per-stage located causes for any stage that cannot yet consume the sibling. Pre-cut roster: [xl2-3c-service-set-aside-census.md](xl2-3c-service-set-aside-census.md) | — | yes |
 | 4 | flip `service_interface_member_has_no_carrier` and the cause-ownership rows; re-measure the census on the CI population | — | ledger only |
 | `uses` (separate lane) | first the resource-keyed `DependencyDemand` carrier (the rung drop's restoration trigger); only then retire restatement rows by D13's criterion, measured by resolution | up to 30 modules, and none before the carrier lands | carrier, then source rows deleted |
 
