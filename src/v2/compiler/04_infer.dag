@@ -7269,7 +7269,8 @@ fn infer_application_actual_child_frame(parent: Node, frame: InferFrame, acc: In
               instances: acc.application_instances,
               pairs: acc.application_pairs,
               idx: idx,
-              type_params: infer_application_type_params(node: parent, entries: acc.entries)
+              application: parent,
+              entries: acc.entries
             ) {
               Absent => frame.binder_types
               Present { value: rows } => infer_append_binder_types(xs: frame.binder_types, ys: rows)
@@ -7285,7 +7286,8 @@ fn infer_application_lambda_expected_binder_types(
   instances: List<TypeVariableInstance>,
   pairs: Optional<List<InhabitanceFormalArg>>,
   idx: Int,
-  type_params: List<Symbol>
+  application: Node,
+  entries: List<InferredFactsEntry>
 ) -> Optional<List<InferBinderType>> {
   match infer_operator_arrow(operator: actual) {
     Absent => optional_absent()
@@ -7311,7 +7313,7 @@ fn infer_application_lambda_expected_binder_types(
                           if infer_domain_mentions_unfixed_param(
                             types: types,
                             instances: instances,
-                            type_params: type_params
+                            type_params: infer_application_type_params(node: application, entries: entries)
                           ) {
                             optional_absent()
                           } else {
