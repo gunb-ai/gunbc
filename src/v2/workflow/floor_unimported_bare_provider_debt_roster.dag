@@ -1892,7 +1892,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "src/v2/test/claim/body_lowering/single_arm_match_test.dag", name: "SubstrateInputsOnly", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "src/v2/test/claim/body_lowering/statement_let_bind_test.dag", name: "SubstrateInputsOnly", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "src/v2/test/claim/cargo_build_run_argv_witness_test.dag", name: "SubstrateInputsOnly", standing: Retired { cause: ImportsFixed } },
-  UnimportedBareProviderDisposition { file: "src/v2/test/claim/compiler_materialization_witness_test.dag", name: "SubstrateInputsOnly", standing: Retired { cause: ImportsFixed } },
+  UnimportedBareProviderDisposition { file: "src/v2/test/claim/compiler_materialization_witness_test.dag", name: "SubstrateInputsOnly", standing: Retired { cause: FileDeleted } },
   UnimportedBareProviderDisposition { file: "src/v2/test/claim/effect_demand/effect_demand_census_test.dag", name: "closure_entry", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "src/v2/test/claim/extdeps/spice_rc_passive_deck_claims_test.dag", name: "Capacitor", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "src/v2/test/claim/extdeps/spice_rc_passive_deck_claims_test.dag", name: "DeckComponent", standing: Retired { cause: NotAReference } },

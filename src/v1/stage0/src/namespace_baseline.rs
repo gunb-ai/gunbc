@@ -1390,10 +1390,11 @@ pub(crate) fn reconstruct_base_index(
 
     // A DERIVED ARTIFACT IS NEVER IN THE DIFF, SO IT MUST NOT BE INHERITED FROM THE HEAD.
     // The baseline is reconstructed by carrying every head record the diff did not touch and
-    // re-reading the rest from the base tree. `roster.dag` is gitignored and written on the read
-    // path, so the diff can never name it — and carrying it made the HEAD's roster stand as the
-    // BASE's. Its base side is not read from git either (the tree does not carry it); it is
-    // DERIVED from the base tree's row membership, below, by the same renderer the writer uses.
+    // re-reading the rest from the base tree. The roster module has no file -- source acquisition
+    // contributes it in memory -- so the diff can never name it, and carrying it made the HEAD's
+    // roster stand as the BASE's. Its base side is not read from git either (the tree does not carry
+    // it, unless the base predates the derived fold); it is DERIVED from the base tree's row
+    // membership, below, by the same renderer head acquisition uses.
     //
     // CARRYING UNTOUCHED HEAD RECORDS IS VALID ONLY WHILE THE GRAMMARS AGREE. The reconstruction
     // below keeps every head record the diff did not touch, which assumes an untouched FILE has an
@@ -1531,7 +1532,7 @@ pub(crate) fn reconstruct_base_index(
     let _ = std::fs::remove_dir_all(&base_tree);
 
     // THE DERIVED ROSTER'S BASE SIDE, from the base tree's row membership. `base_paths` is the
-    // authoritative listing already in hand, so this asks the same question the writer asks of a
+    // authoritative listing already in hand, so this asks the same question head acquisition asks of a
     // directory. A base tree carrying no row files under that root has no roster module at all,
     // and `roster_from_path_listing` answers `None` rather than fabricating a present empty list.
     let base_path_refs: Vec<&str> = base_paths.iter().map(|p| p.as_str()).collect();
@@ -1547,7 +1548,7 @@ pub(crate) fn reconstruct_base_index(
             continue;
         }
         // Membership is selected by declared type, so the base side reads each listed row file's
-        // content at the base -- the same question the writer asks of the head's files.
+        // content at the base -- the same question head acquisition asks of the head's files.
         let content = match crate::cli_run::derived_row_roster::roster_from_path_listing(
             &record.rel_path,
             base_path_refs.iter().copied(),
@@ -1561,7 +1562,7 @@ pub(crate) fn reconstruct_base_index(
             Err(reason) => return Ok(BaselineReconstruction::NotEvaluated { reason }),
         };
         // SYNTHESIZED BY THE CURRENT RENDERER, SO PARSED UNDER THE CURRENT GRAMMAR. This content is
-        // not bytes read from the base tree; it is new source the head's roster writer produced from
+        // not bytes read from the base tree; it is new source the head's roster renderer produced from
         // the base tree's path membership. The base environment is reserved for bytes that actually
         // came out of the base revision -- sending renderer output through an older grammar could
         // refuse text no historical source ever carried.

@@ -37,10 +37,10 @@ import v2.std.node { Symbol }
 //                                     (`x.module`, `Rec { module: e }`). Located at the keyword.
 //   TokenStartsNotIncreasing       -- the token stream handed to the parse does not have strictly
 //                                     increasing token starts. A stream position IS its token's
-//                                     start (v2.compiler.parse parse_current_position keys the memo
-//                                     and decides repeat progress), so two tokens at one start would
-//                                     be one position and the parse would silently serve one's
-//                                     answer for the other. Located at the first token whose start
+//                                     start (v2.compiler.parse parse_current_position identifies a
+//                                     stream position and decides repeat progress by it), so two
+//                                     tokens at one start would be one position and the parse would
+//                                     silently take one's progress for the other's. Located at the first token whose start
 //                                     does not exceed its predecessor's.
 type ParseRefusalReason =
     FnExpressionBodyMissingAfterEq

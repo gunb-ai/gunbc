@@ -2407,7 +2407,9 @@ fn floor_route_gap_chunk_05() -> List<String> {
       head: "test.claim.repository_convergence_wet_witness_test.unreadable_head_refuses_before_fetch_or_mutation",
       tail: Cons {
       head: "test.claim.repository_convergence_wet_witness_test.wrong_primary_standing_refuses_from_gits_roster",
-      tail: Empty {} } } } } } } }
+      tail: Cons {
+      head: "test.claim.repository_convergence_wet_witness_test.a_legacy_derived_roster_file_is_retired_and_read_back_absent",
+      tail: Empty {} } } } } } } } }
 }
 
 fn floor_route_gap_chunks() -> List<List<String>> {

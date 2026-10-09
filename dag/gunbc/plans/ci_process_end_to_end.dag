@@ -64,7 +64,7 @@ fn ci_process_end_to_end_body() -> List<MarkdownBlock> {
       rows: [
         row(cells: [cell(text: "**Execution as a dependency graph**"), cell(text: "**✅ WORKS — the realest layer**"), cell(text: "the floor *is* a bounded forward DAG walk; `claim_executor` interprets `ci_floor_plan.dag`, one fold (`fold_node`), batches from dependency edges. The core thesis runs in prod every push")]),
         row(cells: [cell(text: "**Scheduling**"), cell(text: "**◑ one axis live, rest inert**"), cell(text: "**Width** consumes the measured envelope (#5444), single-host. `Placement`/`Materialization` are modeled + witness-passing but have **no non-test consumer** — the same band as the host-ops gap (§3-B), substrate side. Empty `RealizationObjective.goals` deleted 2026-09-06; decision completeness is `std.decision`, not a schedule field.")]),
-        row(cells: [cell(text: "**Caching**"), cell(text: "**◑ five forks, converging**"), cell(text: "sccache live (build) · resolve-cache **dormant** (modeled, pure-proven 616/616, env var unset — biggest dormant lever) · ParseTable memo live (content-addressed, amortization witness) · RecordedFixture (record/replay) · BuildBuddy opt-in. The one-door `realize(subject)` kernel (§2 P2) is staged")]),
+        row(cells: [cell(text: "**Caching**"), cell(text: "**◑ five forks, converging**"), cell(text: "sccache live (build) · resolve-cache **dormant** (modeled, pure-proven 616/616, env var unset — biggest dormant lever) · ParseTable memo (since deleted with the parse memo carrier, operator ruling R2 2026-10-08) · RecordedFixture (record/replay) · BuildBuddy opt-in. The one-door `realize(subject)` kernel (§2 P2) is staged")]),
         row(cells: [cell(text: "**Secrets / effects**"), cell(text: "**○ ad hoc**"), cell(text: "live cgroup reads, sccache servers, BMC, tokens — no single model yet")]),
         row(cells: [cell(text: "**Emission**"), cell(text: "**✅ works**"), cell(text: "`ci.yml` + testgen are emitted + drift-gated; stage0 seed `--verify` is the one missing gate (§5 keystone)")]),
       ],
@@ -144,7 +144,7 @@ fn ci_process_end_to_end_body() -> List<MarkdownBlock> {
     h2(text: "9. The lane's real deliverable — shared abstractions"),
     p(text: "Beyond closing the gaps, the lane converges the forks CI exposes (pull each in **as CI flexes it**, §6):"),
     ul(items: [
-      li(text: "**One Materialization kernel** — collapse sccache / resolve / ParseTable-memo / RecordedFixture / BuildBuddy onto `realize(subject)` (§2 P2)."),
+      li(text: "**One Materialization kernel** — collapse sccache / resolve / RecordedFixture / BuildBuddy onto `realize(subject)` (§2 P2)."),
       li(text: "**One Placement authority** — jobs (GitHub), threads (`spawn_width`), sessions (ctrl `plans.capacity`) are three forks of \"put work on a host.\""),
       li(text: "**One secrets/effects model** — BMC, tokens, sccache-auth modeled once."),
       li(text: "**gunbhub** — owning the Git/CI engine eventually closes the irreducible GitHub boundary (links 2, 13–14 / G6). *Not pressing*; the pain that denominates the lane is timeliness-for-confidence, not engine ownership."),

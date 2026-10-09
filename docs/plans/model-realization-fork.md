@@ -31,7 +31,7 @@ Every primitive is **modeled** as a `.dag` coproduct and **realized** as a nativ
 | `eval_binop` Eq/Ne guard | `:1910-1922` | **FAIL-CLOSED** (raises `CrossRepresentationEquality` on numeric straddle) — landed |
 | `pattern_matches` | `:2276-2563` | RECONCILED (explicit per-variant arms) |
 | `value_hash` / `CanonKey::new` | `:344` / `:309` | RECONCILED / FAIL-CLOSED (reflexivity check rejects non-reflexive) |
-| `parse_table_memo` / `pure_call_memo` / `resolved_graph_cache` | (see lock-down §3) | reconciled-with-caveat → the under-keyed / lossy cache holes are this seam at the cache layer |
+| `parse_table_memo` (deleted with the parse memo carrier, operator ruling R2 2026-10-08) / `pure_call_memo` / `resolved_graph_cache` | (see lock-down §3) | reconciled-with-caveat → the under-keyed / lossy cache holes are this seam at the cache layer |
 
 `FreeMonoid` is the proof that compositional reconciliation is *possible* (one flatten, all ops). Every other primitive is per-site.
 

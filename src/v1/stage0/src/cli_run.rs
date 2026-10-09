@@ -329,19 +329,16 @@ pub(crate) fn is_cargo_target_output_dir(
 
 pub(crate) fn collect_dag_files_result(
     dir: &std::path::Path,
-    files: &mut Vec<std::path::PathBuf>,
+    files: &mut Vec<derived_row_roster::AcquiredDag>,
 ) -> Result<(), String> {
-    derived_row_roster::ensure_if_row_dir(dir).map_err(|e| {
-        format!(
-            "failed to derive recurring_failure_mode roster in {:?}: {}",
-            dir, e
-        )
-    })?;
     let mut entries: Vec<_> = std::fs::read_dir(dir)
         .map_err(|e| format!("failed to read dir {:?}: {}", dir, e))?
         .map(|e| e.map_err(|e| format!("failed to read dir entry in {:?}: {}", dir, e)))
         .collect::<Result<Vec<_>, String>>()?;
     entries.sort_by_key(|e| e.file_name());
+    // This directory's own `.dag` files are admitted as one listing, so a ledger row directory
+    // contributes its derived roster from the same bytes (`derived_row_roster::acquire_dir_files`).
+    let mut here = Vec::new();
     for entry in entries {
         let path = entry.path();
         if path.is_dir() {
@@ -350,13 +347,14 @@ pub(crate) fn collect_dag_files_result(
             }
             collect_dag_files_result(&path, files)?;
         } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
-            files.push(path);
+            here.push(path);
         }
     }
+    files.extend(derived_row_roster::acquire_dir_files(dir, here)?);
     Ok(())
 }
 
-fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
+fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<derived_row_roster::AcquiredDag>) {
     collect_dag_files_result(dir, files).unwrap_or_else(|e| panic!("{e}"));
 }
 
@@ -405,8 +403,9 @@ fn moduleless_dag_entry_paths_under_root(root_prefix: &str) -> Result<Vec<String
         format!("cannot walk {root_prefix} while taking the module-less population: {cause}")
     })?;
     let mut entry_files: Vec<(String, String)> = Vec::new();
-    for path in paths {
-        let content = std::fs::read_to_string(&path).map_err(|error| {
+    for source in paths {
+        let path = source.path();
+        let content = source.read().map_err(|error| {
             format!(
                 "cannot read {} while taking the module-less population under {root_prefix}: \
                  {error} (the population exists to report which files were dropped from the \
@@ -3815,14 +3814,15 @@ fn for_each_parsed_module_binding(
         let root_path = Path::new(&anchored_root);
         let mut dag_files = Vec::new();
         collect_dag_files(root_path, &mut dag_files);
-        for path in dag_files {
-            let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        for source in dag_files {
+            let path = source.path();
+            let content = source.read().unwrap_or_else(|e| {
                 panic!(
                     "for_each_parsed_module_binding: failed to read {:?}: {}",
                     path, e
                 )
             });
-            let binding = match parse_module_binding(&path, &content) {
+            let binding = match parse_module_binding(path, &content) {
                 Ok(ModuleBindingOutcome::Bound(binding)) => binding,
                 Ok(ModuleBindingOutcome::ModuleBindingUnclassified) => continue,
                 // Fail-closed, but the line stops with a TYPED, LOCATED refusal
@@ -3835,7 +3835,7 @@ fn for_each_parsed_module_binding(
                     continue;
                 }
             };
-            visit(root_idx, &path, binding);
+            visit(root_idx, path, binding);
         }
     }
     refuse_unparseable_module_sources(&refusals);
@@ -4825,9 +4825,11 @@ fn regen_input_sources_over_roots(
 
     // Seed: every `.dag` under the entry root that declares a module path.
     let mut seeds: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
-    for path in &entry_paths {
-        let content =
-            std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    for source in &entry_paths {
+        let path = source.path();
+        let content = source
+            .read()
+            .map_err(|e| format!("read {}: {e}", path.display()))?;
         let rel = workspace_relative_repo_path(&path.to_string_lossy());
         if extract_module_path(&content).is_some() {
             seeds.push(Rc::new(v1_compiler_compile::SourceFile {
@@ -4928,12 +4930,13 @@ pub(crate) fn is_test_dag(path: &str) -> bool {
 pub(crate) fn corpus_dag_files() -> Vec<(String, String)> {
     let mut paths = Vec::new();
     for root in witness_layer_roots() {
-        collect_dag_files_tolerant(&Path::new(&anchor_source_root(&root)), &mut paths);
+        collect_dag_files_tolerant(&Path::new(&anchor_source_root(&root)), &mut paths)
+            .unwrap_or_else(|cause| panic!("corpus walk over {root}: {cause}"));
     }
     let mut out = Vec::new();
     for p in paths {
-        let rel = repo_rel(&p);
-        if let Ok(content) = std::fs::read_to_string(&p) {
+        let rel = repo_rel(p.path());
+        if let Ok(content) = p.read() {
             out.push((rel, content));
         }
     }
@@ -5005,11 +5008,13 @@ fn try_build_module_index(source_roots: &[String]) -> Result<ModuleSourceIndex, 
         }
         let mut dag_files = Vec::new();
         collect_dag_files_result(root_path, &mut dag_files)?;
-        for path in dag_files {
-            let content = std::fs::read_to_string(&path)
+        for source in dag_files {
+            let path = source.path();
+            let content = source
+                .read()
                 .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
             if let Some(module_path) = extract_module_path(&content) {
-                let rel_path = module_index_path_key(&path);
+                let rel_path = module_index_path_key(path);
                 let rel_forward = rel_path.clone();
                 if manifest_stub_superseded_by_overlay(&rel_forward, source_roots, root_idx) {
                     continue;
@@ -5124,11 +5129,13 @@ fn try_index_source_root_into_module_index(
     let mut dag_files = Vec::new();
     collect_dag_files_result(root_path, &mut dag_files)?;
     let mut within_root: HashMap<String, String> = HashMap::new();
-    for path in dag_files {
-        let content = std::fs::read_to_string(&path)
+    for source in dag_files {
+        let path = source.path();
+        let content = source
+            .read()
             .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
         if let Some(module_path) = extract_module_path(&content) {
-            let rel_path = module_index_path_key(&path);
+            let rel_path = module_index_path_key(path);
             if pool_fill_only {
                 if index.contains_key(&module_path) {
                     continue;
@@ -5172,14 +5179,16 @@ fn load_compile_clean_entry_sources(
     if first_root.is_dir() {
         let mut dag_paths = Vec::new();
         collect_dag_files(first_root, &mut dag_paths);
-        for path in dag_paths {
+        for source in dag_paths {
+            let path = source.path();
             let rel = workspace_relative_repo_path(&path.to_string_lossy());
             if let Some(filter) = entry_path_filter {
                 if !filter.contains(&rel) {
                     continue;
                 }
             }
-            let content = std::fs::read_to_string(&path)
+            let content = source
+                .read()
                 .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
             entry_files.push((path.to_string_lossy().to_string(), content));
         }
@@ -5660,8 +5669,8 @@ pub const RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL: &str =
 /// deleted; the index stays, because which file declares a module is what any import walk needs.
 fn dag_module_index(
     roots: &[PathBuf],
-) -> Result<std::collections::HashMap<String, Vec<PathBuf>>, String> {
-    let mut index: std::collections::HashMap<String, Vec<PathBuf>> =
+) -> Result<std::collections::HashMap<String, Vec<derived_row_roster::AcquiredDag>>, String> {
+    let mut index: std::collections::HashMap<String, Vec<derived_row_roster::AcquiredDag>> =
         std::collections::HashMap::new();
     for root in roots {
         if !root.exists() {
@@ -5669,11 +5678,12 @@ fn dag_module_index(
         }
         let mut dag_paths = Vec::new();
         collect_dag_files(root, &mut dag_paths);
-        for path in dag_paths {
-            let content = std::fs::read_to_string(&path)
-                .map_err(|e| format!("read {}: {e}", path.display()))?;
+        for source in dag_paths {
+            let content = source
+                .read()
+                .map_err(|e| format!("read {}: {e}", source.path().display()))?;
             if let Some(module_path) = extract_module_path(&content) {
-                index.entry(module_path).or_default().push(path);
+                index.entry(module_path).or_default().push(source);
             }
         }
     }
@@ -10891,6 +10901,18 @@ fn entry_source_from_index_or_disk(
     entry_path: &str,
 ) -> Result<Rc<v1_compiler_compile::SourceFile>, String> {
     let path = std::path::Path::new(entry_path);
+    // A DERIVED LEDGER ROSTER HAS NO FILE: it is contributed to the index in memory by source
+    // acquisition (`derived_row_roster::acquire_dir_files`), so an entry naming it is answered from
+    // the index the loader built, never from a file that would have to be written first.
+    if !path.exists() && derived_row_roster::is_derived_roster_path(entry_path) {
+        let wanted = workspace_relative_repo_path(entry_path);
+        if let Some(indexed) = index
+            .values()
+            .find(|s| workspace_relative_repo_path(&s.path) == wanted)
+        {
+            return Ok(indexed.clone());
+        }
+    }
     if !path.is_file() {
         return Err(format!(
             "entry file does not exist or is not a file: {}",
@@ -17760,7 +17782,7 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
     if roots.is_empty() {
         return Err(vec!["parse sweep called with no roots".to_string()]);
     }
-    let mut dag_paths: Vec<std::path::PathBuf> = Vec::new();
+    let mut dag_paths: Vec<derived_row_roster::AcquiredDag> = Vec::new();
     // PER-ROOT, so the empty-walk refusal below is per root: one root going missing must not
     // be absorbed by another root's files (the empty-observation narrow, DESIGN §5).
     for root in roots {
@@ -17768,14 +17790,11 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
         let before = dag_paths.len();
         let mut stack: Vec<std::path::PathBuf> = vec![root_dir.clone()];
         while let Some(dir) = stack.pop() {
-            // Derive gitignored `gunbc.recurring_failure_mode.roster` before this directory's
-            // listing, so the required-CI index contains the module the parse join reads.
-            derived_row_roster::ensure_if_row_dir(&dir).map_err(|e| {
-                vec![format!(
-                    "failed to derive recurring_failure_mode roster in {}: {e}",
-                    dir.display()
-                )]
-            })?;
+            // This directory's `.dag` files are admitted as one listing after the walk of its
+            // entries, so a ledger row directory contributes its derived roster IN MEMORY and the
+            // required-CI index contains the module the parse join reads -- with nothing written
+            // under the root.
+            let mut here: Vec<std::path::PathBuf> = Vec::new();
             let read_dir = match std::fs::read_dir(&dir) {
                 Ok(d) => d,
                 Err(e) => return Err(vec![format!("read_dir {}: {e}", dir.display())]),
@@ -17815,9 +17834,11 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
                     }
                     stack.push(path);
                 } else if path.extension().map(|ext| ext == "dag").unwrap_or(false) {
-                    dag_paths.push(path);
+                    here.push(path);
                 }
             }
+            dag_paths
+                .extend(derived_row_roster::acquire_dir_files(&dir, here).map_err(|e| vec![e])?);
         }
 
         // AN EMPTY WALK REFUSES, PER ROOT. Zero files found is not zero errors — it is the
@@ -17830,7 +17851,7 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
             )]);
         }
     }
-    dag_paths.sort();
+    dag_paths.sort_by(|a, b| a.path().cmp(b.path()));
 
     let errors: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let count = Arc::new(AtomicUsize::new(0));
@@ -17841,13 +17862,13 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
     // Each file gets its own `Rc<HashMap>` — no shared parse state — so parsing is
     // embarrassingly parallel. Thread panics propagate via scope (fail-closed).
     std::thread::scope(|scope| {
-        for path in &dag_paths {
+        for source in &dag_paths {
             let errors = Arc::clone(&errors);
             let count = Arc::clone(&count);
             let records = Arc::clone(&records);
-            let path = path.clone();
+            let path = source.path().to_path_buf();
             scope.spawn(move || {
-                let content = match std::fs::read_to_string(&path) {
+                let content = match source.read() {
                     Ok(c) => c,
                     Err(e) => {
                         errors
@@ -18630,10 +18651,14 @@ fn module_emit_repr_fingerprint(
 ) -> Result<String, String> {
     use crate::v1_compiler_infer_emit_info::TypeSummary;
 
+    // Summaries are keyed by declaration identity (`<module>.<name>`), so a module's own types are
+    // read under its own path and never under a same-leaf declaration elsewhere in the closure.
+    let module_path = authored_name_at(source_indices.clone(), module.module.clone());
     let type_names = module_defined_type_names(module, source_indices);
     let mut type_summaries = BTreeMap::<String, TypeSummary>::new();
     for name in type_names {
-        if let Some(summary) = emit_info.type_summaries.get(&name) {
+        let key = format!("{module_path}.{name}");
+        if let Some(summary) = emit_info.type_summaries.by_key.get(&key) {
             type_summaries.insert(name, summary.as_ref().clone());
         }
     }
@@ -22822,27 +22847,396 @@ fn extract_bool_witness_transport(
     (entry, function)
 }
 
-fn defining_module_for_resolved_type(
-    graph: &ResolvedGraph,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+fn module_from_qualified_identity(identity: &str) -> Option<String> {
+    let (module, name) = identity.rsplit_once('.')?;
+    if module.is_empty() || name.is_empty() {
+        None
+    } else {
+        Some(module.to_string())
+    }
+}
+
+fn defining_module_for_variant(
     variant_to_enum: &im::HashMap<String, String>,
-    type_name: &str,
+    variant_name: &str,
 ) -> Option<String> {
-    let si = Rc::new(source_indices.clone());
-    for tm in graph.modules.iter() {
-        let mod_name = authored_name_at(si.clone(), tm.module.clone());
-        if lookup_type_by_name(tm.type_env.clone(), type_name.to_string()).is_some() {
-            return Some(mod_name);
-        }
+    // variant_to_enum is keyed by VARIANT leaf. Values are owner identities `<module>.<name>`.
+    // No row, the collision sentinel "", or an unqualified identity has no module part:
+    // return None so the caller refuses. Do not scan type environments for a leaf match.
+    let parent_enum = variant_to_enum.get(variant_name)?;
+    module_from_qualified_identity(parent_enum)
+}
+
+fn defining_module_for_type_identity(
+    type_summaries: &Rc<crate::v1_compiler_infer_emit_info::TypeSummaryIndex>,
+    identity: &str,
+) -> Option<String> {
+    // Exact declaration key only. type_summary_lookup / type_summary_by_leaf are leaf scans.
+    if !identity.contains('.') {
+        return None;
     }
-    let parent_enum = variant_to_enum.get(type_name).cloned()?;
-    for tm in graph.modules.iter() {
-        let mod_name = authored_name_at(si.clone(), tm.module.clone());
-        if lookup_type_by_name(tm.type_env.clone(), parent_enum.clone()).is_some() {
-            return Some(mod_name);
+    match (*crate::v1_compiler_infer_emit_info::type_summary_at_key(
+        type_summaries.clone(),
+        identity.to_string(),
+    ))
+    .clone()
+    {
+        crate::v1_compiler_infer_emit_info::TypeSummaryLookup::TypeSummaryFound { summary } => {
+            module_from_qualified_identity(&summary.key)
         }
+        _ => None,
     }
-    None
+}
+
+fn defining_module_for_type_expr(
+    type_summaries: &Rc<crate::v1_compiler_infer_emit_info::TypeSummaryIndex>,
+    type_decls: &Rc<crate::v1_compiler_infer_emit_info::TypeDeclIndex>,
+    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    type_expr: &Rc<Node>,
+) -> Option<String> {
+    match (*crate::v1_compiler_infer_emit_info::type_summary_of_reference(
+        type_summaries.clone(),
+        type_decls.clone(),
+        type_expr.clone(),
+        Rc::new(source_indices.clone()),
+    ))
+    .clone()
+    {
+        crate::v1_compiler_infer_emit_info::TypeSummaryLookup::TypeSummaryFound { summary } => {
+            module_from_qualified_identity(&summary.key)
+        }
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod defining_module_lookup_tests {
+    use super::*;
+
+    #[test]
+    fn bool_witness_claim_variant_resolves_to_verification_module() {
+        let mut variant_to_enum = im::HashMap::new();
+        variant_to_enum.insert(
+            "BoolWitnessClaim".to_string(),
+            "v2.std.verification.UnifiedTestClaim".to_string(),
+        );
+        variant_to_enum.insert(
+            "NodeCorpus".to_string(),
+            "v2.std.verification.UnifiedTestClaim".to_string(),
+        );
+        assert_eq!(
+            defining_module_for_variant(&variant_to_enum, "BoolWitnessClaim"),
+            Some("v2.std.verification".to_string()),
+            "the owned-data BoolWitnessClaim path keys variant_to_enum by the variant leaf"
+        );
+        assert_eq!(
+            defining_module_for_variant(&variant_to_enum, "UnifiedTestClaim"),
+            None,
+            "the coproduct leaf is not a variant key"
+        );
+    }
+
+    #[test]
+    fn unqualified_or_sentinel_variant_identity_refuses() {
+        let mut variant_to_enum = im::HashMap::new();
+        variant_to_enum.insert("NoDot".to_string(), "UnifiedTestClaim".to_string());
+        variant_to_enum.insert("Sentinel".to_string(), "".to_string());
+        assert_eq!(defining_module_for_variant(&variant_to_enum, "NoDot"), None);
+        assert_eq!(
+            defining_module_for_variant(&variant_to_enum, "Sentinel"),
+            None
+        );
+        assert_eq!(
+            defining_module_for_variant(&variant_to_enum, "Missing"),
+            None
+        );
+    }
+
+    #[test]
+    fn type_identity_uses_exact_summary_key_not_a_leaf() {
+        use crate::v1_compiler_infer_emit_info::{
+            empty_type_summary_index, type_summary_index_insert, TypeRepr, TypeSummary,
+        };
+        let summary = Rc::new(TypeSummary {
+            name: "UnifiedTestClaim".to_string(),
+            key: "v2.std.verification.UnifiedTestClaim".to_string(),
+            repr: Rc::new(TypeRepr::EnumRepr { unit_only: false }),
+            field_summaries: crate::v1_rt::rc_empty_map(),
+            field_type_map: crate::v1_rt::rc_empty_map(),
+            field_import_surface_names: Rc::new(im::Vector::new()),
+            variant_name_set: crate::v1_rt::rc_empty_map(),
+            generic_param_names: Rc::new(im::Vector::new()),
+            has_fn_fields: false,
+        });
+        let index = type_summary_index_insert(
+            empty_type_summary_index(),
+            "v2.std.verification.UnifiedTestClaim".to_string(),
+            "UnifiedTestClaim".to_string(),
+            summary,
+        );
+        assert_eq!(
+            defining_module_for_type_identity(&index, "v2.std.verification.UnifiedTestClaim"),
+            Some("v2.std.verification".to_string())
+        );
+        assert_eq!(
+            defining_module_for_type_identity(&index, "UnifiedTestClaim"),
+            None,
+            "a bare type leaf must not scan keys_by_leaf"
+        );
+    }
+
+    #[test]
+    fn user_type_named_like_a_known_variant_keeps_its_module() {
+        use crate::v1_compiler_infer_emit_info::{
+            empty_type_decl_index, empty_type_summary_index, type_summary_index_insert, TypeRepr,
+            TypeSummary,
+        };
+        let mut variant_to_enum = im::HashMap::new();
+        variant_to_enum.insert(
+            "BoolWitnessClaim".to_string(),
+            "v2.std.verification.UnifiedTestClaim".to_string(),
+        );
+        let summary = Rc::new(TypeSummary {
+            name: "BoolWitnessClaim".to_string(),
+            key: "owner.types.BoolWitnessClaim".to_string(),
+            repr: Rc::new(TypeRepr::StructRepr),
+            field_summaries: crate::v1_rt::rc_empty_map(),
+            field_type_map: crate::v1_rt::rc_empty_map(),
+            field_import_surface_names: Rc::new(im::Vector::new()),
+            variant_name_set: crate::v1_rt::rc_empty_map(),
+            generic_param_names: Rc::new(im::Vector::new()),
+            has_fn_fields: false,
+        });
+        let index = type_summary_index_insert(
+            empty_type_summary_index(),
+            "owner.types.BoolWitnessClaim".to_string(),
+            "BoolWitnessClaim".to_string(),
+            summary,
+        );
+        let source_indices = HashMap::new();
+        let decls = empty_type_decl_index();
+        assert_eq!(
+            defining_module_for_inferred_result(
+                &variant_to_enum,
+                &index,
+                &decls,
+                &source_indices,
+                None,
+                "owner.types.BoolWitnessClaim",
+            ),
+            Some("owner.types".to_string()),
+            "a user type identity named like a variant leaf is not routed to v2.std.verification"
+        );
+        assert_eq!(
+            defining_module_for_variant(&variant_to_enum, "BoolWitnessClaim"),
+            Some("v2.std.verification".to_string()),
+            "the variant map still answers the record-lit arm"
+        );
+    }
+
+    fn synthetic_named_node(name: &str) -> Rc<Node> {
+        let span = no_span();
+        Rc::new(Node {
+            occurrence_identity: Rc::new(
+                crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+            ),
+            name: name.to_string(),
+            ident: None,
+            span: span.clone(),
+            ident_span: Some(span),
+            children: Rc::new(im::Vector::new()),
+            connective: Connective::NoConnective,
+            params: Rc::new(im::Vector::new()),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(im::Vector::new()),
+            body: None,
+            transport: None,
+            properties: Rc::new(im::Vector::new()),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
+            declaration: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+        })
+    }
+
+    #[test]
+    fn inferred_user_bool_witness_claim_keeps_its_module_at_initializer_ref() {
+        use crate::std_decl_ref::decl_ref;
+        use crate::v1_compiler_infer_emit_info::{
+            empty_emit_graph_info, empty_type_decl_index, empty_type_summary_index,
+            type_decl_index_insert, type_summary_index_insert, TypeRepr, TypeSummary,
+        };
+
+        let mut variant_to_enum = im::HashMap::new();
+        variant_to_enum.insert(
+            "BoolWitnessClaim".to_string(),
+            "v2.std.verification.UnifiedTestClaim".to_string(),
+        );
+
+        let mut type_node = (*synthetic_named_node("BoolWitnessClaim")).clone();
+        type_node.declaration = Some(decl_ref(
+            "owner.types".to_string(),
+            "BoolWitnessClaim".to_string(),
+        ));
+        let type_node = Rc::new(type_node);
+
+        let decl_item = type_node.clone();
+        let decls = type_decl_index_insert(
+            empty_type_decl_index(),
+            "owner.types".to_string(),
+            "BoolWitnessClaim".to_string(),
+            decl_item,
+        );
+        let summary = Rc::new(TypeSummary {
+            name: "BoolWitnessClaim".to_string(),
+            key: "owner.types.BoolWitnessClaim".to_string(),
+            repr: Rc::new(TypeRepr::StructRepr),
+            field_summaries: crate::v1_rt::rc_empty_map(),
+            field_type_map: crate::v1_rt::rc_empty_map(),
+            field_import_surface_names: Rc::new(im::Vector::new()),
+            variant_name_set: crate::v1_rt::rc_empty_map(),
+            generic_param_names: Rc::new(im::Vector::new()),
+            has_fn_fields: false,
+        });
+        let summaries = type_summary_index_insert(
+            empty_type_summary_index(),
+            "owner.types.BoolWitnessClaim".to_string(),
+            "BoolWitnessClaim".to_string(),
+            summary,
+        );
+
+        let mut emit_info = (*empty_emit_graph_info()).clone();
+        emit_info.variant_to_enum = Rc::new(variant_to_enum);
+        emit_info.type_summaries = summaries;
+        emit_info.type_decl_items = decls;
+
+        let mut body = (*synthetic_named_node("")).clone();
+        body.inferred = Some(Rc::new(InferredNode::Resolved { node: type_node }));
+        let body = Rc::new(body);
+
+        let graph = ResolvedGraph {
+            modules: Rc::new(im::Vector::new()),
+            item_registry: Rc::new(im::HashMap::new()),
+            item_leaf_owner_modules: Rc::new(im::HashMap::new()),
+            diagnostics: Rc::new(im::Vector::new()),
+        };
+        let source_indices = HashMap::new();
+        let resolved =
+            resolved_initializer_decl_ref(&graph, &source_indices, &emit_info, &body, None)
+                .expect("initializer ref must resolve the carried user declaration");
+        assert_eq!(
+            resolved.module, "owner.types",
+            "carried BoolWitnessClaim declaration must beat variant_to_enum UnifiedTestClaim"
+        );
+        assert_eq!(resolved.name, "BoolWitnessClaim");
+    }
+
+    #[test]
+    fn ambiguous_enum_name_is_not_answered_false() {
+        use crate::v1_compiler_infer_emit_info::{
+            empty_type_summary_index, is_enum_in_summaries, type_summary_index_insert, TypeRepr,
+            TypeSummary, TypeSummaryQuestion,
+        };
+        let enum_summary = Rc::new(TypeSummary {
+            name: "SharedName".to_string(),
+            key: "owner.enums.SharedName".to_string(),
+            repr: Rc::new(TypeRepr::EnumRepr { unit_only: false }),
+            field_summaries: crate::v1_rt::rc_empty_map(),
+            field_type_map: crate::v1_rt::rc_empty_map(),
+            field_import_surface_names: Rc::new(im::Vector::new()),
+            variant_name_set: crate::v1_rt::rc_empty_map(),
+            generic_param_names: Rc::new(im::Vector::new()),
+            has_fn_fields: false,
+        });
+        let struct_summary = Rc::new(TypeSummary {
+            name: "SharedName".to_string(),
+            key: "owner.types.SharedName".to_string(),
+            repr: Rc::new(TypeRepr::StructRepr),
+            field_summaries: crate::v1_rt::rc_empty_map(),
+            field_type_map: crate::v1_rt::rc_empty_map(),
+            field_import_surface_names: Rc::new(im::Vector::new()),
+            variant_name_set: crate::v1_rt::rc_empty_map(),
+            generic_param_names: Rc::new(im::Vector::new()),
+            has_fn_fields: false,
+        });
+        let index = type_summary_index_insert(
+            type_summary_index_insert(
+                empty_type_summary_index(),
+                "owner.enums.SharedName".to_string(),
+                "SharedName".to_string(),
+                enum_summary,
+            ),
+            "owner.types.SharedName".to_string(),
+            "SharedName".to_string(),
+            struct_summary,
+        );
+        assert!(
+            matches!(
+                (*is_enum_in_summaries(index, "SharedName".to_string())).clone(),
+                TypeSummaryQuestion::QuestionNameAmbiguous { leaf } if leaf == "SharedName"
+            ),
+            "disagreement must not collapse to a decided non-enum"
+        );
+    }
+
+    #[test]
+    fn ambiguous_enum_name_refuses_instead_of_non_enum_emission() {
+        use crate::v1_compiler_infer_emit_info::{
+            empty_type_summary_index, type_summary_index_insert, TypeRepr, TypeSummary,
+        };
+        let enum_summary = Rc::new(TypeSummary {
+            name: "SharedName".to_string(),
+            key: "owner.enums.SharedName".to_string(),
+            repr: Rc::new(TypeRepr::EnumRepr { unit_only: false }),
+            field_summaries: crate::v1_rt::rc_empty_map(),
+            field_type_map: crate::v1_rt::rc_empty_map(),
+            field_import_surface_names: Rc::new(im::Vector::new()),
+            variant_name_set: crate::v1_rt::rc_empty_map(),
+            generic_param_names: Rc::new(im::Vector::new()),
+            has_fn_fields: false,
+        });
+        let struct_summary = Rc::new(TypeSummary {
+            name: "SharedName".to_string(),
+            key: "owner.types.SharedName".to_string(),
+            repr: Rc::new(TypeRepr::StructRepr),
+            field_summaries: crate::v1_rt::rc_empty_map(),
+            field_type_map: crate::v1_rt::rc_empty_map(),
+            field_import_surface_names: Rc::new(im::Vector::new()),
+            variant_name_set: crate::v1_rt::rc_empty_map(),
+            generic_param_names: Rc::new(im::Vector::new()),
+            has_fn_fields: false,
+        });
+        let index = type_summary_index_insert(
+            type_summary_index_insert(
+                empty_type_summary_index(),
+                "owner.enums.SharedName".to_string(),
+                "SharedName".to_string(),
+                enum_summary,
+            ),
+            "owner.types.SharedName".to_string(),
+            "SharedName".to_string(),
+            struct_summary,
+        );
+        let parent = crate::v1_compiler_emit_rust::pattern_parent_enum(
+            "Arm".to_string(),
+            None,
+            "SharedName".to_string(),
+            index,
+        );
+        let refusal = crate::v1_compiler_emit_rust::rust_ambiguous_type_name_refusal(
+            "SharedName".to_string(),
+        );
+        assert_eq!(
+            parent,
+            Some(refusal),
+            "an ambiguous enum name must emit the typed refusal, not a non-enum parent"
+        );
+    }
 }
 
 fn lookup_resolved_type_node(graph: &ResolvedGraph, type_name: &str) -> Option<Rc<Node>> {
@@ -22867,27 +23261,53 @@ fn declared_type_name_from_annotation(
     }
 }
 
-fn resolved_decl_ref_from_type_name(
-    graph: &ResolvedGraph,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+fn defining_module_for_inferred_result(
     variant_to_enum: &im::HashMap<String, String>,
+    type_summaries: &Rc<crate::v1_compiler_infer_emit_info::TypeSummaryIndex>,
+    type_decls: &Rc<crate::v1_compiler_infer_emit_info::TypeDeclIndex>,
+    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    inferred_node: Option<&Rc<Node>>,
+    name: &str,
+) -> Option<String> {
+    // Type declaration identity first. A user type whose leaf matches a known variant
+    // (BoolWitnessClaim) must not be stolen by variant_to_enum spelling.
+    inferred_node
+        .and_then(|node| {
+            defining_module_for_type_expr(type_summaries, type_decls, source_indices, node)
+        })
+        .or_else(|| defining_module_for_type_identity(type_summaries, name))
+        .or_else(|| defining_module_for_variant(variant_to_enum, name))
+}
+
+fn resolved_decl_ref_from_type_name(
+    variant_to_enum: &im::HashMap<String, String>,
+    type_summaries: &Rc<crate::v1_compiler_infer_emit_info::TypeSummaryIndex>,
     name: &str,
 ) -> Result<ResolvedDeclRef, String> {
-    let module = defining_module_for_resolved_type(graph, source_indices, variant_to_enum, name)
+    let module = defining_module_for_type_identity(type_summaries, name)
+        .or_else(|| defining_module_for_variant(variant_to_enum, name))
         .ok_or_else(|| format!("no defining module for resolved type '{}'", name))?;
+    let stored_name = crate::v1_std_core::qualified_last_segment(name.to_string());
     Ok(ResolvedDeclRef {
         module,
-        name: name.to_string(),
+        name: if stored_name.is_empty() {
+            name.to_string()
+        } else {
+            stored_name
+        },
     })
 }
 
 fn resolved_initializer_decl_ref(
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    variant_to_enum: &im::HashMap<String, String>,
+    emit_info: &crate::v1_compiler_infer_emit_info::EmitGraphInfo,
     body: &Rc<Node>,
     type_annotation: Option<&Rc<Node>>,
 ) -> Result<ResolvedDeclRef, String> {
+    let variant_to_enum = emit_info.variant_to_enum.as_ref();
+    let type_summaries = &emit_info.type_summaries;
+    let type_decls = &emit_info.type_decl_items;
     let si = Rc::new(source_indices.clone());
     if let ExprData::ExprRecordLit { parent_enum } = &*body.expr_data {
         if let Some(parent_name) = parent_enum.as_deref() {
@@ -22917,18 +23337,13 @@ fn resolved_initializer_decl_ref(
                     variant_name, parent_name
                 ));
             }
-            let module = defining_module_for_resolved_type(
-                graph,
-                source_indices,
-                variant_to_enum,
-                parent_name,
-            )
-            .ok_or_else(|| {
-                format!(
-                    "no defining module for resolved coproduct '{}'",
-                    parent_name
-                )
-            })?;
+            let module =
+                defining_module_for_variant(variant_to_enum, &variant_name).ok_or_else(|| {
+                    format!(
+                        "no defining module for resolved coproduct variant '{}'",
+                        variant_name
+                    )
+                })?;
             return Ok(ResolvedDeclRef {
                 module,
                 name: variant_name,
@@ -22957,11 +23372,38 @@ fn resolved_initializer_decl_ref(
         None => None,
     };
     if let Some(name) = inferred_name {
-        return resolved_decl_ref_from_type_name(graph, source_indices, variant_to_enum, &name);
+        let inferred_node = match body.inferred.as_deref() {
+            Some(InferredNode::Resolved { node }) => Some(node),
+            _ => None,
+        };
+        if let Some(module) = defining_module_for_inferred_result(
+            variant_to_enum,
+            type_summaries,
+            type_decls,
+            source_indices,
+            inferred_node,
+            &name,
+        ) {
+            return Ok(ResolvedDeclRef {
+                module,
+                name: crate::v1_std_core::qualified_last_segment(name),
+            });
+        }
+        return Err(format!("no defining module for resolved type '{}'", name));
     }
     if let Some(ann) = type_annotation {
+        if let Some(module) =
+            defining_module_for_type_expr(type_summaries, type_decls, source_indices, ann)
+        {
+            let name = declared_type_name_from_annotation(source_indices, ann)
+                .unwrap_or_else(|| "type".to_string());
+            return Ok(ResolvedDeclRef {
+                module,
+                name: crate::v1_std_core::qualified_last_segment(name),
+            });
+        }
         if let Some(name) = declared_type_name_from_annotation(source_indices, ann) {
-            return resolved_decl_ref_from_type_name(graph, source_indices, variant_to_enum, &name);
+            return resolved_decl_ref_from_type_name(variant_to_enum, type_summaries, &name);
         }
     }
     Err(
@@ -23098,7 +23540,7 @@ pub fn discover_owned_data_decls(
 
     let mut files = Vec::new();
     collect_dag_files(scan_path, &mut files);
-    files.retain(|p| !path_excluded(p, exclude_subpaths));
+    files.retain(|p| !path_excluded(p.path(), exclude_subpaths));
 
     // The process-shared index, so every entry's reference closure reads the one parse per file
     // the floor's other closure walks already hold.
@@ -23108,9 +23550,11 @@ pub fn discover_owned_data_decls(
     let mut groups: Vec<DiscoveryResolveGroup> = Vec::new();
     let mut group_split_collisions: Vec<String> = Vec::new();
     let mut entry_count = 0usize;
-    for path in files {
+    for source in files {
+        let path = source.path();
         let entry = path.to_string_lossy().to_string();
-        let content = std::fs::read_to_string(&path)
+        let content = source
+            .read()
             .map_err(|e| format!("failed to read {:?}: {}", path, e))?;
         if !entry_likely_has_unified_claim_owned_data(&content) {
             continue;
@@ -23181,15 +23625,13 @@ pub fn discover_owned_data_decls(
         // THE ONE READER OF variant_to_enum BUILDS IT, once per group graph, through the builder
         // emission uses: the resolve no longer carries EmitGraphInfo (v1.compiler.infer_items
         // ResolvedGraph), and owned-data discovery is the consumer that demands this projection.
-        let variant_to_enum = v1_compiler_infer::build_emit_graph_info(
+        let emit_info = v1_compiler_infer::build_emit_graph_info(
             graph.modules.clone(),
             graph.item_registry.clone(),
-        )
-        .variant_to_enum
-        .clone();
+        );
         for (entry, entry_module, marker_count) in group.entries {
             let records =
-                owned_data_decls_for_entry(&graph, &si, &variant_to_enum, &entry, &entry_module)?;
+                owned_data_decls_for_entry(&graph, &si, &emit_info, &entry, &entry_module)?;
             if records.len() != marker_count {
                 return Err(format!(
                     "{}: merged-resolve discovery found {} owned unified_claim record(s) but the entry declares {} top-level `data unified_claim_` marker(s)",
@@ -24893,25 +25335,31 @@ pub(crate) fn dag_tree_holds_any_file(dir: &Path) -> bool {
     false
 }
 
-pub(crate) fn collect_dag_files_tolerant(dir: &Path, out: &mut Vec<PathBuf>) {
-    // This walk swallows unreadable directories. Write failure here must not abort it;
-    // `run_dag_parse_sweep` is the loud required-CI writer.
-    let _ = derived_row_roster::ensure_if_row_dir(dir);
+/// Tolerant of unreadable DIRECTORIES (they are skipped), never of a ledger row directory whose
+/// roster cannot be derived: a legacy physical roster or an unreadable row file is returned as a
+/// located refusal, because swallowing it would hand the caller a short or stale roster.
+pub(crate) fn collect_dag_files_tolerant(
+    dir: &Path,
+    out: &mut Vec<derived_row_roster::AcquiredDag>,
+) -> Result<(), String> {
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
-        Err(_) => return,
+        Err(_) => return Ok(()),
     };
+    let mut here = Vec::new();
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
             if is_cargo_target_output_dir(dir, &path) {
                 continue;
             }
-            collect_dag_files_tolerant(&path, out);
+            collect_dag_files_tolerant(&path, out)?;
         } else if path.extension().and_then(|e| e.to_str()) == Some("dag") {
-            out.push(path);
+            here.push(path);
         }
     }
+    out.extend(derived_row_roster::acquire_dir_files(dir, here)?);
+    Ok(())
 }
 
 fn scan_test_decl_names(content: &str) -> Vec<String> {
@@ -25764,11 +26212,13 @@ pub fn construction_authority_graph_unresolved(
         std::collections::HashMap::new();
     let mut authorities: Vec<(String, String, String)> = Vec::new();
     for root in source_roots {
-        let mut dag_files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(Path::new(root), &mut dag_files);
+        let mut dag_files = Vec::new();
+        collect_dag_files_tolerant(Path::new(root), &mut dag_files)?;
         dag_files.sort();
-        for path in dag_files {
-            let content = std::fs::read_to_string(&path)
+        for source in dag_files {
+            let path = source.path();
+            let content = source
+                .read()
                 .map_err(|e| format!("read {}: {e}", path.display()))?;
             let file = path.to_string_lossy().into_owned();
             for (module_path, decl_name) in wall_now_authority_refs(&content) {
@@ -29747,12 +30197,14 @@ pub fn discover_source_root_reads(
     let mut dag_files = Vec::new();
     collect_dag_files(scan_path, &mut dag_files);
 
-    for path in dag_files {
+    for source in dag_files {
+        let path = source.path();
         let rel_forward = path.to_string_lossy().replace('\\', "/");
         if path_matches_any_subpath(&rel_forward, exclude_subpaths) {
             continue;
         }
-        let content = std::fs::read_to_string(&path)
+        let content = source
+            .read()
             .map_err(|e| format!("failed to read {:?}: {}", path, e))?;
         let module_path = extract_module_path(&content).ok_or_else(|| {
             format!(
@@ -30567,10 +31019,11 @@ fn collect_layer_import_scoped_paths(roots: &[String]) -> HashSet<String> {
         if !root_path.is_dir() {
             continue;
         }
-        let mut dag_files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut dag_files);
+        let mut dag_files = Vec::new();
+        collect_dag_files_tolerant(root_path, &mut dag_files)
+            .unwrap_or_else(|cause| panic!("layer-import scope over {root}: {cause}"));
         for file in dag_files {
-            scoped.insert(rel_path_for_layer_import(&file));
+            scoped.insert(rel_path_for_layer_import(file.path()));
         }
     }
     scoped
@@ -30588,10 +31041,11 @@ fn importer_roots_have_importless_dag_files(roots: &[String]) -> bool {
         if !root_path.is_dir() {
             continue;
         }
-        let mut dag_files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut dag_files);
+        let mut dag_files = Vec::new();
+        collect_dag_files_tolerant(root_path, &mut dag_files)
+            .unwrap_or_else(|cause| panic!("importless preflight over {root}: {cause}"));
         for file in dag_files {
-            let content = match std::fs::read_to_string(&file) {
+            let content = match file.read() {
                 Ok(c) => c,
                 Err(_) => continue,
             };
@@ -30619,18 +31073,19 @@ fn project_layer_import_syntax_facts(
     if !root_path.is_dir() {
         return;
     }
-    let mut dag_files: Vec<PathBuf> = Vec::new();
-    collect_dag_files_tolerant(root_path, &mut dag_files);
+    let mut dag_files = Vec::new();
+    collect_dag_files_tolerant(root_path, &mut dag_files)
+        .unwrap_or_else(|cause| panic!("[layer-import] declared root {root}: {cause}"));
     dag_files.sort();
     for file in dag_files {
-        let content = match std::fs::read_to_string(&file) {
+        let content = match file.read() {
             Ok(c) => c,
             Err(_) => continue,
         };
         if extract_import_paths(&content).is_empty() {
             continue;
         }
-        let rel = rel_path_for_layer_import(&file);
+        let rel = rel_path_for_layer_import(file.path());
         let importer = extract_module_path(&content).unwrap_or_default();
         let layer = layer_prefix_from_dotted_module(&importer);
         for import_module in extract_import_paths(&content) {
@@ -37013,9 +37468,10 @@ mod import_closure_equivalence_tests {
         let mut entries = BTreeSet::new();
         for root in default_source_roots() {
             let mut dag_files = Vec::new();
-            super::collect_dag_files_tolerant(Path::new(&root), &mut dag_files);
+            super::collect_dag_files_tolerant(Path::new(&root), &mut dag_files)
+                .expect("acquire witness layer root");
             for path in dag_files {
-                let rel = workspace_relative_repo_path(&path.to_string_lossy());
+                let rel = workspace_relative_repo_path(&path.path().to_string_lossy());
                 if !rel.ends_with("_test.dag") || floor_discovery_path_excluded(&rel) {
                     continue;
                 }
@@ -37138,12 +37594,18 @@ mod peel_alias_fixpoint_termination {
                     },
                 ),
             );
+            // No files in this probe: the peel tree is synthetic, module_path is empty.
+            // file_modules / module_named_imports therefore come from empty_symbol_index,
+            // the same constructor every other empty SymbolIndex uses.
+            let empty_index = crate::v1_compiler_infer_env::empty_symbol_index();
             let symbol_index = std::rc::Rc::new(crate::v1_compiler_infer_env::SymbolIndex {
-                entries: crate::v1_rt::rc_empty_map(),
+                entries: empty_index.entries.clone(),
                 global_bare,
-                services: crate::v1_rt::rc_empty_map(),
-                transparent_alias_rep: crate::v1_rt::rc_empty_map(),
-                type_head_exposures: crate::v1_rt::rc_empty_map(),
+                services: empty_index.services.clone(),
+                transparent_alias_rep: empty_index.transparent_alias_rep.clone(),
+                type_head_exposures: empty_index.type_head_exposures.clone(),
+                file_modules: empty_index.file_modules.clone(),
+                module_named_imports: empty_index.module_named_imports.clone(),
             });
             let env = std::rc::Rc::new(crate::v1_compiler_infer_env::TypeEnv {
                 module_path: "".to_string(),

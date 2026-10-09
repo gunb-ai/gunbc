@@ -5,7 +5,7 @@ import std.types { List }
 import v2.compiler.parse { ParseArtifact, PreparedGrammar }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.program_assembly {
-  program_assembly_phase_parse_measured_seeded,
+  program_assembly_phase_parse_seeded,
   program_assembly_phase_tokenize
 }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
@@ -1128,12 +1128,12 @@ fn reference_conservation_subject_of_read(
   prepared: PreparedGrammar,
   residue: Diagnostics
 ) -> ReferenceConservationSubject {
-  let parsed = program_assembly_phase_parse_measured_seeded(
+  let parsed = program_assembly_phase_parse_seeded(
     tokens: program_assembly_phase_tokenize(read: read, lex: lex),
     prepared: prepared,
     residue: residue,
     seed: occurrence_id_allocator_initial()
-  ).outcome
+  )
   ReferenceConservationSubject {
     path: read.artifact.file_path,
     parsed: parsed,

@@ -24,8 +24,6 @@ import gunbc.live_deploy.spec {
   TailnetDoorServeUnit,
   GunbcSourceTree,
   ServeBinary,
-  DispatchWorktreeRoot,
-  AttemptStateRoot, ComputeRoot,
   SystemdUnit,
   BeltEventPathUnit,
   FleetConvergeTimerUnit,
@@ -243,9 +241,6 @@ fn ordering_tag(kind: OwnedArtifactKind) -> String {
     TailnetDoorServeUnit => ""
     BeltEventPathUnit => "belt"
     TailscaleServeMapping => "route"
-    DispatchWorktreeRoot => ""
-    AttemptStateRoot => ""
-    ComputeRoot => ""
     SystemdUnit => ""
     FleetConvergeTimerUnit => ""
   }

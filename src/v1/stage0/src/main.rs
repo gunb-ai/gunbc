@@ -147,13 +147,16 @@ fn is_cargo_target_output_dir(parent: &std::path::Path, child: &std::path::Path)
 /// RUNG, HONESTLY: this restores a guard, it does not prove a live bug -- `find target -name
 /// '*.dag'` returns 0 in this worktree today. The hazard is evidenced by the deleted code's own
 /// comment naming its case: a corpus copy under `target/func_env_semantic_baseline_corpus/dag/**`.
-fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
-    cli_run::derived_row_roster::ensure_if_row_dir_or_panic(dir);
+fn collect_dag_files(
+    dir: &std::path::Path,
+    files: &mut Vec<cli_run::derived_row_roster::AcquiredDag>,
+) {
     let mut entries: Vec<_> = std::fs::read_dir(dir)
         .unwrap_or_else(|e| panic!("failed to read dir {:?}: {}", dir, e))
         .map(|e| e.unwrap_or_else(|e| panic!("failed to read dir entry in {:?}: {}", dir, e)))
         .collect();
     entries.sort_by_key(|e| e.file_name());
+    let mut here = Vec::new();
     for entry in entries {
         let path = entry.path();
         if path.is_dir() {
@@ -162,9 +165,12 @@ fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>)
             }
             collect_dag_files(&path, files);
         } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
-            files.push(path);
+            here.push(path);
         }
     }
+    files.extend(
+        cli_run::derived_row_roster::acquire_dir_files(dir, here).unwrap_or_else(|e| panic!("{e}")),
+    );
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -656,8 +662,10 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                 let mut dag_paths = Vec::new();
                 collect_dag_files(std::path::Path::new(&dir), &mut dag_paths);
                 let mut sources = Vec::new();
-                for path in &dag_paths {
-                    let content = std::fs::read_to_string(path)
+                for source in &dag_paths {
+                    let path = source.path();
+                    let content = source
+                        .read()
                         .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
                     let filename = path.file_name().unwrap().to_string_lossy().to_string();
                     sources.push(Rc::new(v1_compiler_compile::SourceFile {

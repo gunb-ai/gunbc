@@ -22,8 +22,6 @@ fn execution_receipt_digest_of_value(value: NonEmptyStr) -> ExecutionReceiptDige
 
 data resolved_graph_artifact_kind: ArtifactKindId = "resolved_graph"
 
-data parse_table_artifact_kind: ArtifactKindId = "parse_table"
-
 data parse_source_artifact_kind: ArtifactKindId = "parse_source"
 
 data typed_module_artifact_kind: ArtifactKindId = "typed_module"

@@ -489,6 +489,55 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
     new_identity: "v2.test.claim.symbol_index.containment.symbol_index_module_variant_alias_requires_a_unique_count_holds" as NonEmptyStr,
     renamed_in: "the variant-field native binding repair (gunbc#13210): the alias-binding repair files a module variant alias whenever a tag's declaration count is unique, so the state the old red control pinned -- a unique variant whose alias is MISSING -- no longer occurs and the red is unwritable as stated; the successor establishes the two-sided rule the repair implements (alias present when the count is unique, absent when the tag is declared twice), and as a new identity it is judged against the new-witness tier rather than inheriting the cut row's grandfathered one" as NonEmptyStr,
   },
+  WitnessDeleted {
+    identity: "v2.test.claim.compiler_materialization_witness.parse_table_memo_provider_preserves_catalog_retention" as NonEmptyStr,
+    deleted_in: "the parse memo deletion (operator ruling R2 2026-10-08): the v2 packrat parse memo served captures whose occurrence ids were minted on abandoned backtrack paths, so its carrier (v2.compiler.parse ParseTableRealization entries, the extdeps.realization.parse_table_memo catalog row, and the parse-table demand of v2.compiler.materialization_carriers) is deleted; this claim pinned the retention of the deleted parse_table_memo provider, which no longer exists. Its compile-stage sibling compile_stage_memo_provider_preserves_catalog_retention stays" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.compiler_materialization_witness.parse_table_carrier_inhabits_realization" as NonEmptyStr,
+    deleted_in: "the parse memo deletion (operator ruling R2 2026-10-08): the v2 packrat parse memo served captures whose occurrence ids were minted on abandoned backtrack paths, so its carrier (v2.compiler.parse ParseTableRealization entries, the extdeps.realization.parse_table_memo catalog row, and the parse-table demand of v2.compiler.materialization_carriers) is deleted; this claim pinned the deleted ParseTableRealization carrier inhabiting the Realization model. Its compile-stage sibling compile_stage_carrier_inhabits_realization stays" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.compiler_materialization_witness.parse_table_empty_uses_catalog_identity" as NonEmptyStr,
+    deleted_in: "the parse memo deletion (operator ruling R2 2026-10-08): the v2 packrat parse memo served captures whose occurrence ids were minted on abandoned backtrack paths, so its carrier (v2.compiler.parse ParseTableRealization entries, the extdeps.realization.parse_table_memo catalog row, and the parse-table demand of v2.compiler.materialization_carriers) is deleted; this claim pinned the empty parse table's catalog identity (the deleted parse_table_memo_id)" as NonEmptyStr
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.claim.compiler_materialization_witness.parse_table_memo_plural_reds_without_provider" as NonEmptyStr,
+    new_identity: "v2.test.claim.compiler_materialization_witness.compile_stage_memo_plural_reds_without_provider" as NonEmptyStr,
+    renamed_in: "the parse memo deletion (operator ruling R2 2026-10-08): the v2 packrat parse memo served captures whose occurrence ids were minted on abandoned backtrack paths, so its carrier (v2.compiler.parse ParseTableRealization entries, the extdeps.realization.parse_table_memo catalog row, and the parse-table demand of v2.compiler.materialization_carriers) is deleted; the plural-demand red control was retargeted from the deleted parse-table demand to the compile-stage demand, and it is named for the demand it now exercises" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.compiler_materialization_witness.compiler_materialization_ladder_holds" as NonEmptyStr,
+    deleted_in: "the compile-stage memo deletion (roadmap native-memory-inert-carriers, operator ruling 2026-10-08): the compile-stage memo's only lookup answered Miss unconditionally, so its carrier (v2.compiler.materialization_carriers compile-stage demand, provider, governed door and admission controls, and the extdeps.realization.compile_stage_memo catalog row) is deleted; this claim pinned that carrier, and the generic ladder obligations it exercised stay enrolled on fixture subjects in test.claim.materialization_ladder_witness" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.compiler_materialization_witness.compile_stage_carrier_inhabits_realization" as NonEmptyStr,
+    deleted_in: "the compile-stage memo deletion (roadmap native-memory-inert-carriers, operator ruling 2026-10-08): the compile-stage memo's only lookup answered Miss unconditionally, so its carrier (v2.compiler.materialization_carriers compile-stage demand, provider, governed door and admission controls, and the extdeps.realization.compile_stage_memo catalog row) is deleted; this claim pinned that carrier, and the generic ladder obligations it exercised stay enrolled on fixture subjects in test.claim.materialization_ladder_witness" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.compiler_materialization_witness.compile_stage_memo_provider_preserves_catalog_retention" as NonEmptyStr,
+    deleted_in: "the compile-stage memo deletion (roadmap native-memory-inert-carriers, operator ruling 2026-10-08): the compile-stage memo's only lookup answered Miss unconditionally, so its carrier (v2.compiler.materialization_carriers compile-stage demand, provider, governed door and admission controls, and the extdeps.realization.compile_stage_memo catalog row) is deleted; this claim pinned that carrier, and the generic ladder obligations it exercised stay enrolled on fixture subjects in test.claim.materialization_ladder_witness" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.staging.cached_stage_hit_skips_stage" as NonEmptyStr,
+    deleted_in: "the compile-stage memo deletion (roadmap native-memory-inert-carriers, operator ruling 2026-10-08): v2.std.staging cached_stage, resolve_probe and CacheProbe had one production caller, the always-Miss compile-stage memo, and are deleted with it; this claim exercised only that lookup wrapper, while then_outcome and its claims remain" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.staging.cached_stage_miss_runs_stage" as NonEmptyStr,
+    deleted_in: "the compile-stage memo deletion (roadmap native-memory-inert-carriers, operator ruling 2026-10-08): v2.std.staging cached_stage, resolve_probe and CacheProbe had one production caller, the always-Miss compile-stage memo, and are deleted with it; this claim exercised only that lookup wrapper, while then_outcome and its claims remain" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.native_cache_fusion_test.witness_warm_marker_agrees_share" as NonEmptyStr,
+    deleted_in: "the inert-carrier deletion (roadmap native-memory-inert-carriers, census #5): v2.workflow.native_cache_fusion stated a synthetic agreement law between a modeled host warm-marker observation and std.emit_on_demand lookup; no production code read it, so the module and its own claims are deleted and the real emit-host native build cache is untouched" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.native_cache_fusion_test.witness_cold_marker_absent_agrees_recompute" as NonEmptyStr,
+    deleted_in: "the inert-carrier deletion (roadmap native-memory-inert-carriers, census #5): v2.workflow.native_cache_fusion stated a synthetic agreement law between a modeled host warm-marker observation and std.emit_on_demand lookup; no production code read it, so the module and its own claims are deleted and the real emit-host native build cache is untouched" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.native_cache_fusion_test.witness_cold_control_forces_recompute_agreement" as NonEmptyStr,
+    deleted_in: "the inert-carrier deletion (roadmap native-memory-inert-carriers, census #5): v2.workflow.native_cache_fusion stated a synthetic agreement law between a modeled host warm-marker observation and std.emit_on_demand lookup; no production code read it, so the module and its own claims are deleted and the real emit-host native build cache is untouched" as NonEmptyStr,
+  },
 ]
 
 fn floor_grandfathered_chunk_000() -> List<String> {

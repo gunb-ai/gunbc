@@ -45,7 +45,7 @@ import gunbc.roadmap_belt_actuate { WorkflowAttemptsObserved }
 // WET CONTROLS FOR THE DOGFOOD START RECEIPT'S STORE (side-chat ruling on #13077 at e7e9ca9b). Each
 // claim builds a FRESH instance layout under a temporary directory and runs the production recorder
 // against it. The store root is the instance's attempt-state root -- the path the deployment's
-// AttemptStateRoot member converges (gunbc.live_deploy.spec deployment_owned_steps derives it from
+// attempt-state demand converges (gunbc.roadmap_dashboard_instance dashboard_instance_dispatch_attempt_state_directory, whose path is
 // the same dashboard_instance_dispatch_attempt_state_root) -- so a claim either leaves it missing,
 // as an unconverged host would, or creates it as the deploy does. On the required floor's
 // local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule), with the

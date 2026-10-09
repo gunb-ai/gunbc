@@ -6,12 +6,13 @@ import std.types { String, NonEmptyStr, FilePath, Int, Bool, Port, List }
 import product.host_identity { HostIdentity }
 import gunbc.fleet_intent_network { fleet_intent_network }
 import gunbc.fleet_host_identity { operator_host_srv1 }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_fabric_storage_root, srv1_live_dashboard_instance, dashboard_instance_child }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv1_live_dashboard_instance, dashboard_instance_child }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryManaged }
 import std.effect_grant { Read, Write, Execute }
 import extdeps.tailscale.serve { tailscale_serve_unix_proxy_peer }
 import gunbc.ownership { Ensured }
 import gunbc.managed_directory {
-  ManagedDirectory, DirectoryDependent, ManagedDirectoryAdmission, managed_directory_admit, srv1_dashboard_service_principal,
+  ManagedDirectory, DirectoryDependent, srv1_dashboard_service_principal,
   EntriesUnmanaged, EntriesReadableByDependents, managed_directory_entry_mode, ManagedEntryModeDerived, ManagedEntryModeRefused,
 }
 import gunbc.fleet_posix_accounts { fleet_posix_ci_runner_user }
@@ -66,14 +67,21 @@ data fabric_storage_door_proxy_peer: NonEmptyStr = tailscale_serve_unix_proxy_pe
 
 
 
-// The store root is the placed instance's fabric DB root -- one authority with the deployment that
-// creates it (gunbc.roadmap_dashboard_instance dashboard_instance_fabric_storage_root).
+// THE FABRIC DB ROOT: where the fabric DB's files live on the instance that holds the placement
+// (gunbc.fabric_storage_file_store). It is this module's fact -- the placement decides where the store
+// is -- and the deployment creates exactly the directories fabric_storage_directory_demands declares
+// from it. It replaced the per-instance event-log mirror root: no executor keeps a copy of the log any
+// more, so only the placement's host holds a root at all.
 fn fabric_storage_placed_instance() -> HostDashboardInstance {
   srv1_live_dashboard_instance()
 }
 
+fn fabric_storage_root_of(instance: HostDashboardInstance) -> FilePath {
+  dashboard_instance_child(root: instance.instance_root, child: "fabric-storage")
+}
+
 fn fabric_storage_store_root() -> NonEmptyStr {
-  dashboard_instance_fabric_storage_root(instance: fabric_storage_placed_instance()) as String as NonEmptyStr
+  fabric_storage_root_of(instance: fabric_storage_placed_instance()) as String as NonEmptyStr
 }
 
 // WHETHER AN INSTANCE HOLDS THE PLACEMENT: the deployment owns the store root and the endpoint only
@@ -207,18 +215,33 @@ fn fabric_storage_placed_file_root(store_root: NonEmptyStr) -> FabricStoragePlac
   }
 }
 
-fn fabric_storage_store_directories() -> List<ManagedDirectoryAdmission> {
+fn fabric_storage_store_directories() -> List<ManagedDirectory> {
   let root = fabric_storage_store_root()
   let areas = fabric_storage_file_root(root: root)
   [
-    managed_directory_admit(d: fabric_storage_directory(member: "fabric-storage-root", path: root, writes: false)),
-    managed_directory_admit(d: fabric_storage_directory(member: "fabric-storage-objects", path: areas.objects, writes: true)),
-    managed_directory_admit(d: fabric_storage_directory(member: "fabric-storage-heads", path: areas.heads, writes: true)),
-    managed_directory_admit(d: fabric_storage_state_directory(member: "fabric-state-root", path: fabric_storage_state_root(store_root: root))),
-    managed_directory_admit(d: fabric_storage_state_directory(member: "fabric-state-objects", path: fabric_storage_state_file_root(store_root: root).objects)),
-    managed_directory_admit(d: fabric_storage_state_directory(member: "fabric-state-heads", path: fabric_storage_state_file_root(store_root: root).heads)),
-    managed_directory_admit(d: fabric_storage_door_directory()),
+    fabric_storage_directory(member: "fabric-storage-root", path: root, writes: false),
+    fabric_storage_directory(member: "fabric-storage-objects", path: areas.objects, writes: true),
+    fabric_storage_directory(member: "fabric-storage-heads", path: areas.heads, writes: true),
+    fabric_storage_state_directory(member: "fabric-state-root", path: fabric_storage_state_root(store_root: root)),
+    fabric_storage_state_directory(member: "fabric-state-objects", path: fabric_storage_state_file_root(store_root: root).objects),
+    fabric_storage_state_directory(member: "fabric-state-heads", path: fabric_storage_state_file_root(store_root: root).heads),
+    fabric_storage_door_directory(),
   ]
+}
+
+// THE STORE'S DIRECTORIES AS THE PLACED INSTANCE'S DEMAND. The root alone is not a store -- the file
+// store writes objects and heads under it, and a create-new under an absent area refuses not_found --
+// so every area is demanded, each a managed directory whose owner, group and mode derive from the
+// writers declared above; a writer the owner and group do not cover refuses in the provider
+// (gunbc.owned_directory owned_directory_mode) rather than widening. Every other instance demands
+// nothing, so a lab twin never creates srv1's store. The store is durable history: nothing the
+// deployment does removes it.
+fn fabric_storage_directory_demands(instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {
+  if fabric_storage_placed_on(instance: instance) {
+    map(fabric_storage_store_directories(), d => OwnedDirectoryManaged { directory: d })
+  } else {
+    []
+  }
 }
 
 // The authenticated state space shares the fabric DB service and CAS implementation, but never

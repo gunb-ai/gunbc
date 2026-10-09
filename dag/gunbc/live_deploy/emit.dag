@@ -47,7 +47,6 @@ import gunbc.managed_directory {
   managed_directory_admit,
   ManagedDirectoryAdmission, ManagedDirectoryAdmitted, ManagedDirectoryRefused,
   managed_directory_mode_octal,
-  attempt_state_directory_at,
   EntriesUnmanaged, EntriesReadableByDependents,
   managed_directory_entry_mode, ManagedEntryModeDerived, ManagedEntryModeRefused, entry_mode_add_read_symbolic,
 }
@@ -140,6 +139,12 @@ import gunbc.live_deploy.slice_bounds {
   repository_convergence_slice_memory_swap_max,
 }
 import gunbc.fabric_storage_placement { fabric_storage_door_socket }
+import gunbc.owned_directory {
+  OwnedDirectoryTarget, OwnedDirectoryManaged, OwnedDirectoryDeclared,
+  owned_directory_path, owned_directory_member, owned_directory_install_plan_of, owned_directory_install_argv,
+}
+import gunbc.ensure { EnsurePlanAvailable, EnsurePlanUnavailable }
+import gunbc.roadmap_dashboard_instance { dashboard_dispatch_worktree_member, dashboard_attempt_state_member }
 import gunbc.live_deploy.spec {
   deployment_slice_unit_name, deployment_slice_unit_path,
   deployment_fabric_storage_unit_name, deployment_fabric_storage_serve_endpoint, deployment_approval_broker_front_door_endpoints,
@@ -150,10 +155,10 @@ import gunbc.live_deploy.spec {
   DeploymentSpec,
   DeploymentStep, ArtifactStep, Dependency,
   DeploymentDependencyStep,
-  EnsuredSubject, EnsuredPackage, EnsuredHostDirectory, EnsuredManagedHostDirectory, ensured_subject_identity,
-  deployment_provider_state_step,
+  EnsuredSubject, EnsuredPackage, ensured_subject_identity,
+  deployment_directory_demands,
   DeploymentArtifactStep,
-  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit,
+  ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit,
   deployment_tailnet_door_socket, deployment_tailnet_door_unit_name, deployment_tailnet_door_function_suffix,
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
@@ -1178,9 +1183,6 @@ fn identity_member_of_step(step: DeploymentStep) -> ConvergedMember? {
       GunbcSourceTree => Present { value: TreePublication }
       ServeBinary => Present { value: Executable }
       SystemdUnit => Present { value: UnitFile }
-      DispatchWorktreeRoot => Present { value: DirectoryRoot { path: art.path } }
-      AttemptStateRoot => Present { value: DirectoryRoot { path: art.path } }
-      ComputeRoot => Present { value: DirectoryRoot { path: art.path } }
       BeltEventPathUnit => none
       FleetConvergeTimerUnit => none
       TailscaleServeMapping => none
@@ -1526,26 +1528,12 @@ fn install_d_owned_command(spec: DeploymentSpec, path: String) -> String {
   install_d_owned_for_user(user: spec.service.service_user, path: path)
 }
 
-// THE DISPATCH THAT ADMITS A SECOND KIND OF ENSURED RESOURCE, written so the package arm is
-// untouched. A package still lowers to exactly the ensure step it always did, at both privilege
-// settings, so no existing emitted byte moves -- the widening adds a kind, it does not redefine
-// what ensuring a package means.\n\nA directory lowers to the same owned install -d the artifact
-// steps use, through the same single authority, with the owner taken from the ensured subject
-// rather than from a deployment spec. That is what lets a host-level resource be stated without an
-// instance: an ensured host directory is a fact about the host, and threading a spec through it
-// would have made it look like a per-instance fact again -- the exact confusion that put this root
-// in the owned roster to begin with.\n\nprivileged is consumed only by the package arm because it
-// describes how apt is invoked; install -d is privileged in both contexts and takes the same form
-// either way.
+// AN ENSURED DEPENDENCY IS A PACKAGE. The directory arms that lowered an ensured host directory to an
+// owned install -d are gone: every directory is an owned-directory target, emitted by
+// owned_directory_apply_steps below from the provider's plan. privileged describes how apt is invoked.
 fn ensure_dependency_steps(dep: DeploymentDependencyStep, privileged: Bool) -> List<PipelineStep> {
   match dep.subject {
     EnsuredPackage { package } => [ensure_apt_package_step(pkg: package, privileged: privileged)]
-    EnsuredHostDirectory { path, owner } => [
-      deploy_raw(command: install_d_owned_for_user(user: owner, path: path as String)),
-    ]
-    EnsuredManagedHostDirectory { admission } =>
-      concat([deploy_raw(command: ensure_managed_directory_command(admission: admission))],
-        map(managed_directory_entry_repair_commands(admission: admission), c => deploy_raw(command: c)))
   }
 }
 
@@ -1644,28 +1632,52 @@ fn deploy_publication_principal_ensure_command(spec: DeploymentSpec) -> String {
   })
 }
 
-// THE PROVIDER-STATE ENSURE RIDES THE PREAMBLE, DERIVED FROM THE SPEC RATHER THAN FOUND IN ITS STEP
-// LIST (C7). Every apply emits it because gunbc.live_deploy.spec deployment_provider_state_step is a
-// function of the spec, not a row an author may forget: there is no spec for which it returns
-// nothing, so there is no state in which the deploy silently stops creating the directory the
-// provider login writes into. That is the construction the earlier refusal arm was standing in for.
-//
-// Ensured means converged on every apply and never torn down, so it emits unconditionally rather
-// than gated on a plan mutation: `install -d` is idempotent, and a converged host re-running it is
-// what the category means. The read-back member reports the directory's OWNER; it does not decide
-// whether the directory is created.
-fn provider_state_ensure_steps(spec: DeploymentSpec) -> List<PipelineStep> {
-  ensure_dependency_steps(dep: deployment_provider_state_step(spec: spec), privileged: true)
+fn deploy_apply_preamble_steps(access: DeployAccess, spec: DeploymentSpec) -> List<PipelineStep> {
+  [
+    deploy_raw(command: deploy_sudoers_install_shell(access: access)),
+    deploy_raw(command: deploy_publication_principal_ensure_command(spec: spec)),
+  ]
 }
 
-fn deploy_apply_preamble_steps(access: DeployAccess, spec: DeploymentSpec) -> List<PipelineStep> {
-  concat(
-    [
-      deploy_raw(command: deploy_sudoers_install_shell(access: access)),
-      deploy_raw(command: deploy_publication_principal_ensure_command(spec: spec)),
-    ],
-    provider_state_ensure_steps(spec: spec),
-  )
+// ── EVERY DIRECTORY THE DEPLOYMENT DEMANDS, THROUGH THE ONE PROVIDER ─────────────────────────────
+//
+// The apply half of gunbc.owned_directory's lifecycle on this route. The decision was made at plan time
+// over a host observation (gunbc.live_deploy.member_observe observe_owned_directory, the provider's
+// owned_directory_decide), and it arrives here as each DirectoryRoot member's mutation: keep emits
+// nothing, create and repair emit the provider's install plan (owned_directory_install_plan_of) as the
+// granted `sudo -n install -d -m -o -g`. A refused decision never reaches the emitter -- it refused
+// the whole derivation -- and the post-apply readback re-derives the plan through the same observer.
+// A member the plan makes no claim about is emitted, never skipped (plan_mutation_of's rule).
+//
+// These run after the preamble (the sudoers grant they ride) and before every owned step, so no
+// member -- the unit's process, the belt timer's tick -- starts before the directories it writes.
+fn owned_directory_apply_steps(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> List<PipelineStep> {
+  flat_map(deployment_directory_demands(spec: spec), t =>
+    match plan_mutation_of(plan: plan, member: DirectoryRoot { path: owned_directory_path(t: t) as String as NonEmptyStr }) {
+      MemberNotInPlan => owned_directory_install_steps(t: t)
+      MutationInPlan { mutation } =>
+        if mutation_is_keep(e: mutation) { [] } else { owned_directory_install_steps(t: t) }
+    })
+}
+
+// A TARGET WHOSE MODE DOES NOT DERIVE LOWERS TO A MARKER THAT IS NOT SHELL, never to an install with a
+// guessed mode. A managed target whose dependents read each other's entries also carries the entry
+// repair (managed_directory_entry_repair_commands), riding the same ensure as before.
+data owned_directory_unplannable_poison: String = "__GUNBC_DEPLOY_REFUSED__ owned directory NOT ENSURED: gunbc.owned_directory owned_directory_install_plan_of has no plan: "
+
+fn owned_directory_install_steps(t: OwnedDirectoryTarget) -> List<PipelineStep> {
+  match owned_directory_install_plan_of(t: t) {
+    EnsurePlanUnavailable { reason } => [deploy_raw(command: concat(owned_directory_unplannable_poison, reason))]
+    EnsurePlanAvailable { plan } =>
+      concat(
+        [deploy_raw(command: shell_privileged_command_text_of_argv(argv: owned_directory_install_argv(plan: plan)))],
+        match t {
+          OwnedDirectoryManaged { directory } =>
+            map(managed_directory_entry_repair_commands(admission: managed_directory_admit(d: directory)), c => deploy_raw(command: c))
+          OwnedDirectoryDeclared { member: _, path: _, owner: _, mode: _ } => []
+        },
+      )
+  }
 }
 
 // THE CAP APPLY CONSUMES RETIREMENT AUTHORIZATION, AND WITHOUT ONE IT REFUSES.
@@ -2847,17 +2859,6 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
       tree_sync_restart_step_with_diagnosis(spec: spec),
       deploy_raw(command: repository_convergence_readback_command(spec: spec)),
     ]))
-    DispatchWorktreeRoot => [
-      deploy_raw(command: install_d_owned_command(spec: spec, path: art.path as String)),
-    ]
-    AttemptStateRoot => [
-      deploy_raw(command: install_d_managed_command(
-        dir: attempt_state_directory_at(path: art.path as String as FilePath),
-      )),
-    ]
-    ComputeRoot => [
-      deploy_raw(command: install_d_owned_command(spec: spec, path: art.path as String)),
-    ]
     SystemdUnit => concat(concat([
       apply_systemd_unit_write_step(spec: spec, revision: revision),
       deploy_raw(command: deploy_stage_install_command(
@@ -2988,11 +2989,11 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
 // remove this store even by mistake -- the property the previous `rm -d` arm tried to approximate
 // by refusing on a non-empty directory is now structural, and the awkward consequence that arm
 // carried (a full retract could never complete once the store existed) simply does not arise.
-// DispatchWorktreeRoot teardown is rm -d (empty-directory removal via the granted rm — the
+// The dispatch worktree root's refusal is rm -d (empty-directory removal via the granted rm — the
 // unprivileged principal has no rmdir grant and no write on the root-owned parent), NEVER rm -rf: a
 // non-empty worktree root means live agent worktrees exist, so the retract FAILS LOUDLY there
 // instead of silently destroying sessions (DESIGN 5 — the refusal is the empty-dir precondition
-// itself, identical to the former rmdir). GunbcSourceTree teardown runs AFTER the worktree rm -d
+// itself, identical to the former rmdir). GunbcSourceTree teardown runs its rm -rf only AFTER that rm -d
 // succeeds, so the repo the worktrees are registered in is never deleted from under them.
 
 fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> List<PipelineStep> {
@@ -3073,28 +3074,36 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
         deploy_effect(inv: systemctl_daemon_reload_effect()),
       ]
     )
-    DispatchWorktreeRoot => [
-      deploy_raw(command: rm_empty_directory_command(path: art.path as String)),
-    ]
-    AttemptStateRoot => [
-      deploy_raw(command: rm_empty_directory_command(path: art.path as String)),
-    ]
-    ComputeRoot => [
-      deploy_raw(command: rm_force_recursive_command(path: art.path as String)),
-    ]
     ServeBinary => [
       deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
     ]
-    GunbcSourceTree => [
-      deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
-        tree_sync_unit_path(names: spec.names) as String,
-        spec.names.tree_sync_env_path as String,
-        deployment_slice_unit_path(names: spec.names) as String,
-      ])),
-      deploy_effect(inv: systemctl_daemon_reload_effect()),
-      deploy_raw(command: rm_force_recursive_command(path: art.path as String)),
-    ]
+    GunbcSourceTree => concat(
+      map(dispatch_root_refusal_paths(spec: spec), p => deploy_raw(command: rm_empty_directory_command(path: p))),
+      [
+        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
+          tree_sync_unit_path(names: spec.names) as String,
+          spec.names.tree_sync_env_path as String,
+          deployment_slice_unit_path(names: spec.names) as String,
+        ])),
+        deploy_effect(inv: systemctl_daemon_reload_effect()),
+        deploy_raw(command: rm_force_recursive_command(path: art.path as String)),
+      ],
+    )
   }
+}
+
+// THE SOURCE TREE'S TEARDOWN KEEPS THE DISPATCH ROOTS' EMPTY-DIRECTORY REFUSAL. The two roots were
+// owned steps whose teardown ran before the tree's and refused on a live worktree or published attempt
+// evidence; they are owned-directory demands now and a retract does not tear directories down, but
+// deleting the tree a live worktree is registered in is the hazard that refusal stood for, so the
+// tree's own teardown begins with it. The paths are the spec's demands, read by member name.
+fn dispatch_root_refusal_paths(spec: DeploymentSpec) -> List<String> {
+  map(
+    filter(xs: spec.directories, predicate: t =>
+      (owned_directory_member(t: t) as String) == (dashboard_dispatch_worktree_member as String)
+        || (owned_directory_member(t: t) as String) == (dashboard_attempt_state_member as String)),
+    t => owned_directory_path(t: t) as String,
+  )
 }
 
 // The per-member realization HANDLER: share the DIFF (membership_reconcile), dispatch the APPLY
@@ -3173,12 +3182,7 @@ fn apply_step_effects(
 ) -> List<PipelineStep> {
   match identity_member_of_step(step: step) {
     Present { value: member } => match member {
-      DirectoryRoot { path: _ } => match plan_mutation_of(plan: plan, member: member) {
-        MemberNotInPlan => step_membership_effects(step: step, effects: effects, spec: spec, plan: plan)
-        MutationInPlan { mutation } =>
-          if mutation_is_keep(e: mutation) { [] }
-          else { step_membership_effects(step: step, effects: effects, spec: spec, plan: plan) }
-      }
+      DirectoryRoot { path: _ } => []
       TreePublication => emit_release_member_effects(member: member, plan: plan, spec: spec)
       Executable => emit_release_member_effects(member: member, plan: plan, spec: spec)
       UnitFile => emit_release_member_effects(member: member, plan: plan, spec: spec)
@@ -3248,7 +3252,10 @@ fn apply_intent_from_effects(
     steps: concat(
       deploy_apply_frame_steps(spec: spec),
       concat(
-        deploy_apply_preamble_steps(access: access, spec: spec),
+        concat(
+          deploy_apply_preamble_steps(access: access, spec: spec),
+          owned_directory_apply_steps(spec: spec, plan: plan),
+        ),
         concat(
           deploy_memory_cap_apply_steps(spec: spec, authorization: cap_authorization),
           concat(
