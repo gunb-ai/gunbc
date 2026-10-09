@@ -8,7 +8,7 @@ import v2.compiler.resolve { LexicalBinding, LexicalUntyped, ResolvedTree }
 import v2.std.symbol_index { empty_symbol_index }
 import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_type_atom_node }
 import v2.std.arrow_signature { anonymous_signature_arrow, declared_signature }
-import v2.std.diagnostic { Accepted, Diagnostic, Rejected, diagnostics_has_reason }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_has_reason }
 import v2.std.collection { List, empty_map, map_insert }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node {
@@ -30,7 +30,6 @@ import v2.std.node {
 import v2.std.node_query { binder_edge }
 import v2.std.qualified_name { lexical_reference_node }
 import v2.std.type_binder { type_binder_set_children }
-import std.algebra { Cons, Empty }
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.types { Bool }
@@ -72,11 +71,11 @@ fn lef_lambda() -> Node {
   )
 }
 
-fn lef_fn_t_to_t() -> Node {
+fn lef_fn_t_to_u() -> Node {
   anonymous_signature_arrow(
     domain_types: [dag_type_atom_node(identity: ^T)],
-    codomain: dag_type_atom_node(identity: ^T),
-    source: dag_type_atom_node(identity: ^T)
+    codomain: dag_type_atom_node(identity: ^U),
+    source: dag_type_atom_node(identity: ^U)
   )
 }
 
@@ -96,7 +95,10 @@ fn lef_poly_arrow(formals: List<Edge>) -> Node {
         target: node_synthetic(
           kind: TypeNode { connective: Conj },
           children: type_binder_set_children(
-            binders: [Edge { label: Authored { name: ^T }, target: dag_type_atom_node(identity: ^T) }],
+            binders: [
+              Edge { label: Authored { name: ^T }, target: dag_type_atom_node(identity: ^T) },
+              Edge { label: Authored { name: ^U }, target: dag_type_atom_node(identity: ^U) }
+            ],
             source: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
           )
         )
@@ -109,7 +111,7 @@ fn lef_after_arrow() -> Node {
   lef_poly_arrow(
     formals: [
       tpb_formal(name: ^x, declared: ^T),
-      binder_edge(name: ^f, type_node: lef_fn_t_to_t())
+      binder_edge(name: ^f, type_node: lef_fn_t_to_u())
     ]
   )
 }
@@ -117,7 +119,7 @@ fn lef_after_arrow() -> Node {
 fn lef_before_arrow() -> Node {
   lef_poly_arrow(
     formals: [
-      binder_edge(name: ^f, type_node: lef_fn_t_to_t()),
+      binder_edge(name: ^f, type_node: lef_fn_t_to_u()),
       tpb_formal(name: ^x, declared: ^T)
     ]
   )
@@ -137,20 +139,6 @@ fn lef_lambda_tree(root: Node) -> ResolvedTree {
       }
     ),
     unavailable_providers: []
-  }
-}
-
-fn lef_infer_terminal(tree: ResolvedTree) -> Symbol {
-  match infer(tree: tree) {
-    Rejected { diagnostics: r } => lef_last_reason(xs: r.tail, last: r.head.reason)
-    Accepted { value: _, diagnostics: _ } => ^infers
-  }
-}
-
-fn lef_last_reason(xs: List<Diagnostic>, last: Symbol) -> Symbol {
-  match xs {
-    Empty => last
-    Cons { head: h, tail: t } => lef_last_reason(xs: t, last: h.reason)
   }
 }
 
@@ -239,13 +227,6 @@ test fn lef_repeated_actual_second_formal_is_judged_holds() -> Bool {
   ) {
     Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
-  }
-}
-
-fn lef_lambda_then_value_terminal_reason() -> Bool {
-  match infer(tree: lef_lambda_then_value_tree()) {
-    Rejected { diagnostics: r } => lef_last_reason(xs: r.tail, last: r.head.reason) == ^inhabitance_undecidable_generic_formal
-    Accepted { value: _, diagnostics: d } => diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_generic_formal)
   }
 }
 

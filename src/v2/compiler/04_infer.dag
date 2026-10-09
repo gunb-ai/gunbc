@@ -2091,6 +2091,32 @@ fn infer_declared_type_mentions_free_formal(declared: Node, instances: List<Type
   }
 }
 
+fn infer_type_mentions_unfixed_param(
+  declared: Node,
+  instances: List<TypeVariableInstance>,
+  type_params: List<Symbol>
+) -> Bool {
+  match declared.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      fold(type_params, init: false, f: fn(acc, p) {
+        acc || ((p == id) && match type_variable_instance_lookup(instances: instances, binder: id) {
+          Present { value: _ } => false
+          Absent => true
+        })
+      })
+    TypeNode { connective: _ } =>
+      any(
+        xs: node_positional_child_targets(node: declared),
+        predicate: fn(c) { infer_type_mentions_unfixed_param(declared: c, instances: instances, type_params: type_params) }
+      )
+    ComputationNode { behavior: _ } =>
+      any(
+        xs: node_positional_child_targets(node: declared),
+        predicate: fn(c) { infer_type_mentions_unfixed_param(declared: c, instances: instances, type_params: type_params) }
+      )
+  }
+}
+
 // Substitution descends through the arguments: a compound declared type
 // (`Box<T>`, `FreeMonoid<T>`) is not held with a formal riding inside it -- an argument no
 // instance binds leaves the whole declared type unheld, and the read falls through to the facts
@@ -5907,28 +5933,6 @@ type InferGatherApplicationExtend {
   pairs: Optional<List<InhabitanceFormalArg>>
 }
 
-type InferFormalArgAtAcc {
-  i: Int
-  index: Int
-  found: Optional<InhabitanceFormalArg>
-}
-
-fn infer_formal_arg_at_step(acc: InferFormalArgAtAcc, pair: InhabitanceFormalArg) -> InferFormalArgAtAcc {
-  if acc.i == acc.index {
-    InferFormalArgAtAcc { i: acc.i + 1, index: acc.index, found: optional_present(value: pair) }
-  } else {
-    InferFormalArgAtAcc { i: acc.i + 1, index: acc.index, found: acc.found }
-  }
-}
-
-fn infer_formal_arg_at(xs: List<InhabitanceFormalArg>, index: Int) -> Optional<InhabitanceFormalArg> {
-  fold(
-    xs,
-    init: InferFormalArgAtAcc { i: 0, index: index, found: optional_absent() },
-    f: infer_formal_arg_at_step
-  ).found
-}
-
 fn infer_gather_extend_kept(acc: InferGatherFoldAcc) -> InferGatherApplicationExtend {
   InferGatherApplicationExtend { instances: acc.application_instances, pairs: acc.application_pairs }
 }
@@ -5986,7 +5990,7 @@ fn infer_gather_extend_application_instances(
           Absent =>
             infer_gather_extend_kept_outcome(acc: acc)
           Present { value: pairs } =>
-            match infer_formal_arg_at(xs: pairs, index: idx) {
+            match list_at_optional(xs: pairs, index: idx) {
               Absent =>
                 outcome_rejected(infer_application_actual_pair_missing_diagnostic(actual: edge.target))
               Present { value: pair } =>
@@ -7216,7 +7220,8 @@ fn infer_application_actual_child_frame(parent: Node, frame: InferFrame, acc: In
               actual: edge.target,
               instances: acc.application_instances,
               pairs: acc.application_pairs,
-              idx: idx
+              idx: idx,
+              type_params: infer_application_type_params(node: parent, entries: acc.entries)
             ) {
               Absent => frame.binder_types
               Present { value: rows } => infer_append_binder_types(xs: frame.binder_types, ys: rows)
@@ -7231,7 +7236,8 @@ fn infer_application_lambda_expected_binder_types(
   actual: Node,
   instances: List<TypeVariableInstance>,
   pairs: Optional<List<InhabitanceFormalArg>>,
-  idx: Int
+  idx: Int,
+  type_params: List<Symbol>
 ) -> Optional<List<InferBinderType>> {
   match infer_operator_arrow(operator: actual) {
     Absent => optional_absent()
@@ -7239,7 +7245,7 @@ fn infer_application_lambda_expected_binder_types(
       match pairs {
         Absent => optional_absent()
         Present { value: ps } =>
-          match infer_formal_arg_at(xs: ps, index: idx) {
+          match list_at_optional(xs: ps, index: idx) {
             Absent => optional_absent()
             Present { value: pair } =>
               match infer_operand_declared_type_instantiated(
@@ -7248,10 +7254,27 @@ fn infer_application_lambda_expected_binder_types(
               ) {
                 Absent => optional_absent()
                 Present { value: expected } =>
-                  if infer_declared_type_mentions_free_formal(declared: expected, instances: instances) {
-                    optional_absent()
-                  } else {
-                    infer_lambda_domain_binder_types(lambda: lambda, expected: expected)
+                  match infer_operator_arrow(operator: expected) {
+                    Absent => optional_absent()
+                    Present { value: _ } =>
+                      match infer_expected_domain_types(expected: expected) {
+                        Absent => optional_absent()
+                        Present { value: types } =>
+                          if any(
+                            xs: types,
+                            predicate: fn(t) {
+                              infer_type_mentions_unfixed_param(
+                                declared: t,
+                                instances: instances,
+                                type_params: type_params
+                              )
+                            }
+                          ) {
+                            optional_absent()
+                          } else {
+                            infer_lambda_domain_binder_types(lambda: lambda, expected: expected)
+                          }
+                      }
                   }
               }
           }
@@ -7286,7 +7309,12 @@ fn infer_binder_types_from_domain(lambda: Node, types: List<Node>) -> List<Infer
 // binder at the Arrow (v2.compiler.resolve arrow_domain_frame_binders); infer_payload_binder_derived_type
 // returns the first site match. Mapping fn(a, b) onto fn(Int, String) -> … would type both as Int.
 // Until resolve gives distinct sites, n != 1 stays untyped (DESIGN §5).
+// The expected type must itself be an Arrow: infer_expected_domain_types peels Atom/Conj as
+// domain members, which is right after an Arrow peel and fabricated if the formal is T/Int.
 fn infer_lambda_domain_binder_types(lambda: Node, expected: Node) -> Optional<List<InferBinderType>> {
+  match infer_operator_arrow(operator: expected) {
+    Absent => optional_absent()
+    Present { value: _ } =>
   match list_at_optional(xs: node_positional_child_targets(node: lambda), index: 0) {
     Absent => optional_absent()
     Present { value: domain } =>
@@ -7308,6 +7336,7 @@ fn infer_lambda_domain_binder_types(lambda: Node, expected: Node) -> Optional<Li
           }
       }
   }
+    }
 }
 
 fn infer_lambda_domain_binder_count(domain: Node) -> Optional<Int> {
