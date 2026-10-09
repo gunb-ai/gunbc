@@ -2499,23 +2499,11 @@ fn eval_interpret_node(
             Present { value: projection } =>
               eval_field_projection(node: node, projection: projection, args: args)
             Absent =>
-              match eval_constant_member_body(node: node, facts: facts) {
-                Present { value: body } =>
-                  eval_constant_member_value(
-                    body: body,
-                    tree: tree,
-                    interpretation: interpretation,
-                    environment: environment,
-                    runtime: runtime,
-                    effect_io: effect_io
-                  )
-                Absent =>
-                  eval_type_node_atom(
-                    node: node,
-                    interpretation: interpretation,
-                    environment: environment
-                  )
-              }
+              eval_type_node_atom(
+                node: node,
+                interpretation: interpretation,
+                environment: environment
+              )
           }
       }
     }
@@ -2922,6 +2910,53 @@ fn eval_fold_child_edge_step(
 }
 
 fn eval_fold_tree(
+  n: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> EvalFoldState {
+  match eval_constant_reference_body(tree: tree, node: n) {
+    Present { value: body } =>
+      eval_fold_constant_reference_state(node: n, body: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+    Absent => eval_fold_tree_walk(n: n, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+  }
+}
+
+// A REFERENCE TO A `data` CONSTANT IS A LEAF OF THE WALK, AS A PARAMETER REFERENCE IS (eval_runtime_node's
+// first arm). Its only child is its declaring path spine, which is identity data built at
+// OccurrenceSynthetic with no facts entry of its own, so descending into it refused with
+// infer_facts_lookup_miss on the spine before the reference was ever valued. The leaf's value is the
+// constant's, through eval_constant_member_value; its structural check is the reference's own facts.
+fn eval_fold_constant_reference_state(
+  node: Node,
+  body: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> EvalFoldState {
+  EvalFoldState {
+    node: node,
+    progress: Interpreted,
+    structural: eval_structural_node_for_eval(tree: tree, node: node),
+    child_values: Accepted { value: empty_runtime_values(), diagnostics: None },
+    value: eval_constant_member_value(body: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+  }
+}
+
+// The constant body a node names when it is a declaration reference whose facts record a marked
+// declaration, Absent for every other node (so every other node keeps the ordinary walk).
+fn eval_constant_reference_body(tree: InferredTree, node: Node) -> Optional<Node> {
+  match tree.facts.lookup(node) {
+    Absent => Absent
+    Present { value: facts } => eval_constant_member_body(node: node, facts: facts)
+  }
+}
+
+fn eval_fold_tree_walk(
   n: Node,
   tree: InferredTree,
   interpretation: InterpretationAlgebra,
