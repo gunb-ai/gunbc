@@ -23,7 +23,7 @@ import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.host_layout { srv1_gunbc_repo_root, instance_receipts_dir }
 import gunbc.actions_run_binding {
   ActionsRunBinding, observe_actions_run_binding, ActionsRunBound, ActionsRunUnbound,
-  read_expected_revision, ExpectedRevisionPresent, ExpectedRevisionAbsent,
+  read_expected_revision, ExpectedRevisionPresent, ExpectedRevisionAbsent, ExpectedRevisionMalformed,
   admit_run_revision, RunRevisionAdmitted, RunRevisionRefused,
   actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent,
   run_binding_names_workflow_file,
@@ -421,6 +421,8 @@ fn rlm_launch_deployment_receipt_wet() -> ProcessExit
       match read_expected_revision() {
         ExpectedRevisionAbsent { variable: v, detail: d } =>
           exit_failure(reason: join(["rlm_launch_deployment_receipt: ExpectedRevisionAbsent — ", v, " ", d], ""))
+        ExpectedRevisionMalformed { variable: v, value: r } =>
+          exit_failure(reason: join(["rlm_launch_deployment_receipt: ExpectedRevisionMalformed — ", v, " is not a 40-digit lower-hex revision: ", r], ""))
         ExpectedRevisionPresent { revision: expected } =>
           match admit_run_revision(binding: run, expected: expected) {
             RunRevisionRefused { expected: e, observed: o } =>

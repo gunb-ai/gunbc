@@ -22,7 +22,7 @@ import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
 import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.actions_run_binding {
   actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name,
-  read_expected_revision, ExpectedRevisionPresent, ExpectedRevisionAbsent,
+  read_expected_revision, ExpectedRevisionPresent, ExpectedRevisionAbsent, ExpectedRevisionMalformed,
 }
 import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
@@ -170,6 +170,7 @@ fn approval_device_enrolment_code_issue_wet() -> CliWireResponse
         ExitSuccess =>
           match read_expected_revision() {
             ExpectedRevisionAbsent { variable: v, detail: d } => CliWireUnprintable { cause: ("approval device enrolment code: " + v + " " + d + "; the release to run is named by the dispatch") as NonEmptyStr }
+            ExpectedRevisionMalformed { variable: v, value: r } => CliWireUnprintable { cause: ("approval device enrolment code: " + v + " is not a 40-digit lower-hex revision: " + r + "; the release to run is named by the dispatch") as NonEmptyStr }
             ExpectedRevisionPresent { revision: rev } => enrolment_code_issue_remote(revision: RevisionBoundAtEmission { revision: rev as CommitSha })
           }
         ExitFailure { code: _, reason: why } => CliWireUnprintable { cause: why as NonEmptyStr }

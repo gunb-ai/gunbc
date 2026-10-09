@@ -57,10 +57,18 @@ fn claim_pins_admit(pins: List<OidcClaimPin>, claims: List<OidcClaimPin>) -> Boo
   filter(pins, p => !claim_satisfies_pin(claims: claims, pin: p)).length() == 0
 }
 
-// THE FLEET-CONVERGE WORKFLOW FILE ON ANY BRANCH. GitHub's `workflow_ref` is
+// THE FLEET-CONVERGE WORKFLOW FILE ON ANY HEADS REF. GitHub's `workflow_ref` is
 // `<owner/repo>/<path>@<git-ref>`. The prefix stops at `@refs/heads/` so a tag dispatch and a
 // pull-merge ref are refused, and a session-branch dispatch is admitted. The separate `ref ==
 // refs/heads/main` pin is gone: it was the same branch lock written twice.
+//
+// MINTED REACH (operator 2026-10-09; §3d selection re-run, not a second pool): still
+// FederatedScopedGrant — recurring automated effect, workload identity, per-secret cell, this
+// workflow file, workflow_dispatch only. Reach is any heads dispatch of that file, not reviewed
+// main bytes. The YAML on the branch is the run's workflow; the path pin does not pin main's
+// contents. Pull_request stays refused. Who may press Dispatch is GitHub's repo dispatch
+// permission, not WIF. A second federation for "branch vs main" would be two authorities for one
+// account. Live GCP still holds the old main pin until gcp_iam_converge after this parses.
 fn fleet_converge_workflow_ref_heads_prefix() -> String {
   join([
     gunbc_repository.full_name as String, "/",

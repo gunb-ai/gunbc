@@ -2353,7 +2353,7 @@ test fn locked_apply_runs_the_guard_as_the_lease_owner_for_any_invoker() -> Bool
 }
 
 
-// Empty requirement admits the observed branch (dev-branch deploy). A named requirement still
+// Operator 2026-10-09: empty requirement admits the observed branch. A named requirement still
 // has to match. An empty checkout never admits.
 test fn deploy_branch_policy_admits_any_observed_branch_when_unconstrained() -> Bool {
   fleet_converge_deploy_branch_admits(observed: "main", required: "main")
