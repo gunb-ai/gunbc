@@ -920,36 +920,46 @@ data vfp_formal_gate_concrete_src: String = "module p\n\ntype Out = Acc { value:
 
 data vfp_formal_unbound_src: String = "module p\n\ntype Out<T> = Acc { value: T } | Rej\n\nfn read<T>(x: Out<T>) -> Int {\n  match x {\n    Acc { value: v } => 0\n    Rej => 0\n  }\n}"
 
+data vfp_formal_wildcard_src: String = "module p\n\ntype Out<T> = Acc { value: T } | Rej\n\nfn read<T>(x: Out<T>) -> Int {\n  match x {\n    Acc { value: _ } => 0\n    Rej => 0\n  }\n}"
+
 fn vfp_formal_gate_reading() -> VfpReading { vfp_reading(src: vfp_formal_gate_src) }
 
 fn vfp_formal_gate_concrete_reading() -> VfpReading { vfp_reading(src: vfp_formal_gate_concrete_src) }
 
 fn vfp_formal_unbound_reading() -> VfpReading { vfp_reading(src: vfp_formal_unbound_src) }
 
-type VfpFormalGateTriple {
+fn vfp_formal_wildcard_reading() -> VfpReading { vfp_reading(src: vfp_formal_wildcard_src) }
+
+type VfpFormalGateQuad {
   formal: VfpReading
   concrete: VfpReading
   unbound: VfpReading
+  wildcard: VfpReading
 }
 
-fn vfp_formal_gate_triple() -> VfpFormalGateTriple {
-  VfpFormalGateTriple {
+fn vfp_formal_gate_quad() -> VfpFormalGateQuad {
+  VfpFormalGateQuad {
     formal: vfp_formal_gate_reading(),
     concrete: vfp_formal_gate_concrete_reading(),
-    unbound: vfp_formal_unbound_reading()
+    unbound: vfp_formal_unbound_reading(),
+    wildcard: vfp_formal_wildcard_reading()
   }
 }
 
 test fn vfp_the_formal_payload_binder_instantiates_from_the_scrutinee_holds() -> Bool {
-  vfp_infers(reading: vfp_formal_gate_triple().formal)
+  vfp_infers(reading: vfp_formal_gate_quad().formal)
 }
 
 test fn vfp_the_concrete_payload_sibling_still_prepares_holds() -> Bool {
-  vfp_infers(reading: vfp_formal_gate_triple().concrete)
+  vfp_infers(reading: vfp_formal_gate_quad().concrete)
 }
 
 test fn vfp_the_unbound_formal_payload_binder_refuses_at_infer_holds() -> Bool {
-  vfp_formal_gate_triple().unbound.match_fact == ^infer_reason_pattern_payload_formal_uninstantiated
+  vfp_formal_gate_quad().unbound.match_fact == ^infer_reason_pattern_payload_formal_uninstantiated
+}
+
+test fn vfp_the_unbound_formal_wildcard_field_still_infers_holds() -> Bool {
+  vfp_infers(reading: vfp_formal_gate_quad().wildcard)
 }
 
 // THE N7 SHAPE: Outcome<T>-shaped reconstruct — a payload binder consumed as a construct field

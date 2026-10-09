@@ -71,7 +71,7 @@ import std.optional {
   optional_present
 }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_last_segment, qualified_name_to_dotted_string }
-import v2.std.node_query { BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child }
+import v2.std.node_query { BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child, is_wildcard_pattern }
 import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_member_formal }
@@ -6884,6 +6884,9 @@ fn infer_match_arm_binder_types(arm: Node, coproduct: InferMatchCoproduct) -> In
                       Positional => acc
                       StructuralLabel { label: _ } => acc
                       Authored { name: field } =>
+                        if is_wildcard_pattern(pattern: e.target) {
+                          acc
+                        } else {
                         match infer_conj_named_type_for_binding(domain: payload, binding: field) {
                           Absent => acc
                           Present { value: field_type } =>
@@ -6906,6 +6909,7 @@ fn infer_match_arm_binder_types(arm: Node, coproduct: InferMatchCoproduct) -> In
                                   }
                                 }
                             }
+                        }
                         }
                     }
                 }
