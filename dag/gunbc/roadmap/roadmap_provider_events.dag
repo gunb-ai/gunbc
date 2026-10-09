@@ -33,6 +33,7 @@ import extdeps.llm.claude_code_stream_json {
   ClaudeCodeUserLine,
   ClaudeCodeOtherLine,
   ClaudeCodeLineUnreadable,
+  claude_code_stream_line,
 }
 
 // THE HARNESS ARMS ARE THE READ SIDE OF gunbc.harness.harness_tool_kind. A harness tool use is
@@ -170,7 +171,11 @@ data codex_provider_event_projection_filter: NonEmptyStr = join([
   to_string(character_count_value(c: codex_provider_projection_message_budget)),
   "]),\"truncated\":((.item.text | length) > ",
   to_string(character_count_value(c: codex_provider_projection_message_budget)),
-  ")} else null end; (event_type) as $type | if $type == \"item.started\" or $type == \"item.completed\" then (if item_type == \"agent_message\" and (agent_report != null) then {\"type\":$type,\"item\":{\"type\":item_type,\"message\":agent_report}} else {\"type\":$type,\"item\":{\"type\":item_type}} end) elif $type == \"turn.failed\" then {\"type\":$type,\"error\":{\"message\":(.error | bounded_text)}} elif $type == \"turn.budget_exhausted\" then {\"type\":$type,\"steps_taken\":(.steps_taken | num)} elif $type == \"turn.placement_waiting\" then {\"type\":$type,\"wait\":(.wait | num),\"wait_cap\":(.wait_cap | num),\"reason\":(.reason | bounded_text)} elif $type == \"error\" then {\"type\":$type,\"message\":((.message // .error) | bounded_text)} elif $type == \"round.usage\" then ({\"type\":$type,\"step\":(.step | num),\"input_tokens\":(.input_tokens | num),\"output_tokens\":(.output_tokens | num),\"epoch_ms\":(.epoch_ms | num)} + (if (.files_changed | type) == \"number\" then {\"files_changed\":.files_changed} else {} end) + (if (.tool_calls | type) == \"number\" then {\"tool_calls\":.tool_calls} else {} end)) elif $type == \"result\" then (if .is_error == true then {\"type\":\"turn.failed\",\"error\":{\"message\":((.result // .) | bounded_text)}} else {\"type\":\"turn.completed\"} end) elif $type == \"system\" then {\"type\":\"thread.started\"} elif $type == \"assistant\" then (if (.message.content | type) == \"array\" and (any(.message.content[]; (.type | type) == \"string\" and .type == \"tool_use\")) then {\"type\":\"item.started\",\"item\":{\"type\":\"command_execution\"}} else {\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\"}} end) elif $type == \"user\" then (if (.message.content | type) == \"array\" and (any(.message.content[]; (.type | type) == \"string\" and .type == \"tool_result\")) then {\"type\":\"item.completed\",\"item\":{\"type\":\"command_execution\"}} else empty end) elif $type == \"rate_limit_event\" then empty else {\"type\":$type} end",
+  ")} else null end; (event_type) as $type | if $type == \"item.started\" or $type == \"item.completed\" then (if item_type == \"agent_message\" and (agent_report != null) then {\"type\":$type,\"item\":{\"type\":item_type,\"message\":agent_report}} else {\"type\":$type,\"item\":{\"type\":item_type}} end) elif $type == \"turn.failed\" then {\"type\":$type,\"error\":{\"message\":(.error | bounded_text)}} elif $type == \"turn.budget_exhausted\" then {\"type\":$type,\"steps_taken\":(.steps_taken | num)} elif $type == \"turn.placement_waiting\" then {\"type\":$type,\"wait\":(.wait | num),\"wait_cap\":(.wait_cap | num),\"reason\":(.reason | bounded_text)} elif $type == \"error\" then {\"type\":$type,\"message\":((.message // .error) | bounded_text)} elif $type == \"round.usage\" then ({\"type\":$type,\"step\":(.step | num),\"input_tokens\":(.input_tokens | num),\"output_tokens\":(.output_tokens | num),\"epoch_ms\":(.epoch_ms | num)} + (if (.files_changed | type) == \"number\" then {\"files_changed\":.files_changed} else {} end) + (if (.tool_calls | type) == \"number\" then {\"tool_calls\":.tool_calls} else {} end)) elif $type == \"result\" then {\"type\":$type,\"subtype\":(if (.subtype | type) == \"string\" then .subtype[0:",
+  to_string(character_count_value(c: codex_provider_projection_type_budget)),
+  "] else \"unknown\" end),\"is_error\":(if (.is_error | type) == \"boolean\" then .is_error else true end)} elif $type == \"system\" then {\"type\":$type} elif $type == \"assistant\" or $type == \"user\" then {\"type\":$type,\"message\":{\"content\":(if (.message.content | type) == \"array\" then [.message.content[] | {\"type\":(if (.type | type) == \"string\" then .type[0:",
+  to_string(character_count_value(c: codex_provider_projection_type_budget)),
+  "] else \"unknown\" end)}] else [] end)}} elif $type == \"rate_limit_event\" then empty else {\"type\":$type} end",
 ], "") as NonEmptyStr
 
 fn codex_provider_event_projection_args(path: FilePath) -> List<String> {
@@ -180,10 +185,6 @@ fn codex_provider_event_projection_args(path: FilePath) -> List<String> {
     codex_provider_event_projection_filter as String,
     path as String,
   ]
-}
-
-fn claude_provider_event_projection_args(path: FilePath) -> List<String> {
-  codex_provider_event_projection_args(path: path)
 }
 
 fn claude_code_line_codex_kind(line: ClaudeCodeStreamLine) -> CodexProviderEventKind? {
@@ -224,7 +225,7 @@ fn claude_code_line_codex_kind(line: ClaudeCodeStreamLine) -> CodexProviderEvent
 // visible as an observation refusal for retained attempts. A malformed raw event makes jq nonzero,
 // so no parsed prefix is accepted as a complete observation.
 
-data codex_projection_filter_scaffold_note: String = "DECLARED SCAFFOLD (review 44058, DESIGN 6). codex_provider_event_projection_filter is a jq PROGRAM assembled by join — a foreign language built as a string, the same class the tmux pipe payload was in before it moved onto the bash backend (gunbc.dispatch_pipe_pane_emit). It is marked rather than fixed because the two available routes are not equivalent: minting a jq grammar to read backward would buy a modeled emitter for a filter that exists ONLY to bound a line before the substrate reads it, which is the purity trap DESIGN 6 names — the displaced cost is zero once the read itself is bounded. DISSOLVES ON: the observation reading the attempt JSONL directly under a substrate-side line bound instead of shelling to a projector — the witness-realization lane's typed file read (docs/plans/witness-realization-plan.md), at which point BOTH the filter string and the ProviderEventProjectionCapability jq dependency delete together. Until then the interpolated values are the two bounds above (both Int data rows), never caller input, and the classifier downstream is anchored and total, so a projector drift refuses rather than reclassifying. Claude Code stream-json (system, assistant tool_use, user tool_result, result, rate_limit_event) is mapped into the same Codex envelope here because the belt observes one events file with no provider discriminator; claude_code_line_codex_kind is the typed authority for that mapping and the jq is its projector."
+data codex_projection_filter_scaffold_note: String = "DECLARED SCAFFOLD (review 44058, DESIGN 6). codex_provider_event_projection_filter is a jq PROGRAM assembled by join — a foreign language built as a string, the same class the tmux pipe payload was in before it moved onto the bash backend (gunbc.dispatch_pipe_pane_emit). It is marked rather than fixed because the two available routes are not equivalent: minting a jq grammar to read backward would buy a modeled emitter for a filter that exists ONLY to bound a line before the substrate reads it, which is the purity trap DESIGN 6 names — the displaced cost is zero once the read itself is bounded. DISSOLVES ON: the observation reading the attempt JSONL directly under a substrate-side line bound instead of shelling to a projector — the witness-realization lane's typed file read (docs/plans/witness-realization-plan.md), at which point BOTH the filter string and the ProviderEventProjectionCapability jq dependency delete together. Until then the interpolated values are the two bounds above (both Int data rows), never caller input, and the classifier downstream is anchored and total, so a projector drift refuses rather than reclassifying. Claude Code stream-json is bounded here (type, is_error, content-block types) and classified by claude_code_line_codex_kind from parse_codex_jsonl; the jq does not mint Codex event types for Claude lines."
 
 // Codex --json is the provider protocol authority: one JSON object per line with thread.started,
 // turn.started, item.*, turn.completed, turn.budget_exhausted, turn.failed, and error event types,
@@ -508,7 +509,15 @@ fn codex_event_from_complete_line(
       kind: CodexError,
     } }
   } else {
-    none
+    match claude_code_line_codex_kind(line: claude_code_stream_line(line: raw)) {
+      Present { value: kind } =>
+        Present { value: CodexProviderEvent {
+          line_number: line_number,
+          raw: raw,
+          kind: kind,
+        } }
+      Absent => none
+    }
   }
 }
 

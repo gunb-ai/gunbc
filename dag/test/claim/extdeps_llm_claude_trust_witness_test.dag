@@ -87,6 +87,7 @@ test fn w_print_argv_is_stream_json_headless() -> Bool {
     start_prompt: "go",
     permission_args: ["--dangerously-skip-permissions"],
     model: ProviderAccountDefaultModel,
+    effort: ReasoningHigh,
     turn_bound: ClaudePrintMaxTurns { turns: 1 },
   )
   let wire = join(argv, separator: "\0")
@@ -96,6 +97,7 @@ test fn w_print_argv_is_stream_json_headless() -> Bool {
   }
     && string_contains(s: wire, pattern: "\0-p\0--output-format\0stream-json\0--verbose")
     && string_contains(s: wire, pattern: "\0--max-turns\01\0")
+    && string_contains(s: wire, pattern: "\0--effort\0high\0")
     && string_contains(s: wire, pattern: "\0--append-system-prompt\0brief\0")
     && string_contains(s: wire, pattern: "\0--dangerously-skip-permissions\0go")
     && !string_contains(s: wire, pattern: "--session-id")
@@ -104,6 +106,7 @@ test fn w_print_argv_is_stream_json_headless() -> Bool {
       start_prompt: "go",
       permission_args: [],
       model: ProviderAccountDefaultModel,
+      effort: ReasoningHigh,
       turn_bound: ClaudePrintUnboundedTurns,
     ), separator: "\0"), pattern: "--max-turns")
 }

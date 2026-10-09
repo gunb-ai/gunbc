@@ -476,15 +476,11 @@ fn dispatch_actuator_selection_for_provider_on(
 // per-window usage limits) does not admit the draw, refuses typed, and is never replaced by the
 // harness. Absence of a request is ExecutorDefault, never a vendor.
 //
-// AUTOMATIC RANKING BETWEEN HARNESS AND VENDOR REMAINS A FRONTIER (std.decision select_realization
-// over funded axes: cost, usage-window headroom, latency, quality). That trigger is unchanged: a
-// grounded funded-axis policy once those readings exist for at least two providers.
-//
-// WHAT THIS FUNCTION DOES LIFT is not that ranking. ExecutorDefault still prefers a serving harness
-// route. When the harness has no enrolled serving route AND the Claude custody file is present on
-// this host, the default admits the same observed-Claude path an explicit `?executor=claude` already
-// takes. Absence of custody keeps the harness refusal. That is fail-closed admission of the only
-// remaining executing backend, not a Pareto choice among two live ones.
+// DECLARED FRONTIER, NOT CODE: automatic selection between the harness and a vendor is a std.decision
+// select_realization over funded axes (cost, usage-window headroom, latency, quality). Its trigger is
+// a grounded funded-axis policy once limit, latency and quality readings exist for at least two
+// providers; until then nothing here chooses on the operator's behalf. A harness refusal therefore
+// stays a refusal. Headless Claude is reached by `?executor=claude`, not by widening the default.
 type DispatchExecutorRequest
   = ExecutorDefault
   | ExecutorVendor { provider: DispatchCliProvider }
@@ -818,25 +814,7 @@ fn dispatch_actuator_selection_for_request(
   sizing_expectation: SizingProfileExpectation,
 ) -> DispatchActuatorSelection {
   match request {
-    ExecutorDefault =>
-      match dispatch_harness_selection() {
-        DispatchActuatorSelectionOk { provider, effort, model, process_fingerprint } =>
-          DispatchActuatorSelectionOk {
-            provider: provider,
-            effort: effort,
-            model: model,
-            process_fingerprint: process_fingerprint,
-          }
-        DispatchActuatorSelectionRefused { reason: harness_reason } =>
-          match claude_credential_custody_source() {
-            CredentialSnapshotTaken { path: _ } =>
-              dispatch_actuator_claude_selection_observed(
-                instance: instance, node_id: node_id, attempt_key: attempt_key, sizing_expectation: sizing_expectation,
-              )
-            CredentialSnapshotRefused { reason: _ } =>
-              DispatchActuatorSelectionRefused { reason: harness_reason }
-          }
-      }
+    ExecutorDefault => dispatch_actuator_selection(sizing_expectation: sizing_expectation)
     ExecutorVendor { provider } =>
       match provider {
         ClaudeCodeProvider =>
@@ -2377,6 +2355,7 @@ fn git_worktree_add_detached_argv_for_instance(
 }
 
 fn claude_spawn_argv(
+  effort: ReasoningEffort,
   model: ProviderModelSelection,
   brief: String,
 ) -> List<String> {
@@ -2385,6 +2364,7 @@ fn claude_spawn_argv(
     start_prompt: dispatch_claude_start_prompt,
     permission_args: dispatch_claude_permission_args,
     model: model,
+    effort: effort,
     turn_bound: ClaudePrintUnboundedTurns,
   )
 }
@@ -2521,6 +2501,7 @@ fn dispatch_provider_inner_argv(
         argv: concat(
           [env_path_resolved_program().invocation as String, "CLAUDE_CODE_NO_FLICKER=1"],
           claude_spawn_argv(
+            effort: effort,
             model: model,
             brief: brief,
           ),
@@ -2601,6 +2582,7 @@ fn dispatch_provider_inner_argv_for_instance(
             "CLAUDE_CODE_NO_FLICKER=1",
           ],
           claude_spawn_argv(
+            effort: effort,
             model: model,
             brief: brief,
           ),
