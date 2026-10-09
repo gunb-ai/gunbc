@@ -1,8 +1,9 @@
 module extdeps.llm.anthropic
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority, ExternalSubjectRef, CitedToAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.llm.prompt_prefix_cache { PromptPrefixCacheLifetime, TimedAfterLastUse }
 import extdeps.llm.anthropic_contracts { wire_contract }
 import extdeps.llm.anthropic_messages_api {
   MessagesApiImplementation,
@@ -62,4 +63,23 @@ data anthropic_messages_api_conformance: MessagesApiImplementation = MessagesApi
       locator: "docs.anthropic.com/en/api/versioning"
     }
   }
+}
+
+// Prompt-prefix cache, from docs.anthropic.com/en/docs/build-with-claude/prompt-caching
+// (read 2026-10-09): default 5-minute TTL, optional 1-hour ttl on cache_control.
+data anthropic_prompt_caching_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.anthropic.com/en/docs/build-with-claude/prompt-caching"
+  }
+}
+
+data anthropic_default_prompt_cache_ttl: PromptPrefixCacheLifetime = TimedAfterLastUse {
+  seconds: 300,
+  standing: CitedToAuthority { authority: anthropic_prompt_caching_authority },
+}
+
+data anthropic_extended_prompt_cache_ttl: PromptPrefixCacheLifetime = TimedAfterLastUse {
+  seconds: 3600,
+  standing: CitedToAuthority { authority: anthropic_prompt_caching_authority },
 }

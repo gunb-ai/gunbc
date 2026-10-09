@@ -5,9 +5,11 @@ import std.measure { token_count_value }
 import gunbc.serving.qwen_dusk_replica {
   dusk_magicdns_host, dusk_openai_compat_port, dusk_openai_compat_base_url, dusk_chat_completions_url,
   dusk_models_url, dusk_served_model_id, dusk_max_model_len, dusk_owned_by_observed,
-  dusk_auth_boundary_wire, dusk_gpu_concurrency_standing, dusk_occupancy_seats, dusk_replica_receipt_wire,
+  dusk_auth_boundary_wire, dusk_gpu_concurrency_standing, dusk_occupancy_seats, dusk_occupancy_standing,
+  dusk_prompt_prefix_cache_lifetime, dusk_replica_receipt_wire,
 }
 import extdeps.external_authority { TranscribedUncited, CitedToAuthority }
+import extdeps.llm.prompt_prefix_cache { EvictedByMemoryPressure, TimedAfterLastUse, Unpublished }
 import gunbc.harness.harness_reasoning_wire {
   Qwen38OnDusk, NemotronUltraFreeOnOpenRouter, DeepseekV4FlashOnVllm, Glm53FlashOnVllm,
   PlacedOnFleetSeat, LeasedFromHostedQuota, harness_unit_placement, harness_unit_model_id,
@@ -38,12 +40,22 @@ test fn dusk_auth_is_the_tailnet_and_not_a_secret() -> Bool {
     && dusk_replica_receipt_wire().contains("no API key")
 }
 
-test fn dusk_gpu_concurrency_is_unobserved_and_occupancy_is_not_a_measurement() -> Bool {
-  (match dusk_gpu_concurrency_standing {
-    TranscribedUncited { read_obligation: o } => (o as String).contains("GPU")
-    CitedToAuthority { authority: _ } => false
-  })
-    && dusk_occupancy_seats == 1
+test fn dusk_occupancy_is_operator_declared_four() -> Bool {
+  dusk_occupancy_seats == 4
+    && (match dusk_occupancy_standing {
+      TranscribedUncited { read_obligation: o } =>
+        (o as String).contains("operator-declared") && (o as String).contains("ninfer")
+      CitedToAuthority { authority: _ } => false
+    })
+    && (match dusk_gpu_concurrency_standing {
+      TranscribedUncited { read_obligation: o } => (o as String).contains("GPU")
+      CitedToAuthority { authority: _ } => false
+    })
+    && (match dusk_prompt_prefix_cache_lifetime {
+      EvictedByMemoryPressure { standing: _ } => true
+      TimedAfterLastUse { seconds: _, standing: _ } => false
+      Unpublished { standing: _ } => false
+    })
 }
 
 test fn dusk_is_a_fleet_seat_with_no_hosted_quota_route() -> Bool {

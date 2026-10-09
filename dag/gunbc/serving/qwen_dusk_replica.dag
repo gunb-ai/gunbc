@@ -5,6 +5,7 @@ import std.measure { TokenCount, token_count, token_count_value }
 import std.nat { Nat }
 import extdeps.uri { Uri, Http }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited }
+import extdeps.llm.prompt_prefix_cache { PromptPrefixCacheLifetime, EvictedByMemoryPressure }
 import product.capacity.event_chain { PartitionId }
 
 // An owned OpenAI-compatible replica on dusk-1, not an upstream with a published rate limit.
@@ -49,12 +50,22 @@ fn dusk_auth_boundary_wire() -> NonEmptyStr {
 }
 
 data dusk_gpu_concurrency_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "measure concurrent occupancy and GPU on the dusk-1 ninfer replica" as NonEmptyStr,
+  read_obligation: "measure GPU occupancy on the dusk-1 ninfer replica independently of request concurrency" as NonEmptyStr,
 }
 
-data dusk_occupancy_seats: Nat = 1
+data dusk_occupancy_seats: Nat = 4
 
-data dusk_occupancy_basis: NonEmptyStr = "fail-closed serialization of one seat while GPU concurrency is Unobserved; not a GPU measurement" as NonEmptyStr
+data dusk_occupancy_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "confirm 4 concurrent requests from the ninfer config on dusk-1 or a load probe; operator-declared 2026-10-09, not measured" as NonEmptyStr,
+}
+
+data dusk_occupancy_basis: NonEmptyStr = "operator-declared concurrent request capacity; not a measured GPU occupancy" as NonEmptyStr
+
+data dusk_prompt_prefix_cache_lifetime: PromptPrefixCacheLifetime = EvictedByMemoryPressure {
+  standing: TranscribedUncited {
+    read_obligation: "confirm ninfer prefix-cache eviction is under memory pressure with no timer, from engine config or a probe" as NonEmptyStr,
+  },
+}
 
 data dusk_seat_partition: PartitionId = "dusk-1.qwen3.8-27b" as PartitionId
 

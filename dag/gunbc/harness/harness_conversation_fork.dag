@@ -1,6 +1,6 @@
 module gunbc.harness.harness_conversation_fork
 
-import std.types { String, Int, Bool }
+import std.types { String, Int, Bool, EpochSecs }
 
 // THE FORK POINT: WHERE AN ATTEMPT LINEAGE COULD RESUME. A turn's conversation lives in memory
 // while it runs and is gone when the process exits; the fork point is the durable address of a
@@ -89,12 +89,15 @@ type KvPrefixResidency
 
 type KvPrefixResidencyObservation {
   serving_unit: String
+  account_wire: String
   model_identity: String
   tokenizer_identity: String
   chat_template_identity: String
   semantic_prompt_digest: String
   wire_digest: String
   standing: KvPrefixResidency
+  last_used_at: EpochSecs
+  warm_until: EpochSecs?
   observed_at: String
 }
 

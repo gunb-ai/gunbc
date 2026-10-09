@@ -1,8 +1,9 @@
 module extdeps.llm.openai
 
-import std.types { NonEmptyStr }
-import extdeps.external_authority { ExternalAuthority }
+import std.types { NonEmptyStr, Duration }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.llm.prompt_prefix_cache { PromptPrefixCacheLifetime, TimedAfterLastUse }
 import extdeps.llm.openai_contracts { openai_finish_reason_wire_contract }
 import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
 
@@ -374,3 +375,29 @@ type OpenAiResponses200Body {
   usage: OpenAiResponses200Usage
   service_tier: String?
 }
+
+// Prompt-prefix cache lifetimes, from developers.openai.com/api/docs/guides/prompt-caching
+// (read 2026-10-09). This is not one number: GPT-5.6 and later publish an exact 30-minute TTL
+// on prompt_cache_options.ttl; earlier models publish in_memory (typically 5-10 minutes inactive,
+// always cleared within one hour) and optional 24h extended retention. The harness trigger consumes
+// the eligibility window below, never a guessed hour.
+data openai_prompt_caching_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developers.openai.com/api/docs/guides/prompt-caching"
+  }
+}
+
+data openai_gpt56_and_later_prompt_cache_ttl: PromptPrefixCacheLifetime = TimedAfterLastUse {
+  seconds: 1800,
+  standing: CitedToAuthority { authority: openai_prompt_caching_authority },
+}
+
+data openai_earlier_in_memory_prompt_cache_ttl: PromptPrefixCacheLifetime = TimedAfterLastUse {
+  seconds: 300,
+  standing: CitedToAuthority { authority: openai_prompt_caching_authority },
+}
+
+data openai_earlier_in_memory_always_cleared_within: Duration = 3600
+
+data openai_earlier_extended_retention_ceiling: Duration = 86400

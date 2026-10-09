@@ -148,17 +148,21 @@ test fn only_resident_prefers_warm_and_unobserved_defaults_to_cold() -> Bool {
 test fn a_residency_observation_binds_the_identities_a_warm_location_must_match() -> Bool {
   let observed = KvPrefixResidencyObservation {
     serving_unit: "serving-a",
+    account_wire: "",
     model_identity: "deepseek-v4",
     tokenizer_identity: "tokenizer-v4",
     chat_template_identity: "template-v4",
     semantic_prompt_digest: "fnv1a64:sem",
     wire_digest: "fnv1a64:wire",
     standing: Unobserved,
+    last_used_at: 0,
+    warm_until: none,
     observed_at: "2026-09-30T00:00:00Z",
   }
   match observed.standing {
     Unobserved =>
       observed.serving_unit == "serving-a"
+        && observed.account_wire == ""
         && observed.model_identity == "deepseek-v4"
         && observed.tokenizer_identity == "tokenizer-v4"
         && observed.chat_template_identity == "template-v4"

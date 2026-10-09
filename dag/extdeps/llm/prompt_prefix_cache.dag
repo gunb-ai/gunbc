@@ -1,0 +1,35 @@
+module extdeps.llm.prompt_prefix_cache
+
+import std.types { Duration, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding }
+import extdeps.uri { Uri, Https }
+
+// AGNOSTIC SHAPE for a prompt-prefix cache lifetime. Each independently governed product fills a
+// row of this shape in its own module. This file enumerates no products, accounts, or engines.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "developers.openai.com/api/docs/guides/prompt-caching",
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.llm.prompt_prefix_cache",
+      decl_name: "PromptPrefixCacheLifetime",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// TimedAfterLastUse is a published eligibility window that refreshes when the prefix is reused.
+// Unpublished means the product's docs were read and carry no TTL -- a time-based trigger must
+// refuse to invent one. EvictedByMemoryPressure is an engine property with no timer.
+type PromptPrefixCacheLifetime
+  = TimedAfterLastUse { seconds: Duration, standing: CitedFigureStanding }
+  | Unpublished { standing: CitedFigureStanding }
+  | EvictedByMemoryPressure { standing: CitedFigureStanding }

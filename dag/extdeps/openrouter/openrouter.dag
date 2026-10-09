@@ -2,7 +2,8 @@ module extdeps.openrouter.openrouter
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
+import extdeps.llm.prompt_prefix_cache { PromptPrefixCacheLifetime, Unpublished }
 import extdeps.uri { Uri, Https }
 import extdeps.api_rate_limit { UpstreamRateLimit, PerMinute, PerDay }
 import extdeps.languages.json.emit { JsonValue, JsonObject, JsonNumber, JsonNull, JsonBool, JsonString, JsonArray }
@@ -59,6 +60,14 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // answers what the presented key may still spend. Both authenticate with `Authorization: Bearer <key>`,
 // and both are HTTPS -- there is no plain-http door.
 data openrouter_chat_completions_url: NonEmptyStr = "https://openrouter.ai/api/v1/chat/completions" as NonEmptyStr
+
+// The overview and limits pages (the citations this module already names) do not publish a
+// prompt-prefix cache TTL for free routes. Unpublished, not a guessed timer.
+data openrouter_prompt_prefix_cache_lifetime: PromptPrefixCacheLifetime = Unpublished {
+  standing: TranscribedUncited {
+    read_obligation: "cite a published OpenRouter prompt-prefix cache TTL for free routes before a time-based compaction trigger" as NonEmptyStr,
+  },
+}
 
 data openrouter_key_url: NonEmptyStr = "https://openrouter.ai/api/v1/key" as NonEmptyStr
 

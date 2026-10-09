@@ -1,0 +1,87 @@
+module gunbc.harness.harness_prompt_cache
+
+import std.types { String, Bool, EpochSecs, Duration, NonEmptyStr }
+import std.optional { Absent, Present }
+import extdeps.external_authority { TranscribedUncited }
+import extdeps.llm.prompt_prefix_cache {
+  PromptPrefixCacheLifetime, TimedAfterLastUse, Unpublished, EvictedByMemoryPressure,
+}
+import extdeps.openrouter.openrouter { openrouter_prompt_prefix_cache_lifetime }
+import gunbc.serving.qwen_dusk_replica { dusk_prompt_prefix_cache_lifetime }
+import gunbc.harness.harness_reasoning_wire {
+  HarnessServingUnit, DeepseekV4FlashOnVllm, Glm53FlashOnVllm, Qwen38OnDusk, NemotronUltraFreeOnOpenRouter,
+  harness_serving_unit_wire, harness_unit_model_id,
+}
+import gunbc.harness.harness_conversation_fork {
+  KvPrefixResidency, KvPrefixResidencyObservation, Unobserved,
+}
+
+// THE PREFIX-CACHE LOCATION is one fact: provider (serving unit), account, model, last use, and
+// warm-until derived from the unit's published lifetime. Rotation and compaction both read it.
+// TTL rows live in the provider's extdeps module; this module is harness policy over those rows.
+
+data vllm_prompt_prefix_cache_lifetime: PromptPrefixCacheLifetime = Unpublished {
+  standing: TranscribedUncited {
+    read_obligation: "cite a published vLLM prefix-cache TTL, or confirm memory-pressure eviction, before a time-based compaction trigger" as NonEmptyStr,
+  },
+}
+
+fn harness_prompt_cache_lifetime_for(unit: HarnessServingUnit) -> PromptPrefixCacheLifetime {
+  match unit {
+    Qwen38OnDusk => dusk_prompt_prefix_cache_lifetime
+    NemotronUltraFreeOnOpenRouter => openrouter_prompt_prefix_cache_lifetime
+    DeepseekV4FlashOnVllm => vllm_prompt_prefix_cache_lifetime
+    Glm53FlashOnVllm => vllm_prompt_prefix_cache_lifetime
+  }
+}
+
+fn harness_prompt_cache_account_wire(unit: HarnessServingUnit) -> String {
+  match unit {
+    NemotronUltraFreeOnOpenRouter => "openrouter"
+    Qwen38OnDusk => ""
+    DeepseekV4FlashOnVllm => ""
+    Glm53FlashOnVllm => ""
+  }
+}
+
+fn prompt_cache_warm_until(last_used: EpochSecs, lifetime: PromptPrefixCacheLifetime) -> EpochSecs? {
+  match lifetime {
+    TimedAfterLastUse { seconds: s, standing: _ } => Present { value: last_used + s }
+    Unpublished { standing: _ } => Absent
+    EvictedByMemoryPressure { standing: _ } => Absent
+  }
+}
+
+// Margin is harness policy, not an upstream TTL. Compact while the prefix is still eligible so
+// the summarizing call still reads a warm cache; after expiry the next turn pays a cold prefill.
+data harness_prompt_cache_compact_margin: Duration = 60
+
+fn prompt_cache_warm_compaction_due(now: EpochSecs, last_used: EpochSecs, lifetime: PromptPrefixCacheLifetime) -> Bool {
+  match prompt_cache_warm_until(last_used: last_used, lifetime: lifetime) {
+    Absent => false
+    Present { value: until } => now < until && now + harness_prompt_cache_compact_margin >= until
+  }
+}
+
+fn session_prompt_cache_location(
+  unit: HarnessServingUnit,
+  last_used: EpochSecs,
+  standing: KvPrefixResidency,
+) -> KvPrefixResidencyObservation {
+  KvPrefixResidencyObservation {
+    serving_unit: harness_serving_unit_wire(unit: unit) as String,
+    account_wire: harness_prompt_cache_account_wire(unit: unit),
+    model_identity: harness_unit_model_id(unit: unit) as String,
+    tokenizer_identity: "",
+    chat_template_identity: "",
+    semantic_prompt_digest: "",
+    wire_digest: "",
+    standing: standing,
+    last_used_at: last_used,
+    warm_until: prompt_cache_warm_until(
+      last_used: last_used,
+      lifetime: harness_prompt_cache_lifetime_for(unit: unit),
+    ),
+    observed_at: "",
+  }
+}

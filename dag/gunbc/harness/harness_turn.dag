@@ -1,7 +1,11 @@
 module gunbc.harness.harness_turn
 
-import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
+import std.types { String, Bool, Int, List, FilePath, NonEmptyStr, EpochSecs }
+import std.optional { Absent, Present }
 import std.measure { TokenCount, token_count_value, Second, second, second_count }
+import gunbc.harness.harness_prompt_cache {
+  harness_prompt_cache_lifetime_for, prompt_cache_warm_compaction_due,
+}
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.languages.json.emit {
   JsonValue, JsonKeyValue, JsonBool, json_kv, json_string, json_int, json_array, json_object, serialize_json,
@@ -265,6 +269,7 @@ type HarnessTurnConfig {
   environment: HarnessToolEnvironment
   completion: HarnessTurnCompletion
   backend_access: HarnessBackendAccess
+  prompt_cache_last_turn: EpochSecs?
 }
 
 // THE WINDOW THE HARNESS WORKS IN AND THE WINDOW THE ENGINE ADMITS ARE ONE NUMBER, and this field
@@ -1443,9 +1448,11 @@ fn harness_refusal_body_text(config: HarnessTurnConfig, body: String) -> String 
 // retained, compaction notice present, nothing near the window. A worker that repeatedly forgets
 // what it just learned is a plausible cause of the non-convergence this was meant to measure.
 //
-// So compaction now fires only when the backend's own counted input crosses a share of the budget.
-// Below that the history is kept whole, which is the right default when the window is three orders
-// of magnitude larger than the conversation. The share is three quarters: high enough that ordinary
+// So size-based compaction fires when the backend's own counted input crosses a share of the budget.
+// A second cause, cache-warm compaction, fires when the unit's published prefix-cache TTL is about
+// to expire: the summarizing call still reads a warm cache. No published TTL (OpenRouter free,
+// vLLM, dusk-1 memory-pressure eviction) means this cause does not fire -- size remains the only
+// trigger, never a guessed timer. The share is three quarters: high enough that ordinary
 // runs never compact, low enough that the drop happens before the context refusal rather than at it.
 data harness_compaction_input_share_numerator: Int = 3
 
@@ -1456,6 +1463,37 @@ data harness_retained_tool_rounds: Int = 24
 fn harness_compaction_due(input_tokens: TokenCount, budget: TokenCount) -> Bool {
   token_count_value(t: input_tokens) * harness_compaction_input_share_denominator
     >= token_count_value(t: budget) * harness_compaction_input_share_numerator
+}
+
+type HarnessCompactionCause
+  = CompactionNotDue
+  | CompactionByInputShare
+  | CompactionWhileCacheWarm
+
+fn harness_compaction_cause(
+  input_tokens: TokenCount,
+  budget: TokenCount,
+  unit: HarnessServingUnit,
+  last_turn: EpochSecs?,
+  now: EpochSecs,
+) -> HarnessCompactionCause {
+  if harness_compaction_due(input_tokens: input_tokens, budget: budget) {
+    CompactionByInputShare
+  } else {
+    match last_turn {
+      Absent => CompactionNotDue
+      Present { value: last } =>
+        if prompt_cache_warm_compaction_due(
+          now: now,
+          last_used: last,
+          lifetime: harness_prompt_cache_lifetime_for(unit: unit),
+        ) {
+          CompactionWhileCacheWarm
+        } else {
+          CompactionNotDue
+        }
+    }
+  }
 }
 
 fn harness_compaction_notice(shape: HarnessWireShape, dropped_rounds: Int) -> JsonValue {
@@ -1472,11 +1510,21 @@ fn harness_compact_messages(
   messages: List<JsonValue>,
   input_tokens: TokenCount,
   budget: TokenCount,
- shape: HarnessWireShape) -> List<JsonValue> {
-  if !harness_compaction_due(input_tokens: input_tokens, budget: budget) {
-    messages
-  } else {
-    harness_compact_messages_now(shape: shape, messages: messages)
+  shape: HarnessWireShape,
+  unit: HarnessServingUnit,
+  last_turn: EpochSecs?,
+  now: EpochSecs,
+) -> List<JsonValue> {
+  match harness_compaction_cause(
+    input_tokens: input_tokens,
+    budget: budget,
+    unit: unit,
+    last_turn: last_turn,
+    now: now,
+  ) {
+    CompactionNotDue => messages
+    CompactionByInputShare => harness_compact_messages_now(shape: shape, messages: messages)
+    CompactionWhileCacheWarm => harness_compact_messages_now(shape: shape, messages: messages)
   }
 }
 
@@ -1774,6 +1822,9 @@ fn harness_turn_round(
                           ]),
                           input_tokens: input_tokens,
                           budget: config.context_budget,
+                          unit: config.serving_unit,
+                          last_turn: config.prompt_cache_last_turn,
+                          now: match now_epoch_seconds() { Absent => 0  Present { value: t } => t },
                         ),
                         steps_remaining: steps_remaining - 1,
                         steps_taken: steps_taken + 1,
@@ -1891,6 +1942,9 @@ fn harness_turn_continue(
                   ),
                   input_tokens: input_tokens,
                   budget: config.context_budget,
+                  unit: config.serving_unit,
+                  last_turn: config.prompt_cache_last_turn,
+                  now: match now_epoch_seconds() { Absent => 0  Present { value: t } => t },
                 ),
                 steps_remaining: steps_remaining - 1,
                 steps_taken: steps_taken + 1,

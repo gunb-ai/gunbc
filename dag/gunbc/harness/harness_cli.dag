@@ -1,6 +1,7 @@
 module gunbc.harness.harness_cli
 
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
+import std.optional { Absent }
 import std.nat { Nat, nat_range_inclusive }
 import std.checked_arithmetic { checked_int_to_nat }
 import gunbc.fabric_event_log_host { now_epoch_seconds }
@@ -257,6 +258,7 @@ fn harness_macbook_config(backend: HarnessBoundBackend) -> HarnessTurnConfig {
     environment: harness_macbook_environment(),
     completion: CompletesOnProviderStop,
     backend_access: backend.access,
+    prompt_cache_last_turn: Absent,
   }
 }
 
@@ -682,6 +684,7 @@ fn harness_worker_config(
     },
     completion: CompletesOnProviderStop,
     backend_access: backend.access,
+    prompt_cache_last_turn: Absent,
   }
 }
 
@@ -823,6 +826,7 @@ fn harness_reviewer_config(
     },
     completion: CompletesWhenEntryPresent { directory: verdict_dir, name: verdict_name },
     backend_access: backend.access,
+    prompt_cache_last_turn: Absent,
   }
 }
 
@@ -907,6 +911,7 @@ fn harness_auditor_config(
     },
     completion: CompletesWhenEntryPresent { directory: verdict_dir, name: verdict_name },
     backend_access: backend.access,
+    prompt_cache_last_turn: Absent,
   }
 }
 
@@ -1000,6 +1005,7 @@ fn harness_supervisor_config(
     },
     completion: CompletesWhenEntryPresent { directory: verdict_dir, name: verdict_name },
     backend_access: backend.access,
+    prompt_cache_last_turn: Absent,
   }
 }
 

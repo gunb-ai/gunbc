@@ -1,0 +1,129 @@
+module test.claim.harness_prompt_cache_witness
+
+import std.types { Bool, String }
+import std.optional { Absent, Present }
+import std.measure { token_count }
+import extdeps.external_authority { CitedToAuthority, TranscribedUncited }
+import extdeps.llm.prompt_prefix_cache { TimedAfterLastUse, Unpublished, EvictedByMemoryPressure }
+import extdeps.llm.openai {
+  openai_gpt56_and_later_prompt_cache_ttl, openai_earlier_in_memory_prompt_cache_ttl,
+  openai_earlier_in_memory_always_cleared_within,
+}
+import extdeps.llm.anthropic { anthropic_default_prompt_cache_ttl, anthropic_extended_prompt_cache_ttl }
+import extdeps.openrouter.openrouter { openrouter_prompt_prefix_cache_lifetime }
+import gunbc.serving.qwen_dusk_replica { dusk_prompt_prefix_cache_lifetime, dusk_occupancy_seats }
+import gunbc.harness.harness_prompt_cache {
+  harness_prompt_cache_lifetime_for, harness_prompt_cache_account_wire, prompt_cache_warm_until,
+  prompt_cache_warm_compaction_due, session_prompt_cache_location, vllm_prompt_prefix_cache_lifetime,
+}
+import gunbc.harness.harness_reasoning_wire {
+  Qwen38OnDusk, NemotronUltraFreeOnOpenRouter, DeepseekV4FlashOnVllm, Glm53FlashOnVllm,
+}
+import gunbc.harness.harness_conversation_fork { Unobserved }
+import gunbc.harness.harness_turn {
+  harness_compaction_due, harness_compaction_cause, CompactionNotDue, CompactionByInputShare,
+  CompactionWhileCacheWarm,
+}
+
+test fn openai_and_anthropic_publish_ttls_openrouter_does_not() -> Bool {
+  (match openai_gpt56_and_later_prompt_cache_ttl {
+    TimedAfterLastUse { seconds: s, standing: st } =>
+      s == 1800 && (match st { CitedToAuthority { authority: _ } => true  TranscribedUncited { read_obligation: _ } => false })
+    Unpublished { standing: _ } => false
+    EvictedByMemoryPressure { standing: _ } => false
+  })
+    && (match openai_earlier_in_memory_prompt_cache_ttl {
+      TimedAfterLastUse { seconds: s, standing: _ } => s == 300
+      Unpublished { standing: _ } => false
+      EvictedByMemoryPressure { standing: _ } => false
+    })
+    && openai_earlier_in_memory_always_cleared_within == 3600
+    && (match anthropic_default_prompt_cache_ttl {
+      TimedAfterLastUse { seconds: s, standing: _ } => s == 300
+      Unpublished { standing: _ } => false
+      EvictedByMemoryPressure { standing: _ } => false
+    })
+    && (match anthropic_extended_prompt_cache_ttl {
+      TimedAfterLastUse { seconds: s, standing: _ } => s == 3600
+      Unpublished { standing: _ } => false
+      EvictedByMemoryPressure { standing: _ } => false
+    })
+    && (match openrouter_prompt_prefix_cache_lifetime {
+      Unpublished { standing: _ } => true
+      TimedAfterLastUse { seconds: _, standing: _ } => false
+      EvictedByMemoryPressure { standing: _ } => false
+    })
+}
+
+test fn unpublished_and_memory_pressure_have_no_warm_until() -> Bool {
+  (match prompt_cache_warm_until(last_used: 1000, lifetime: dusk_prompt_prefix_cache_lifetime) {
+    Absent => true
+    Present { value: _ } => false
+  })
+    && (match prompt_cache_warm_until(last_used: 1000, lifetime: openrouter_prompt_prefix_cache_lifetime) {
+      Absent => true
+      Present { value: _ } => false
+    })
+    && (match prompt_cache_warm_until(last_used: 1000, lifetime: vllm_prompt_prefix_cache_lifetime) {
+      Absent => true
+      Present { value: _ } => false
+    })
+    && !prompt_cache_warm_compaction_due(now: 1290, last_used: 1000, lifetime: dusk_prompt_prefix_cache_lifetime)
+    && !prompt_cache_warm_compaction_due(now: 1290, last_used: 1000, lifetime: openrouter_prompt_prefix_cache_lifetime)
+}
+
+test fn anthropic_default_compacts_in_the_warm_margin_not_after_expiry() -> Bool {
+  prompt_cache_warm_compaction_due(now: 1240, last_used: 1000, lifetime: anthropic_default_prompt_cache_ttl)
+    && !prompt_cache_warm_compaction_due(now: 1100, last_used: 1000, lifetime: anthropic_default_prompt_cache_ttl)
+    && !prompt_cache_warm_compaction_due(now: 1300, last_used: 1000, lifetime: anthropic_default_prompt_cache_ttl)
+    && prompt_cache_warm_compaction_due(now: 2740, last_used: 1000, lifetime: openai_gpt56_and_later_prompt_cache_ttl)
+}
+
+test fn current_units_without_a_ttl_use_size_compaction_only() -> Bool {
+  (match harness_prompt_cache_lifetime_for(unit: Qwen38OnDusk) {
+    EvictedByMemoryPressure { standing: _ } => true
+    TimedAfterLastUse { seconds: _, standing: _ } => false
+    Unpublished { standing: _ } => false
+  })
+    && (match harness_prompt_cache_lifetime_for(unit: NemotronUltraFreeOnOpenRouter) {
+      Unpublished { standing: _ } => true
+      TimedAfterLastUse { seconds: _, standing: _ } => false
+      EvictedByMemoryPressure { standing: _ } => false
+    })
+    && (match harness_prompt_cache_lifetime_for(unit: DeepseekV4FlashOnVllm) {
+      Unpublished { standing: _ } => true
+      TimedAfterLastUse { seconds: _, standing: _ } => false
+      EvictedByMemoryPressure { standing: _ } => false
+    })
+    && (match harness_prompt_cache_lifetime_for(unit: Glm53FlashOnVllm) {
+      Unpublished { standing: _ } => true
+      TimedAfterLastUse { seconds: _, standing: _ } => false
+      EvictedByMemoryPressure { standing: _ } => false
+    })
+    && (match harness_compaction_cause(
+      input_tokens: token_count(count: 10),
+      budget: token_count(count: 100),
+      unit: Qwen38OnDusk,
+      last_turn: Present { value: 1000 },
+      now: 1290,
+    ) { CompactionNotDue => true  CompactionByInputShare => false  CompactionWhileCacheWarm => false })
+    && (match harness_compaction_cause(
+      input_tokens: token_count(count: 75),
+      budget: token_count(count: 100),
+      unit: Qwen38OnDusk,
+      last_turn: Present { value: 1000 },
+      now: 1290,
+    ) { CompactionByInputShare => true  CompactionNotDue => false  CompactionWhileCacheWarm => false })
+    && harness_compaction_due(input_tokens: token_count(count: 75), budget: token_count(count: 100))
+}
+
+test fn session_cache_location_carries_account_model_and_derived_warm_until() -> Bool {
+  dusk_occupancy_seats == 4
+    && harness_prompt_cache_account_wire(unit: NemotronUltraFreeOnOpenRouter) == "openrouter"
+    && harness_prompt_cache_account_wire(unit: Qwen38OnDusk) == ""
+    && (match session_prompt_cache_location(unit: Qwen38OnDusk, last_used: 1000, standing: Unobserved).warm_until {
+      Absent => true
+      Present { value: _ } => false
+    })
+    && session_prompt_cache_location(unit: NemotronUltraFreeOnOpenRouter, last_used: 1000, standing: Unobserved).account_wire == "openrouter"
+}
