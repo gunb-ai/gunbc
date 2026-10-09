@@ -24,7 +24,10 @@ import gunbc.spark.bootstrap_provision {
 import gunbc.cloudflare.r2_token_mint { cloudflare_account_token_bootstrap_intervention }
 import gunbc.github_app_acquisition { census_app_registration_submit_step }
 import gunbc.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.auth.managed_host_boot_federation { BootFederationProvisioned, BootFederationUnprovisioned, boot_federation_for, boot_federation_service_account_member }
+import gunbc.auth.managed_host_boot_federation {
+  BootFederationProvisioned, BootFederationProvisionedUnderDeclaredDrop, BootFederationUnprovisioned,
+  boot_federation_for, boot_federation_service_account_member,
+}
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ProviderSurface, ApiSurface, HumanSurfaceOnly,
   WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
@@ -281,6 +284,8 @@ fn mtcollins1_boot_effect() -> PrivilegedEffect {
     root_subject: "the mtcollins1_boot mode (attach, boot device, power, SOL; census medium readback over the pinned fleet key)" as NonEmptyStr,
     identity: match boot_federation_for(host: operator_host_mtcollins1) {
       BootFederationProvisioned { federation: f } => WorkloadIdentityBindable { member: boot_federation_service_account_member(f: f) as NonEmptyStr }
+      BootFederationProvisionedUnderDeclaredDrop { federation: f, drop: _, standing_subject: _, current_subject: _ } =>
+        WorkloadIdentityBindable { member: boot_federation_service_account_member(f: f) as NonEmptyStr }
       BootFederationUnprovisioned { host: _, cause: _ } =>
         WorkloadIdentityUnbindable { cause: "mtcollins1 has no admitted boot federation (gunbc.auth.managed_host_boot_federation boot_federation_for)" as NonEmptyStr }
     },

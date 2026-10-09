@@ -139,8 +139,8 @@ import gunbc.auth.gcp_iam_converge { iam_observe_service_account, iam_converge_s
 import gunbc.auth.gcp_iam_converge_run { gcp_iam_converge_step_timeout_minutes, iam_converge_token_env, gcp_iam_converge_approved_output }
 import gunbc.auth.approval_broker_endpoint { approval_broker_host_identity }
 import gunbc.auth.managed_host_boot_federation {
-  ManagedHostBootFederationStanding, BootFederationProvisioned, BootFederationUnprovisioned,
-  boot_federation_for, boot_federation_provider_resource,
+  ManagedHostBootFederationStanding, BootFederationProvisioned, BootFederationProvisionedUnderDeclaredDrop,
+  BootFederationUnprovisioned, boot_federation_for, boot_federation_provider_resource,
 }
 import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.auth.ci_app_key_rotation {
@@ -261,7 +261,7 @@ import gunbc.host_reset_return {
   host_reset_return_receipt_path,
   host_reset_observer_label_env,
 }
-import gunbc.host_reset_subject_roster { reset_observer_peer_roster, reset_subject_roster }
+import gunbc.host_reset_subject_roster { reset_observer_peer_roster, reset_roster_hosts, reset_subject_roster }
 import gunbc.host_reset_return { ResetObserverPairing }
 import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run_id_env_name, rlm_plan_artifact_hash_env_name }
 import gunbc.live_deploy.apply_receipt { rlm_dashboard_run_id_env_name }
@@ -885,7 +885,7 @@ data fleet_converge_mode_options: List<String> = map(fleet_converge_workflow_mod
 // the one a later worker would most plausibly act on is the one that disarms the corroboration.
 // gunbc.host_reset_return carries the full argument, above reset_return_verdict_of_mint.
 data fleet_converge_reset_assignment: ResetDispatchAssignment = reset_dispatch_pairings(
-  subject_roster: reset_subject_roster(),
+  subject_roster: reset_roster_hosts(entries: reset_subject_roster()),
   peer_roster: reset_observer_peer_roster(),
 )
 
@@ -4288,6 +4288,8 @@ data fleet_converge_boot_federation_unprovisioned_refusal: String = "REFUSED gun
 fn fleet_converge_mtcollins1_boot_provider_resource() -> String {
   match fleet_converge_mtcollins1_boot_federation {
     BootFederationProvisioned { federation: f } => boot_federation_provider_resource(f: f)
+    BootFederationProvisionedUnderDeclaredDrop { federation: f, drop: _, standing_subject: _, current_subject: _ } =>
+      boot_federation_provider_resource(f: f)
     BootFederationUnprovisioned { host: _, cause: _ } => fleet_converge_boot_federation_unprovisioned_refusal
   }
 }
@@ -4295,6 +4297,8 @@ fn fleet_converge_mtcollins1_boot_provider_resource() -> String {
 fn fleet_converge_mtcollins1_boot_service_account() -> String {
   match fleet_converge_mtcollins1_boot_federation {
     BootFederationProvisioned { federation: f } => f.names.service_account as String
+    BootFederationProvisionedUnderDeclaredDrop { federation: f, drop: _, standing_subject: _, current_subject: _ } =>
+      f.names.service_account as String
     BootFederationUnprovisioned { host: _, cause: _ } => fleet_converge_boot_federation_unprovisioned_refusal
   }
 }
@@ -4302,6 +4306,8 @@ fn fleet_converge_mtcollins1_boot_service_account() -> String {
 fn fleet_converge_mtcollins1_boot_environment() -> String {
   match fleet_converge_mtcollins1_boot_federation {
     BootFederationProvisioned { federation: f } => f.names.environment as String
+    BootFederationProvisionedUnderDeclaredDrop { federation: f, drop: _, standing_subject: _, current_subject: _ } =>
+      f.names.environment as String
     BootFederationUnprovisioned { host: _, cause: _ } => fleet_converge_boot_federation_unprovisioned_refusal
   }
 }
@@ -4309,6 +4315,7 @@ fn fleet_converge_mtcollins1_boot_environment() -> String {
 fn fleet_converge_boot_federation_admitted() -> Bool {
   match fleet_converge_mtcollins1_boot_federation {
     BootFederationProvisioned { federation: _ } => true
+    BootFederationProvisionedUnderDeclaredDrop { federation: _, drop: _, standing_subject: _, current_subject: _ } => true
     BootFederationUnprovisioned { host: _, cause: _ } => false
   }
 }

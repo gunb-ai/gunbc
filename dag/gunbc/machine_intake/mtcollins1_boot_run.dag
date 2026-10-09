@@ -90,8 +90,10 @@ import gunbc.machine_intake_ampere_smpro_observation {
 import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
 import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.managed_host {
-  managed_hosts, managed_host_binding, managed_host_smpro_subject,
+  ManagedHost,
+  managed_host_binding, managed_host_smpro_subject, managed_membership_for,
   ManagedHostBound, ManagedHostAccessUnobserved, ManagedHostNotSecured, ManagedHostEndpointMismatch,
+  OrdinaryMember, MemberUnderDeclaredDrop,
 }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, chassis_observation_text }
@@ -1934,22 +1936,31 @@ fn mtcollins1_boot_screen_start(proof: UnitHoldProof, password_file: String, att
 // THE PASS READS THROUGH THE MANAGED HOST'S SUBJECT (gunbc.managed_host managed_host_smpro_subject):
 // the row's bound controller joined to its SMpro site, so the reads go to the controller the site is
 // evidence about or are not taken, with the refusal as the reason.
-fn mtcollins1_boot_smpro_read(username: NonEmptyStr, password_file: NonEmptyStr) -> SmproReading {
-  match filter(managed_hosts(), h => (h.host as String) == (operator_host_mtcollins1 as String)).first() {
-    Absent => SmproNotTaken { reason: "mtcollins1 is not a managed host row: its secure standing is not derived" }
-    Present { value: h } => match managed_host_binding(host: h) {
-      ManagedHostAccessUnobserved { endpoint: _ } => SmproNotTaken { reason: "mtcollins1's controller access is unobserved, so no SMpro subject binds" }
-      ManagedHostNotSecured { cause: _ } => SmproNotTaken { reason: "mtcollins1's controller is not secured, so no SMpro subject binds" }
-      ManagedHostEndpointMismatch { observed: _, secured: _ } => SmproNotTaken { reason: "mtcollins1's access and secure standings name different controllers, so no SMpro subject binds" }
-      ManagedHostBound { binding: b } => {
-        let subject = managed_host_smpro_subject(binding: b)
-        match subject {
-          SmproPassSubjectBound { subject: s } => SmproProbed { observation: smpro_pass_probes(subject: s, username: username, password_file: password_file, deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after) }
-          SmproPassSiteRefused { cause: _ } => SmproNotTaken { reason: match smpro_pass_subject_refusal_text(s: subject) { Present { value: t } => t as NonEmptyStr Absent => "the SMpro site is not admitted" } }
-          SmproPassEndpointMismatch { bound: _, site: _ } => SmproNotTaken { reason: match smpro_pass_subject_refusal_text(s: subject) { Present { value: t } => t as NonEmptyStr Absent => "the SMpro site names another controller" } }
-        }
+fn mtcollins1_boot_smpro_from_row(h: ManagedHost, username: NonEmptyStr, password_file: NonEmptyStr) -> SmproReading {
+  match managed_host_binding(host: h) {
+    ManagedHostAccessUnobserved { endpoint: _ } => SmproNotTaken { reason: "mtcollins1's controller access is unobserved, so no SMpro subject binds" }
+    ManagedHostNotSecured { cause: _ } => SmproNotTaken { reason: "mtcollins1's controller is not secured, so no SMpro subject binds" }
+    ManagedHostEndpointMismatch { observed: _, secured: _ } => SmproNotTaken { reason: "mtcollins1's access and secure standings name different controllers, so no SMpro subject binds" }
+    ManagedHostBound { binding: b } => {
+      let subject = managed_host_smpro_subject(binding: b)
+      match subject {
+        SmproPassSubjectBound { subject: s } => SmproProbed { observation: smpro_pass_probes(subject: s, username: username, password_file: password_file, deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after) }
+        SmproPassSiteRefused { cause: _ } => SmproNotTaken { reason: match smpro_pass_subject_refusal_text(s: subject) { Present { value: t } => t as NonEmptyStr Absent => "the SMpro site is not admitted" } }
+        SmproPassEndpointMismatch { bound: _, site: _ } => SmproNotTaken { reason: match smpro_pass_subject_refusal_text(s: subject) { Present { value: t } => t as NonEmptyStr Absent => "the SMpro site names another controller" } }
       }
     }
+  }
+}
+
+fn mtcollins1_boot_smpro_read(username: NonEmptyStr, password_file: NonEmptyStr) -> SmproReading {
+  match managed_membership_for(host: operator_host_mtcollins1) {
+    Absent => SmproNotTaken { reason: "mtcollins1 is not a managed host row: its secure standing is not derived" }
+    Present { value: m } =>
+      match m {
+        OrdinaryMember { host: h } => mtcollins1_boot_smpro_from_row(h: h, username: username, password_file: password_file)
+        MemberUnderDeclaredDrop { drop: _, standing_subject: _, current_subject: _, host: h } =>
+          mtcollins1_boot_smpro_from_row(h: h, username: username, password_file: password_file)
+      }
   }
 }
 

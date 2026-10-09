@@ -8,7 +8,8 @@ import gunbc.managed_host { managed_host_fixture, managed_hosts }
 import gunbc.auth.oidc_claim_pins { OidcClaimPin }
 import gunbc.auth.gcp_secret_access { SecretAccessGrant }
 import gunbc.auth.managed_host_boot_federation {
-  ManagedHostBootFederation, ManagedHostBootFederationStanding, BootFederationProvisioned, BootFederationUnprovisioned,
+  ManagedHostBootFederation, ManagedHostBootFederationStanding, BootFederationProvisioned,
+  BootFederationProvisionedUnderDeclaredDrop, BootFederationUnprovisioned,
   BootFederationHostNotManaged, BootFederationHostUnbound, BootFederationNoPolicy,
   admit_boot_federation, boot_federation_for, provisioned_boot_federations,
   boot_federation_claims_admitted, boot_federation_attribute_condition, boot_federation_principal_set,
@@ -21,6 +22,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn admitted(s: ManagedHostBootFederationStanding) -> ManagedHostBootFederation? {
   match s {
     BootFederationProvisioned { federation: f } => Present { value: f }
+    BootFederationProvisionedUnderDeclaredDrop { federation: f, drop: _, standing_subject: _, current_subject: _ } =>
+      Present { value: f }
     BootFederationUnprovisioned { host: _, cause: _ } => none
   }
 }
@@ -138,6 +141,7 @@ test fn w_a_bound_host_with_no_boot_policy_is_unprovisioned() -> Bool {
         BootFederationHostUnbound { standing: _ } => false
       }
       BootFederationProvisioned { federation: _ } => false
+      BootFederationProvisionedUnderDeclaredDrop { federation: _, drop: _, standing_subject: _, current_subject: _ } => false
     }
   }) && (managed_hosts() |> count) == 1
 }
@@ -152,5 +156,6 @@ test fn w_a_host_that_is_not_managed_is_unprovisioned() -> Bool {
       BootFederationHostUnbound { standing: _ } => false
     }
     BootFederationProvisioned { federation: _ } => false
+    BootFederationProvisionedUnderDeclaredDrop { federation: _, drop: _, standing_subject: _, current_subject: _ } => false
   }
 }

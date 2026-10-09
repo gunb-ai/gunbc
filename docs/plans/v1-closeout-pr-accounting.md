@@ -4,11 +4,11 @@ As of 2026-10-09; it includes the operator's side-chat dispositions. There are 1
 
 | Disposition | PRs | What happens |
 | --- | --- | --- |
-| In the mega branch | 32 | Lands when #13641 lands |
+| In the mega branch | 33 | Lands when #13641 lands |
 | Pending fold | 64 | On a manager's integration branch, with the conflict worker, or waiting for CI; folded into #13641 next |
 | Blocked | 4 | Needs an operator or host action first |
-| Left out | 46 | Not in the snapshot. Its remaining work is recorded under Outstanding work before the PR is closed; nothing is dropped |
-| Unreported, owned by a live lane | 2 | Waiting on that lane's report |
+| Left out | 47 | Not in the snapshot. Its remaining work is recorded under Outstanding work before the PR is closed; nothing is dropped |
+| Unreported, owned by a live lane | 0 | Waiting on that lane's report |
 | Orphans: no live owner | 13 | Triaged by the closeout: fold if done and clean, otherwise close |
 | Kept up by request | 1 | #13203 blackjack |
 
@@ -37,6 +37,7 @@ These are merged into `integration/v1-closeout`.
 | [#13560](https://github.com/gunb-ai/gunbc/pull/13560) | Identity-only skip for module-surface members in record-field lenses | ready / CLEAN | bold-bee-114 |
 | [#13554](https://github.com/gunb-ai/gunbc/pull/13554) | srv13 first contact: factory BIOS defaults (PXE disabled by default) | ready / CLEAN | side chat |
 | [#13550](https://github.com/gunb-ai/gunbc/pull/13550) | Bankrupt docs/plans: delete hand-written plans, keep DESIGN-linked and | ready / DIRTY | side chat |
+| [#13516](https://github.com/gunb-ai/gunbc/pull/13516) | Managed-host cut O1c-3a: ManagedHostAdmission population with drop-arm | ready / CLEAN | eager-gull-22 |
 | [#13513](https://github.com/gunb-ai/gunbc/pull/13513) | mandatory_tag gate: read the lowered data-declaration carrier (clean f | ready / CLEAN | bold-bee-114 |
 | [#13472](https://github.com/gunb-ai/gunbc/pull/13472) | Realize rust shell stderr-capture channels (unblocks #13217 floor) | ready / DIRTY | silent-lark-156 |
 | [#13460](https://github.com/gunb-ai/gunbc/pull/13460) | map_get fork: the declared projection renames to map_get_checked | ready / CLEAN | lively-ram-153 |
@@ -60,26 +61,26 @@ These are merged into `integration/v1-closeout`.
 | [#13583](https://github.com/gunb-ai/gunbc/pull/13583) | One directory authority for dashboard instances (D14 OwnedDirectory sl | ready / CLEAN | conflict worker (keep 13583 spec.dag) |
 | [#13582](https://github.com/gunb-ai/gunbc/pull/13582) | Delete the v2 packrat parse memo carrier (R2, stacked on #13577) | draft / CLEAN | conflict worker (stack on 13577) |
 | [#13615](https://github.com/gunb-ai/gunbc/pull/13615) | Delete unused memo and preparation carriers (native-memory-inert-carri | draft / CLEAN | conflict worker (stack; keep floor_preparation_witness_test.dag deleted) |
-| [#13608](https://github.com/gunb-ai/gunbc/pull/13608) | RFM: fixture-closure-union-emit suspected superlinear cost | ready / CLEAN | via eager-gull-22 |
-| [#13596](https://github.com/gunb-ai/gunbc/pull/13596) | target_invocation witness: repair two false claims; file the unplanned | ready / CLEAN | via eager-gull-22 |
-| [#13590](https://github.com/gunb-ai/gunbc/pull/13590) | Native ingest: refuse two files claiming one module path | ready / CLEAN | via eager-gull-22 |
-| [#13588](https://github.com/gunb-ai/gunbc/pull/13588) | std.change: import any and Present so its own names resolve natively | ready / CLEAN | via eager-gull-22 |
-| [#13586](https://github.com/gunb-ai/gunbc/pull/13586) | guarantee_stall: correct accumulator-copy native-resolve residue recei | ready / CLEAN | via eager-gull-22 |
-| [#13585](https://github.com/gunb-ai/gunbc/pull/13585) | Enroll native-resolve coverage for fold handler binders | ready / CLEAN | via eager-gull-22 |
-| [#13580](https://github.com/gunb-ai/gunbc/pull/13580) | regen-round-cost: re-exec once when the seed build replaces the runnin | ready / CLEAN | via eager-gull-22 |
-| [#13579](https://github.com/gunb-ai/gunbc/pull/13579) | Climb import-less UniqueBare from proximity to lexical on-chain bindin | ready / CLEAN | via eager-gull-22 |
-| [#13575](https://github.com/gunb-ai/gunbc/pull/13575) | Isolate fixture census on a scratch MultiEntryIndex | ready / CLEAN | via eager-gull-22 |
-| [#13571](https://github.com/gunb-ai/gunbc/pull/13571) | Fallout from #13179: latent T? == T sites and stale grounded_principal | ready / CLEAN | via eager-gull-22 |
-| [#13520](https://github.com/gunb-ai/gunbc/pull/13520) | Delete dead emit_resolve_transitively_fn stamp from generated main | ready / CLEAN | via eager-gull-22 |
-| [#13519](https://github.com/gunb-ai/gunbc/pull/13519) | stage0 witness bins: close compile subjects through the closure author | ready / CLEAN | via eager-gull-22 |
-| [#13517](https://github.com/gunb-ai/gunbc/pull/13517) | Managed-host cut O1c-3b: BmcSecure gated through the convergence fold | ready / DIRTY | via eager-gull-22 |
-| [#13507](https://github.com/gunb-ai/gunbc/pull/13507) | Board identity: bound host's FRU board reaches its per-board authority | ready / CLEAN | via eager-gull-22 |
-| [#13497](https://github.com/gunb-ai/gunbc/pull/13497) | Emit arrival_converge; IAM pair and pinned accessor (msg_f03558d1) | ready / CLEAN | via eager-gull-22 |
-| [#13341](https://github.com/gunb-ai/gunbc/pull/13341) | v2 parse: occurrence ids minted once per parse across a rejected attem | ready / CLEAN | via eager-gull-22 |
-| [#13333](https://github.com/gunb-ai/gunbc/pull/13333) | v2 resolve: the single-tree namespace binds its own variants and recor | ready / CLEAN | via eager-gull-22 |
-| [#13247](https://github.com/gunb-ai/gunbc/pull/13247) | mtcollins1 runner: boot leg, runner-host medium + runner-host-up termi | ready / BLOCKED | via eager-gull-22 |
-| [#13225](https://github.com/gunb-ai/gunbc/pull/13225) | mtcollins1 runner: extract qualification instruments from the run (leg | ready / DIRTY | via eager-gull-22 |
-| [#13503](https://github.com/gunb-ai/gunbc/pull/13503) | Move AMI-bundle-derived MegaRAC content out of public gunbc | ready / BLOCKED | eager-gull-22 (latest review on head approves; older REQUEST_CHANGES are on stale heads) |
+| [#13608](https://github.com/gunb-ai/gunbc/pull/13608) | RFM: fixture-closure-union-emit suspected superlinear cost | ready / CLEAN | eager-gull-22 @54f257a3f5 (with the sharp-raven/eager-gull fold worker; 19-file conflict) |
+| [#13596](https://github.com/gunb-ai/gunbc/pull/13596) | target_invocation witness: repair two false claims; file the unplanned | ready / CLEAN | eager-gull-22 @54f257a3f5 (with the sharp-raven/eager-gull fold worker; 19-file conflict) |
+| [#13590](https://github.com/gunb-ai/gunbc/pull/13590) | Native ingest: refuse two files claiming one module path | ready / CLEAN | eager-gull-22 @54f257a3f5 (with the sharp-raven/eager-gull fold worker; 19-file conflict) |
+| [#13588](https://github.com/gunb-ai/gunbc/pull/13588) | std.change: import any and Present so its own names resolve natively | ready / CLEAN | eager-gull-22 @54f257a3f5 (with the sharp-raven/eager-gull fold worker; 19-file conflict) |
+| [#13586](https://github.com/gunb-ai/gunbc/pull/13586) | guarantee_stall: correct accumulator-copy native-resolve residue recei | ready / CLEAN | eager-gull-22 @54f257a3f5 (with the sharp-raven/eager-gull fold worker; 19-file conflict) |
+| [#13585](https://github.com/gunb-ai/gunbc/pull/13585) | Enroll native-resolve coverage for fold handler binders | ready / CLEAN | eager-gull-22 @54f257a3f5 (with the sharp-raven/eager-gull fold worker; 19-file conflict) |
+| [#13580](https://github.com/gunb-ai/gunbc/pull/13580) | regen-round-cost: re-exec once when the seed build replaces the runnin | ready / CLEAN | eager-gull-22 @54f257a3f5 (with the sharp-raven/eager-gull fold worker; 19-file conflict) |
+| [#13579](https://github.com/gunb-ai/gunbc/pull/13579) | Climb import-less UniqueBare from proximity to lexical on-chain bindin | ready / CLEAN | eager-gull-22 @54f257a3f5 (with the sharp-raven/eager-gull fold worker; 19-file conflict) |
+| [#13575](https://github.com/gunb-ai/gunbc/pull/13575) | Isolate fixture census on a scratch MultiEntryIndex | ready / CLEAN | eager-gull-22 @54f257a3f5 (with the sharp-raven/eager-gull fold worker; 19-file conflict) |
+| [#13571](https://github.com/gunb-ai/gunbc/pull/13571) | Fallout from #13179: latent T? == T sites and stale grounded_principal | ready / CLEAN | eager-gull-22 @54f257a3f5 (with the sharp-raven/eager-gull fold worker; 19-file conflict) |
+| [#13520](https://github.com/gunb-ai/gunbc/pull/13520) | Delete dead emit_resolve_transitively_fn stamp from generated main | ready / CLEAN | eager-gull-22 @54f257a3f5 (with the sharp-raven/eager-gull fold worker; 19-file conflict) |
+| [#13519](https://github.com/gunb-ai/gunbc/pull/13519) | stage0 witness bins: close compile subjects through the closure author | ready / CLEAN | eager-gull-22 @54f257a3f5 (with the sharp-raven/eager-gull fold worker; 19-file conflict) |
+| [#13517](https://github.com/gunb-ai/gunbc/pull/13517) | Managed-host cut O1c-3b: BmcSecure gated through the convergence fold | ready / DIRTY | eager-gull-22 @54f257a3f5 (with the sharp-raven/eager-gull fold worker; 19-file conflict) |
+| [#13507](https://github.com/gunb-ai/gunbc/pull/13507) | Board identity: bound host's FRU board reaches its per-board authority | ready / CLEAN | eager-gull-22 @54f257a3f5 (with the sharp-raven/eager-gull fold worker; 19-file conflict) |
+| [#13503](https://github.com/gunb-ai/gunbc/pull/13503) | Move AMI-bundle-derived MegaRAC content out of public gunbc | ready / BLOCKED | eager-gull-22 @54f257a3f5 (with the sharp-raven/eager-gull fold worker; 19-file conflict) |
+| [#13497](https://github.com/gunb-ai/gunbc/pull/13497) | Emit arrival_converge; IAM pair and pinned accessor (msg_f03558d1) | ready / CLEAN | eager-gull-22 @54f257a3f5 (with the sharp-raven/eager-gull fold worker; 19-file conflict) |
+| [#13341](https://github.com/gunb-ai/gunbc/pull/13341) | v2 parse: occurrence ids minted once per parse across a rejected attem | ready / CLEAN | eager-gull-22 @54f257a3f5 (with the sharp-raven/eager-gull fold worker; 19-file conflict) |
+| [#13333](https://github.com/gunb-ai/gunbc/pull/13333) | v2 resolve: the single-tree namespace binds its own variants and recor | ready / CLEAN | eager-gull-22 @54f257a3f5 (with the sharp-raven/eager-gull fold worker; 19-file conflict) |
+| [#13247](https://github.com/gunb-ai/gunbc/pull/13247) | mtcollins1 runner: boot leg, runner-host medium + runner-host-up termi | ready / BLOCKED | eager-gull-22 @54f257a3f5 (with the sharp-raven/eager-gull fold worker; 19-file conflict) |
+| [#13225](https://github.com/gunb-ai/gunbc/pull/13225) | mtcollins1 runner: extract qualification instruments from the run (leg | ready / DIRTY | eager-gull-22 @54f257a3f5 (with the sharp-raven/eager-gull fold worker; 19-file conflict) |
 | [#13598](https://github.com/gunb-ai/gunbc/pull/13598) | Retire native_serve_request_budget_unrealized: native-serve holds the  | ready / CLEAN | gentle-dove-36 (with the conflict worker) |
 | [#13593](https://github.com/gunb-ai/gunbc/pull/13593) | File emitter defect: variant pattern nested inside Present drops the R | ready / CLEAN | gentle-dove-36 (with the conflict worker) |
 | [#13584](https://github.com/gunb-ai/gunbc/pull/13584) | Seed eval: empty list is not Unit | ready / CLEAN | gentle-dove-36 (with the conflict worker) |
@@ -181,13 +182,12 @@ These are drafts, red, superseded or WIP, per the manager's report or a side cha
 | [#13617](https://github.com/gunb-ai/gunbc/pull/13617) | Key native producer_compiler on the running seed executable | draft / BLOCKED | swift-bat-828 (error): seed producer_compiler provenance; author paused it (v1/CI programme); legacy |
 | [#13629](https://github.com/gunb-ai/gunbc/pull/13629) | Floor: reach differential reuses the prepared required_floor authority | draft / BLOCKED | swift-bat-828 (error): v1 floor reach-differential reuse; legacy (the floor is retired by the v1 withdrawal) |
 | [#13578](https://github.com/gunb-ai/gunbc/pull/13578) | Generalize hosted OpenAI-compat failures (one classifier, no retry) | ready / CLEAN | swift-ibex: left out (RC) |
+| [#13212](https://github.com/gunb-ai/gunbc/pull/13212) | Starter eval set: .dag modeling and DESIGN.md adherence, graded mechan | ready / CLEAN | valiant-crab (unreported): eval set, green and CLEAN, but no PR body and no completed review (its one review failed). Write a body, get a review, then it is an easy fold |
 
 ## Unreported, owned by a live lane
 
 | PR | Title | Draft / merge state | Note |
 | --- | --- | --- | --- |
-| [#13516](https://github.com/gunb-ai/gunbc/pull/13516) | Managed-host cut O1c-3a: ManagedHostAdmission population with drop-arm | ready / CLEAN | eager-gull-22 (session eager-gull-22) |
-| [#13212](https://github.com/gunb-ai/gunbc/pull/13212) | Starter eval set: .dag modeling and DESIGN.md adherence, graded mechan | ready / CLEAN | valiant-crab-775 (session valiant-crab-775) |
 
 ## Orphans
 
@@ -273,6 +273,7 @@ This is work that has to go somewhere even though none of it merges now. Each ro
 | #13630 callee facts on the underived arm | sharp-raven-357 | Review 78359 (§5 fail-open): a refused contract keeps a denotation, so eval dispatches into the body. Gate eval on DerivedGrounding, or carry the recovered Arrow in a separate field |
 | #13541 filter/any retirement (337 files) | sharp-raven-357 | Delete the 15 root scratch scripts (review 78343), rebase, then give it a fresh full review |
 | #13637 XL-2 3c consumer census (docs-only, approved) | sharp-raven-357 | Not merged (docs-only preference; plans bankruptcy). It is the input to the unowned 3c deletion that clears N7 filesystem_io |
+| #13212 starter eval set (49 cases + grader, about 2.1k lines) | valiant-crab-775 / smart-bear-46 | Green and CLEAN. Needs a real PR body and a completed review; its consumer (who runs the eval) should be named |
 | session/lively-wren-411 @6194f56012 | bold-bee-114 | Duplicate member_not_a_binder fix, superseded by #13560. No PR; delete the branch |
 | wise-koi-396 (shell-dag live-deploy restart-tailscale) | stern-boar-596 | Nothing was ever pushed; the work is unstarted |
 
@@ -320,25 +321,6 @@ The marshal projected-let drop; negative-literal verdict loss (#13289). Both fro
 ### Archive flush residue
 
 Archiving a session commits its leftover worktree files as a 'WIP' commit and pushes them. That happened on #13648 (.probe_tmp scratch) and #13634 (t_tmp.sh). Any archived manager's branch may carry such a tip commit. Check the tip before reviving or merging one of these branches.
-
-## Mega branch status and plan
-
-- #13641 is red only on the stale provisional v1_rt.rs (E0425/E0433). crisp-ant-863's #13653 (wave-2 conflicts, the #13574 revert, regen) fixes it.
-- Merge order from here: #13653 -> gate cut (smart-gull-336's new head of #13658) -> eager-gull-22's branch -> sharp-raven-357's branch (~200-file conflict, dedicated worker) -> #13657 re-verify.
-- #13655 (Second-typed retry/quota) is merged into the branch; review 78371's comment placement is fixed at 146bbbafdb5.
-
-Notes for the remaining merges:
-
-- #13545 (46 T?==T rewrites) overlaps #13600 and #13549 in witness files; either form is fine, keep one that compiles.
-- grounded_principal_witness: #13549 derives counts from ci_runner_sudo_binaries (keep that); then DROP #13545's floor_expected_red_chunk_grounded_principal_transcribed_counts (3 entries) if those claims pass.
-- #13428 (session/lively-bear-843, green, approved) also folds here; conflicts in 03_normalize.dag and body_lowering_fold.dag.
-- #13126 is the grammar-overlap final step; after the fold, the overlap count should be zero.
-- #13453 adds base-fact (claim_executor --base-fact) steps to witnesses.yml via compiler_gate_workflow. smart-gull-336's gate cut owns those files; when the cut is merged, its side wins and the v1-floor base-fact steps go with the floor.
-- #13643 (census, approved review 78351): fold if its pending check is green at fold time.
-- GATE CUT #13658 (smart-gull-336, head e1b851e5a8fb, base main d0f2067): once it's green on its own head, merge it into integration/v1-closeout; its side wins on dag/gunbc/witness/compiler_gate_workflow.dag and .github/workflows/witnesses.yml. OPERATOR RULING (via smart-gull-336): do NOT delete repo_self_slice_cost_control_command. Keep it and the v1_rt list_slice_tests RED/GREEN pair as a LOCAL-ONLY check, named in DESIGN.md's Building & checks local-checks row beside clippy and the v1 unit tests, preserved for later native migration.
-- #13658 head e1b851e5a8fb is SUPERSEDED: the operator wants emit-build + the aggregate collapsed into one required job named 'witnesses' that emits and builds both products fresh (restored native-product hits refused). Wait for smart-gull-336's new green head. Merge it into the mega branch AFTER #13653 (or via main if the operator lands it first); take its side whole on compiler_gate_workflow.dag + witnesses.yml, then regen.
-- After the cut, no required lane checks generated-artifact drift: run tools.generated_artifact_gate main (remotely) before pushing any wave.
-- v1 regen: one emission round (operator 2026-10-04); no fixed-point loop.
 
 ## Notes
 
