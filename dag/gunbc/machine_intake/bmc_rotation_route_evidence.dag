@@ -118,7 +118,7 @@ fn mtcollins1_channel_access_route_standing() -> BmcRotationRouteStanding {
 // observation naming the observed surface, the address and build it was read at, and the Redfish
 // account write that makes it worth qualifying. mtjade1's CURRENT standing is not minted here: the
 // AccessDiscover step of gunbc.machine_intake_arrival_converge (cut O1c-1) mints it, inside the step,
-// from the 2026-10-04 read at the controller's current endpoint, joined to this unit by its observed
+// from the current Manager GET at the controller's current endpoint (J1, 2026-10-06), joined to this unit by its observed
 // BMC link. A capture that does not decode, does not bind to this unit's observed link, or does not
 // discriminate a family yields no observation rather than a stand-in.
 fn mtjade1_observed_endpoint(network: ObservedBmcNetwork) -> BmcControllerEndpoint? {

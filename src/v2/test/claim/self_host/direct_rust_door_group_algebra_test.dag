@@ -77,7 +77,7 @@ import v2.std.diagnostic {
   invariant_port_locus,
 }
 import v2.std.node { Symbol }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import v2.std.text { String }
 
 // FAST lane: discriminates the direct-rust-door group ALGEBRA over PLANTED observations, paying

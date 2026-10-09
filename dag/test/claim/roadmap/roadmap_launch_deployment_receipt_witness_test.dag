@@ -76,7 +76,7 @@ import gunbc.roadmap_launch_deployment_cli {
   rlm1_merge_commit,
   rlm_workflow_file_path,
 }
-import gunbc.roadmap_launch_deployment_observe { EventBacklogFact, EventBacklogClear, StaleBacklog, EventBacklogUnobserved, event_backlog_drain_bound_seconds }
+import gunbc.roadmap_launch_deployment_observe { EventBacklogFact, EventBacklogClear, StaleBacklog, EventBacklogUnobserved, event_backlog_drain_bound }
 import gunbc.roadmap_launch_deployment_receipt {
   ApplyReceiptFact,
   ApplyReceiptRead,
@@ -767,7 +767,7 @@ test fn witness_receipt_document_clear_backlog_is_machine_readable() -> Bool {
 }
 
 test fn witness_stale_backlog_is_incomplete_and_names_its_oldest_entry() -> Bool {
-  let stale = StaleBacklog { stage: "inbox", entry: "n+k+worker+inv+success+exited+0", age_seconds: event_backlog_drain_bound_seconds + 60, bound_seconds: event_backlog_drain_bound_seconds }
+  let stale = StaleBacklog { stage: AttemptExitInbox, entry: "n+k+worker+inv+success+exited+0", age: second(count: second_count(s: event_backlog_drain_bound) + 60), bound: event_backlog_drain_bound }
   let doc = roadmap_launch_deployment_receipt_document(v: roadmap_launch_deployment_verdict(subject: rlm_subject(), facts: with_backlog(f: rlm_complete_facts(), b: stale)))
   incomplete_at(facts: with_backlog(f: rlm_complete_facts(), b: stale), member: "event_backlog")
     && incomplete_at(facts: with_backlog(f: rlm_complete_facts(), b: EventBacklogUnobserved { detail: "the exit inbox could not be listed" }), member: "event_backlog")

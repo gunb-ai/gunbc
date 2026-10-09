@@ -1,7 +1,7 @@
 module gunbc.gcp_estate_adoption
 
 import std.types { String, NonEmptyStr, List, Bool }
-import v2.std.optional { Present }
+import std.optional { Present }
 import std.upsert_decision {
   UpsertClassification,
   Converged,
@@ -17,11 +17,12 @@ import gunbc.auth.heal_publisher_federation {
   HealPublisherFederation, public_heal_publisher_federation, private_heal_publisher_federation,
   heal_publisher_federation_attribute_condition, heal_publisher_federation_principal_set,
 }
+import gunbc.auth.fleet_convergence_federation { fleet_convergence_principal_set }
 import gunbc.auth.github_gcp_federation {
   github_wif_pool_id,
   github_wif_provider_id,
   github_wif_attribute_condition,
-  github_wif_principal_set,
+  
   github_wif_issuer_uri,
   fleet_secrets_project_number,
 }
@@ -133,11 +134,14 @@ fn gcp_estate_desired_github_oidc_provider() -> DesiredWifProvider {
   }
 }
 
+// fleet-cloud-convergence HOLDS SECRET ACCESS THAT MUST NOT BE REACHABLE FROM PR-CONTROLLED CODE (the
+// R2 write token among it). Its binding is the member of the dedicated, claim-pinned pool of
+// gunbc.auth.fleet_convergence_federation -- never the repository-wide principal set.
 fn gcp_estate_desired_convergence_binding() -> DesiredPrincipalSetBinding {
   DesiredPrincipalSetBinding {
     account: fleet_cloud_convergence_sa_email,
     role: role_iam_workload_identity_user,
-    member: github_wif_principal_set(),
+    member: fleet_convergence_principal_set(),
   }
 }
 

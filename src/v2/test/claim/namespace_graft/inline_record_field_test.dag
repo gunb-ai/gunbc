@@ -7,7 +7,7 @@ import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tok
 import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_lookup }
 import v2.std.diagnostic { Accepted, Rejected, bind_outcome }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import v2.std.node { Symbol, symbol_intern_lexeme }
 import v2.std.text { String }
 import std.algebra { Cons, Empty, FreeMonoid }

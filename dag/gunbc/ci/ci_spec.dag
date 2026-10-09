@@ -1,11 +1,14 @@
 module gunbc.ci_spec
 
+import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
+
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_kvm_observer_dir }
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
 import gunbc.runner_microvm_slot_unit { microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path }
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
+import gunbc.cloudflare.r2_conditional_put_race_probe { race_probe_receipt_path }
 import gunbc.spark.managed_access_apply { spark_apply_receipt_path }
 import gunbc.spark.pair_serving_apply { spark_pair_apply_receipt_path }
 import gunbc.spark.native_serving_apply { spark_native_apply_receipt_path }
@@ -823,6 +826,21 @@ data gunbc_ci_r2_workspace_object_write_mint_target: GunbcRunStepTarget = GunbcR
   function: "run_workspace_object_write",
 }
 
+data gunbc_ci_r2_cache_object_read_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
+  function: "run_cache_object_read",
+}
+
+data gunbc_ci_r2_cache_object_write_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
+  function: "run_cache_object_write",
+}
+
+data gunbc_ci_r2_conditional_put_race_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/cloudflare/r2_conditional_put_race_probe.dag",
+  function: "run_r2_conditional_put_race_probe",
+}
+
 data gunbc_ci_workspace_source_pack_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fabric/workspace_source.dag",
   function: "workspace_source_pack_wet",
@@ -913,6 +931,11 @@ data gunbc_ci_runner_password_session_tool_converge_target: GunbcRunStepTarget =
 data gunbc_ci_runner_browser_toolchain_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_browser_toolchain.dag",
   function: "runner_browser_toolchain_converge_ci_wet",
+}
+
+data gunbc_ci_printer_workflow_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/printer_workflow_run.dag",
+  function: "run",
 }
 
 data gunbc_ci_namecheap_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1368,6 +1391,9 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_r2_object_write_mint_target,
     gunbc_ci_r2_workspace_object_read_mint_target,
     gunbc_ci_r2_workspace_object_write_mint_target,
+    gunbc_ci_r2_cache_object_read_mint_target,
+    gunbc_ci_r2_cache_object_write_mint_target,
+    gunbc_ci_r2_conditional_put_race_probe_target,
     gunbc_ci_workspace_source_pack_target,
     gunbc_ci_workspace_checkpoint_measure_target,
     gunbc_ci_workspace_checkpoint_restore_target,
@@ -1384,7 +1410,9 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_browser_toolchain_converge_target,
     gunbc_ci_host_credential_custody_converge_target,
     gunbc_ci_namecheap_observe_target,
+    gunbc_ci_printer_workflow_target,
     gunbc_ci_spark_grants_observe_target,
+
     gunbc_ci_runner_microvm_boot_probe_target,
     gunbc_ci_microvm_slot_start_target,
     gunbc_ci_microvm_slot_reserve_target,
@@ -2673,6 +2701,36 @@ fn gunbc_ci_r2_workspace_object_write_mint_invoke() -> String {
     function: gunbc_ci_r2_workspace_object_write_mint_target.function,
     claim_run: false,
     receipt_rel: none
+  )
+}
+
+fn gunbc_ci_r2_cache_object_read_mint_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_r2_cache_object_read_mint_target.entry,
+    function: gunbc_ci_r2_cache_object_read_mint_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_r2_cache_object_write_mint_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_r2_cache_object_write_mint_target.entry,
+    function: gunbc_ci_r2_cache_object_write_mint_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_r2_conditional_put_race_probe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_r2_conditional_put_race_probe_target.entry,
+    function: gunbc_ci_r2_conditional_put_race_probe_target.function,
+    claim_run: false,
+    receipt_rel: race_probe_receipt_path
   )
 }
 
@@ -4003,4 +4061,11 @@ fn gunbc_ci_namecheap_observe_invoke() -> String {
     claim_run: false,
     receipt_rel: namecheap_observation_receipt_path
   )
+}
+
+fn gunbc_ci_printer_workflow_invoke() -> String {
+  gunbc_run_step_script(source_roots: witness_layer_roots,
+    entry: gunbc_ci_printer_workflow_target.entry,
+    function: gunbc_ci_printer_workflow_target.function,
+    claim_run: false, receipt_rel: printer_workflow_receipt_path)
 }

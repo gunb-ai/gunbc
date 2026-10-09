@@ -1,6 +1,7 @@
 module gunbc.site.robot_mark
 
-import std.types { String }
+import std.types { Int, String }
+import std.decimal { fixed_point_wire }
 import std.markup { Fragment, Element, Attribute, attr }
 import extdeps.color.srgb { Srgb8 }
 import gunbc.design.palette { Swatch }
@@ -22,11 +23,76 @@ data robot_mark_ink: Swatch = Swatch { name: "robot-mark-ink", color: Srgb8 { r:
 
 data robot_mark_view_box: String = "0 0 120 120"
 
-data robot_mark_body_path: String = "M40,20 H80 A30,30 0 0,1 110,50 V70 A30,30 0 0,1 80,100 H40 A30,30 0 0,1 10,70 V50 A30,30 0 0,1 40,20 Z M30,41 H40 A2,2 0 0,1 42,43 V53 A2,2 0 0,1 40,55 H30 A2,2 0 0,1 28,53 V43 A2,2 0 0,1 30,41 Z M80,41 H90 A2,2 0 0,1 92,43 V53 A2,2 0 0,1 90,55 H80 A2,2 0 0,1 78,53 V43 A2,2 0 0,1 80,41 Z M54,54 H66 A2,2 0 0,1 68,56 V58 A2,2 0 0,1 66,60 H54 A2,2 0 0,1 52,58 V56 A2,2 0 0,1 54,54 Z"
+// THE MARK'S GEOMETRY AS NUMBERS. The symbol is a squircle body with two square eyes and a flat
+// mouth cut out of it (each a rounded rectangle), drawn under one transform, and an antenna of a
+// stem and a ball drawn without it. The numbers below are the symbol's own; the path strings are
+// derived from them, byte for byte the symbol's paths, so anything that draws the mark at another
+// size (gunbc.site.element.build_meter's worker) reads the same numbers instead of re-measuring a
+// path string.
+type RobotMarkBox {
+  x: Int
+  y: Int
+  w: Int
+  h: Int
+  r: Int
+}
 
-data robot_mark_body_transform: String = "translate(-12 -12) scale(1.2)"
+type RobotMarkCircle {
+  cx: Int
+  cy: Int
+  r: Int
+}
 
-data robot_mark_antenna_path: String = "M58,6 H62 V12 H58 Z M55,5 A5,5 0 0,1 65,5 A5,5 0 0,1 55,5 Z"
+data robot_mark_body: RobotMarkBox = RobotMarkBox { x: 10, y: 20, w: 100, h: 80, r: 30 }
+data robot_mark_left_eye: RobotMarkBox = RobotMarkBox { x: 28, y: 41, w: 14, h: 14, r: 2 }
+data robot_mark_right_eye: RobotMarkBox = RobotMarkBox { x: 78, y: 41, w: 14, h: 14, r: 2 }
+data robot_mark_mouth: RobotMarkBox = RobotMarkBox { x: 52, y: 54, w: 16, h: 6, r: 2 }
+data robot_mark_antenna_stem: RobotMarkBox = RobotMarkBox { x: 58, y: 6, w: 4, h: 6, r: 0 }
+data robot_mark_antenna_ball: RobotMarkCircle = RobotMarkCircle { cx: 60, cy: 5, r: 5 }
+
+// The body group's transform: a uniform scale in tenths, then a translation of both axes.
+data robot_mark_body_scale_tenths: Int = 12
+data robot_mark_body_offset: Int = -12
+
+fn robot_mark_n(v: Int) -> String {
+  to_string(v)
+}
+
+fn robot_mark_arc(r: Int, x: Int, y: Int) -> String {
+  join(["A", robot_mark_n(v: r), ",", robot_mark_n(v: r), " 0 0,1 ", robot_mark_n(v: x), ",", robot_mark_n(v: y)], "")
+}
+
+fn robot_mark_rounded_box_path(b: RobotMarkBox) -> String {
+  join([
+    "M", robot_mark_n(v: b.x + b.r), ",", robot_mark_n(v: b.y),
+    " H", robot_mark_n(v: b.x + b.w - b.r),
+    " ", robot_mark_arc(r: b.r, x: b.x + b.w, y: b.y + b.r),
+    " V", robot_mark_n(v: b.y + b.h - b.r),
+    " ", robot_mark_arc(r: b.r, x: b.x + b.w - b.r, y: b.y + b.h),
+    " H", robot_mark_n(v: b.x + b.r),
+    " ", robot_mark_arc(r: b.r, x: b.x, y: b.y + b.h - b.r),
+    " V", robot_mark_n(v: b.y + b.r),
+    " ", robot_mark_arc(r: b.r, x: b.x + b.r, y: b.y),
+    " Z",
+  ], "")
+}
+
+fn robot_mark_square_box_path(b: RobotMarkBox) -> String {
+  join(["M", robot_mark_n(v: b.x), ",", robot_mark_n(v: b.y), " H", robot_mark_n(v: b.x + b.w), " V", robot_mark_n(v: b.y + b.h), " H", robot_mark_n(v: b.x), " Z"], "")
+}
+
+fn robot_mark_circle_path(c: RobotMarkCircle) -> String {
+  join(["M", robot_mark_n(v: c.cx - c.r), ",", robot_mark_n(v: c.cy), " ", robot_mark_arc(r: c.r, x: c.cx + c.r, y: c.cy), " ", robot_mark_arc(r: c.r, x: c.cx - c.r, y: c.cy), " Z"], "")
+}
+
+data robot_mark_body_path: String = join(map([robot_mark_body, robot_mark_left_eye, robot_mark_right_eye, robot_mark_mouth], b => robot_mark_rounded_box_path(b: b)), " ")
+
+data robot_mark_body_transform: String = join([
+  "translate(", robot_mark_n(v: robot_mark_body_offset), " ", robot_mark_n(v: robot_mark_body_offset), ") scale(",
+  fixed_point_wire(value: robot_mark_body_scale_tenths, decimals: 1), ")",
+], "")
+
+data robot_mark_antenna_path: String = join([robot_mark_square_box_path(b: robot_mark_antenna_stem), robot_mark_circle_path(c: robot_mark_antenna_ball)], " ")
 
 fn robot_mark_svg(class_name: String, label: String) -> Fragment {
   Element {

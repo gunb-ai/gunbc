@@ -1,7 +1,7 @@
 module test.claim.gcp_estate_census_witness
 
 import std.types { Bool, String, NonEmptyStr }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.upsert_decision { UpsertClassification, Converged, Noop, Refuse, Conflict, Inaccessible, Drifted, Apply }
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
@@ -291,19 +291,16 @@ test fn census_edges_make_the_cross_project_bindings_loud() -> Bool {
     }
 }
 
-test fn desired_pool_is_noop_provider_unread_binding_absent() -> Bool {
+// The pool and provider converge unchanged; the convergence binding is now the NARROWED default-branch
+// set, which the audit census (taken before the narrowing) does not hold, so it is a create -- and the
+// old repository-wide cell it still holds is an undeclared finding, never a delete.
+test fn desired_pool_is_noop_provider_unread_narrowed_binding_is_a_create() -> Bool {
   let census = operator_audit_census()
   match classify_desired_wif_pool(desired: gcp_estate_desired_github_actions_pool(), census: census) {
     UpsertClassification { verdict: Converged, decision: Noop } =>
       match classify_desired_wif_provider(desired: gcp_estate_desired_github_oidc_provider(), census: census) {
         UpsertClassification { verdict: Converged, decision: Noop } =>
-          match classify_desired_binding(
-            desired: gcp_estate_desired_convergence_binding(),
-            census: census,
-          ) {
-            UpsertClassification { verdict: Converged, decision: Noop } => true
-            _ => false
-          }
+          classify_desired_binding_is_absent_create(desired: gcp_estate_desired_convergence_binding(), census: census)
         _ => false
       }
     _ => false

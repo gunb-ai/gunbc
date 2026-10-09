@@ -2,7 +2,7 @@ module test.claim.approval_store_receipt_witness
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, Secret }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.scoped_authorization { AttemptIdentity }
 import extdeps.crypto.mac { MacKey, HmacSha256, MacSigned, mac_sign }
@@ -12,7 +12,7 @@ import gunbc.auth.approval_capability { ApprovalCapability, ApprovalCapabilityCl
 import gunbc.auth.approval_decision_store {
   StoredApprovalRequest, EscalationSlot, EscalationNotFiled, EscalationPending, EscalationDecided,
   ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyFileAbsent, stored_request_json,
-  approval_mac_key_id,
+  approval_mac_key_id, approval_decision_store_root,
 }
 import gunbc.auth.approval_request_submission { approval_submission_mac_key_id }
 import gunbc.auth.approval_store_receipt {
@@ -20,7 +20,8 @@ import gunbc.auth.approval_store_receipt {
   StoreReceiptIssuance, StoreReceiptIssued, StoreReceiptRefused,
   ReceiptEscalationNotFiled, ReceiptStillPending, ReceiptDenied, ReceiptAttemptMismatch, ReceiptRevisionMismatch, ReceiptKeyUnavailable, ReceiptFilingUnreadable,
   issue_store_receipt_over, store_receipt_claims,
-  store_receipt_answer_over, store_receipt_request_message,
+  authenticate_store_receipt_asker, StoreReceiptAskerAuthenticated, StoreReceiptAskerRefused, store_receipt_authenticated_answer,
+  store_receipt_request_message, store_receipt_answer,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -123,18 +124,16 @@ test fn the_mint_refuses_each_standing_that_is_not_a_matching_approval() -> Bool
     && (match issue_store_receipt_over(slot: sr_approved(revision: sr_revision), filing: sr_filing(), attempt: sr_attempt(s: "tx-d0"), keyring: ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: approval_store_receipt_mac_key_path } }) { StoreReceiptRefused { refusal: ReceiptKeyUnavailable { cause: _ } } => true  _ => false })
 }
 
-// THE ROUTE'S ANSWER: an asker holding the submission key receives the receipt wire; an asker
-// without it is refused 403 BEFORE the escalation is read (the slot reader below would mint for
-// anyone), and a malformed body is 400.
+// THE ROUTE'S ANSWER: an asker holding the submission key is authenticated for the attempt it
+// presents and the mint over its readings answers the receipt wire; an asker without it is refused
+// 403 by the authentication alone, which takes no escalation reading (the readings below would mint
+// for anyone), and a malformed body is 400.
 fn sr_answer(body: String) -> Int {
-  store_receipt_answer_over(
-    escalation_id: "esc-d0-1" as NonEmptyStr,
-    body: body,
-    submission_keyring: ApprovalKeyLoaded { key: sr_submission_key() },
-    slot: fn() { sr_approved(revision: sr_revision) },
-    filing: fn() { sr_filing() },
-    receipt_keyring: fn() { ApprovalKeyLoaded { key: sr_receipt_key() } },
-  ).status
+  match authenticate_store_receipt_asker(escalation_id: "esc-d0-1" as NonEmptyStr, body: body, submission_keyring: ApprovalKeyLoaded { key: sr_submission_key() }) {
+    StoreReceiptAskerRefused { answer: refused } => refused.status
+    StoreReceiptAskerAuthenticated { attempt: attempt } =>
+      store_receipt_authenticated_answer(attempt: attempt, slot: sr_approved(revision: sr_revision), filing: sr_filing(), keyring: ApprovalKeyLoaded { key: sr_receipt_key() }).status
+  }
 }
 
 fn sr_tag(key: MacKey, attempt: String) -> String {
@@ -150,4 +149,38 @@ test fn only_a_submission_key_holder_is_answered_with_a_receipt() -> Bool {
     && sr_answer(body: join(["attempt=tx-d0\ntag=", sr_tag(key: other_key, attempt: "tx-d0"), "\n"], "")) == 403
     && sr_answer(body: join(["attempt=tx-other\ntag=", sr_tag(key: sr_submission_key(), attempt: "tx-d0"), "\n"], "")) == 403
     && sr_answer(body: "tag=00\n") == 400
+}
+
+// THE SECURITY ORDER, executed on the route. The mint claims above supply slot/filing/keyring and
+// cannot see a hoist of those reads above authentication. This claim runs store_receipt_answer
+// against a fixture root whose Filesystem.Read has no hermetic mock: if any store or receipt-key
+// read ran before the asker was refused, evaluation would refuse rather than answer 403. THE RED:
+// observe_escalation, cas_read_generation or read_store_receipt_keyring moved above the match.
+data sr_order_fixture_root: NonEmptyStr = "/gunbc-store-receipt-order-witness/never-read" as NonEmptyStr
+
+fn sr_unauthenticated_body() -> String {
+  join(["attempt=tx-d0\ntag=", sr_tag(key: sr_receipt_key(), attempt: "tx-d0"), "\n"], "")
+}
+
+test fn an_unauthenticated_asker_is_refused_before_any_decision_store_read() -> Bool {
+  let answer = store_receipt_answer(
+    escalation_id: "esc-d0-1" as NonEmptyStr,
+    body: sr_unauthenticated_body(),
+    root: sr_order_fixture_root,
+    submission_keyring: ApprovalKeyLoaded { key: sr_submission_key() },
+  )
+  answer.status == 403 && string_contains(s: answer.body, pattern: "not authenticated")
+}
+
+// THE PAIRING OBLIGATION: one inhabitance of the production root on the same route. Supplying a
+// fixture must not be the last execution that names approval_decision_store_root. Unauthenticated,
+// so the real path still must not read.
+test fn store_receipt_answer_on_the_production_root_refuses_before_any_store_read() -> Bool {
+  let answer = store_receipt_answer(
+    escalation_id: "esc-d0-1" as NonEmptyStr,
+    body: sr_unauthenticated_body(),
+    root: approval_decision_store_root,
+    submission_keyring: ApprovalKeyLoaded { key: sr_submission_key() },
+  )
+  answer.status == 403 && string_contains(s: answer.body, pattern: "not authenticated")
 }

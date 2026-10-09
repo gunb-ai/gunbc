@@ -1,0 +1,15 @@
+{
+  "pass": "fixed_point",
+  "schema": "gunbc.regen_receipt.v2",
+  "commit_sha": "9d9c242413cb22e0f47c3cda7210c7d5d44ad3f2",
+  "authority_digest": "fnv1a64:52749a5efa5c8581",
+  "candidate_generated_digest": "fnv1a64:b60ba1955c940dcf",
+  "fixed_point_equal": true,
+  "prior": {
+    "commit_sha": "9d9c242413cb22e0f47c3cda7210c7d5d44ad3f2",
+    "committed_generated_digest": "fnv1a64:b60ba1955c940dcf",
+    "first_generation_equal": true,
+    "changed_paths": [],
+    "candidate_artifact": "target/stage0-regen-candidate"
+  }
+}

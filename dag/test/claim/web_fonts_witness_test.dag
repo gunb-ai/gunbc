@@ -1,0 +1,121 @@
+module test.claim.web_fonts_witness_test
+import gunbc.site.web_fonts {
+  WebFontFace, web_font_faces, web_font_derivation,
+  web_font_roboto_400, web_font_roboto_500, web_font_roboto_700, web_font_google_sans_400, web_font_google_sans_500,
+  web_font_stylesheet, web_font_stylesheet_over, web_font_stylesheet_path, web_font_stylesheet_path_over,
+}
+import gunbc.site.document { site_document_over, site_styles, ApplicationShell, ApprovalShell, SiteShell }
+import gunbc.roadmap_serve { roadmap_serve_route_table_build, WebFontStylesheetHandler, web_font_stylesheet_response }
+import extdeps.http.server {
+  WireHeaderCacheControl, serve_wire_response, serve_select_route,
+  ServedRouteTableBuilt, ServedRouteTableBuildRefused, SelectedDynamic, SelectedStatic, MethodNotAllowed, NoRouteMatched,
+}
+import extdeps.ietf.http_semantics { GET }
+import extdeps.languages.html { serialize_html_source }
+import std.markup { Fragment, Element, FragmentText, RawNode }
+
+fn occurrences(s: String, pattern: String) -> Int {
+  count(split(s: s, delimiter: pattern)) - 1
+}
+
+// The weight a face is served at is the weight it was instanced at.
+test fn every_face_is_instanced_at_its_declared_weight() -> Bool {
+  count(web_font_faces) == 5
+    && all(web_font_faces, f => count(filter(f.axis_pins, p => p.tag == "wght" && p.value == f.weight)) == 1)
+    && count(web_font_derivation.unicode_ranges) > 0
+}
+
+fn face_declaration(family: String, weight: Int) -> String {
+  join(["@font-face { font-family: \"", family, "\"; font-style: normal; font-weight: ", to_string(value: weight), "; font-display: swap; src: url(data:font/woff2;base64,"], "")
+}
+
+test fn each_face_appears_once_with_its_family_and_weight() -> Bool {
+  let css = web_font_stylesheet()
+  occurrences(s: css, pattern: "@font-face") == 5
+    && occurrences(s: css, pattern: face_declaration(family: "Roboto", weight: 400)) == 1
+    && occurrences(s: css, pattern: face_declaration(family: "Roboto", weight: 500)) == 1
+    && occurrences(s: css, pattern: face_declaration(family: "Roboto", weight: 700)) == 1
+    && occurrences(s: css, pattern: face_declaration(family: "Google Sans", weight: 400)) == 1
+    && occurrences(s: css, pattern: face_declaration(family: "Google Sans", weight: 500)) == 1
+    && occurrences(s: css, pattern: join([web_font_roboto_700.woff2_base64, ") format(\"woff2\") }"], "")) == 1
+}
+
+test fn the_stylesheet_url_is_content_addressed() -> Bool {
+  let path = web_font_stylesheet_path()
+  let f = web_font_roboto_500
+  let moved = WebFontFace { source: f.source, weight: 600, axis_pins: f.axis_pins, woff2_sha256: f.woff2_sha256, woff2_byte_size: f.woff2_byte_size, woff2_base64: f.woff2_base64 }
+  let changed = [web_font_roboto_400, moved, web_font_roboto_700, web_font_google_sans_400, web_font_google_sans_500]
+  path.starts_with(prefix: "/assets/fonts-") && path.ends_with(suffix: ".css")
+    && path == web_font_stylesheet_path_over(faces: web_font_faces)
+    && !(web_font_stylesheet_path_over(faces: changed) == path)
+    && !(web_font_stylesheet_path_over(faces: [web_font_roboto_400]) == path)
+}
+
+// The real route table selects the stylesheet handler at the content-addressed path and at no
+// other fonts path; the handler's response is the stylesheet as text/css under an immutable cache
+// header. The end-to-end GET through the served entry is in test.claim.long.web_fonts_bytes_witness_test.
+fn selects_stylesheet(path: String) -> Bool {
+  match roadmap_serve_route_table_build() {
+    ServedRouteTableBuildRefused { raw: _, segment: _, reason: _ } => false
+    ServedRouteTableBuilt { table } =>
+      match serve_select_route(table: table, method: GET, path: path) {
+        SelectedDynamic { handler, params: _ } => handler == WebFontStylesheetHandler
+        SelectedStatic { route: _ } => false
+        MethodNotAllowed { allowed: _ } => false
+        NoRouteMatched => false
+      }
+  }
+}
+
+test fn the_route_table_selects_the_stylesheet_at_its_content_address_only() -> Bool {
+  selects_stylesheet(path: web_font_stylesheet_path()) && !selects_stylesheet(path: "/assets/fonts-0000000000000000.css")
+}
+
+test fn the_stylesheet_response_is_css_with_an_immutable_cache_header() -> Bool {
+  let r = serve_wire_response(r: web_font_stylesheet_response())
+  r.status == 200
+    && r.content_type_label == "text/css; charset=utf-8"
+    && r.body == web_font_stylesheet()
+    && count(r.headers) == 1
+    && all(r.headers, h => h.name == WireHeaderCacheControl && h.value == "public, max-age=31536000, immutable")
+}
+
+fn head_children(page: Fragment) -> List<Fragment> {
+  match page {
+    Element { tag: _, attributes: _, children } =>
+      flat_map(children, c => match c {
+        Element { tag, attributes: _, children: kids } => if tag == "head" { kids } else { [] }
+        FragmentText { content: _ } => []
+        RawNode { content: _ } => []
+      })
+    FragmentText { content: _ } => []
+    RawNode { content: _ } => []
+  }
+}
+
+fn attribute_values(nodes: List<Fragment>, name: String) -> List<String> {
+  flat_map(nodes, n => match n {
+    Element { tag: _, attributes, children: _ } => map(filter(attributes, a => a.name == name), a => a.value)
+    FragmentText { content: _ } => []
+    RawNode { content: _ } => []
+  })
+}
+
+fn page(shell: SiteShell) -> Fragment {
+  site_document_over(title: "fonts", heading: "fonts", styles: site_styles(rules: []), content: [], navigation: [], shell: shell)
+}
+
+// The application head links the stylesheet exactly once, by its content-addressed path, ahead of
+// the inline styles; every URL the head references is same-origin (a root-relative path), so no
+// font host or other origin is requested. The approval shell, served by a server without the
+// route, links nothing.
+test fn the_document_head_links_the_stylesheet_once_and_only_same_origin() -> Bool {
+  let head = head_children(page: page(shell: ApplicationShell))
+  let hrefs = attribute_values(nodes: head, name: "href")
+  let refs = concat(hrefs, attribute_values(nodes: head, name: "src"))
+  count(filter(hrefs, h => h == web_font_stylesheet_path())) == 1
+    && count(filter(hrefs, h => h.starts_with(prefix: "/assets/fonts-"))) == 1
+    && all(refs, u => u.starts_with(prefix: "/") && !u.starts_with(prefix: "//"))
+    && occurrences(s: serialize_html_source(node: page(shell: ApplicationShell)), pattern: join(["<link rel=\"stylesheet\" href=\"", web_font_stylesheet_path(), "\">"], "")) == 1
+    && count(filter(attribute_values(nodes: head_children(page: page(shell: ApprovalShell)), name: "href"), h => h.starts_with(prefix: "/assets/fonts-"))) == 0
+}

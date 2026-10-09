@@ -1,0 +1,16 @@
+module extdeps.printing.sunlu_filament
+import std.types {NonEmptyStr}
+import std.decl_ref {DeclarationRef,WholeDeclaration}
+import std.measure {celsius,celsius_delta,megapascal,kilogram_per_cubic_metre,CelsiusDelta}
+import extdeps.printing.fdm {FilamentTechnicalDataSheetRow,Petg}
+import extdeps.external_authority {ExternalAuthority,ExternalModelScope,ExternalSubjectRef,CitedToAuthority}
+import extdeps.uri {Uri,Https}
+data extdeps_external_authority_anchor:ExternalAuthority=ExternalAuthority {uri:Uri {scheme:Https,locator:"media.sunlu.com/prod/20260330/ccf53a55-5b58-49fa-b1d9-08f94c0a4b28.pdf?filename=TDS"}}
+data extdeps_model_scope:ExternalModelScope=ExternalModelScope {subject:ExternalSubjectRef {declaration:DeclarationRef {module_path:"extdeps.printing.sunlu_filament",decl_name:"sunlu_high_speed_matte_petg",field:WholeDeclaration}},first_citation:extdeps_external_authority_anchor,further_citations:[]}
+// SL-TE-WI-062 A/1, directly read 2026-10-04, pp.1 and 3. Typical XY specimen
+// values at 160 mm/s, 255 C, 100% infill and 90-degree raster. Not a structural allowable.
+// User's Amazon description is a likely match, not verified lot/SKU identity.
+data sunlu_high_speed_matte_petg:FilamentTechnicalDataSheetRow=FilamentTechnicalDataSheetRow {
+ product_label:"SUNLU High Speed Matte PETG (candidate)",material:Petg,density:kilogram_per_cubic_metre(count:1280),heat_deflection_at_0_45_mpa:celsius(count:70),tensile_strength:megapascal(count:46),bending_strength:megapascal(count:75),bending_modulus:megapascal(count:2650),standing:CitedToAuthority {authority:extdeps_external_authority_anchor}}
+data sunlu_hdt_tolerance:CelsiusDelta=celsius_delta(count:2)
+data sunlu_specimen_caveat:NonEmptyStr="HDT 70 +/- 2 C at 0.45 MPa on XY test specimens; no long-duration creep or printed corner compressive allowable is supplied. Exact purchased SKU/lot must match."

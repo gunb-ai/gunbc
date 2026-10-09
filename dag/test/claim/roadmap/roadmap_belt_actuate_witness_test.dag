@@ -95,7 +95,7 @@ import gunbc.roadmap_dispatch_actuator {
 import extdeps.tmux { classify_tmux_session_list, TmuxSessionsListed }
 import gunbc.roadmap_belt { DispatchMember, DesiredMember, ObservedMember }
 import std.upsert_decision { ObservationVerdict, Converged }
-import gunbc.roadmap_dispatch_actuator { DispatchAttemptRef }
+import gunbc.roadmap_dispatch_actuator { DispatchAttemptRef, ExecutorDefault }
 import gunbc.roadmap_attempt_metering { MeteringNotDue, MeteringPersisted, MeteringPersistRefused, MeteringStandingFinal }
 import gunbc.roadmap_belt_actuate { belt_metering_pass_outcome_from, workflow_attempt_scope_admits, WorkflowAttemptsAllNodes, WorkflowAttemptsOneNode, belt_tick_receipt_schema, belt_path_parent_dir, belt_worker_process_terminal, belt_attempt_worker_terminal }
 import gunbc.roadmap_provider_events { ProviderRunning, ProviderEventsRefused, ProviderAwaitingSeat }
@@ -2390,6 +2390,7 @@ fn staged_post_over_canary(graph: LaunchGraphStanding, standing: LaunchHostStand
     merged: [],
     node_id: node_id,
     request: LaunchAutonomous,
+    executor: ExecutorDefault,
   )
 }
 

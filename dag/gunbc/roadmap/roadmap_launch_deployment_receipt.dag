@@ -53,7 +53,7 @@ import gunbc.roadmap_belt_actuate {
 }
 import gunbc.roadmap_belt { SpawnMode, ManualReady, spawn_mode_label }
 import gunbc.roadmap_launch_deployment_observe {
-  EventBacklogFact, EventBacklogClear, StaleBacklog, EventBacklogUnobserved, event_backlog_text,
+  EventBacklogFact, EventBacklogClear, StaleBacklog, EventBacklogUnobserved, event_backlog_text, event_backlog_stage_label,
 }
 
 // THE ONE JOIN THE ROADMAP LAUNCH MVP'S RLM-2 GATE PRODUCES. Every independent read RUNS -- desired
@@ -501,7 +501,7 @@ fn tick_blockers(s: RoadmapLaunchDeploymentSubject, f: TickFact) -> List<Roadmap
 fn event_backlog_blockers(f: EventBacklogFact) -> List<RoadmapLaunchDeploymentBlocker> {
   match f {
     EventBacklogClear { inbox: _, queued: _ } => []
-    StaleBacklog { stage: _, entry: _, age_seconds: _, bound_seconds: _ } => blocker(member: "event_backlog", detail: event_backlog_text(f: f))
+    StaleBacklog { stage: _, entry: _, age: _, bound: _ } => blocker(member: "event_backlog", detail: event_backlog_text(f: f))
     EventBacklogUnobserved { detail: _ } => blocker(member: "event_backlog", detail: event_backlog_text(f: f))
   }
 }
@@ -950,7 +950,7 @@ fn facts_json(f: RoadmapLaunchDeploymentFacts) -> JsonValue {
     }),
     json_kv(key: "event_backlog", value: match f.event_backlog {
       EventBacklogClear { inbox: i, queued: q } => fact_arm(arm: "clear", members: [json_kv(key: "inbox", value: json_string(s: to_string(value: i))), json_kv(key: "queued", value: json_string(s: to_string(value: q)))])
-      StaleBacklog { stage: st, entry: en, age_seconds: ag, bound_seconds: bd } => fact_arm(arm: "stale", members: [json_kv(key: "stage", value: json_string(s: st)), json_kv(key: "entry", value: json_string(s: en)), json_kv(key: "age_seconds", value: json_string(s: to_string(value: ag))), json_kv(key: "bound_seconds", value: json_string(s: to_string(value: bd)))])
+      StaleBacklog { stage: st, entry: en, age: ag, bound: bd } => fact_arm(arm: "stale", members: [json_kv(key: "stage", value: json_string(s: event_backlog_stage_label(stage: st))), json_kv(key: "entry", value: json_string(s: en)), json_kv(key: "age_seconds", value: json_string(s: to_string(value: second_count(s: ag)))), json_kv(key: "bound_seconds", value: json_string(s: to_string(value: second_count(s: bd))))])
       EventBacklogUnobserved { detail: d } => fact_arm(arm: "unobserved", members: [json_kv(key: "detail", value: json_string(s: d))])
     }),
     json_kv(key: "footprint", value: match f.footprint {

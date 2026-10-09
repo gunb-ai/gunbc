@@ -3,7 +3,7 @@ module test.claim.spark.serving_arm_launch_witness_test
 import std.types { Bool, String, NonEmptyStr, List }
 import gunbc.spark.serving_promotion { no_promotion_receipts }
 import std.nat { Nat }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.measure { token_count_value }
 import extdeps.vllm.engine_args { vllm_basis_point_fraction_wire }
 import extdeps.docker.cli { DockerCreateSpec, DockerEnvAssignment, DockerDeviceMapping }
@@ -275,8 +275,8 @@ test fn w_a_refused_fit_refuses_the_bounded_experiment_at_the_wall() -> Bool {
     ArmMemorySubjectReady { subject: subject } => {
       let verdict = arm_memory_fit_verdict(subject: subject)
       (match verdict {
-        ArmMemoryFitRefused { rank: _, phase: _, demand_lower: _, supply_upper: _, cause: _ } => true
-        ArmMemoryFitProved { rank: _, phase: _, headroom_bytes: _ } => false
+        ArmMemoryFitRefused { rank: _, tiers: _, phase: _, demand_lower: _, supply_upper: _, cause: _ } => true
+        ArmMemoryFitProved { rank: _, tier: _, phase: _, headroom_bytes: _ } => false
         ArmMemoryFitUnestablished { obligations: _ } => false
       })
         && (match arm_memory_launch_gate(intent: ArmBoundedExperiment, verdict: verdict, experiment: none) {
@@ -311,8 +311,8 @@ test fn w_the_serving_profiles_verdict_is_unestablished_with_named_obligations()
     ArmMemorySubjectRefused { cause: _ } => false
     ArmMemorySubjectReady { subject: subject } =>
       match arm_memory_fit_verdict(subject: subject) {
-        ArmMemoryFitProved { rank: _, phase: _, headroom_bytes: _ } => false
-        ArmMemoryFitRefused { rank: _, phase: _, demand_lower: _, supply_upper: _, cause: _ } => false
+        ArmMemoryFitProved { rank: _, tier: _, phase: _, headroom_bytes: _ } => false
+        ArmMemoryFitRefused { rank: _, tiers: _, phase: _, demand_lower: _, supply_upper: _, cause: _ } => false
         ArmMemoryFitUnestablished { obligations: os } =>
           length(os) > 0
             && any(os, o => string_contains(s: o as String, pattern: "kv-cache"))

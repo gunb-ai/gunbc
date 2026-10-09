@@ -2,7 +2,7 @@ module test.claim.machine_intake.ampere_nvparam_console_observation_witness_test
 
 import std.types { Bool, Int, List, String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.optional { Present }
+import std.optional { Present }
 import v2.std.algebra { filter }
 import extdeps.ampere.nvparam { NvParamKeyDefined, NvParamKeyUndefined, nvparam_key_in, nvparam_key_index, nvparam_keys }
 import gunbc.machine_intake_ampere_nvparam_console_observation {

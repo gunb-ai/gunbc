@@ -377,6 +377,10 @@ data excl_install_media_reason: String = "real host-effect execution witness (sh
 
 data excl_local_repo_wet_reason: String = "real host-effect execution witness over a THROWAWAY LOCAL REPOSITORY -- refused by the hermetic envelope, so excluded from the discovery corpus, and executed instead by the required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule). This row is NOT the dark bin-wet class: every function in the named file is on that schedule, the floor decodes it, runs each member wet, and joins the observed terminals back to the roster at identity grain, so a member that stops executing refuses rather than reading as covered."
 
+data excl_local_repo_wet_browser_ready_label_reason: String = "real host-effect execution witness whose effect is ARGV EXECUTION THAT WRITES INSIDE A THROWAWAY TEMP DIRECTORY -- the readiness-label converge (gunbc.runner_browser_toolchain browser_ready_labels_converge_wet) driven over LocalShell with the unprivileged posture parameterization against a mktemp scratch root: dd writes the scratch drop-in, cat reads it back, rm -f removes it, the scratch is removed. Refused by the hermetic envelope (shell.Exec over argv and shell.Mktemp.Dir have no mock_response), so excluded from the discovery corpus and executed by the required floor's local-repo wet lane. IT IS A DISTINCT ADMITTED EFFECT FROM ITS NEIGHBOURS AND IS NAMED RATHER THAN FOLDED IN: unlike excl_local_repo_wet_tempdir_write_reason the writes go through EXECUTED ARGV (dd/cat/rm over the host-effect transport), not a Filesystem.Write call; unlike excl_local_repo_wet_bash_materialized_reason a file IS written and read; unlike excl_local_repo_wet_host_probe_reason the probe writes. What admits it to the same lane is the shared negative half: no network, no cargo, no remote host, no install media, no sudo (the unprivileged posture skips daemon-reload with a typed cause), and nothing outside a directory the witness created and removes. The production FLEET route is a different row's subject: the declared stall is rostered as gunbc.guarantee_stall.browser_ready_labels_fleet_route_stall."
+
+data excl_local_repo_wet_browser_ready_label_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for the argv-over-host-effect-transport legs and shell.Mktemp.Dir, sufficient for the converge's write-then-proceed and remove-then-proceed folds to be asserted under fixed mocks at the scratch destination; then these fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes. The FleetSsh production route's own stall (gunbc.guarantee_stall.browser_ready_labels_fleet_route_stall) is NOT this row's trigger: the receipts keep executing over LocalShell regardless of when the shared transport admits that arm.")
+
 data excl_local_repo_wet_tempdir_write_reason: String = "real host-effect execution witness whose effect is a FILESYSTEM WRITE INTO A THROWAWAY TEMP DIRECTORY -- refused by the hermetic envelope (Filesystem.Write and shell.Mktemp.Dir have no mock_response), so excluded from the discovery corpus and executed by the required floor's local-repo wet lane. THIS IS A DISTINCT ADMITTED EFFECT FROM BOTH NEIGHBOURS AND IS NAMED RATHER THAN FOLDED INTO EITHER: it is not excl_local_repo_wet_reason's throwaway REPOSITORY property -- no repository is built and no git operation runs -- and it is not excl_local_repo_wet_host_probe_reason, which admits read-only probes that write NOTHING. What admits it to the same lane is the negative half those rows share: no network, no cargo, no remote host, no install media, and nothing outside a directory the witness created and removes. IT IS ENROLLED IN THE IDENTITY-GRAIN LANE DELIBERATELY rather than in the dark bin-wet class, because the whole purpose of the witness is that a wall which stops executing must REFUSE rather than read as covered -- enrolling a witness about silent absence somewhere it could be silently absent would reproduce its own subject."
 
 // Capture verification hashes the supplied bytes through stdin. The capture
@@ -417,7 +421,7 @@ data excl_local_repo_wet_profile_store_reason: String = "real host-effect execut
 
 data excl_local_repo_wet_profile_store_dissolve: DissolutionCondition = unbound_dissolution(description: "hermetic response coverage lands for shell.Mktemp.Dir, sha256sum.Sha256.DigestStdin and the Filesystem List/Read/Write/WriteOwnerOnly operations that is SUFFICIENT FOR executing a real directory's lifecycle -- a write observed by a later list and read in the same claim, and a create-exclusive write refused when the path exists -- rather than replaying authored bytes per call. Then the fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule and their floor_route_gap expectations, and this row deletes. Per-operation canned mock_response rows do NOT discharge it: they would decouple the read from the write, which is the supplied-input claim this file exists to pair.")
 
-data excl_local_repo_wet_scm_guarded_save_reason: String = "real host-effect execution witness over the SCM GUARDED SAVE'S WRITE (test.claim.scm_repository_save_real_execution_witness): the fresh-generation claim drives gunbc.scm.repository_save save_repository_sharded_guarded through Filesystem.Write over the committed v7 fixture and reads it back. The hermetic route has no arm for Filesystem.Write (no mock_response), measured as a route gap on gunbc#12787's floor; the write rewrites the bytes the fixture already holds, so it is idempotent on the local-repo wet lane."
+data excl_local_repo_wet_scm_guarded_save_reason: String = "real host-effect execution witness over the SCM GUARDED SAVE'S WRITE (test.claim.scm_repository_save_real_execution_witness): the fresh-generation claim drives gunbc.scm.repository_save save_repository_sharded_guarded through Filesystem.Write over the committed v7 fixture and reads it back; the first-save claim writes an empty envelope from GenerationExpectedAbsent to a throwaway path, reads G back, and admits a later persist on GenerationExpected(G). The hermetic route has no arm for Filesystem.Write (no mock_response), measured as a route gap on gunbc#12787's floor; the fixture rewrite is idempotent on the local-repo wet lane."
 
 data excl_local_repo_wet_scm_guarded_save_dissolve: DissolutionCondition = unbound_dissolution(description: "hermetic response coverage lands for Filesystem.Write that is SUFFICIENT FOR a write observed by a later Filesystem.Read in the same claim, and the fresh-generation claim is re-checked under it; then the fn re-enrolls as an ordinary hermetic discovery row and this row deletes")
 
@@ -798,11 +802,6 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: excl_substrate_long_lane_dissolve},
   WitnessExclusionRow {
     pattern: "fallback_arm_census_witness_test.dag",
-    classification: FalsifierSubstrateLongLane,
-    reason: excl_substrate_long_lane_reason,
-    dissolution: excl_substrate_long_lane_dissolve},
-  WitnessExclusionRow {
-    pattern: "long/instrument_sandbox_live_witness_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: excl_substrate_long_lane_reason,
     dissolution: excl_substrate_long_lane_dissolve},
@@ -1245,6 +1244,22 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: excl_local_repo_wet_profile_store_dissolve},
   WitnessExclusionRow {
     pattern: "roadmap_belt_publish_realization_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "browser_ready_label_real_path_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_browser_ready_label_reason,
+    dissolution: excl_local_repo_wet_browser_ready_label_dissolve,
+  },
+  WitnessExclusionRow {
+    pattern: "roadmap_belt_base_advance_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "roadmap_belt_recapture_wet_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_reason,
     dissolution: excl_local_repo_wet_dissolve},
@@ -2219,12 +2234,6 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     function: "w_population_decl_names_are_distinct",
     reason: "C0(b2) bare-name join precondition, read against the REAL derived population: classification_matches_fact keys on DeclFact.name, which is sound only while the population's top-level names are distinct, and nothing in the carrier makes that true — it is a property of the subject module. Enrolled here rather than per-PR because it reads the same decl_facts population as the five totality rows above and shares their witness-layer scan over a pool including src/v1. The MECHANISM that would catch a broken fold — a planted-duplicate RED plus a distinct positive control over synthetic two-element fixtures — is NOT enrolled here: it runs per-PR in test.claim.v1_complexity_decl_classification_witness_test, so a regression in the fold reds on every PR and only the live-population reading waits for the cadence.",
     dissolution: unbound_dissolution(description: "the classification roster carries exact DeclFact identity (qualified_name, or name plus kind) so the join is exact by construction and no precondition remains to read; or per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger).")
-  },
-  SubstrateLongLaneRow {
-    entry: "dag/test/claim/long/instrument_sandbox_live_witness_test.dag",
-    function: "instrument_sandbox_live_keystone_holds",
-    reason: "Re-homed off per-PR discovery after 5074ms thread-CPU in falsifier discovery batch 3 (run 30986055960, BudgetExceeded against the 5000ms fast-lane budget). WHY THE SPLIT, which is structural and does not move with the measurements: every claim on this entry renders the served page or reads the live program view and pays that cost once, while the cheap register-gate claims — derived salience role, emission/admission join, refused-role controls, theme-block position — do not, so those stay per-PR in dag/test/claim/instrument_sandbox_witness_test.dag at 0-2ms each, per the 2026-08-04 admission ruling that a live-population subject decomposes into mechanism fixtures per PR plus the irreducible live half on a cadence. NOT declared irreducible corpus breadth: the cost is measured and its gating term named. WHERE THAT COST IS: dag/test/claim/long/instrument_sandbox_live_witness_test.dag post_7822_attribution_note, which is its single home. This field used to carry an attribution of its own — the served-page render and live_program_view_result named as the dominant term, a 263ms-inputs / 5132ms-derivation split, n=25 declared nodes — and all of it is retracted: the cost location was wrong and the node count was never right. Deleted rather than disclaimed, because reason is read before dissolve_on and a superseded attribution here steers a worker scanning this roster before any correction below it can land (review 48997; the same fix the witness file's header got)",
-    dissolution: unbound_dissolution(description: "PARTIALLY MET AND RE-MEASURED TWICE, 2026-08-05. #7822 landed the keyed-lookup restructure this row originally named, and this witness fell roughly tenfold on the same host and binary, so that condition — eval under gunbc_ci_fast_lane_witness_eval_budget — now HOLDS. The row does not dissolve: the bar moved to a 500ms per-witness warning threshold (operator, 2026-08-05) and this witness is still several times over it. THE SECOND CONDITION THIS ROW NAMED IS ALSO WITHDRAWN. It said the residue was the served-page render and asked for a measured run under the warning line, which pointed the work at the witness file; attribution by execution says the dominant term is constructing declared_roadmap_nodes, several times the warning line on its own and before the page renders anything, so no change confined to dag/test/claim/long/instrument_sandbox_live_witness_test.dag can close the gap. CORRECTED CONDITION: the cost of reading the live roadmap authority — declared_roadmap_nodes construction specifically — drops under the per-witness warning line. That cost is shared with every other witness reading that authority, so it is owned by that authority's lane and tracked with the materialization/native-witness-execution work, not here; when it lands, this witness's own render residue is inside the line, these claims re-merge into dag/test/claim/instrument_sandbox_witness_test.dag per-PR, and this row, the exclusion row, and the long-lane file delete together. Every figure behind this — the per-component thread-CPU breakdown, the clock basis, and both retractions — is carried once in the witness file's post_7822_attribution_note and deferral_floor_note, deliberately not copied here, because two numeric copies of one measurement drift")
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/long/dag_compile_clean_scope_disposition_witness_test.dag",

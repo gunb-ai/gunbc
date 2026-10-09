@@ -34,19 +34,23 @@ test fn witness_iso8601_utc_epoch_seconds_matches_known_instants() -> Bool {
 // entries within their stage's bound are clear and counted; an inbox entry past the drain bound and a
 // queued entry past the obligation bound each refuse with StaleBacklog naming the OLDEST stale entry;
 // a fresh queued entry older than the drain bound is not stale (the bounds are per stage).
+fn queued_bound_count() -> Nat {
+  match event_backlog_queued_bound() { Present { value: b } => second_count(s: b)  Absent => 0 }
+}
+
 test fn witness_event_backlog_arms() -> Bool {
   let clear = match event_backlog_judge(entries: [
-    EventBacklogEntry { stage: "inbox", entry: "a", age_seconds: 10 },
-    EventBacklogEntry { stage: "queued", entry: "b", age_seconds: 1200 },
+    EventBacklogEntry { stage: AttemptExitInbox, entry: "a", age: second(count: 10) },
+    EventBacklogEntry { stage: AttemptExitQueued, entry: "b", age: second(count: 1200) },
   ]) { EventBacklogClear { inbox, queued } => inbox == 1 && queued == 1  _ => false }
   let stale_inbox = match event_backlog_judge(entries: [
-    EventBacklogEntry { stage: "inbox", entry: "young", age_seconds: 30 },
-    EventBacklogEntry { stage: "inbox", entry: "old", age_seconds: event_backlog_drain_bound_seconds + 1 },
-  ]) { StaleBacklog { stage, entry, age_seconds: _, bound_seconds } => stage == "inbox" && entry == "old" && bound_seconds == event_backlog_drain_bound_seconds  _ => false }
+    EventBacklogEntry { stage: AttemptExitInbox, entry: "young", age: second(count: 30) },
+    EventBacklogEntry { stage: AttemptExitInbox, entry: "old", age: second(count: second_count(s: event_backlog_drain_bound) + 1) },
+  ]) { StaleBacklog { stage, entry, age: _, bound } => stage == AttemptExitInbox && entry == "old" && second_count(s: bound) == second_count(s: event_backlog_drain_bound)  _ => false }
   let oldest_named = match event_backlog_judge(entries: [
-    EventBacklogEntry { stage: "inbox", entry: "stale-inbox", age_seconds: event_backlog_drain_bound_seconds + 5 },
-    EventBacklogEntry { stage: "queued", entry: "stale-queued", age_seconds: event_backlog_queued_bound_seconds + 100 },
-  ]) { StaleBacklog { stage, entry, age_seconds: _, bound_seconds: _ } => stage == "queued" && entry == "stale-queued"  _ => false }
+    EventBacklogEntry { stage: AttemptExitInbox, entry: "stale-inbox", age: second(count: second_count(s: event_backlog_drain_bound) + 5) },
+    EventBacklogEntry { stage: AttemptExitQueued, entry: "stale-queued", age: second(count: queued_bound_count() + 100) },
+  ]) { StaleBacklog { stage, entry, age: _, bound: _ } => stage == AttemptExitQueued && entry == "stale-queued"  _ => false }
   let empty = match event_backlog_judge(entries: []) { EventBacklogClear { inbox, queued } => inbox == 0 && queued == 0  _ => false }
   clear && stale_inbox && oldest_named && empty
 }
@@ -166,4 +170,10 @@ test fn witness_root_tree_standing_refuses_a_mismatched_tree() -> Bool {
         }
       }
   }
+}
+
+// THE QUEUED BOUND IS DERIVED, NOT COPIED: it is the obligation unit's RuntimeMaxSec plus the drain bound,
+// so changing belt_obligation_run_bound moves it (45min = 2700s, plus the 900s drain bound).
+test fn witness_queued_bound_is_the_run_bound_plus_the_drain_bound() -> Bool {
+  queued_bound_count() == 2700 + second_count(s: event_backlog_drain_bound)
 }

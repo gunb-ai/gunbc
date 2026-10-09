@@ -1,7 +1,7 @@
 module test.claim.fleet.fleet_wireless_link_witness
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import extdeps.iw {
   IwPowerSaveOn, IwPowerSaveOff, IwPowerSaveReadValue, IwPowerSaveUnreadable, iw_power_save_of_getter,
@@ -15,7 +15,9 @@ import extdeps.networkmanager.nmcli {
   nm_connection_auth_retries_property, nm_connection_autoconnect_retries_property,
   NmActiveConnectionOn, NmNoActiveConnection, NmActiveConnectionUnreadable, nm_active_connection_on,
   NmDeviceActivated, NmDeviceDisconnected, nm_device_state_of_getter,
+  NmConnectionFilename, NmConnectionFilenameUnreadable, nm_connection_filename_of,
 }
+import extdeps.netplan.netplan { PassthroughValue, PassthroughKeyAbsent, netplan_passthrough_value }
 import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
 import gunbc.fleet_host_identity { operator_host_srv7, operator_host_srv12 }
 import gunbc.fleet_wireless_link {
@@ -26,6 +28,7 @@ import gunbc.fleet_wireless_link {
   wireless_link_uncovered_spark_hosts,
   wireless_link_desired_for, spark_wireless_link_desired, wireless_link_decide, wireless_link_converge,
   WirelessLinkAlreadyConverged, WirelessLinkApplied, WirelessLinkRefused,
+  PersistedAuthorityRead, AuthorityNetplanMerged, AuthorityKeyfileUnmodeled, AuthorityRuntimeOnly, AuthorityUnreadable,
 }
 
 fn srv7_desired() -> WirelessLinkDesired { spark_wireless_link_desired(host: operator_host_srv7) }
@@ -186,8 +189,28 @@ test fn witness_plain_disconnect_and_activated_are_not_no_secrets() -> Bool {
 
 // ── decision over supplied observations ──────────────────────────────────────
 
+// The MERGED passthrough map as `netplan get wifis.NM-<uuid>.access-points.<ssid>.networkmanager.passthrough`
+// printed it on srv12 2026-10-05: one key per line, values quoted. Any other netplan path answers
+// `null` in the supplied runner, as netplan does for a missing path.
+fn merged_passthrough_with(powersave: String) -> String {
+  join([powersave, "connection.auth-retries: \"0\"\nconnection.autoconnect-retries: \"0\"\n"], "")
+}
+
+data merged_passthrough_converged: String = merged_passthrough_with(powersave: "wifi.powersave: \"2\"\n")
+
+fn merged(passthrough: String) -> PersistedAuthorityRead {
+  AuthorityNetplanMerged { provenance: "/etc/netplan/90-NM-x.yaml" as NonEmptyStr, definition: "NM-x" as NonEmptyStr, passthrough: passthrough }
+}
+
+data authority_converged: PersistedAuthorityRead = merged(passthrough: merged_passthrough_converged)
+
 fn obs_all(runtime: String, persisted: String, auth: String, autoconnect: String, active: String, device: String, journal: String) -> WirelessLinkObservation {
+  obs_authority(runtime: runtime, persisted: persisted, auth: auth, autoconnect: autoconnect, active: active, device: device, journal: journal, authority: authority_converged)
+}
+
+fn obs_authority(runtime: String, persisted: String, auth: String, autoconnect: String, active: String, device: String, journal: String, authority: PersistedAuthorityRead) -> WirelessLinkObservation {
   WirelessLinkObservation {
+    persistence: authority,
     active: nm_active_connection_on(interface: "wlP9s9" as NonEmptyStr, stdout: active),
     runtime: iw_power_save_of_getter(stdout: runtime),
     persisted: nm_wireless_powersave_of_getter(stdout: persisted),
@@ -259,6 +282,10 @@ test fn witness_unreadable_is_refusal_not_absence() -> Bool {
 // refuse, not report applied.
 
 fn fake_run_full(runtime: String, name_persisted: String, uuid_persisted: String, modify_exit: Int) -> fn(List<String>) -> ArgvRun {
+  fake_run_merged(runtime: runtime, name_persisted: name_persisted, uuid_persisted: uuid_persisted, modify_exit: modify_exit, merged_answer: merged_passthrough_converged)
+}
+
+fn fake_run_merged(runtime: String, name_persisted: String, uuid_persisted: String, modify_exit: Int, merged_answer: String) -> fn(List<String>) -> ArgvRun {
   fn(argv) {
     let line = join(argv, " ")
     let by_uuid = join(["connection show ", spark_2196_profile_uuid], "")
@@ -268,6 +295,10 @@ fn fake_run_full(runtime: String, name_persisted: String, uuid_persisted: String
     else if line == join(["nmcli -g 802-11-wireless.powersave ", by_uuid], "") { ArgvRan { exit_code: 0, stdout: uuid_persisted, stderr: "" } }
     else if line == join(["nmcli -g connection.auth-retries ", by_uuid], "") { ArgvRan { exit_code: 0, stdout: "0", stderr: "" } }
     else if line == join(["nmcli -g connection.autoconnect-retries ", by_uuid], "") { ArgvRan { exit_code: 0, stdout: "0", stderr: "" } }
+    else if line == "nmcli -t -f UUID,FILENAME connection show" { ArgvRan { exit_code: 0, stdout: join([spark_2196_profile_uuid, ":/run/NetworkManager/system-connections/netplan-NM-", spark_2196_profile_uuid, "-Verizon_39TTYV.nmconnection\nffff-other:/etc/NetworkManager/system-connections/Wired.nmconnection"], ""), stderr: "" } }
+    else if line == join(["nmcli -g 802-11-wireless.ssid connection show ", spark_2196_profile_uuid], "") { ArgvRan { exit_code: 0, stdout: "Verizon_39TTYV\n", stderr: "" } }
+    else if line == join(["netplan get wifis.NM-", spark_2196_profile_uuid, ".access-points.Verizon_39TTYV.networkmanager.passthrough"], "") { ArgvRan { exit_code: 0, stdout: merged_answer, stderr: "" } }
+    else if string_contains(s: line, pattern: "netplan get ") { ArgvRan { exit_code: 0, stdout: "null\n", stderr: "" } }
     else if line == "iw dev wlP9s9 link" { ArgvRan { exit_code: 0, stdout: iw_link_connected_sample, stderr: "" } }
     else if line == "journalctl -k -b --no-pager -o short-unix" { ArgvRan { exit_code: 0, stdout: "", stderr: "" } }
     else if line == "nmcli -g GENERAL.STATE device show wlP9s9" { ArgvRan { exit_code: 0, stdout: "100 (connected)", stderr: "" } }
@@ -310,6 +341,133 @@ test fn witness_converge_failed_modify_refuses_at_apply() -> Bool {
 test fn witness_converge_unreadable_refuses_at_observe() -> Bool {
   match wireless_link_converge(desired: srv7_desired(), run: fake_run(runtime: "garbage", persisted: "disable", modify_exit: 0)) {
     WirelessLinkRefused { stage: s, cause: _ } => s as String == "observe"
+    _ => false
+  }
+}
+
+
+// ── the persisted AUTHORITY: netplan's MERGED value, not the projection nmcli reads ─────
+//
+// On the Sparks the profile is netplan-generated (spark-2196, 2026-10-05): the /run keyfile nmcli
+// reads is regenerated from the merge of every netplan layer, of which 90-NM-<uuid>.yaml is one input.
+
+fn obs_with_authority(authority: PersistedAuthorityRead) -> WirelessLinkObservation {
+  obs_authority(runtime: "Power save: off", persisted: "disable", auth: "0", autoconnect: "0", active: active_line_spark, device: "100 (connected)", journal: "", authority: authority)
+}
+
+test fn witness_filename_listing_picks_the_profile_row() -> Bool {
+  let listing = "aaaa:/run/NetworkManager/system-connections/netplan-NM-aaaa-W.nmconnection\nbbbb:/etc/NetworkManager/system-connections/Wired.nmconnection"
+  let picked = match nm_connection_filename_of(uuid: "aaaa" as NonEmptyStr, stdout: listing) {
+    NmConnectionFilename { path: p } => p as String == "/run/NetworkManager/system-connections/netplan-NM-aaaa-W.nmconnection"
+    NmConnectionFilenameUnreadable { text: _ } => false
+  }
+  let missing = match nm_connection_filename_of(uuid: "cccc" as NonEmptyStr, stdout: listing) {
+    NmConnectionFilenameUnreadable { text: _ } => true
+    NmConnectionFilename { path: _ } => false
+  }
+  picked && missing
+}
+
+test fn witness_passthrough_reads_either_quote_and_absence() -> Bool {
+  let dq = match netplan_passthrough_value(yaml: "wifi.powersave: \"2\"\n", key: "wifi.powersave" as NonEmptyStr) { PassthroughValue { word: w } => w == "2"  PassthroughKeyAbsent => false }
+  let sq = match netplan_passthrough_value(yaml: "wifi.powersave: '3'\n", key: "wifi.powersave" as NonEmptyStr) { PassthroughValue { word: w } => w == "3"  PassthroughKeyAbsent => false }
+  let absent = match netplan_passthrough_value(yaml: "connection.auth-retries: \"0\"\n", key: "wifi.powersave" as NonEmptyStr) { PassthroughKeyAbsent => true  PassthroughValue { word: _ } => false }
+  let nested = match netplan_passthrough_value(yaml: "other:\n  wifi.powersave: \"3\"\n", key: "wifi.powersave" as NonEmptyStr) { PassthroughKeyAbsent => true  PassthroughValue { word: _ } => false }
+  dq && sq && absent && nested
+}
+
+// A LATER LAYER OVERRIDES 90-NM: the profile's own file says 2 (and nmcli reads 'disable'), but a
+// 99-override.yaml sets 3, so the merge -- what the next generate renders -- says 3. Drift, planned
+// to the persisted setter. Reading only the 90-NM file would have returned Noop here.
+test fn witness_a_later_layer_overriding_the_profile_file_is_drift() -> Bool {
+  match wireless_link_decide(desired: srv7_desired(), observed: obs_with_authority(authority: merged(passthrough: merged_passthrough_with(powersave: "wifi.powersave: '3'\n")))) {
+    Apply { plan: p } => match p.persisted { Present { value: NmPowersaveDisable } => true  _ => false }
+    _ => false
+  }
+}
+
+// THE KEY ABSENT FROM 90-NM BUT SUPPLIED BY ANOTHER LAYER: the merge carries it, so the profile file's
+// omission is not read as the default.
+test fn witness_a_key_supplied_by_another_layer_is_read_from_the_merge() -> Bool {
+  match wireless_link_decide(desired: srv7_desired(), observed: obs_with_authority(authority: authority_converged)) {
+    Noop => true
+    _ => false
+  }
+}
+
+// No layer supplies the key: the merge omits it, the generated keyfile omits it, NetworkManager uses
+// its default, which is not 'disable'.
+test fn witness_a_key_no_layer_supplies_is_the_default_and_drift() -> Bool {
+  match wireless_link_decide(desired: srv7_desired(), observed: obs_with_authority(authority: merged(passthrough: merged_passthrough_with(powersave: "")))) {
+    Apply { plan: p } => match p.persisted { Present { value: NmPowersaveDisable } => true  _ => false }
+    _ => false
+  }
+}
+
+test fn witness_merged_retry_drift_is_planned_even_when_nmcli_reads_zero() -> Bool {
+  match wireless_link_decide(desired: srv7_desired(), observed: obs_with_authority(authority: merged(passthrough: "wifi.powersave: \"2\"\n"))) {
+    Apply { plan: p } =>
+      (match p.auth_retries { Present { value: NmRetryIndefinitely } => true  _ => false })
+      && (match p.persisted { Absent => true  Present { value: _ } => false })
+    _ => false
+  }
+}
+
+// THE ACTIVE PROFILE AGREEING WHILE ITS KEYFILE ON DISK MAY NOT: that backend's file is not read, so
+// agreement is not minted from the in-memory profile; it refuses, like a runtime-only or unread one.
+test fn witness_keyfile_runtime_only_or_unread_persistence_refuses() -> Bool {
+  let keyfile = match wireless_link_decide(desired: srv7_desired(), observed: obs_with_authority(authority: AuthorityKeyfileUnmodeled { path: "/etc/NetworkManager/system-connections/W.nmconnection" as NonEmptyStr })) { Refuse { reason: _ } => true  _ => false }
+  let volatile = match wireless_link_decide(desired: srv7_desired(), observed: obs_with_authority(authority: AuthorityRuntimeOnly { path: "/run/NetworkManager/system-connections/W.nmconnection" as NonEmptyStr })) { Refuse { reason: _ } => true  _ => false }
+  let unread = match wireless_link_decide(desired: srv7_desired(), observed: obs_with_authority(authority: AuthorityUnreadable { cause: "x" })) { Refuse { reason: _ } => true  _ => false }
+  keyfile && volatile && unread
+}
+
+// THE ROUTE: the real observe reads the FILENAME listing, classifies the netplan /run keyfile, asks
+// netplan for the merged passthrough of NM-<uuid>, and decides on it. An override in the merge reds a
+// converge that would otherwise be Noop; deleting the merged read reds both claims.
+test fn witness_observe_reads_the_merged_netplan_value_by_uuid() -> Bool {
+  match wireless_link_converge(desired: srv7_desired(), run: fake_run(runtime: "Power save: off", persisted: "disable", modify_exit: 0)) {
+    WirelessLinkAlreadyConverged { observed: o } => match o.persistence {
+      AuthorityNetplanMerged { provenance: y, definition: d, passthrough: _ } =>
+        y as String == join(["/etc/netplan/90-NM-", spark_2196_profile_uuid, ".yaml"], "") && d as String == join(["NM-", spark_2196_profile_uuid], "")
+      _ => false
+    }
+    _ => false
+  }
+}
+
+test fn witness_converge_over_a_merged_override_does_not_report_converged() -> Bool {
+  let run = fake_run_merged(runtime: "Power save: off", name_persisted: "disable", uuid_persisted: "disable", modify_exit: 0, merged_answer: merged_passthrough_with(powersave: "wifi.powersave: \"3\"\n"))
+  match wireless_link_converge(desired: srv7_desired(), run: run) {
+    WirelessLinkRefused { stage: s, cause: _ } => s as String == "readback"
+    _ => false
+  }
+}
+
+test fn witness_an_empty_merge_answer_refuses() -> Bool {
+  let run = fake_run_merged(runtime: "Power save: off", name_persisted: "disable", uuid_persisted: "disable", modify_exit: 0, merged_answer: "")
+  match wireless_link_converge(desired: srv7_desired(), run: run) {
+    WirelessLinkRefused { stage: s, cause: _ } => s as String == "observe"
+    _ => false
+  }
+}
+
+// `null` IS NOT ABSENCE: netplan prints it, exit 0, for any missing path, so a wrong path and an absent
+// map read alike. The observe refuses it as unread; reading it as "every key at its default" would
+// plan a set against a map nobody read.
+test fn witness_a_null_passthrough_answer_refuses_not_defaults() -> Bool {
+  let run = fake_run_merged(runtime: "Power save: off", name_persisted: "disable", uuid_persisted: "disable", modify_exit: 0, merged_answer: "null\n")
+  match wireless_link_converge(desired: srv7_desired(), run: run) {
+    WirelessLinkRefused { stage: s, cause: c } => s as String == "observe" && string_contains(s: c, pattern: "unread")
+    _ => false
+  }
+}
+
+// The real srv12 answer shape, verbatim keys: the decision reads it as converged.
+test fn witness_the_srv12_passthrough_answer_is_converged() -> Bool {
+  let srv12 = "connection.auth-retries: \"0\"\nconnection.autoconnect-retries: \"0\"\nconnection.timestamp: \"1791043398\"\nwifi.powersave: \"2\"\nwifi-security.auth-alg: \"open\"\nipv6.addr-gen-mode: \"default\"\nipv6.ip6-privacy: \"-1\"\nproxy._: \"\"\n"
+  match wireless_link_decide(desired: srv7_desired(), observed: obs_with_authority(authority: merged(passthrough: srv12))) {
+    Noop => true
     _ => false
   }
 }

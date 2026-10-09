@@ -48,7 +48,7 @@ import gunbc.guarantee_measurement { GuaranteeProbeId, MeasurementRevision }
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import v2.std.algebra { fold_list }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

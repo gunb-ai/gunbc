@@ -52,6 +52,20 @@ test fn a_direct_settled_acquire_is_an_admission_refusal() -> Bool {
   admission_refusals(source: direct_acquire_settled_source, callee: "local_store_acquire_settled") == 1
 }
 
+// THE PART PUBLICATION HELPERS ARE SEALED TOO: publishing a part copy, or settling against a verified
+// record, outside the commit's own path would write records or parts no index names.
+data direct_copy_and_link_source: String = "module probe_store_direct_copy_and_link\nimport std.types { String }\nimport std.materialization_object { ArtifactBlobPart }\nimport extdeps.realization.materialization_store_local { LocalStoreFamilyHeld, LocalStoreStagedPart, local_store_copy_and_link }\nfn direct(h: LocalStoreFamilyHeld, r: String, p: LocalStoreStagedPart, b: ArtifactBlobPart) -> String? {\n  local_store_copy_and_link(held: h, record: r, part: p, staged: b)\n}\n"
+
+data direct_commit_verified_source: String = "module probe_store_direct_commit_verified\nimport std.types { String }\nimport std.content_hash { ContentHash }\nimport std.materialization_object { OpenedMaterializationStore }\nimport std.materialization_provider { ArtifactRequest, ResultContentIdentity }\nimport extdeps.realization.materialization_store_local { LocalStoreFamilyHeld, LocalStoreCommit, local_store_commit_verified }\nfn direct(h: LocalStoreFamilyHeld, s: OpenedMaterializationStore, q: ArtifactRequest, k: ContentHash, n: String, o: String, d: ContentHash, r: ResultContentIdentity) -> LocalStoreCommit {\n  local_store_commit_verified(held: h, store: s, req: q, key: k, name: n, object: o, offered: d, offered_result: r)\n}\n"
+
+test fn a_direct_part_copy_publish_is_an_admission_refusal() -> Bool {
+  admission_refusals(source: direct_copy_and_link_source, callee: "local_store_copy_and_link") == 1
+}
+
+test fn a_direct_verified_settle_is_an_admission_refusal() -> Bool {
+  admission_refusals(source: direct_commit_verified_source, callee: "local_store_commit_verified") == 1
+}
+
 // THE REMAINING EFFECTFUL HELPERS ARE SEALED: creating a store file, and reclaiming a slot's
 // generations, are reachable only from the store's own paths -- a direct call could write an
 // unindexed file, or apply this store's window to a slot that keeps every generation.

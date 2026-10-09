@@ -1,10 +1,12 @@
 module test.claim.compiler_gate_workflow_witness_test
 
 import std.types { Bool, Int, String }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.algebra { fold_list }
 import extdeps.github.actions { Step, RunStep, UsesStep, Job, SelfHosted, RunsOnExpression }
 import gunbc.compiler_gate_workflow {
+  compiler_gate_emit_build_native_cache_root_bound_step, compiler_gate_native_cache_condition,
+  compiler_gate_native_cache_root_script, compiler_gate_native_read_condition, compiler_gate_native_write_condition, compiler_gate_native_save_command,
   compiler_gate_floor_job, compiler_gate_generated_job, compiler_gate_drift_step_id,
   compiler_gate_stage0_regen_step_id, compiler_gate_lint_step_id,
   compiler_gate_no_merge_path_job_is_hosted, compiler_gate_runner_is_hosted,
@@ -209,4 +211,35 @@ test fn the_live_merge_path_runs_on_the_fleet_and_names_its_lanes() -> Bool {
     && any(path, id => id == compiler_gate_floor_job_id)
     && any(path, id => id == compiler_gate_generated_job_id)
     && any(path, id => id == compiler_gate_aggregate_job_id)
+}
+
+// THE NATIVE PRODUCT STORE IS BOUND ON PULL REQUESTS AND THE MERGE QUEUE, NEVER ELSEWHERE: the root is
+// job-private (under RUNNER_TEMP, empty at job start), so a pull request's job cannot seed the compiler
+// the queue judges; the queue also restores from the shared store and publishes only admitted entries.
+// Narrowing the condition off merge_group, or widening it to other events, makes this refuse.
+test fn the_native_cache_root_step_runs_on_pull_requests_and_the_merge_queue_only() -> Bool {
+  let condition = step_if_text(step: compiler_gate_emit_build_native_cache_root_bound_step().step)
+  condition == compiler_gate_native_cache_condition()
+    && string_contains(s: condition, pattern: "pull_request")
+    && string_contains(s: condition, pattern: "merge_group")
+}
+
+// THE STORE ROOT IS JOB-PRIVATE: a shared host directory (RUNNER_TOOL_CACHE) is writable by any job's
+// code, so an entry planted there would be served as a HIT. Restoring the shared-tool-cache root makes
+// this refuse.
+test fn the_native_cache_root_is_job_private_and_never_the_shared_tool_cache() -> Bool {
+  string_contains(s: compiler_gate_native_cache_root_script, pattern: "$RUNNER_TEMP/")
+    && !string_contains(s: compiler_gate_native_cache_root_script, pattern: "RUNNER_TOOL_CACHE")
+}
+
+// The credentialed store transfer is wired: the read identity is gated to same-repository pull
+// requests (a fork is issued no token), the write identity and the save to the merge queue alone, and
+// only the emit-build job may mint an id-token.
+test fn the_native_store_transfer_is_wired_by_event() -> Bool {
+  string_contains(s: compiler_gate_native_read_condition(), pattern: "head.repo.full_name == github.repository")
+    && string_contains(s: compiler_gate_native_read_condition(), pattern: "github.event_name == 'merge_group'")
+    && !string_contains(s: compiler_gate_native_write_condition(), pattern: "pull_request")
+    && compiler_gate_native_write_condition() == "github.event_name == 'merge_group'"
+    && string_contains(s: compiler_gate_native_save_command(), pattern: "native_product_save_wet")
+    && !string_contains(s: compiler_gate_native_save_command(), pattern: "pull_request")
 }

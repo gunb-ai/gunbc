@@ -1,4 +1,5 @@
 module std.measure
+import std.optional { Present }
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
@@ -58,6 +59,14 @@ type Quantity =
   | Area
   | Volume
   | PlaneAngle
+
+  | Force
+  | Pressure
+  | VolumeFlow
+  | Density
+  | SpecificHeatCapacity
+  | Acceleration
+  | ResistancePerLength
 
   | Dimensionless
 
@@ -1909,3 +1918,69 @@ fn compare_instants(a: ObservationInstant, b: ObservationInstant) -> InstantOrde
     if x < y { InstantBefore } else if x == y { InstantSame } else { InstantAfter }
   }
 }
+
+// MECHANICS AND HEAT-TRANSFER CARRIERS, added for the printed-chassis stack and exhaust models.
+// Each is the SI coherent unit at Scale One with the decimal prefix that holds the cited figure
+// exactly: a filament sheet states a modulus in megapascals, a fan sheet states airflow in cubic
+// metres per hour that a floor conversion carries at millilitres per second, and standard gravity is
+// 9.80665 m/s^2 which Micro holds without rounding. Nothing here asserts a relation between the
+// quantities (force = mass x acceleration is a law the consumer applies, not a fact of the carrier).
+type Newton = Measure<Force, One, Nat>
+type Millinewton = Measure<Force, Milli, Nat>
+fn newton(count: Nat) -> Newton { Measure { count: count } }
+fn newton_count(f: Newton) -> Nat { measure_count(f) }
+fn millinewton(count: Nat) -> Millinewton { Measure { count: count } }
+fn millinewton_count(f: Millinewton) -> Nat { measure_count(f) }
+
+// Pressure and STRESS share the pascal: a material's strength and modulus are pressures.
+type Pascal = Measure<Pressure, One, Nat>
+type Kilopascal = Measure<Pressure, Kilo, Nat>
+type Megapascal = Measure<Pressure, Mega, Nat>
+fn pascal(count: Nat) -> Pascal { Measure { count: count } }
+fn pascal_count(p: Pascal) -> Nat { measure_count(p) }
+fn kilopascal(count: Nat) -> Kilopascal { Measure { count: count } }
+fn kilopascal_count(p: Kilopascal) -> Nat { measure_count(p) }
+fn megapascal(count: Nat) -> Megapascal { Measure { count: count } }
+fn megapascal_count(p: Megapascal) -> Nat { measure_count(p) }
+
+// VOLUME FLOW at the coherent cubic metre per second; Micro is the millilitre per second.
+type CubicMetrePerSecond = Measure<VolumeFlow, One, Nat>
+type MillilitrePerSecond = Measure<VolumeFlow, Micro, Nat>
+fn millilitre_per_second(count: Nat) -> MillilitrePerSecond { Measure { count: count } }
+fn millilitre_per_second_count(f: MillilitrePerSecond) -> Nat { measure_count(f) }
+
+// DENSITY at kilograms per cubic metre: 1.28 g/cm^3 is exactly 1280 kg/m^3.
+type KilogramPerCubicMetre = Measure<Density, One, Nat>
+fn kilogram_per_cubic_metre(count: Nat) -> KilogramPerCubicMetre { Measure { count: count } }
+fn kilogram_per_cubic_metre_count(d: KilogramPerCubicMetre) -> Nat { measure_count(d) }
+
+// SPECIFIC HEAT CAPACITY at joules per kilogram-kelvin.
+type JoulePerKilogramKelvin = Measure<SpecificHeatCapacity, One, Nat>
+fn joule_per_kilogram_kelvin(count: Nat) -> JoulePerKilogramKelvin { Measure { count: count } }
+fn joule_per_kilogram_kelvin_count(c: JoulePerKilogramKelvin) -> Nat { measure_count(c) }
+
+// ACCELERATION at micrometres per second squared, so standard gravity 9.80665 m/s^2 is exact.
+type MicrometrePerSecondSquared = Measure<Acceleration, Micro, Nat>
+fn micrometre_per_second_squared(count: Nat) -> MicrometrePerSecondSquared { Measure { count: count } }
+fn micrometre_per_second_squared_count(a: MicrometrePerSecondSquared) -> Nat { measure_count(a) }
+
+// RESISTANCE PER LENGTH at microohms per metre: a wire-gauge table's 3.28 ohm/km is 3280 uohm/m.
+type MicroohmPerMetre = Measure<ResistancePerLength, Micro, Nat>
+fn microohm_per_metre(count: Nat) -> MicroohmPerMetre { Measure { count: count } }
+fn microohm_per_metre_count(r: MicroohmPerMetre) -> Nat { measure_count(r) }
+
+// KILOGRAM, now that a consumer stores whole-kilogram counts: the stack-mechanics mass roster
+// sums grams and reports kilograms at the floor.
+type Kilogram = Measure<Mass, One, Nat>
+fn kilogram(count: Nat) -> Kilogram { Measure { count: count } }
+fn kilogram_count(m: Kilogram) -> Nat { measure_count(m) }
+
+// MILLIAMPERE, for fan and connector ratings stated below one ampere.
+type Milliampere = Measure<ElectricCurrent, Milli, Nat>
+fn milliampere(count: Nat) -> Milliampere { Measure { count: count } }
+fn milliampere_count(i: Milliampere) -> Nat { measure_count(i) }
+
+// GRAMS PER CUBIC METRE, so dry air at 1.204 kg/m^3 is exactly 1204.
+type GramPerCubicMetre = Measure<Density, Milli, Nat>
+fn gram_per_cubic_metre(count: Nat) -> GramPerCubicMetre { Measure { count: count } }
+fn gram_per_cubic_metre_count(d: GramPerCubicMetre) -> Nat { measure_count(d) }

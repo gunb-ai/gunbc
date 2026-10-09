@@ -17,8 +17,9 @@ import extdeps.languages.json.parse {
 }
 import gunbc.actions_run_binding { json_required_string_member, JsonStringMemberFound, JsonStringMemberRefused }
 import gunbc.running_release_identity { RunningReleaseIdentity, observe_running_release_identity }
+import gunbc.roadmap.roadmap_attempt_exit_spool { AttemptExitSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitDone, AttemptExitRefused }
 import gunbc.roadmap_belt_actuate {
-  BeltTickReceipt, BeltTickReceiptRead, BeltTickReceiptPresent, BeltTickReceiptAbsent, BeltTickReceiptUnreadable,
+  belt_obligation_run_bound, BeltTickReceipt, BeltTickReceiptRead, BeltTickReceiptPresent, BeltTickReceiptAbsent, BeltTickReceiptUnreadable,
   belt_tick_receipt_decode,
 }
 
@@ -331,36 +332,70 @@ fn iso8601_utc_epoch_seconds(text: String) -> Second? {
 // attempt's obligation unit did not finish. Either refuses, naming the oldest entry. An active .path
 // unit (the unit standing row) proves only that the watcher is armed; this row proves it is consumed.
 //
-// THE BOUNDS ARE POLICY ROWS DERIVED FROM THE THINGS THEY BOUND. The drain is one `gunbc run` that
-// moves entries, so its bound is the corpus load plus slack. The queued bound is the obligation unit's
-// own RuntimeMaxSec (gunbc.roadmap_belt_actuate belt_obligation_run_bound) plus the drain bound: past
-// that the unit has been stopped by its manager, and an entry still queued is one no run settled.
-data event_backlog_drain_bound_seconds: Int = 900
-data event_backlog_queued_bound_seconds: Int = 3600
+// THE BOUNDS ARE DERIVED FROM THE THINGS THEY BOUND, AS DURATIONS. The drain is one `gunbc run` that
+// moves entries, so its bound is the corpus load plus slack (a policy row, in Second). The queued bound
+// IS the obligation unit's own RuntimeMaxSec (gunbc.roadmap_belt_actuate belt_obligation_run_bound,
+// read through the systemd time-span parser) plus the drain bound: past that the unit has been stopped
+// by its manager, and an entry still queued is one no run settled. Changing the run bound moves this
+// bound; there is no second copy of it. A run bound the parser cannot read refuses as unobserved.
+data event_backlog_drain_bound: Second = second(count: 900)
 
+fn event_backlog_queued_bound() -> Second? {
+  match systemd_duration_usec(text: belt_obligation_run_bound) {
+    Absent => none
+    Present { value: run } => Present { value: second(count: microsecond_count(m: run) / 1000000 + second_count(s: event_backlog_drain_bound)) }
+  }
+}
+
+fn event_backlog_bound(stage: AttemptExitSpoolStage) -> Second? {
+  match stage {
+    AttemptExitInbox => Present { value: event_backlog_drain_bound }
+    AttemptExitQueued => event_backlog_queued_bound()
+    _ => none
+  }
+}
+
+fn event_backlog_stage_label(stage: AttemptExitSpoolStage) -> String {
+  match stage {
+    AttemptExitInbox => "inbox"
+    AttemptExitQueued => "queued"
+    AttemptExitDone => "done"
+    AttemptExitRefused => "refused"
+  }
+}
+
+// The stage is the spool's own closed sum (gunbc.roadmap.roadmap_attempt_exit_spool), not a label.
 type EventBacklogEntry {
-  stage: String
+  stage: AttemptExitSpoolStage
   entry: String
-  age_seconds: Int
+  age: Second
 }
 
 type EventBacklogFact
   = EventBacklogClear { inbox: Int, queued: Int }
-  | StaleBacklog { stage: String, entry: String, age_seconds: Int, bound_seconds: Int }
+  | StaleBacklog { stage: AttemptExitSpoolStage, entry: String, age: Second, bound: Second }
   | EventBacklogUnobserved { detail: String }
 
-fn event_backlog_bound_seconds(stage: String) -> Int {
-  if stage == "inbox" { event_backlog_drain_bound_seconds } else { event_backlog_queued_bound_seconds }
+fn event_backlog_is_stale(e: EventBacklogEntry) -> Bool {
+  match event_backlog_bound(stage: e.stage) {
+    Present { value: b } => second_count(s: e.age) > second_count(s: b)
+    Absent => true
+  }
 }
 
-// PURE OVER THE AGED ENTRIES: the oldest entry past its stage's bound refuses; none past, clear.
+// PURE OVER THE AGED ENTRIES: the oldest entry past its stage's bound refuses; none past, clear. A stage
+// with no bound (done, refused are not a backlog) or an unreadable bound is stale, never silently young.
 fn event_backlog_judge(entries: List<EventBacklogEntry>) -> EventBacklogFact {
-  let stale = entries |> filter(e => e.age_seconds > event_backlog_bound_seconds(stage: e.stage))
+  let stale = entries |> filter(e => event_backlog_is_stale(e: e))
   match event_backlog_oldest(entries: stale) {
-    Present { value: o } => StaleBacklog { stage: o.stage, entry: o.entry, age_seconds: o.age_seconds, bound_seconds: event_backlog_bound_seconds(stage: o.stage) }
+    Present { value: o } =>
+      match event_backlog_bound(stage: o.stage) {
+        Present { value: b } => StaleBacklog { stage: o.stage, entry: o.entry, age: o.age, bound: b }
+        Absent => EventBacklogUnobserved { detail: join(["no bound exists for the ", event_backlog_stage_label(stage: o.stage), " stage (entry ", o.entry, ")"], "") }
+      }
     Absent => EventBacklogClear {
-      inbox: count(entries |> filter(e => e.stage == "inbox")),
-      queued: count(entries |> filter(e => e.stage == "queued")),
+      inbox: count(entries |> filter(e => e.stage == AttemptExitInbox)),
+      queued: count(entries |> filter(e => e.stage == AttemptExitQueued)),
     }
   }
 }
@@ -372,14 +407,14 @@ fn event_backlog_oldest(entries: List<EventBacklogEntry>) -> EventBacklogEntry? 
 fn event_backlog_older(acc: EventBacklogEntry?, e: EventBacklogEntry) -> EventBacklogEntry? {
   match acc {
     Absent => Present { value: e }
-    Present { value: o } => if e.age_seconds > o.age_seconds { Present { value: e } } else { Present { value: o } }
+    Present { value: o } => if second_count(s: e.age) > second_count(s: o.age) { Present { value: e } } else { Present { value: o } }
   }
 }
 
 fn event_backlog_text(f: EventBacklogFact) -> String {
   match f {
     EventBacklogClear { inbox, queued } => join(["clear (", to_string(value: inbox), " in inbox, ", to_string(value: queued), " queued, none past bound)"], "")
-    StaleBacklog { stage, entry, age_seconds, bound_seconds } => join(["StaleBacklog: ", stage, " entry ", entry, " is ", to_string(value: age_seconds), "s old, past the ", to_string(value: bound_seconds), "s bound"], "")
+    StaleBacklog { stage, entry, age, bound } => join(["StaleBacklog: ", event_backlog_stage_label(stage: stage), " entry ", entry, " is ", to_string(value: second_count(s: age)), "s old, past the ", to_string(value: second_count(s: bound)), "s bound"], "")
     EventBacklogUnobserved { detail } => join(["unobserved: ", detail], "")
   }
 }
