@@ -10,6 +10,7 @@ import gunbc.roadmap_execution_contract {
 import gunbc.ci_release_bins { ci_floor_invoked_bins }
 import gunbc.repo_self_build { repo_self_build_command, repo_self_build_all_bins_command, repo_self_build_partition_crates_command, repo_self_clippy_command }
 import gunbc.repo_self_warning_policy { repo_self_seed_build_rustflags }
+import gunbc.ci_workflow_expressions { ci_github_workspace, ci_isolated_cargo_home, ci_isolated_rustup_home }
 import gunbc.workflow_capability_closure {
   CapabilityAnnotatedStep,
   StepCapabilityRole,
@@ -746,7 +747,11 @@ fn witness_floor_toolchain_step() -> Step {
       value: [
         kv(key: "components", value: yaml_string(s: "rustfmt")),
         kv(key: "cache", value: yaml_bool(b: false)),
-        kv(key: "rustflags", value: yaml_string(s: repo_self_seed_build_rustflags())),
+        kv(key: "rustflags", value: yaml_string(s: repo_self_seed_build_rustflags(
+          checkout: ci_github_workspace(),
+          cargo_home: ci_isolated_cargo_home(),
+          rustup_home: ci_isolated_rustup_home()
+        ))),
       ]
     },
     env: none,

@@ -4,7 +4,7 @@ import extdeps.github.expressions {
   Expression, FunctionCall, StringLiteral,
   ExpressionTemplate, TemplateSegment, LiteralText, Interpolation,
   HashFiles,
-  serialize_template, runner_os, runner_arch, runner_temp
+  serialize_template, runner_os, runner_arch, runner_temp, github_workspace
 }
 
 fn ci_cache_hash_files() -> Expression {
@@ -20,6 +20,24 @@ fn ci_cache_hash_files() -> Expression {
 data ci_setup_rust_home_template: ExpressionTemplate = {
   segments: [
     Interpolation { expression: runner_temp() }
+  ]
+}
+
+data ci_github_workspace_template: ExpressionTemplate = {
+  segments: [Interpolation { expression: github_workspace() }]
+}
+
+data ci_isolated_cargo_home_template: ExpressionTemplate = {
+  segments: [
+    Interpolation { expression: runner_temp() },
+    LiteralText { text: "/cargo" }
+  ]
+}
+
+data ci_isolated_rustup_home_template: ExpressionTemplate = {
+  segments: [
+    Interpolation { expression: runner_temp() },
+    LiteralText { text: "/rustup" }
   ]
 }
 
@@ -142,3 +160,6 @@ fn ci_setup_rust_home() -> String { serialize_template(template: ci_setup_rust_h
 fn ci_cache_path() -> String { serialize_template(template: ci_cache_path_template) }
 fn ci_cache_key() -> String { serialize_template(template: ci_cache_key_template) }
 fn ci_cache_restore_keys() -> String { serialize_template(template: ci_cache_restore_keys_template) }
+fn ci_github_workspace() -> String { serialize_template(template: ci_github_workspace_template) }
+fn ci_isolated_cargo_home() -> String { serialize_template(template: ci_isolated_cargo_home_template) }
+fn ci_isolated_rustup_home() -> String { serialize_template(template: ci_isolated_rustup_home_template) }

@@ -28,6 +28,7 @@ import extdeps.github.actions {
 import gunbc.action_use_admission { cache_action, checkout_action, download_artifact_action, google_auth_action, setup_rust_action, upload_artifact_action }
 import gunbc.ci_workflow_expressions {
   ci_setup_rust_home, ci_cache_path, ci_cache_key, ci_cache_restore_keys,
+  ci_github_workspace, ci_isolated_cargo_home, ci_isolated_rustup_home,
 }
 import gunbc.ci_compile_jobs { compile_jobs_count_or_serial }
 import gunbc.ci_runner_target { ci_runner_target_ram_speed_budget, selected_ci_runner_target }
@@ -195,7 +196,11 @@ fn ci_setup_rust_step() -> Step {
       value: [
         kv(key: "components", value: yaml_string(s: "rustfmt")),
         kv(key: "cache", value: yaml_bool(b: false)),
-        kv(key: "rustflags", value: yaml_string(s: repo_self_seed_build_rustflags()))
+        kv(key: "rustflags", value: yaml_string(s: repo_self_seed_build_rustflags(
+          checkout: ci_github_workspace(),
+          cargo_home: ci_isolated_cargo_home(),
+          rustup_home: ci_isolated_rustup_home()
+        )))
       ]
     },
     env: Present {

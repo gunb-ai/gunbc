@@ -27,7 +27,7 @@
 //! sources, profile, `.cargo/config.toml` overrides, flags and features by construction. Seed
 //! builds remap the checkout path (`--remap-path-prefix=<checkout>=.`) so the same tree hashes
 //! the same across runner directories. An unreadable executable is a counted MISS
-//! (`producer_dep_info`), never a lane refusal and never a whole-tree fallback. The
+//! (`producer_image_unreadable`), never a lane refusal and never a whole-tree fallback. The
 //! closure and the census-only declaration universe are hashed at content grain (a span-insensitive
 //! heads hash would narrow the latter and is a declared next step, not assumed here).
 //!
@@ -49,6 +49,8 @@ const RECEIPT: &str = "receipt.jsonl";
 /// marked entries, so a restored or refused entry is never republished. Named in
 /// `gunbc.native_product_shared_transfer` (`native_product_committed_marker_name`).
 pub(super) const COMMITTED_MARKER: &str = "committed-this-run";
+/// Counted MISS cause when the running seed image cannot be read for `producer_compiler`.
+pub(super) const PRODUCER_UNOBSERVED_CAUSE: &str = "producer_image_unreadable";
 
 /// The axes in declared order, each already a SHA-256 hex digest of its own preimage.
 #[derive(Debug, Clone)]
@@ -66,7 +68,7 @@ fn hex(bytes: &[u8]) -> String {
 /// the key would have been.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum DeriveKeyError {
-    /// The running seed executable could not be read. Named cause `producer_dep_info`.
+    /// The running seed executable could not be read. Named cause `producer_image_unreadable`.
     /// Never a lane refusal.
     ProducerInputsUnobserved {
         cause: String,
@@ -743,10 +745,10 @@ mod tests {
         let root = scratch("unkeyed");
         let store = root.join(STORE_DIR);
         std::fs::create_dir_all(&store).unwrap();
-        record_unkeyed_outcome(&store, "e", "miss", "producer_dep_info");
+        record_unkeyed_outcome(&store, "e", "miss", PRODUCER_UNOBSERVED_CAUSE);
         let text = std::fs::read_to_string(root.join(RECEIPT)).unwrap();
         assert!(text.contains("\"key\":null"));
-        assert!(text.contains("\"cause\":\"producer_dep_info\""));
+        assert!(text.contains("\"cause\":\"producer_image_unreadable\""));
         assert!(text.contains("\"outcome\":\"miss\""));
     }
 }

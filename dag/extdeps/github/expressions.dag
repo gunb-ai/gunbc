@@ -501,6 +501,7 @@ fn ingest_template(src: String) -> ExpressionTemplate? {
 fn runner_os() -> Expression { ContextAccess { context: Runner, path: ["os"] } }
 fn runner_arch() -> Expression { ContextAccess { context: Runner, path: ["arch"] } }
 fn runner_temp() -> Expression { ContextAccess { context: Runner, path: ["temp"] } }
+fn github_workspace() -> Expression { ContextAccess { context: Github, path: ["workspace"] } }
 
 data runner_provided_env_var_names: List<String> = [
   "RUNNER_NAME",
