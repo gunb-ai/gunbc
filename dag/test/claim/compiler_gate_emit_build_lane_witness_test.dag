@@ -1,7 +1,9 @@
 module test.claim.compiler_gate_emit_build_lane_witness_test
 
-import std.types { Bool, List, String }
+import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
+import gunbc.rung_drop { Standing, Retired, Superseded }
+import gunbc.rung_drop.native_step_trip_awaits_fleet_job_cgroup { native_step_trip_awaits_fleet_job_cgroup }
 import extdeps.github.actions { Step, RunStep, UsesStep, WorkflowPermissions }
 import extdeps.languages.yaml.types { YamlString }
 import gunbc.compiler_gate_workflow {
@@ -23,7 +25,9 @@ import gunbc.emitted_subject_build_gate {
   emitted_subject_build_step_name,
   native_fault_experiment_env_name, native_fault_experiment_skip_value,
   native_product_reuse_env_name, native_product_reuse_fresh_value,
-  native_step_memory_bind_env_name, native_step_memory_trip_text, native_step_memory_trip
+  native_step_memory_bind_env_name, native_step_memory_trip_text, native_step_memory_trip,
+  native_step_memory_envelope_env_name, native_step_memory_envelope_slot_value,
+  NativeStepMemoryInput, native_step_memory_inputs
 }
 import std.measure { byte_size_count }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
@@ -159,13 +163,46 @@ test fn every_subject_step_requires_a_fresh_product() -> Bool {
     step_env_has(step: compiler_gate_emit_build_step(row: row), key: native_product_reuse_env_name, value: native_product_reuse_fresh_value))
 }
 
-// EVERY SUBJECT STEP CARRIES THE MEMORY ENVELOPE, BY VALUE: the bind input whose bytes gunbc test
-// hands the kernel (gunbc.emitted_subject_build_gate native_step_memory_trip). A step without it
-// runs unbounded inside the slot, and a trip would then be the slot's OOM rather than the step's
-// -- the runner process among the kernel's candidates.
-test fn every_subject_step_carries_the_memory_envelope() -> Bool {
+// EVERY SUBJECT STEP REQUIRES THE SLOT'S ENVELOPE, BY VALUE, WHATEVER THE DROP'S STANDING: the
+// input gunbc test reads as "refuse unless a cgroup memory.max binds this step, and refuse an OOM
+// kill or swap inside it". A step without it would run unreceipted inside the slot.
+test fn every_subject_step_requires_the_slot_envelope() -> Bool {
   all(emitted_subject_build_rows(), row =>
+    step_env_has(step: compiler_gate_emit_build_step(row: row), key: native_step_memory_envelope_env_name, value: native_step_memory_envelope_slot_value))
+}
+
+fn inputs_carry(inputs: List<NativeStepMemoryInput>, name: String, value: String) -> Bool {
+  all(inputs, i => i.env_name != name || i.env_value != value) == false
+}
+
+// THE BIND INPUT FOLLOWS THE DROP, BY SUPPLIED STANDING: Standing withholds it, Retired carries it
+// at the derived trip, Superseded withholds it; the slot requirement is on every arm. RED if an arm
+// hands the fleet a bind it cannot honour, or keeps withholding one it can.
+test fn the_bind_input_follows_the_drop_standing() -> Bool {
+  let standing = native_step_memory_inputs(standing: Standing)
+  let retired = native_step_memory_inputs(standing: Retired { trigger_fired: "a fleet job owns a bounded cgroup" as NonEmptyStr })
+  let superseded = native_step_memory_inputs(standing: Superseded { ruling: "r" as NonEmptyStr, decision_record: "d" as NonEmptyStr, loss_holder: "l" as NonEmptyStr })
+  length(standing) == 1
+    && inputs_carry(inputs: standing, name: native_step_memory_envelope_env_name, value: native_step_memory_envelope_slot_value)
+    && length(retired) == 2
+    && inputs_carry(inputs: retired, name: native_step_memory_envelope_env_name, value: native_step_memory_envelope_slot_value)
+    && inputs_carry(inputs: retired, name: native_step_memory_bind_env_name, value: native_step_memory_trip_text())
+    && length(superseded) == 1
+    && inputs_carry(inputs: superseded, name: native_step_memory_envelope_env_name, value: native_step_memory_envelope_slot_value)
+}
+
+// AND THE LIVE WORKFLOW CARRIES WHAT THE LIVE DROP DECIDES (the inhabitance half): while the row
+// stands no subject step carries the bind; the day it retires, every one does, at the trip.
+test fn the_live_steps_carry_the_bind_iff_the_drop_retired() -> Bool {
+  let carries = all(emitted_subject_build_rows(), row =>
     step_env_has(step: compiler_gate_emit_build_step(row: row), key: native_step_memory_bind_env_name, value: native_step_memory_trip_text()))
+  let withholds = all(emitted_subject_build_rows(), row =>
+    step_env_has(step: compiler_gate_emit_build_step(row: row), key: native_step_memory_bind_env_name, value: native_step_memory_trip_text()) == false)
+  match native_step_trip_awaits_fleet_job_cgroup.standing {
+    Standing => withholds
+    Retired { trigger_fired: _ } => carries
+    Superseded { ruling: _, decision_record: _, loss_holder: _ } => withholds
+  }
 }
 
 // AND THE TRIP SITS INSIDE THE SLOT THAT HOLDS THE STEP, BY DERIVATION: it is the slot's MemoryHigh
@@ -181,11 +218,14 @@ test fn the_trip_sits_inside_the_slot_envelope() -> Bool {
   trip > 0 && trip < high && high < max
 }
 
-// AND THE FAILURE NOTICE EXPLAINS THE TRIP: the bytes, the exit code the kernel leaves, and that
+// AND THE FAILURE NOTICE EXPLAINS THE ENVELOPE: which grain bounded the step and the input that
+// required it, the trip and the drop that withholds it, the exit code the kernel leaves, and that
 // nothing retries bigger. A reader of an exit-137 step would otherwise read it as a crash.
-test fn the_notice_names_the_trip_and_refuses_a_bigger_retry() -> Bool {
+test fn the_notice_names_the_envelope_and_refuses_a_bigger_retry() -> Bool {
   let text = join(compiler_gate_emit_build_notice_lines(), "\n")
-  string_contains(s: text, pattern: native_step_memory_trip_text())
+  string_contains(s: text, pattern: join([native_step_memory_envelope_env_name, "=", native_step_memory_envelope_slot_value], ""))
+    && string_contains(s: text, pattern: native_step_memory_trip_text())
+    && string_contains(s: text, pattern: "native_step_trip_awaits_fleet_job_cgroup")
     && string_contains(s: text, pattern: "exit of 137")
     && string_contains(s: text, pattern: "no larger runner and no retry")
     && string_contains(s: text, pattern: "MEMORY RECEIPT")
@@ -367,6 +407,16 @@ data memory_governor_source_path: String = "src/v1/stage0/src/memory_governor.rs
 test fn the_seed_memory_bind_input_is_the_dag_row() -> Bool {
   let governor = Filesystem.Read(path: memory_governor_source_path, expect: ExpectSuccess).content
   string_contains(s: governor, pattern: rust_str_const_line(name: "BIND_MEMORY_CGROUP_ENV", value: native_step_memory_bind_env_name))
+}
+
+data target_invocation_host_source_path: String = "src/v1/stage0/src/target_invocation_host.rs"
+
+// THE ENVELOPE REQUIREMENT INPUTS ARE THE .dag ROWS, pinned in the seed's source the same way the
+// fault-experiment inputs are: the name gunbc test reads and the one grain it knows.
+test fn the_seed_envelope_requirement_inputs_are_the_dag_rows() -> Bool {
+  let host = Filesystem.Read(path: target_invocation_host_source_path, expect: ExpectSuccess).content
+  string_contains(s: host, pattern: rust_str_const_line(name: "MEMORY_ENVELOPE_REQUIRED_ENV", value: native_step_memory_envelope_env_name))
+    && string_contains(s: host, pattern: rust_str_const_line(name: "MEMORY_ENVELOPE_SLOT_VALUE", value: native_step_memory_envelope_slot_value))
 }
 
 // THE FRESH-PRODUCT INPUT IS PINNED THE SAME WAY: the workflow passes the row's name and value, and

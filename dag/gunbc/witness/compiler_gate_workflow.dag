@@ -113,10 +113,10 @@ import gunbc.emitted_subject_build_gate {
   native_fault_experiment_run_value,
   native_product_reuse_env_name,
   native_product_reuse_fresh_value,
-  native_step_memory_bind_env_name,
-  native_step_memory_trip_text,
+  native_step_memory_inputs,
   emit_build_memory_envelope_lines
 }
+import gunbc.rung_drop.native_step_trip_awaits_fleet_job_cgroup { native_step_trip_awaits_fleet_job_cgroup }
 // THE EPOCH TRAVELS IN THESE BYTES. gunbc.required_ci_epoch_observation parses
 // GUNBC_REQUIRED_CI_CONTRACT_EPOCH structurally out of .github/workflows/witnesses.yml AT THE
 // TRIGGERING COMMIT -- the bytes GitHub executed -- so the judging side does not author what it
@@ -287,10 +287,12 @@ data compiler_gate_emit_build_timeout_minutes: Int = 90
 // (gunbc.emitted_subject_build_gate native_product_reuse_env_name), so the runner consults no
 // native product store and refuses one if bound: the job's claim is that THIS run emitted and
 // built the product, and a restored hit would make that claim false while the step stayed green.
-// AND THE MEMORY ENVELOPE INPUT (native_step_memory_bind_env_name = the trip bytes): gunbc test
-// binds the step's cgroup at that limit with no swap, prints the peak-and-swap receipt at exit,
-// and refuses a run that was OOM-killed or charged swap. The slot's own MemoryMax and
-// MemorySwapMax=0 (gunbc.runner_slot_desired) are the fixed hard maximum above it.
+// AND THE MEMORY ENVELOPE INPUTS (gunbc.emitted_subject_build_gate native_step_memory_inputs,
+// decided by the standing of gunbc.rung_drop.native_step_trip_awaits_fleet_job_cgroup): every step
+// REQUIRES the fleet slot's envelope -- gunbc test refuses a run no cgroup memory.max binds, prints
+// the peak-and-swap receipt at exit and refuses a run that was OOM-killed or charged swap -- and
+// asks for the per-step bind at the trip only once that drop retires. The slot's own MemoryMax and
+// MemorySwapMax=0 (gunbc.runner_slot_desired) are the fixed hard maximum.
 fn compiler_gate_emit_build_step(row: EmittedSubjectBuildRow) -> Step {
   RunStep {
     name: Present { value: emitted_subject_build_step_name(row: row) },
@@ -303,14 +305,19 @@ fn compiler_gate_emit_build_step(row: EmittedSubjectBuildRow) -> Step {
     ),
     shell: none,
     env: Present {
-      value: [
+      value: list_append(
+        left: [
         kv(
           key: native_fault_experiment_env_name,
           value: yaml_string(s: join(["${{ github.event_name == 'pull_request' && '", native_fault_experiment_skip_value, "' || '", native_fault_experiment_run_value, "' }}"], ""))
         ),
-        kv(key: native_product_reuse_env_name, value: yaml_string(s: native_product_reuse_fresh_value)),
-        kv(key: native_step_memory_bind_env_name, value: yaml_string(s: native_step_memory_trip_text()))
-      ]
+        kv(key: native_product_reuse_env_name, value: yaml_string(s: native_product_reuse_fresh_value))
+        ],
+        right: list_map(
+          xs: native_step_memory_inputs(standing: native_step_trip_awaits_fleet_job_cgroup.standing),
+          f: fn(env_input) { kv(key: env_input.env_name, value: yaml_string(s: env_input.env_value)) }
+        )
+      )
     },
     working_directory: none,
     if_condition: none,

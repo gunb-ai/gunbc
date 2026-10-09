@@ -2534,13 +2534,12 @@ fn observe_binary_inputs() -> BinaryInputObservation {
 pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
     // THE SECOND ACT, BEFORE ANY PRODUCER: bind this process to a kernel memory limit when the
     // invocation asked for one (`GUNBC_BIND_MEMORY_CGROUP_BYTES`, gunbc.memory_cgroup_binding --
-    // the same bind claim_executor and claim_batch take). The required `witnesses` job passes
-    // gunbc.emitted_subject_build_gate native_step_memory_trip (the slot's MemoryHigh less a
-    // declared headroom), under the fleet slot's throttle line and its hard maximum, so a product
-    // build that outgrows the envelope is tripped by the kernel inside this
-    // step rather than at the slot (operator ruling 2026-10-09: a fixed hard maximum, a lower
-    // compiler trip threshold, swap refused, no larger-runner retry). A refused bind stops the
-    // line: the run asked to be bounded and is not.
+    // the same bind claim_executor and claim_batch take) at gunbc.emitted_subject_build_gate
+    // native_step_memory_trip, the slot's MemoryHigh less a declared headroom. The required
+    // `witnesses` job passes that input only once the fleet can honour it
+    // (gunbc.rung_drop.native_step_trip_awaits_fleet_job_cgroup: a fleet job is the deprivileged
+    // job user under a root unit, and the governor's leaf lives at the cgroup root). A refused
+    // bind stops the line: the run asked to be bounded and is not.
     let bind = crate::memory_governor::apply_memory_cgroup_bind();
     eprintln!("{}", crate::memory_governor::cgroup_bind_note(&bind));
     if let Some(diagnostic) = crate::memory_governor::cgroup_bind_refusal_diagnostic(&bind) {
@@ -2549,12 +2548,31 @@ pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
             message: diagnostic,
         };
     }
+    // THE THIRD ACT: what bounds this run, decided and READ before the producer. The required job
+    // passes `GUNBC_MEMORY_ENVELOPE_REQUIRED=slot` on every subject step
+    // (gunbc.emitted_subject_build_gate native_step_memory_envelope_env_name): a cgroup memory.max
+    // must already bind the step -- the fleet slot's -- and a run none binds is refused, because a
+    // required step that cannot say what bounded it is not the measurement the gate names
+    // (operator ruling 2026-10-09: a fixed hard maximum, swap refused, a peak-and-swap receipt,
+    // no larger-runner retry).
+    let envelope = match memory_envelope_requirement(&bind) {
+        Ok(envelope) => envelope,
+        Err(refusal) => {
+            eprintln!("{refusal}");
+            return InvocationOutcome {
+                termination: Termination::Refused,
+                message: refusal,
+            };
+        }
+    };
     let outcome = test_verb_after(operand, &assess_binary_freshness(&observe_binary_inputs()));
     // THE PEAK-AND-SWAP RECEIPT, after the producer and whatever it spawned have run: read from
-    // the cgroup the bind joined (every child process was charged to it). A violated envelope --
-    // an OOM kill the kernel recorded, swap charged, or a swap counter that cannot be read -- is a
-    // refusal even over a producer that held, because "no thrashing, ever" is part of the verdict.
-    match memory_envelope_receipt(&bind) {
+    // the cgroup that bounds the step (every child process was charged to it), against the
+    // reading taken before the producer, so a cgroup that outlives the step -- the slot's --
+    // reports what THIS step added. A violated envelope -- an OOM kill, swap charged, or a swap
+    // counter that cannot be read -- is a refusal even over a producer that held, because "no
+    // thrashing, ever" is part of the verdict.
+    match memory_envelope_receipt(&envelope) {
         None => outcome,
         Some(Ok(receipt)) => {
             eprintln!("{receipt}");
@@ -2570,29 +2588,82 @@ pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
     }
 }
 
-/// `None` when no bind was requested (an operator-local run measures nothing); otherwise the
-/// receipt line, or the violation that refuses the run. The counters are the cgroup's own
-/// (`memory.peak`, `memory.events`, `memory.swap.current`), read through the floor memory
-/// supervisor's reader so a missing key is never a zero.
-fn memory_envelope_receipt(
+/// Authority: `gunbc.emitted_subject_build_gate` `native_step_memory_envelope_env_name` and
+/// `native_step_memory_envelope_slot_value`, pinned by
+/// `test.claim.compiler_gate_emit_build_lane_witness_test`
+/// `the_seed_envelope_requirement_inputs_are_the_dag_rows`.
+const MEMORY_ENVELOPE_REQUIRED_ENV: &str = "GUNBC_MEMORY_ENVELOPE_REQUIRED";
+const MEMORY_ENVELOPE_SLOT_VALUE: &str = "slot";
+
+/// What bounds this run's memory, decided before any producer: nothing asked (an operator-local
+/// run measures nothing), or a cgroup -- the leaf the bind created, a limit that already bound
+/// the process when the bind was asked, or the slot the gate requires -- with the reading taken
+/// at the start, so the receipt can report what this step added to a cgroup that outlives it.
+enum MemoryEnvelope {
+    NotRequired,
+    Bounded {
+        grain: &'static str,
+        dir: std::path::PathBuf,
+        start: cli_run::floor_memory_supervisor::CgroupMemoryRead,
+    },
+}
+
+/// Which envelope the invocation asked for, and the start reading of it. Absent and unknown are
+/// different answers: no requirement and no bind is `NotRequired`; a requirement naming a grain
+/// this binary does not know is a refusal, never a silent no-requirement.
+fn memory_envelope_requirement(
     bind: &crate::memory_governor::CgroupBindDecision,
-) -> Option<Result<String, String>> {
-    if matches!(
-        bind,
-        crate::memory_governor::CgroupBindDecision::NotRequested
-    ) {
-        return None;
-    }
-    let dir = match cli_run::floor_memory_supervisor::resolve_measurement_cgroup() {
-        Ok(dir) => dir,
-        Err(refusal) => {
-            return Some(Err(format!(
-                "gunbc test: MEMORY RECEIPT REFUSED cause=MemoryReceiptUnreadable — {}",
-                refusal.render()
-            )))
+) -> Result<MemoryEnvelope, String> {
+    use crate::memory_governor::CgroupBindDecision;
+    let bound_grain = match bind {
+        CgroupBindDecision::Applicable { .. } => Some("leaf"),
+        CgroupBindDecision::UnnecessaryLimitAlreadyBinds { .. } => Some("existing"),
+        CgroupBindDecision::NotRequested | CgroupBindDecision::Refused { .. } => None,
+    };
+    let required = match std::env::var(MEMORY_ENVELOPE_REQUIRED_ENV) {
+        Err(_) => false,
+        Ok(value) if value.trim() == MEMORY_ENVELOPE_SLOT_VALUE => true,
+        Ok(value) => {
+            return Err(format!(
+                "gunbc test: MEMORY ENVELOPE REFUSED cause=MemoryEnvelopeGrainUnknown — \
+                 {MEMORY_ENVELOPE_REQUIRED_ENV}={value:?} names no envelope grain this binary knows \
+                 (it knows {MEMORY_ENVELOPE_SLOT_VALUE:?}); a run that asked to be bounded with a \
+                 value the binary cannot read proceeds nowhere"
+            ))
         }
     };
-    let read = match cli_run::floor_memory_supervisor::read_cgroup_memory(&dir) {
+    let grain = match (bound_grain, required) {
+        (None, false) => return Ok(MemoryEnvelope::NotRequired),
+        (Some(grain), _) => grain,
+        (None, true) => MEMORY_ENVELOPE_SLOT_VALUE,
+    };
+    let dir = cli_run::floor_memory_supervisor::resolve_measurement_cgroup().map_err(|refusal| {
+        format!(
+            "gunbc test: MEMORY ENVELOPE REFUSED cause=MemoryEnvelopeAbsent — the step requires a \
+             cgroup memory.max to bind it ({MEMORY_ENVELOPE_REQUIRED_ENV}={grain}) and none does: {}",
+            refusal.render()
+        )
+    })?;
+    let start = cli_run::floor_memory_supervisor::read_cgroup_memory(&dir).map_err(|refusal| {
+        format!(
+            "gunbc test: MEMORY RECEIPT REFUSED cause=MemoryReceiptUnreadable — {}",
+            refusal.render()
+        )
+    })?;
+    Ok(MemoryEnvelope::Bounded { grain, dir, start })
+}
+
+/// `None` when nothing bounds the run by request (an operator-local run measures nothing);
+/// otherwise the receipt line, or the violation that refuses the run. The counters are the
+/// cgroup's own (`memory.peak`, `memory.events`, `memory.swap.current`), read through the floor
+/// memory supervisor's reader so a missing key is never a zero, and the event counters are
+/// reported as the DIFFERENCE from the start reading: a slot cgroup outlives this step, and an
+/// OOM kill an earlier job suffered is not this step's.
+fn memory_envelope_receipt(envelope: &MemoryEnvelope) -> Option<Result<String, String>> {
+    let MemoryEnvelope::Bounded { grain, dir, start } = envelope else {
+        return None;
+    };
+    let end = match cli_run::floor_memory_supervisor::read_cgroup_memory(dir) {
         Ok(read) => read,
         Err(refusal) => {
             return Some(Err(format!(
@@ -2607,22 +2678,27 @@ fn memory_envelope_receipt(
     let swap_text = swap_current
         .map(|v| v.to_string())
         .unwrap_or_else(|| "unreadable".to_string());
+    let oom_kills_delta = end.oom_kills.saturating_sub(start.oom_kills);
+    let max_events_delta = end.max_events.saturating_sub(start.max_events);
+    let high_events_delta = end.high_events.saturating_sub(start.high_events);
+    let peak_scope = if *grain == "leaf" {
+        "this step"
+    } else {
+        "since the cgroup started"
+    };
     let line = format!(
-        "gunbc test: MEMORY RECEIPT cgroup={} limit_max={} limit_high={} peak_bytes={} \
-         high_events={} max_events={} oom_kills={} swap_current_bytes={swap_text}",
-        read.dir,
-        read.limit_max,
-        read.limit_high,
-        read.peak,
-        read.high_events,
-        read.max_events,
-        read.oom_kills
+        "gunbc test: MEMORY RECEIPT grain={grain} cgroup={} limit_max={} limit_high={} \
+         peak_bytes={} (peak scope: {peak_scope}) high_events_delta={high_events_delta} \
+         max_events_delta={max_events_delta} oom_kills_delta={oom_kills_delta} \
+         swap_current_bytes={swap_text}",
+        end.dir, end.limit_max, end.limit_high, end.peak
     );
-    let violated = read.oom_kills > 0 || swap_current.map(|v| v > 0).unwrap_or(true);
+    let violated = oom_kills_delta > 0 || swap_current.map(|v| v > 0).unwrap_or(true);
     if violated {
         Some(Err(format!(
-            "gunbc test: MEMORY ENVELOPE VIOLATED cause=MemoryEnvelopeViolated — an OOM kill, swap charged, \
-             or an unreadable swap counter inside the bound cgroup; the run is refused even if its producer held. {line}"
+            "gunbc test: MEMORY ENVELOPE VIOLATED cause=MemoryEnvelopeViolated — an OOM kill this \
+             step added, swap charged, or an unreadable swap counter inside the bounding cgroup; the \
+             run is refused even if its producer held. {line}"
         )))
     } else {
         Some(Ok(line))

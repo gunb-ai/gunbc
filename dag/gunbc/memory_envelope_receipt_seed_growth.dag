@@ -1,0 +1,41 @@
+module gunbc.memory_envelope_receipt_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// THE ROW EXISTS BECAUSE THE SEED GREW BY HAND (review 78391 on gunbc#13658): test_verb_checked
+// gained the envelope requirement, and memory_envelope_requirement / memory_envelope_receipt are
+// new -- about a hundred lines of host-fact Rust in the retained CLI kernel (std.compiler_entry
+// RetainedHostCliKernel). Admitted under the v1 PURPOSE test (gunbc.v1_maintenance_standing
+// v1_seed_standing): the one required job is the v2 emit-and-build gate, and the operator ruled
+// the memory envelope into its verdict (2026-10-09). Section 7 wants that growth as a declared row
+// with a reason and a migration trigger, countable; a note in the PR body is readable by people
+// and by nothing else.
+data memory_envelope_receipt_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.target_invocation_host",
+      decl_name: "test_verb_checked",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.target_invocation_host",
+      decl_name: "memory_envelope_requirement",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.target_invocation_host",
+      decl_name: "memory_envelope_receipt",
+      field: WholeDeclaration
+    }
+  ],
+
+  reason: "HOST FACTS NO .dag FOLD CAN RECEIVE YET: which cgroup memory.max binds this process, its memory.peak, memory.events and memory.swap.current before and after the producer, and the kernel bind itself (memory_governor apply_memory_cgroup_bind). The DECISION over those readings -- which grain was required, whether an OOM kill or swap charged refuses the run, what the receipt line says -- is the part a .dag fold could own today, and it is written in Rust here only because the readings it decides over arrive through no typed resource of the native door (the same wall gunbc.rung_drop network_requirement_unrepresented_after_uses_cut records for Network). Every input is modeled and pinned: gunbc.emitted_subject_build_gate native_step_memory_envelope_env_name, native_step_memory_envelope_slot_value and native_step_memory_bind_env_name, by test.claim.compiler_gate_emit_build_lane_witness_test.",
+
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+
+  trigger: "Delete these when the native door (v2.cli.compile_cli, std.compiler_entry NativeCliDriver) can receive the cgroup readings AS VALUES -- a resource supplying memory.max, memory.peak, memory.events and memory.swap.current for the process's own cgroup, declared through the derived dependency demand of D13 (gunbc.plans.demand_engine_program) -- and the gate's receipt-and-refusal decision is a .dag fold over them that the emitted CLI runs for each subject label. The same lane as the SourceRootEvalDriver's remaining host-fact obligations (gunbc.source_root_eval_driver_seed_growth).",
+
+  current_boundary: "gunbc.compiler_gate_workflow compiler_gate_emit_build_step -> the step's env rows (gunbc.emitted_subject_build_gate native_step_memory_inputs, decided by gunbc.rung_drop.native_step_trip_awaits_fleet_job_cgroup) -> gunbc test (v1_compiler.target_invocation_host test_verb_checked) -> memory_governor apply_memory_cgroup_bind and floor_memory_supervisor resolve_measurement_cgroup / read_cgroup_memory -> the MEMORY RECEIPT line and the MemoryEnvelopeAbsent / MemoryEnvelopeGrainUnknown / MemoryReceiptUnreadable / MemoryEnvelopeViolated refusals in the required run's log."
+}

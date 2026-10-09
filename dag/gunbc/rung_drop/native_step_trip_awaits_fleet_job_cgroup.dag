@@ -1,0 +1,59 @@
+module gunbc.rung_drop.native_step_trip_awaits_fleet_job_cgroup
+
+import std.types { List, NonEmptyStr, String }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// DECLARED 2026-10-09 BY THE FIRST REQUIRED RUN THAT ASKED FOR THE BIND (run 38002497388 on
+// gunbc#13658's head a4b8f788): every subject step of the one required job passed
+// GUNBC_BIND_MEMORY_CGROUP_BYTES at the derived trip, and gunbc test refused in four seconds --
+// MemoryCgroupBindRefused, the cgroup2 tree is not writable. Two host facts, neither a defect in
+// the diff: memory_governor apply_memory_cgroup_bind creates its leaf at the cgroup ROOT
+// (/sys/fs/cgroup/gunbc.bound -- a design for a process that is root of its own cgroup namespace,
+// which the remote-build containers are and a systemd-managed fleet host is not), and a fleet job
+// runs as the setpriv'd job user under a root unit (gunbc.runner_host_deploy: unit_user mints the
+// JIT config, job_user runs the job), so even a delegated unit cgroup would be owned by root. The
+// bind had never been requested on the fleet before: main's witnesses.yml never carried the input.
+//
+// WHAT IS LOST: the per-step trip (the compiler tripping at native_step_memory_trip, under the
+// slot's throttle line, inside its own cgroup) and the step-grain receipt (a peak that is THIS
+// step's). WHAT IS NOT LOST, and why the temporary rung is Mitigatable rather than silence: every
+// subject step REQUIRES the slot's envelope (gunbc.emitted_subject_build_gate
+// native_step_memory_envelope_env_name) -- gunbc test refuses a run no cgroup memory.max binds,
+// and refuses a run that was OOM-killed or charged swap inside that cgroup, from a reading taken
+// before the producer and again at exit -- so "no thrashing, ever" is enforced at the slot's grain
+// on every required run, and the slot's own MemoryMax with MemorySwapMax=0
+// (gunbc.runner_slot_desired) is the hard maximum once converged.
+//
+// WHY A DROP AND NOT A WIDER ARM: a bind that cannot be written is not a bound, and the governor
+// says so and refuses. Running unbounded when the write fails would be the absorbing fallback
+// DESIGN section 5 names -- the deficit (no job-owned cgroup on the fleet) would stop ranking for
+// repair the moment it stopped being red. This row is where it ranks, and it is the ONE consumer
+// that decides whether the bind input is on the subject steps (native_step_memory_inputs reads
+// this row's standing), so retiring it is the whole restoration.
+//
+// ON `previous`: MechanicallyPreventable is the rung the ruling specified and the rung the bind
+// reaches where a process owns its cgroup root (claim_executor in the remote-build containers);
+// it was never held on the fleet. The row wears the drop carrier because that is the one carrier
+// with a trigger the workflow can consume, and the loss sentence is written at that honesty.
+data native_step_trip_awaits_fleet_job_cgroup_population: List<String> = [
+  "the per-step trip on `emit and build //gunbc/instruments:self-host`: the step's own cgroup bound at native_step_memory_trip (gunbc.emitted_subject_build_gate), so the compiler trips before the slot's throttle line and the runner process is never the kernel's candidate",
+  "the per-step trip on `emit and build //gunbc/instruments:v2-native-cli`, the same",
+  "the step-grain MEMORY RECEIPT: a peak_bytes that is this step's alone. The slot-grain receipt that stands in reports the OOM kills, high and max events the step added, swap charged at exit, and a peak since the slot's cgroup started",
+]
+
+data native_step_trip_awaits_fleet_job_cgroup: RungDrop = RungDrop {
+  identity: "native_step_trip_awaits_fleet_job_cgroup" as NonEmptyStr,
+  subject: "The per-step compiler trip and the step-grain memory receipt on the required subject steps",
+  declared: "2026-10-09",
+  standing: Standing,
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "a job-owned, memory-bounded cgroup on every fleet runner: the runner unit delegated (Delegate=yes with DelegateSubgroup= so the unit's own processes leave the delegated root), a per-job cgroup staged at native_step_memory_trip with no swap by the root JIT wrapper before setpriv (gunbc.runner_lifecycle runner_lifecycle_jit_wrapper_path), and the governor's UnnecessaryLimitAlreadyBinds arm reading that bound as the step's own -- or the job user able to create the leaf itself. Its own lane; applied to hosts by converge, which is the operator's effect."
+    },
+    population: native_step_trip_awaits_fleet_job_cgroup_population,
+    restoration_trigger: "THE CAPABILITY: on every fleet runner, a required subject step runs inside a memory-bounded cgroup at native_step_memory_trip with per-step peak, OOM and swap counters of its own, observed as gunbc test's bind arm reporting Applicable or UnnecessaryLimitAlreadyBinds at the trip in a required run's log on each host class. SUFFICIENT FOR: flipping this row's standing to Retired, which puts the bind input back on every subject step through native_step_memory_inputs with no other edit. A converge receipt alone, or one host, is not the trigger."
+  }
+}
