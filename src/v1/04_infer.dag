@@ -57,7 +57,7 @@ import v1.std.core { Unmarked, declaration_provenance_of,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
   InternalError, TypeMismatch, UnresolvedType, TypeParameterInValuePosition, TextRepresentationUnidentifiedAtBoundary, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse, TextCrossingHasNoImplicitRoute, KernelMintShapeMismatch,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
-  EqualityOnFunctionMember, EqualityMemberUnjudgeable, EqualityOptionalityMismatch,
+  EqualityOnFunctionMember, EqualityMemberUnjudgeable, EqualityOptionalityMismatch, EqualityAgainstPresentOnListRead,
   TypeArgumentArityMismatch,
   resource_use_name_at, resource_use_resource,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
@@ -82,7 +82,7 @@ import v1.std.core { Unmarked, declaration_provenance_of,
   MatchPattern, Bind, VariantPattern, Wildcard, LitPattern, StringPart, variant_node_fields,
   make_field_binding_node, field_binding_name_at, field_binding_pattern,
   let_value, let_body, lambda_body,
-  foreach_collection, foreach_body, method_receiver, method_arg_nodes,
+  foreach_collection, foreach_body, method_receiver, expr_child_at, method_arg_nodes,
   match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch,
   index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value,
   binop_left, binop_right,
@@ -3548,6 +3548,66 @@ fn equality_operand_is_optional(n: Node, source_indices: Map<String, NewlineInde
   }
 }
 
+// INTERIM WALL (scaffold, operator-approved by default via escalation msg_66f62924; dissolves when
+// the interpreter and the emitted program agree on one Optional value for a list read (vehicle: gunbc#13488's
+// design, which alone does not retire it), whereupon this arm is deleted and its cases
+// become ordinary regression controls). The checker types a list read (first/last/get/index/min/max)
+// as T?, the interpreter returns the bare element, so `read == Present { .. }` is false or a
+// cross-representation error there and true on the emitted route (failure modes
+// optional_equality_answers_by_representation, list_index_typed_optional_but_realized_as_the_bare_element).
+fn equality_operand_list_read_name(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  match n.expr_data {
+    ExprMethodCall { method_semantics: ms } =>
+      match ms {
+        Present { value: v } =>
+          match v {
+            AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: _ } =>
+              if equality_receiver_is_list(receiver: method_receiver(texpr: n), source_indices: source_indices) { equality_list_read_leaf(name: md.name) } else { "" }
+            _ => ""
+          }
+        _ => ""
+      }
+    ExprIndex =>
+      if equality_receiver_is_list(receiver: index_base(texpr: n), source_indices: source_indices) { "index" } else { "" }
+    ExprCall { call_semantics: cs, descent_evidence: _ } =>
+      match call_semantics_target(cs: cs) {
+        RuntimePrimitiveCall { primitive_name: pn, projected_from: _ } =>
+          if equality_receiver_is_list(receiver: arg_value(n: expr_child_at(texpr: n, index: 0, role: "call argument")), source_indices: source_indices) { equality_list_read_leaf(name: pn) } else { "" }
+        _ => ""
+      }
+    _ => ""
+  }
+}
+
+// The wall is about the LIST read, so the receiver's resolved type decides, not the call's spelling: a
+// user fn or a Map/other-type method named `get` that returns a real T? has one meaning and stays admitted.
+fn equality_receiver_is_list(receiver: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match receiver.inferred {
+    Present { value: Resolved { node: rt } } =>
+      node_is_element_collection(n: rt, source_indices: source_indices)
+        && qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: rt)) == "List"
+    _ => false
+  }
+}
+
+fn equality_list_read_leaf(name: String) -> String {
+  let leaf = qualified_last_segment(name: name)
+  if leaf == "first" || leaf == "last" || leaf == "get" || leaf == "index" || leaf == "min" || leaf == "max" { leaf } else { "" }
+}
+
+fn equality_operand_is_present_literal(n: Node) -> Bool {
+  match n.expr_data {
+    ExprRecordLit { parent_enum: _ } => qualified_last_segment(name: n.name) == "Present"
+    _ => false
+  }
+}
+
+fn equality_present_on_list_read(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  if equality_operand_is_present_literal(n: right) { equality_operand_list_read_name(n: left, source_indices: source_indices) }
+  else if equality_operand_is_present_literal(n: left) { equality_operand_list_read_name(n: right, source_indices: source_indices) }
+  else { "" }
+}
+
 fn equality_admission_refusal_diag(r: EqualityAdmissionRefusal, span: SourceSpan) -> CompilerDiagnostic {
   if r.member_judged {
     EqualityOnFunctionMember { type_name: r.type_name, member: r.member, span: span }
@@ -3588,6 +3648,9 @@ fn equality_admission_diags(op: BinOp, left_typed: Node, right_typed: Node, scop
       || (lt.inferred != none && is_compiler_error(inferred: lt.inferred.value))
       || (rt.inferred != none && is_compiler_error(inferred: rt.inferred.value)) {
       []
+    } else if equality_present_on_list_read(left: left_typed, right: right_typed, source_indices: source_indices) != "" {
+      [make_error_node(diagnostic: EqualityAgainstPresentOnListRead { list_read: equality_present_on_list_read(left: left_typed, right: right_typed, source_indices: source_indices), operator: match op { Eq => "=="
+          _ => "!=" }, span: span }, module_name: scope.module_name)]
     } else if equality_operand_is_optional(n: left_typed, source_indices: source_indices) != equality_operand_is_optional(n: right_typed, source_indices: source_indices) {
       let side = if equality_operand_is_optional(n: left_typed, source_indices: source_indices) { "left" } else { "right" }
       [make_error_node(diagnostic: EqualityOptionalityMismatch { optional_side: side, span: span }, module_name: scope.module_name)]
