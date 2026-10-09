@@ -107,12 +107,8 @@ pub fn semver_compare_identifiers(
                         Some(ah) => match b.clone().first().cloned() {
                             Some(bh) => match semver_compare_identifier(ah.clone(), bh.clone()) {
                                 Ordering::Equal => {
-                                    let __tco_0 = Rc::new(
-                                        a.iter().cloned().skip(1 as usize).collect::<Vec<_>>(),
-                                    );
-                                    let __tco_1 = Rc::new(
-                                        b.iter().cloned().skip(1 as usize).collect::<Vec<_>>(),
-                                    );
+                                    let __tco_0 = Rc::new(v1_rt::list_skip(&a, 1));
+                                    let __tco_1 = Rc::new(v1_rt::list_skip(&b, 1));
                                     __tco_loop_a = __tco_0;
                                     __tco_loop_b = __tco_1;
                                     continue;
@@ -217,13 +213,7 @@ pub fn semver_core_of_dotted(text: String) -> Option<Rc<SemVerVersion>> {
 }
 
 pub fn semver_dotted_part(parts: Rc<Vec<String>>, index: i64) -> Option<NonNegativeInt> {
-    match parts
-        .clone()
-        .iter()
-        .cloned()
-        .skip(index.clone() as usize)
-        .next()
-    {
+    match parts.clone().get((index.clone()) as usize).cloned() {
         std::option::Option::None => std::option::Option::None,
         Some(w) => match v1_rt::parse_int(w.clone()) {
             std::option::Option::None => std::option::Option::None,

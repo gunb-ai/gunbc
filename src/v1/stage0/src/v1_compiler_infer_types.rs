@@ -1487,14 +1487,7 @@ pub fn unify_template(
                     }
                     std::option::Option::None => subst.clone(),
                 };
-                match concrete
-                    .children
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .skip(1 as usize)
-                    .next()
-                {
+                match concrete.children.clone().get((1) as usize).cloned() {
                     Some(v) => {
                         if (v1_rt::map_get(&s1, "__value__".to_string())
                             != std::option::Option::None)
@@ -1613,14 +1606,7 @@ pub fn unify_template(
                     ),
                     std::option::Option::None => subst.clone(),
                 };
-                match concrete
-                    .children
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .skip(1 as usize)
-                    .next()
-                {
+                match concrete.children.clone().get((1) as usize).cloned() {
                     Some(c) => unify_template(
                         st.clone(),
                         child_type_node(c.clone()),
@@ -1656,14 +1642,7 @@ pub fn build_type_substitution(
             std::option::Option::None => false,
         };
         let non_receiver_templates = if first_is_self.clone() {
-            Rc::new(
-                param_templates
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .skip(1 as usize)
-                    .collect::<Vec<_>>(),
-            )
+            Rc::new(v1_rt::list_skip(&param_templates.clone(), 1))
         } else {
             param_templates.clone()
         };
@@ -1897,46 +1876,41 @@ pub fn apply_type_substitution(
                     }
                 },
             },
-            AlgebraTypeTemplate::ReceiverValue => match receiver
-                .children
-                .clone()
-                .iter()
-                .cloned()
-                .skip(1 as usize)
-                .next()
-            {
-                Some(child) => Rc::new(KernelTypeBuild {
-                    ty: child_type_node(child.clone()),
-                    diagnostics: Rc::new(vec![]),
-                }),
-                std::option::Option::None => {
-                    match v1_rt::map_get(&subst, "__value__".to_string()) {
-                        Some(val) => Rc::new(KernelTypeBuild {
-                            ty: val.clone(),
-                            diagnostics: Rc::new(vec![]),
-                        }),
-                        std::option::Option::None => {
-                            let rname =
-                                container_kind_canonical(crate::v1_std_core::authored_name_at(
-                                    source_indices.clone(),
-                                    receiver.clone(),
-                                ));
-                            match crate::std_types::container_param_name(rname.clone(), 1) {
-                                Some(n) => Rc::new(KernelTypeBuild {
-                                    ty: type_variable_node(n.clone()),
-                                    diagnostics: Rc::new(vec![]),
-                                }),
-                                std::option::Option::None => Rc::new(KernelTypeBuild {
-                                    ty: missing_kernel_container_profile_type(rname.clone()),
-                                    diagnostics: Rc::new(vec![
-                                        kernel_container_profile_miss_diagnostic(rname.clone()),
-                                    ]),
-                                }),
+            AlgebraTypeTemplate::ReceiverValue => {
+                match receiver.children.clone().get((1) as usize).cloned() {
+                    Some(child) => Rc::new(KernelTypeBuild {
+                        ty: child_type_node(child.clone()),
+                        diagnostics: Rc::new(vec![]),
+                    }),
+                    std::option::Option::None => {
+                        match v1_rt::map_get(&subst, "__value__".to_string()) {
+                            Some(val) => Rc::new(KernelTypeBuild {
+                                ty: val.clone(),
+                                diagnostics: Rc::new(vec![]),
+                            }),
+                            std::option::Option::None => {
+                                let rname =
+                                    container_kind_canonical(crate::v1_std_core::authored_name_at(
+                                        source_indices.clone(),
+                                        receiver.clone(),
+                                    ));
+                                match crate::std_types::container_param_name(rname.clone(), 1) {
+                                    Some(n) => Rc::new(KernelTypeBuild {
+                                        ty: type_variable_node(n.clone()),
+                                        diagnostics: Rc::new(vec![]),
+                                    }),
+                                    std::option::Option::None => Rc::new(KernelTypeBuild {
+                                        ty: missing_kernel_container_profile_type(rname.clone()),
+                                        diagnostics: Rc::new(vec![
+                                            kernel_container_profile_miss_diagnostic(rname.clone()),
+                                        ]),
+                                    }),
+                                }
                             }
                         }
                     }
                 }
-            },
+            }
             AlgebraTypeTemplate::NamedTemplate { name: n, .. } => Rc::new(KernelTypeBuild {
                 ty: nominal_type_ref(n.clone()),
                 diagnostics: Rc::new(vec![]),
@@ -2221,13 +2195,7 @@ pub fn node_type_shape_argument_list(
         match args.clone().first().cloned() {
             Some(a) => {
                 let head = node_type_shape(child_type_node(a.clone()), source_indices.clone());
-                let rest = Rc::new(
-                    args.clone()
-                        .iter()
-                        .cloned()
-                        .skip(1 as usize)
-                        .collect::<Vec<_>>(),
-                );
+                let rest = Rc::new(v1_rt::list_skip(&args.clone(), 1));
                 if ((rest.clone().len() as i64) == 0) {
                     head.clone()
                 } else {
@@ -2830,14 +2798,7 @@ pub fn callable_signatures_agree(
                 .iter()
                 .cloned()
                 {
-                    if !(match right
-                        .params
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .skip(pair.0.clone() as usize)
-                        .next()
-                    {
+                    if !(match right.params.clone().get((pair.0.clone()) as usize).cloned() {
                         Some(right_param) => agree(
                             crate::v1_std_core::param_node_type_expr(pair.1.clone()),
                             crate::v1_std_core::param_node_type_expr(right_param.clone()),
@@ -2940,10 +2901,8 @@ pub fn node_type_equals_core(
                                             if !(match right
                                                 .children
                                                 .clone()
-                                                .iter()
+                                                .get((pair.0.clone()) as usize)
                                                 .cloned()
-                                                .skip(pair.0.clone() as usize)
-                                                .next()
                                             {
                                                 Some(right_child) => node_type_equals(
                                                     pair.1.clone(),
@@ -3026,18 +2985,14 @@ pub fn node_type_equals_core(
                                                             Some(right_first) => match left
                                                                 .children
                                                                 .clone()
-                                                                .iter()
+                                                                .get((1) as usize)
                                                                 .cloned()
-                                                                .skip(1 as usize)
-                                                                .next()
                                                             {
                                                                 Some(left_second) => match right
                                                                     .children
                                                                     .clone()
-                                                                    .iter()
+                                                                    .get((1) as usize)
                                                                     .cloned()
-                                                                    .skip(1 as usize)
-                                                                    .next()
                                                                 {
                                                                     Some(right_second) => {
                                                                         (node_type_equals(
@@ -3241,14 +3196,7 @@ pub fn method_receiver_element_node(
     {
         let normed = normalize_access_type_node(receiver_type.clone());
         let maybe_element = if node_is_keyed_collection(normed.clone(), source_indices.clone()) {
-            match normed
-                .children
-                .clone()
-                .iter()
-                .cloned()
-                .skip(1 as usize)
-                .next()
-            {
+            match normed.children.clone().get((1) as usize).cloned() {
                 Some(ch) => Some(child_type_node(ch.clone())),
                 std::option::Option::None => std::option::Option::None,
             }
@@ -3362,13 +3310,7 @@ pub fn first_matching_algebra_field(
                     }
                     std::option::Option::None => {
                         let __tco_0 = n;
-                        let __tco_1 = Rc::new(
-                            candidates
-                                .iter()
-                                .cloned()
-                                .skip(1 as usize)
-                                .collect::<Vec<_>>(),
-                        );
+                        let __tco_1 = Rc::new(v1_rt::list_skip(&candidates, 1));
                         let __tco_2 = source_indices;
                         __tco_loop_n = __tco_0;
                         __tco_loop_candidates = __tco_1;
