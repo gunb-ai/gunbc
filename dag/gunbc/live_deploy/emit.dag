@@ -751,6 +751,8 @@ fn live_deploy_belt_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
       Description { text: "gunbc roadmap belt launch (queues the one launch obligation: admission, spawn, teardown, discovery)" as NonEmptyStr },
       After { target: "network-online.target" as NonEmptyStr },
       Wants { target: "network-online.target" as NonEmptyStr },
+      After { target: belt_user_manager_unit_name(uid: svc.service_uid) },
+      Wants { target: belt_user_manager_unit_name(uid: svc.service_uid) },
     ],
     service: concat([
       ServiceType { mode: OneshotMode },
@@ -931,6 +933,13 @@ fn apply_publication_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
 // THE PUBLICATION ANSWER PATH IS AN EDGE: answers are kept, not moved, so a level would fire forever.
 // A change while discovery is running is coalesced into that run; discovery reads every attempt's
 // evidence, so the coalesced answer is still seen.
+// THE EVENT SERVICES QUERY AND START UNITS IN THE SERVICE PRINCIPAL'S USER MANAGER (systemctl --user), so they
+// are ordered after, and pull in, that manager's own unit. Lingering spawns user@<uid>.service at boot, but
+// nothing else orders a boot-time drain behind it, and the drain would otherwise race the manager it asks.
+fn belt_user_manager_unit_name(uid: Int) -> NonEmptyStr {
+  join(["user@", to_string(uid), ".service"], "") as NonEmptyStr
+}
+
 fn live_deploy_belt_event_service_unit_file(spec: DeploymentSpec, description: String, function: String, install: SystemdInstallSection) -> SystemdUnitFile {
   let svc = spec.service
   ServiceUnitFile {
@@ -3032,6 +3041,7 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
     )
     BeltEventPathUnit => concat(
       concat(
+        systemctl_disable_now_if_present_steps(unit: deployment_belt_exit_drain_service_unit_name(names: spec.names), privileged: true),
         systemctl_disable_now_if_present_steps(unit: deployment_belt_exit_path_unit_name(names: spec.names), privileged: true),
         systemctl_disable_now_if_present_steps(unit: deployment_belt_answer_path_unit_name(names: spec.names), privileged: true),
       ),

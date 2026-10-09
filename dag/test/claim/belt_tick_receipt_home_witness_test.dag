@@ -11,6 +11,7 @@ import gunbc.roadmap_dashboard_instance {
 import gunbc.roadmap_belt_actuate { belt_tick_receipt_path_for_instance }
 import gunbc.live_deploy.emit {
   emit_artifact_upsert,
+  emit_artifact_teardown,
   install_d_owned_for_user,
 }
 import gunbc.live_deploy.release_locus {
@@ -22,6 +23,7 @@ import gunbc.live_deploy.spec {
   gunbc_service_user,
   BeltEventPathUnit,
   deployment_belt_exit_path_unit_path,
+  deployment_belt_exit_drain_service_unit_name,
   srv1_live_deployment_names,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
@@ -155,4 +157,33 @@ test fn the_bootstrapped_directory_is_where_the_receipt_goes() -> Bool {
   let receipt = belt_tick_receipt_path_for_instance(instance: srv1_live_dashboard_instance())
   has_command(cmds: belt_upsert_commands(), want: install_d_owned_for_user(user: gunbc_service_user, path: dir))
     && receipt == join([dir, "/belt-last-tick.json"], "")
+}
+
+// RETRACT UNDOES WHAT APPLY ENABLES, IN ORDER. Apply enables the boot-wanted drain service; if retract only
+// disabled the path units and removed the drain's file, the WantedBy symlink would outlive the unit. The
+// drain unit apply enables is the one retract disables, and it is disabled before any file is removed.
+fn belt_teardown_commands() -> List<String> {
+  let spec = deployment_spec_srv1()
+  let art = DeploymentArtifactStep {
+    kind: BeltEventPathUnit,
+    path: deployment_belt_exit_path_unit_path(
+      names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance()),
+    ) as String as NonEmptyStr,
+  }
+  step_commands(steps: emit_artifact_teardown(art: art, spec: spec))
+}
+
+fn first_index_where(cmds: List<String>, p: fn(String) -> Bool) -> Int {
+  let r = fold(cmds, init: { at: 0, found: -1 }, f: (acc, c) => if acc.found >= 0 { acc } else if p(c) { { at: acc.at + 1, found: acc.at } } else { { at: acc.at + 1, found: -1 } })
+  r.found
+}
+
+test fn retract_disables_the_drain_apply_enables_before_removing_any_file() -> Bool {
+  let drain = deployment_belt_exit_drain_service_unit_name(names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance())) as String
+  let up = belt_upsert_commands()
+  let down = belt_teardown_commands()
+  let enabled = any(up, c => string_contains(s: c, pattern: drain) && string_contains(s: c, pattern: "enable"))
+  let disabled = first_index_where(cmds: down, p: c => string_contains(s: c, pattern: drain) && string_contains(s: c, pattern: "disable"))
+  let removed = first_index_where(cmds: down, p: c => string_contains(s: c, pattern: join(["/etc/systemd/system/", drain], "")))
+  enabled && disabled >= 0 && removed > disabled
 }

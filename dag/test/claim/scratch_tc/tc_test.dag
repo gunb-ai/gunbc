@@ -1,0 +1,9 @@
+module test.claim.scratch_tc.tc_test
+
+import std.types { Bool }
+import gunbc.roadmap_belt_tick_cli { belt_attempt_obligations_cli, belt_exit_drain_cli, belt_discover_once_cli, belt_launch_enqueue_cli, belt_instance_obligation_cli }
+import gunbc.live_deploy.emit { live_deploy_belt_exit_path_unit_file }
+import gunbc.roadmap_launch_deployment_cli { rlm_launch_deployment_receipt_wet }
+import gunbc.deploy_transition_bootstrap { bootstrap_quiesced_units }
+
+test fn tc() -> Bool { true }

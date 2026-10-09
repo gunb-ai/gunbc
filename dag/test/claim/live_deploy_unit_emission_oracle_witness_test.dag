@@ -589,6 +589,15 @@ test fn the_drain_is_wanted_by_the_boot_target_of_the_manager_it_is_installed_in
     && starts_with(s: dest, prefix: "/etc/systemd/system/") && target == "multi-user.target"
 }
 
+// THE EVENT SERVICES ARE ORDERED AFTER, AND PULL IN, THE USER MANAGER THEY QUERY: a boot-time drain asks the
+// principal's user manager about attempt units, and lingering alone does not order it behind user@<uid>.
+test fn the_drain_is_ordered_after_and_wants_the_service_principals_user_manager() -> Bool {
+  let spec = live_spec()
+  let f = live_deploy_belt_exit_drain_service_unit_file(spec: spec)
+  let unit = join(["user@", to_string(spec.service.service_uid), ".service"], "")
+  path_has_line(file: f, line: join(["After=", unit], "")) && path_has_line(file: f, line: join(["Wants=", unit], ""))
+}
+
 test fn the_answer_path_wakes_discovery_on_a_changed_answer_directory() -> Bool {
   let spec = live_spec()
   let f = live_deploy_belt_answer_path_unit_file(spec: spec)
