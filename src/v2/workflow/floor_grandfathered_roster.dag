@@ -484,6 +484,11 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
     new_identity: "test.claim.parse_test_token_stream_cursor.token_stream_cursor_remaining_matches_skip_holds" as NonEmptyStr,
     renamed_in: "the v2.test.parse ungated census (gunbc#13372) phase 1: v2.test.parse.* modules sat outside required_gate_prefixes and ran only as changed witnesses; the module moved into the gated test.claim.parse_test family with a byte-identical claim body, so the identity changed and the claim is judged against the new-witness tier" as NonEmptyStr,
   },
+  WitnessRenamed {
+    previous_identity: "v2.test.claim.symbol_index.containment.symbol_index_unique_variant_without_alias_red_control_holds" as NonEmptyStr,
+    new_identity: "v2.test.claim.symbol_index.containment.symbol_index_module_variant_alias_requires_a_unique_count_holds" as NonEmptyStr,
+    renamed_in: "the variant-field native binding repair (gunbc#13210): the alias-binding repair files a module variant alias whenever a tag's declaration count is unique, so the state the old red control pinned -- a unique variant whose alias is MISSING -- no longer occurs and the red is unwritable as stated; the successor establishes the two-sided rule the repair implements (alias present when the count is unique, absent when the tag is declared twice), and as a new identity it is judged against the new-witness tier rather than inheriting the cut row's grandfathered one" as NonEmptyStr,
+  },
 ]
 
 fn floor_grandfathered_chunk_000() -> List<String> {
