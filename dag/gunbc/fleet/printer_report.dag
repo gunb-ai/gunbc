@@ -1,0 +1,136 @@
+module gunbc.fleet.printer_report
+import extdeps.languages.json.emit {JsonNull,JsonBool,JsonArray,JsonObject}
+import extdeps.languages.json.parse {JsonMemberAbsent,JsonMemberNotAnObject,JsonMemberDuplicated,JsonDocumentUnreadable}
+import gunbc.fleet.printer_job_start {PrinterSerialUnknown,PrinterSerialUnrecorded,PrinterSerialAmbiguous}
+import gunbc.fleet.printer_project_delivery {PrinterAddressUnknown,PrinterAddressAmbiguous,PrinterAddressWrongClass}
+
+import std.types { String, NonEmptyStr, Secret, Int, Bool }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_object_unique_member, JsonMemberFound }
+import extdeps.languages.json.emit { JsonString, JsonNumber }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.shell
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { env_prefixed_command, LocalExec }
+import extdeps.tools.mosquitto_rr { mosquitto_snapshot_command }
+import extdeps.printing.bambu_lab_lan_protocol { bambu_status_snapshot_payload, bambu_request_topic, bambu_report_topic, bambu_lan_mqtt_endpoint, bambu_lan_mqtt_user }
+import gunbc.command_runner { run_shell_command_capture }
+import gunbc.fleet_asset_identity { PhysicalAssetIdentity, printer_01, printer_02 }
+import gunbc.fleet.printer_selection { select_printer, PrinterSelected, PrinterSelectionRefused }
+import gunbc.fleet.printer_project_delivery { printer_endpoint_address, PrinterAddressFound }
+import gunbc.fleet.printer_job_start {
+  printer_serial, PrinterSerialFound, acquire_pinned_ca_bundle, CaBundlePinned,
+  CaBundleRefused, CaBundleRefusedResidueRemains, pinned_ca_bundle_path,
+}
+import gunbc.fleet_printer_access { PrinterCredentialSession, read_existing_printer_session, PrinterSessionReady, PrinterSessionRefused, session_printer, session_credential }
+import gunbc.secret_provision { secret_ref_pin_version }
+import extdeps.cloud.gcp.secret_manager { sm_version_id_is_number }
+import gunbc.auth.access_token_source { AccessTokenSource, OperatorSuppliedToken, read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable }
+import gunbc.auth.secret_ref_credential { fetch_secret_ref_credential, SecretCredentialReady }
+import gunbc.auth.mosquitto_options_binding {
+  place_mosquitto_rr_options_privately, MosquittoOptionsPlaced,
+  MosquittoOptionsRefused, MosquittoOptionsRefusedResidueRemains,
+  shred_mosquitto_options_binding, mosquitto_options_env,
+}
+
+// Read-only status request/response. Topic/endpoint/credential all join through the same fleet identity.
+// It observes current state, not causality or an acknowledgement of a particular start.
+fn report(printer: PhysicalAssetIdentity, version: NonEmptyStr, token_source: AccessTokenSource) -> ProcessOutcome {
+  match read_existing_printer_session(printer:printer,version:version,token_source:token_source) {
+   PrinterSessionRefused {cause:c}=>ProcessRefused {exit_code:1,stderr:c as String}
+   PrinterSessionReady {session:s}=>report_using_session(session:s)
+  }
+}
+fn report_using_session(session:PrinterCredentialSession) -> ProcessOutcome {
+ report_session_attempts(session:session,remaining:8)
+}
+
+// Reconciliation owns its retry budget; do not multiply it by the readiness retry loop.
+fn report_once_using_session(session:PrinterCredentialSession) -> ProcessOutcome {
+ report_session_attempts(session:session,remaining:1)
+}
+fn report_session_attempts(session:PrinterCredentialSession,remaining:Int) -> ProcessOutcome {
+ let printer=session_printer(s:session)
+ match printer_serial(printer:printer) {
+  PrinterSerialFound {serial:serial}=>match printer_endpoint_address(printer:printer) {
+   PrinterAddressFound {address:a}=>if remaining==1 {report_with_credential(serial:serial,address:a,credential:session_credential(s:session))} else {complete_report_with_credential(serial:serial,address:a,credential:session_credential(s:session),remaining:remaining)}
+   PrinterAddressUnknown {printer:_}=>ProcessRefused {exit_code:1,stderr:"Printer address absent or ambiguous"} PrinterAddressAmbiguous {printer:_}=>ProcessRefused {exit_code:1,stderr:"Printer address absent or ambiguous"} PrinterAddressWrongClass {printer:_}=>ProcessRefused {exit_code:1,stderr:"Printer address absent or ambiguous"}
+  }
+  PrinterSerialUnknown {printer:_}=>ProcessRefused {exit_code:1,stderr:"Printer serial absent or ambiguous"} PrinterSerialUnrecorded {printer:_}=>ProcessRefused {exit_code:1,stderr:"Printer serial absent or ambiguous"} PrinterSerialAmbiguous {printer:_}=>ProcessRefused {exit_code:1,stderr:"Printer serial absent or ambiguous"}
+ }
+}
+
+fn report_with_credential(serial: NonEmptyStr, address: NonEmptyStr, credential: Secret) -> ProcessOutcome {
+  match acquire_pinned_ca_bundle() {
+    CaBundleRefused { cause: c } => ProcessRefused { exit_code: 1, stderr: c as String }
+    CaBundleRefusedResidueRemains { cause: c } => ProcessRefused { exit_code: 1, stderr: c as String }
+    CaBundlePinned { bundle: bundle, workspace: workspace } => {
+      let result = match place_mosquitto_rr_options_privately(login: bambu_lan_mqtt_user, password: credential) {
+        MosquittoOptionsRefused { cause: c } => ProcessRefused { exit_code: 1, stderr: c as String }
+        MosquittoOptionsRefusedResidueRemains { cause: c } => ProcessRefused { exit_code: 1, stderr: c as String }
+        MosquittoOptionsPlaced { binding: b } => {
+          let outcome = run_shell_command_capture(command: env_prefixed_command(bindings: mosquitto_options_env(binding: b), command: mosquitto_snapshot_command(
+            endpoint: bambu_lan_mqtt_endpoint(host: address), topic: bambu_report_topic(serial: serial), request_topic: bambu_request_topic(serial: serial), payload: bambu_status_snapshot_payload(), ca_bundle: pinned_ca_bundle_path(bundle: bundle))), transport: LocalExec)
+          if shred_mosquitto_options_binding(binding: b) { outcome }
+          else { ProcessRefused { exit_code: 1, stderr: "Printer report credential cleanup failed" } }
+        }
+      }
+      if shell.Remove.RecursiveForce(path: workspace).success { result }
+      else { ProcessRefused { exit_code: 1, stderr: "Printer report CA workspace cleanup failed" } }
+    }
+  }
+}
+
+fn run(printer: String, version: String, output: String) -> ProcessExit {
+  match select_printer(name: printer) {
+    PrinterSelectionRefused => exit_failure(reason: "Unknown printer")
+    PrinterSelected { printer: p } => match read_supplied_access_token() {
+      SuppliedTokenUnavailable { cause: c } => exit_failure(reason: c as String)
+      SuppliedTokenReady { token: t } => match report(printer: p, version: version as NonEmptyStr, token_source: OperatorSuppliedToken { token: t }) {
+        ProcessRefused { exit_code: _, stderr: e } => exit_failure(reason: e)
+        ProcessOutputAbsent => exit_failure(reason: "No printer report received")
+        ProcessOutputPresent { text: text } =>
+          if Filesystem.Write(path: output, content: text).success { ExitSuccess }
+          else { exit_failure(reason: "Cannot retain printer report") }
+      }
+    }
+  }
+}
+
+fn observe_both(printer_01_version: String, printer_02_version: String, directory: String) -> ProcessExit {
+  match run(printer: printer_01 as String, version: printer_01_version, output: concat(directory, "/printer-01.json")) {
+    ExitSuccess => run(printer: printer_02 as String, version: printer_02_version, output: concat(directory, "/printer-02.json"))
+    other => other
+  }
+}
+
+// Bambu sends partial telemetry deltas. Only a single fresh message containing both
+// state and error is complete enough for start admission; never infer missing fields.
+fn report_has_state_and_error(text: String) -> Bool {
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value: root } => match json_object_unique_member(v: root, key: "print") {
+      JsonMemberFound { value: p } => {
+        let state = match json_object_unique_member(v: p, key: "gcode_state") {
+          JsonMemberFound { value: JsonString { value: _ } } => true
+          JsonMemberFound {value:JsonNull}=>false JsonMemberFound {value:JsonBool {value:_}}=>false JsonMemberFound {value:JsonNumber {lexeme:_}}=>false JsonMemberFound {value:JsonArray {elements:_}}=>false JsonMemberFound {value:JsonObject {members:_}}=>false JsonMemberAbsent=>false JsonMemberNotAnObject=>false JsonMemberDuplicated {count:_}=>false
+        }
+        let error = match json_object_unique_member(v: p, key: "print_error") {
+          JsonMemberFound { value: JsonNumber { lexeme: _ } } => true
+          JsonMemberFound {value:JsonNull}=>false JsonMemberFound {value:JsonBool {value:_}}=>false JsonMemberFound {value:JsonString {value:_}}=>false JsonMemberFound {value:JsonArray {elements:_}}=>false JsonMemberFound {value:JsonObject {members:_}}=>false JsonMemberAbsent=>false JsonMemberNotAnObject=>false JsonMemberDuplicated {count:_}=>false
+        }
+        state && error
+      }
+      JsonMemberAbsent=>false JsonMemberNotAnObject=>false JsonMemberDuplicated {count:_}=>false
+    }
+    JsonDocumentUnreadable {gap:_}=>false
+  }
+}
+
+fn complete_report_with_credential(serial: NonEmptyStr, address: NonEmptyStr, credential: Secret, remaining: Int) -> ProcessOutcome {
+  if remaining <= 0 { return ProcessRefused { exit_code: 1, stderr: "No complete state/error report within eight fresh observations" } }
+  match report_with_credential(serial: serial, address: address, credential: credential) {
+    ProcessOutputPresent { text: text } => if report_has_state_and_error(text: text) { ProcessOutputPresent { text: text } }
+      else { complete_report_with_credential(serial: serial, address: address, credential: credential, remaining: remaining - 1) }
+    other => other
+  }
+}

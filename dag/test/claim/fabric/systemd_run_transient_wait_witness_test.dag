@@ -2,7 +2,15 @@ module test.claim.fabric.systemd_run_transient_wait_witness_test
 
 import std.types { Bool, List }
 import extdeps.systemd { WorkingDirectoryProperty, MemoryMax }
-import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_transient_wait_unit_argv }
+import extdeps.exec.command { argv_words }
+import extdeps.systemd.systemd_run {
+  SystemdRunProperty, SystemdRunCommandReady, SystemdRunCommandRefused,
+  SystemdRunOptionWordsProjected, SystemdRunOptionWordsRefused,
+  SystemdSetenvBinding,
+  RunUserManager, RunScope, Wait, Quiet, Pipe, Collect, EndOfOptions, SetEnv,
+  systemd_run_option_words, systemd_run_transient_wait_unit_command, systemd_run_user_wait_command,
+  systemd_run_transient_unit_command, systemd_run_transient_retained_unit_command, systemd_run_system_scope_command,
+}
 import gunbc.systemd_run_transient {
   systemd_run_transient_wait_operation_argv_matches_authority,
   systemd_run_transient_wait_outcome_from_result,
@@ -16,25 +24,199 @@ data wait_properties: List<SystemdRunProperty> = [
   SystemdRunProperty { property: MemoryMax, value: "17179869184" },
 ]
 
-test fn systemd_wait_route_owns_wait_quiet_collect_and_preserves_tokens() -> Bool {
-  let argv = systemd_run_transient_wait_unit_argv(
+// THE POSITIVE CONTROL FOR THE TYPED CUTOVER: the words the typed option model projects are
+// byte-identical to the words the string-built builder this replaces rendered for the same
+// arguments, including the space inside the working directory's value, and the operation's
+// materialized transport words are the same words the typed command projects.
+fn wait_control_command_reading() -> SystemdRunCommandReading {
+  systemd_run_transient_wait_unit_command(
     unit: "fci1-bounded-driver.service",
     properties: wait_properties,
     command_argv: ["/bin/sh", "-c", "exit 86"],
   )
-  systemd_run_transient_wait_operation_argv_matches_authority(
-    unit: "fci1-bounded-driver.service",
-    properties: wait_properties,
-    command_argv: ["/bin/sh", "-c", "exit 86"],
-  )
-    && argv_exact_token_equal(
-      left: argv,
-      right: [
-        "systemd-run", "--unit=fci1-bounded-driver.service", "--wait", "--quiet", "--collect",
-        "--property=WorkingDirectory=/tmp/path with space", "--property=MemoryMax=17179869184",
-        "--", "/bin/sh", "-c", "exit 86",
-      ],
-    )
+}
+
+// THE POSITIVE CONTROL, WORDS HALF: the projection's words are the old builder's words, byte for byte.
+test fn systemd_wait_route_projects_the_old_words() -> Bool {
+  match wait_control_command_reading() {
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command: command } =>
+      argv_exact_token_equal(
+        left: argv_words(command: command),
+        right: [
+          "systemd-run", "--unit=fci1-bounded-driver.service", "--wait", "--quiet", "--collect",
+          "--property=WorkingDirectory=/tmp/path with space", "--property=MemoryMax=17179869184",
+          "--", "/bin/sh", "-c", "exit 86",
+        ],
+      )
+  }
+}
+
+// THE POSITIVE CONTROL, MATERIALIZATION HALF: the operation's declared transport materializes the
+// same words the typed command projects.
+test fn systemd_wait_route_materializes_the_projected_words() -> Bool {
+  match wait_control_command_reading() {
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command: command } =>
+      systemd_run_transient_wait_operation_argv_matches_authority(command: command)
+  }
+}
+
+// THE RED WITNESS: a property value carrying a newline is REFUSED at the projection -- not trimmed,
+// not split into two words, not passed through. The operation that would have run does not exist,
+// and the reason names the wire fact the value violates.
+test fn a_property_value_the_wire_cannot_carry_is_refused() -> Bool {
+  match systemd_run_transient_wait_unit_command(
+    unit: "fci1-refused.service",
+    properties: [SystemdRunProperty { property: WorkingDirectoryProperty, value: "/tmp/a\nb" as NonEmptyStr }],
+    command_argv: ["/bin/true"],
+  ) {
+    SystemdRunCommandRefused { cause: UnitSettingValueMultiline { property: p } } => systemd_unit_property_wire(property: p) == "WorkingDirectory"
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command: _ } => false
+  }
+}
+
+// ── BYTE IDENTITY, EVERY BUILDER: one control per builder shape, each pinning the words the
+// retired glued builders emitted, in the order they emitted them. A control per builder is the
+// point: the wait fixture alone proved one shape and the other builders drifted silently.
+
+// The collecting transient: --unit, --collect, the properties, then -- (the base order the
+// retired glued builder and its transport both emitted; the side-chat review corrected this
+// control -- main's property-projection witness never pinned the full order).
+test fn the_collecting_transient_builder_emits_unit_collect_properties() -> Bool {
+  match systemd_run_transient_unit_command(
+    unit: "fci1-order.service",
+    properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
+    command_argv: ["/bin/true"],
+  ) {
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command: command } =>
+      argv_exact_token_equal(
+        left: argv_words(command: command),
+        right: [
+          "systemd-run", "--unit=fci1-order.service", "--collect", "--property=MemoryMax=17179869184", "--", "/bin/true",
+        ],
+      )
+  }
+}
+
+// The retained transient: --unit, the properties, then --, with NO --collect — the terminal state
+// stays observable, which is why the retained variant exists.
+test fn the_retained_transient_builder_omits_collect() -> Bool {
+  match systemd_run_transient_retained_unit_command(
+    unit: "fci1-retained.service",
+    properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
+    command_argv: ["/bin/true"],
+  ) {
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command: command } =>
+      argv_exact_token_equal(
+        left: argv_words(command: command),
+        right: ["systemd-run", "--unit=fci1-retained.service", "--property=MemoryMax=17179869184", "--", "/bin/true"],
+      )
+  }
+}
+
+// The user wait builder: --wait --pipe --collect lead, then --user --unit, short properties, the
+// setenv bindings, then --.
+test fn the_user_wait_builder_renders_the_old_order() -> Bool {
+  match systemd_run_user_wait_command(
+    unit: "fci1-user.service",
+    properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
+    setenv_bindings: [SystemdSetenvBinding { name: "A" as NonEmptyStr, value: "c" as NonEmptyStr }],
+    command_argv: ["/bin/true"],
+  ) {
+    SystemdSummaryPrintingWaitRefused { cause: _ } => false
+    SystemdSummaryPrintingWaitReady { wait: launcher } =>
+      argv_exact_token_equal(
+        left: argv_words(command: launcher.command),
+        right: [
+          "systemd-run", "--wait", "--pipe", "--collect", "--user", "--unit=fci1-user.service",
+          "-p", "MemoryMax=17179869184", "--setenv=A=c", "--", "/bin/true",
+        ],
+      )
+  }
+}
+
+// The scope builder: --user --scope lead (the account drop runs under the user manager), long
+// properties, then --.
+test fn the_scope_builder_leads_with_scope_only() -> Bool {
+  match systemd_run_system_scope_command(
+    properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
+    command_argv: ["/bin/true"],
+  ) {
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command: command } =>
+      argv_exact_token_equal(
+        left: argv_words(command: command),
+        right: ["systemd-run", "--scope", "--property=MemoryMax=17179869184", "--", "/bin/true"],
+      )
+  }
+}
+
+// A unit name is one line and never carries a slash (systemd.unit(5)); the projection refuses both.
+test fn a_unit_name_the_wire_cannot_carry_is_refused() -> Bool {
+  match systemd_run_transient_wait_unit_command(
+    unit: "wrong/name" as NonEmptyStr,
+    properties: [],
+    command_argv: ["/bin/true"],
+  ) {
+    SystemdRunCommandRefused { cause: UnitNameContainsSlash } => true
+    SystemdRunCommandRefused { cause: _ } => false
+    SystemdRunCommandReady { command: _ } => false
+  }
+}
+
+// --setenv= takes NAME=VALUE, so the NAME side carries no = of its own: a binding that would render
+// an ambiguous word is refused, not passed to systemd-run to misparse.
+test fn a_setenv_name_with_an_equals_is_refused() -> Bool {
+  match systemd_run_user_wait_command(
+    unit: "fci1-setenv.service",
+    properties: [],
+    setenv_bindings: [SystemdSetenvBinding { name: "A=b" as NonEmptyStr, value: "c" as NonEmptyStr }],
+    command_argv: ["/bin/true"],
+  ) {
+    SystemdSummaryPrintingWaitRefused { cause: SetenvNameContainsEquals } => true
+    SystemdSummaryPrintingWaitRefused { cause: _ } => false
+    SystemdSummaryPrintingWaitReady { wait: _ } => false
+  }
+}
+
+test fn a_setenv_binding_with_an_equals_in_the_name_is_refused() -> Bool {
+  match systemd_run_option_words(options: [SetEnv { binding: SystemdSetenvBinding { name: "A=b" as NonEmptyStr, value: "c" as NonEmptyStr } }]) {
+    SystemdRunOptionWordsRefused { cause: SetenvNameContainsEquals } => true
+    SystemdRunOptionWordsRefused { cause: _ } => false
+    SystemdRunOptionWordsProjected { words: _ } => false
+  }
+}
+
+// The cause sum discriminates: two different wire defects yield two different constructors, so a
+// caller can branch on the cause without matching on prose. Tags 0 and 1 must differ.
+test fn refusal_causes_discriminate_two_wire_defects() -> Bool {
+  let slash_tag = match systemd_run_option_words(options: [RunUnit { unit: "wrong/name" as NonEmptyStr }]) {
+    SystemdRunOptionWordsRefused { cause: UnitNameContainsSlash } => 1
+    SystemdRunOptionWordsRefused { cause: _ } => 0 - 1
+    SystemdRunOptionWordsProjected { words: _ } => 0 - 1
+  }
+  let equals_tag = match systemd_run_option_words(options: [SetEnv { binding: SystemdSetenvBinding { name: "A=b" as NonEmptyStr, value: "c" as NonEmptyStr } }]) {
+    SystemdRunOptionWordsRefused { cause: SetenvNameContainsEquals } => 2
+    SystemdRunOptionWordsRefused { cause: _ } => 0 - 1
+    SystemdRunOptionWordsProjected { words: _ } => 0 - 1
+  }
+  (slash_tag == 1) && (equals_tag == 2) && (slash_tag != equals_tag)
+}
+
+// THE TYPED OPTION IS A SEALED SUM: there is no arm an unknown flag could ride. This fold walks the
+// variants the module renders today and pins each one's man-page spelling at systemd 255; a variant
+// added to the sum updates this fold or compilation fails, which is how an unknown option stays
+// unwritable.
+test fn every_option_variant_renders_its_man_page_spelling() -> Bool {
+  match systemd_run_option_words(options: [RunUserManager, RunScope, Wait, Quiet, Pipe, Collect, EndOfOptions]) {
+    SystemdRunOptionWordsRefused { cause: _ } => false
+    SystemdRunOptionWordsProjected { words: words } =>
+      join(words, separator: " ") == "--user --scope --wait --quiet --pipe --collect --"
+  }
 }
 
 test fn systemd_wait_route_rejects_split_working_directory_token() -> Bool {
@@ -54,3 +236,37 @@ test fn systemd_wait_normal_exit_86_remains_86() -> Bool {
     SystemdRunTransientWaitTransportRefused { reason: _ } => false
   }
 }
+
+
+fn materialized_cardinality(reading: SystemdRunCommandReading) -> Int {
+  match reading {
+    SystemdRunCommandRefused { cause: _ } => 0 - 2
+    SystemdRunCommandReady { command: command } =>
+      match systemd_run_transient_wait_operation_argv(command: command) {
+        ArgvMaterialized { argv: words } => count(words)
+        ArgvMaterializationRefused { at: _, cause: _ } => 0 - 1
+      }
+  }
+}
+
+// THE CARDINALITY CONTROLS, ALL TRUE-RETURNING. Every floor claim answers TRUE; the negative
+// controls are folded into assertions of absence rather than designed-false claims, so the
+// discrimination survives without a claim that reads as a floor red: the exact cardinality is
+// pinned at 11 (the materialized shape: the leading literal plus ten projected words), the two
+// refusal sentinels are asserted absent, and the degenerate counts (empty, singleton, the
+// option-word-only 10) are asserted absent. materialized_cardinality above is a plain fn, so a
+// refusal would move the answer to its sentinel and these claims would go red, not silent.
+test fn probe_materialized_cardinality_is_exactly_11() -> Bool {
+  materialized_cardinality(reading: wait_control_command_reading()) == 11
+}
+
+test fn probe_cardinality_refusal_arms_are_not_produced() -> Bool {
+  let c = materialized_cardinality(reading: wait_control_command_reading())
+  (c != 0 - 1) && (c != 0 - 2)
+}
+
+test fn probe_cardinality_degenerate_counts_are_not_produced() -> Bool {
+  let c = materialized_cardinality(reading: wait_control_command_reading())
+  (c != 0) && (c != 1) && (c != 10)
+}
+

@@ -299,6 +299,7 @@ type FanMountingPattern sole_constructor {
 // before anything is designed around it.
 type FanMechanicalEvidence
   = ConventionUnverified { convention: NonEmptyStr }
+  | ReadFromVendorDrawing { authority: ExternalAuthority }
   | RelayedFromVendorDocument { document: NonEmptyStr }
   | MeasuredFromHeldPart { measured_by: NonEmptyStr }
 
@@ -322,6 +323,7 @@ fn fan_mounting_pattern(
 fn fan_mounting_pattern_is_verified(p: FanMountingPattern) -> Bool {
   match p.evidence {
     MeasuredFromHeldPart { measured_by: _ } => true
+    ReadFromVendorDrawing { authority: _ } => false
     RelayedFromVendorDocument { document: _ } => false
     ConventionUnverified { convention: _ } => false
   }

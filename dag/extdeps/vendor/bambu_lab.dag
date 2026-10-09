@@ -1,0 +1,32 @@
+module extdeps.vendor.bambu_lab
+
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "bambulab.com"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.bambu_lab",
+      decl_name: "bambu_lab",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// The filament and printer vendor. "Bambu Lab" is the brand the data sheets print; the legal
+// entity (Shenzhen Tuozhu Technology Co., Ltd. appears on regulatory copy) was not read first-party
+// this session, so this row carries the trading name under the same declared mismatch
+// extdeps.vendor.arctic records, awaiting the VendorLegalEntity | VendorTradingNameOnly split.
+data bambu_lab: Vendor<Hardware> = Vendor { legal_name: "Bambu Lab" }

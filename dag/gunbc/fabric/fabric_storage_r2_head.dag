@@ -17,9 +17,10 @@ import std.fabric_storage {
 }
 import extdeps.object_storage { ObjectEntityTag, ObjectPutPrecondition, PutIfAbsent, PutIfMatch }
 import extdeps.tools.curl { ReportStatusAndEntityTag }
-import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt, cited_figure_read_obligation }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
-import extdeps.cloudflare.r2 { R2ObjectLocator, r2_conditional_put_linearizability, r2_put_object_conditional_standing }
+import extdeps.cloudflare.r2 { R2ObjectLocator, r2_put_object_conditional_standing }
+import gunbc.cloudflare.r2_conditional_put_race_probe { r2_conditional_put_linearizability_ground }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import gunbc.auth.access_token_source { AccessTokenSource }
@@ -50,12 +51,12 @@ import gunbc.fabric_storage_wire { reading_words, decode_reading }
 //     successor's own generation is a move; anything else, a later generation included, stays unknown
 //     (the OriginPutOutcomeUnknown precedent). A store that answered and refused, on a put or a get, is
 //     store-refused, kept apart from no answer (gunbc.cloudflare.r2_staged_transfer R2Fetch).
-//   * THE LINEARIZABILITY BET GATES THE PROJECTION. The raw outcome is this module's own type. It
+//   * THE LINEARIZABILITY GROUND GATES THE PROJECTION. The raw outcome is this module's own type. It
 //     becomes a std.fabric_storage FabricHeadAdvance only through r2_head_fabric_advance, which
 //     requires a sealed R2HeadCasAdmitted -- minted only when the concurrent If-Match guarantee is
-//     CitedToAuthority, which it is not until the live race probe runs (extdeps.cloudflare.r2
-//     r2_conditional_put_linearizability). So no consumer can treat an R2 head as a linearization
-//     point on the strength of a bet.
+//     grounded -- cited upstream or observed by this repository's race probe receipt
+//     (gunbc.cloudflare.r2_conditional_put_race_probe r2_conditional_put_linearizability_ground). So no
+//     consumer can treat an R2 head as a linearization point on the strength of a bet.
 //   * STAGING IS CLEANED UP AND ITS RESIDUE IS A FACT. The transport discharges every directory it does
 //     not hand over; this module releases the ones it is handed and the put's own. Custody
 //     (r2_staged_transfer R2StagingCustody) is reported beside every outcome and every standalone read,
@@ -72,7 +73,7 @@ type R2HeadCasGround sole_constructor {
 }
 
 fn r2_head_cas_ground() -> R2HeadCasGround {
-  R2HeadCasGround { conditional_headers: r2_put_object_conditional_standing, linearizability: r2_conditional_put_linearizability }
+  R2HeadCasGround { conditional_headers: r2_put_object_conditional_standing, linearizability: r2_conditional_put_linearizability_ground() }
 }
 
 fn r2_head_cas_ground_headers(ground: R2HeadCasGround) -> CitedFigureStanding { ground.conditional_headers }
@@ -86,13 +87,15 @@ type R2HeadCasAdmission
   = R2HeadCasAdmittedArm { admitted: R2HeadCasAdmitted }
   | R2HeadCasNotGrounded { read_obligation: NonEmptyStr }
 
+// A HALF IS GROUNDED WHEN IT OWES NO READ: cited to an external authority or observed by a receipt
+// (extdeps.external_authority cited_figure_read_obligation answers that for every arm).
 fn r2_head_cas_admission(ground: R2HeadCasGround) -> R2HeadCasAdmission {
-  match ground.conditional_headers {
-    TranscribedUncited { read_obligation: o } => R2HeadCasNotGrounded { read_obligation: o }
-    CitedToAuthority { authority: _ } =>
-      match ground.linearizability {
-        TranscribedUncited { read_obligation: o } => R2HeadCasNotGrounded { read_obligation: o }
-        CitedToAuthority { authority: _ } => R2HeadCasAdmittedArm { admitted: R2HeadCasAdmitted { ground: ground } }
+  match cited_figure_read_obligation(standing: ground.conditional_headers) {
+    Present { value: o } => R2HeadCasNotGrounded { read_obligation: o }
+    Absent =>
+      match cited_figure_read_obligation(standing: ground.linearizability) {
+        Present { value: o } => R2HeadCasNotGrounded { read_obligation: o }
+        Absent => R2HeadCasAdmittedArm { admitted: R2HeadCasAdmitted { ground: ground } }
       }
   }
 }

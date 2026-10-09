@@ -44,7 +44,7 @@ fn row_of(op: CouponOperation) -> RawOperationRow {
     OpThroughHole { diameter: d, center_x: x, center_y: y } =>
       raw_operation_row(
         kind: "through_hole",
-        diameter_um: micrometer_count(m: d),
+        diameter_um: d,
         center_x_um: micrometer_count(m: x),
         center_y_um: micrometer_count(m: y),
       )
@@ -64,14 +64,14 @@ fn datum_row_of(s: CouponSpecimen) -> RawOperationRow {
 // and the split would have let a datum witness pass rows into it by position.
 fn envelope_from(
   s: CouponSpecimen,
-  plate_z_um: Int,
+  plate_z_um: Micrometer,
   datum: RawOperationRow,
   ladder: List<RawOperationRow>,
 ) -> RawRealizationEnvelope {
   raw_realization_envelope(
     schema_version: contract_schema_version,
-    plate_x_um: micrometer_count(m: s.geometry.plate.size_x),
-    plate_y_um: micrometer_count(m: s.geometry.plate.size_y),
+    plate_x_um: s.geometry.plate.size_x,
+    plate_y_um: s.geometry.plate.size_y,
     plate_z_um: plate_z_um,
     orientation_datum: datum,
     ladder_holes: ladder,
@@ -81,7 +81,7 @@ fn envelope_from(
 fn envelope_of(s: CouponSpecimen) -> RawRealizationEnvelope {
   envelope_from(
     s: s,
-    plate_z_um: micrometer_count(m: s.geometry.plate.size_z),
+    plate_z_um: s.geometry.plate.size_z,
     datum: datum_row_of(s: s),
     ladder: rows_of(s: s),
   )
@@ -90,13 +90,13 @@ fn envelope_of(s: CouponSpecimen) -> RawRealizationEnvelope {
 // The mutation helpers rebuild the envelope with ONE value replaced, so every witness below differs
 // from the faithful envelope in exactly one place and the wall's answer names that place or fails.
 fn envelope_with_plate_z(s: CouponSpecimen, z: Int) -> RawRealizationEnvelope {
-  envelope_from(s: s, plate_z_um: z, datum: datum_row_of(s: s), ladder: rows_of(s: s))
+  envelope_from(s: s, plate_z_um: micrometer(count: z), datum: datum_row_of(s: s), ladder: rows_of(s: s))
 }
 
 fn envelope_with_rows(s: CouponSpecimen, rows: List<RawOperationRow>) -> RawRealizationEnvelope {
   envelope_from(
     s: s,
-    plate_z_um: micrometer_count(m: s.geometry.plate.size_z),
+    plate_z_um: s.geometry.plate.size_z,
     datum: datum_row_of(s: s),
     ladder: rows,
   )
@@ -105,7 +105,7 @@ fn envelope_with_rows(s: CouponSpecimen, rows: List<RawOperationRow>) -> RawReal
 fn envelope_with_datum(s: CouponSpecimen, datum: RawOperationRow) -> RawRealizationEnvelope {
   envelope_from(
     s: s,
-    plate_z_um: micrometer_count(m: s.geometry.plate.size_z),
+    plate_z_um: s.geometry.plate.size_z,
     datum: datum,
     ladder: rows_of(s: s),
   )
@@ -120,9 +120,9 @@ fn datum_moved_to(s: CouponSpecimen, x: Int, y: Int) -> RawOperationRow {
   )
 }
 
-fn datum_diameter_um(s: CouponSpecimen) -> Int {
+fn datum_diameter_um(s: CouponSpecimen) -> Micrometer {
   match s.geometry.orientation_datum {
-    OpThroughHole { diameter: d, center_x: _, center_y: _ } => micrometer_count(m: d)
+    OpThroughHole { diameter: d, center_x: _, center_y: _ } => d
   }
 }
 
@@ -161,7 +161,7 @@ fn bump_first_diameter(rows: List<RawOperationRow>, delta: Int) -> List<RawOpera
     if acc.length() == 0 {
       concat(acc, [raw_operation_row(
         kind: row.kind,
-        diameter_um: row.diameter_um + delta,
+        diameter_um: micrometer(count: micrometer_count(m: row.diameter_um) as Int + delta),
         center_x_um: row.center_x_um,
         center_y_um: row.center_y_um,
       )])
@@ -320,9 +320,9 @@ test fn w_a_plate_fault_outranks_an_operation_fault() -> Bool {
       let rows = bump_first_diameter(rows: rows_of(s: contract.specimen), delta: 50)
       let bad = raw_realization_envelope(
         schema_version: contract_schema_version,
-        plate_x_um: micrometer_count(m: contract.specimen.geometry.plate.size_x),
-        plate_y_um: micrometer_count(m: contract.specimen.geometry.plate.size_y),
-        plate_z_um: micrometer_count(m: contract.specimen.geometry.plate.size_z) + 500,
+        plate_x_um: contract.specimen.geometry.plate.size_x,
+        plate_y_um: contract.specimen.geometry.plate.size_y,
+        plate_z_um: micrometer(count: micrometer_count(m: contract.specimen.geometry.plate.size_z) as Int + 500),
         orientation_datum: datum_row_of(s: contract.specimen),
         ladder_holes: rows,
       )
@@ -351,11 +351,11 @@ test fn w_an_unknown_schema_version_refuses_and_names_both() -> Bool {
       let contract = realization_contract(declaration: l)
       let bad = raw_realization_envelope(
         schema_version: "v999",
-        plate_x_um: 40000,
-        plate_y_um: 20000,
-        plate_z_um: 4000,
-        orientation_datum: raw_operation_row(kind: "through_hole", diameter_um: 3000, center_x_um: 6000, center_y_um: 4000),
-        ladder_holes: [raw_operation_row(kind: "through_hole", diameter_um: 3000, center_x_um: 5000, center_y_um: 10000)],
+        plate_x_um: micrometer(count: 40000),
+        plate_y_um: micrometer(count: 20000),
+        plate_z_um: micrometer(count: 4000),
+        orientation_datum: raw_operation_row(kind: "through_hole", diameter_um: micrometer(count: 3000), center_x_um: 6000, center_y_um: 4000),
+        ladder_holes: [raw_operation_row(kind: "through_hole", diameter_um: micrometer(count: 3000), center_x_um: 5000, center_y_um: 10000)],
       )
       match judge_realization(contract: contract, envelope: bad) {
         RealizationRefusedAtWire { refusal: a } =>
@@ -380,11 +380,11 @@ test fn w_an_unknown_operation_kind_refuses_and_names_it() -> Bool {
       let contract = realization_contract(declaration: l)
       let bad = raw_realization_envelope(
         schema_version: contract_schema_version,
-        plate_x_um: 40000,
-        plate_y_um: 20000,
-        plate_z_um: 4000,
-        orientation_datum: raw_operation_row(kind: "through_hole", diameter_um: 3000, center_x_um: 6000, center_y_um: 4000),
-        ladder_holes: [raw_operation_row(kind: "chamfer", diameter_um: 3000, center_x_um: 5000, center_y_um: 10000)],
+        plate_x_um: micrometer(count: 40000),
+        plate_y_um: micrometer(count: 20000),
+        plate_z_um: micrometer(count: 4000),
+        orientation_datum: raw_operation_row(kind: "through_hole", diameter_um: micrometer(count: 3000), center_x_um: 6000, center_y_um: 4000),
+        ladder_holes: [raw_operation_row(kind: "chamfer", diameter_um: micrometer(count: 3000), center_x_um: 5000, center_y_um: 10000)],
       )
       match judge_realization(contract: contract, envelope: bad) {
         RealizationRefusedAtWire { refusal: a } =>
@@ -411,10 +411,10 @@ test fn w_an_envelope_carrying_no_operations_refuses() -> Bool {
       let contract = realization_contract(declaration: l)
       let bad = raw_realization_envelope(
         schema_version: contract_schema_version,
-        plate_x_um: 40000,
-        plate_y_um: 20000,
-        plate_z_um: 4000,
-        orientation_datum: raw_operation_row(kind: "through_hole", diameter_um: 3000, center_x_um: 6000, center_y_um: 4000),
+        plate_x_um: micrometer(count: 40000),
+        plate_y_um: micrometer(count: 20000),
+        plate_z_um: micrometer(count: 4000),
+        orientation_datum: raw_operation_row(kind: "through_hole", diameter_um: micrometer(count: 3000), center_x_um: 6000, center_y_um: 4000),
         ladder_holes: [],
       )
       match judge_realization(contract: contract, envelope: bad) {
@@ -448,11 +448,11 @@ test fn w_the_deleted_operation_refuses_at_the_wire() -> Bool {
       let contract = realization_contract(declaration: l)
       let bad = raw_realization_envelope(
         schema_version: contract_schema_version,
-        plate_x_um: 40000,
-        plate_y_um: 20000,
-        plate_z_um: 4000,
-        orientation_datum: raw_operation_row(kind: "through_hole", diameter_um: 3000, center_x_um: 6000, center_y_um: 4000),
-        ladder_holes: [raw_operation_row(kind: "datum_mark", diameter_um: 0, center_x_um: 3000, center_y_um: 2000)],
+        plate_x_um: micrometer(count: 40000),
+        plate_y_um: micrometer(count: 20000),
+        plate_z_um: micrometer(count: 4000),
+        orientation_datum: raw_operation_row(kind: "through_hole", diameter_um: micrometer(count: 3000), center_x_um: 6000, center_y_um: 4000),
+        ladder_holes: [raw_operation_row(kind: "datum_mark", diameter_um: micrometer(count: 0), center_x_um: 3000, center_y_um: 2000)],
       )
       match judge_realization(contract: contract, envelope: bad) {
         RealizationRefusedAtWire { refusal: a } =>
@@ -650,7 +650,7 @@ test fn w_the_datum_stays_out_of_the_measured_ladder() -> Bool {
       diameters.length() == 11
         && diameters.length() == rungs.length()
         && s.geometry.ladder_holes.length() == 11
-        && datum_diameter_um(s: s) == micrometer_count(m: ladder_base(l: l))
+        && micrometer_count(m: datum_diameter_um(s: s)) == micrometer_count(m: ladder_base(l: l))
     }
     LadderStepIsZero => false
     LadderTooFewRungs { supplied: _ } => false
@@ -667,8 +667,8 @@ test fn w_the_datum_clears_the_ladder_band_and_the_plate_edge() -> Bool {
   match hole_ladder_spec {
     LadderReady { ladder: l } => {
       let s = hole_ladder_specimen(l: l)
-      let datum_top = micrometer_count(m: hole_ladder_datum_center_y) + datum_diameter_um(s: s) / 2
-      let datum_bottom = micrometer_count(m: hole_ladder_datum_center_y) - datum_diameter_um(s: s) / 2
+      let datum_top = micrometer_count(m: hole_ladder_datum_center_y) + micrometer_count(m: datum_diameter_um(s: s)) / 2
+      let datum_bottom = micrometer_count(m: hole_ladder_datum_center_y) - micrometer_count(m: datum_diameter_um(s: s)) / 2
       datum_top < 7000 && datum_bottom > 0
     }
     LadderStepIsZero => false
