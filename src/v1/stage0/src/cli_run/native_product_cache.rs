@@ -29,8 +29,10 @@
 //! `cargo check` or alternate-feature build can plant a decoy). File contents are hashed together
 //! with the seed's semantic build config (workspace and package profile/features and
 //! `RUSTFLAGS` as compiled — `GUNBC_SEED_SEMANTIC_BUILD_CONFIG`; the existing
-//! `build_configuration` axis is the EMITTED crate). Registry crates are Cargo.lock plus the
-//! toolchain axis. Ambiguous extra-filename attribution, a directory, or an unreadable entry is a
+//! `build_configuration` axis is the EMITTED crate). Manifests in that stamp are named by
+//! workspace-relative paths, not `CARGO_MANIFEST_DIR` absolutes. OUT_DIR files are keyed as
+//! `build/<pkg>/out/<rel>`, not the rustc-spelled host path. Registry crates are Cargo.lock plus
+//! the toolchain axis. Ambiguous extra-filename attribution, a directory, or an unreadable entry is a
 //! counted MISS (`producer_dep_info`), never a lane refusal and never a whole-tree fallback. The
 //! closure and the census-only declaration universe are hashed at content grain (a span-insensitive
 //! heads hash would narrow the latter and is a declared next step, not assumed here).
@@ -86,8 +88,8 @@ fn miss(cause: impl Into<String>) -> DeriveKeyError {
     }
 }
 
-/// Hash compiled-input contents, keyed by identity (workspace-relative, or the rustc-spelled
-/// path for an OUT_DIR file outside the workspace). A directory or unreadable path is a counted
+/// Hash compiled-input contents, keyed by identity (workspace-relative, or a portable
+/// `build/<pkg>/out/<rel>` name for an OUT_DIR file). A directory or unreadable path is a counted
 /// MISS, never a skipped member and never a whole-tree fallback.
 fn hash_compiled_inputs(entries: &[(String, PathBuf)]) -> Result<String, DeriveKeyError> {
     if entries.is_empty() {
@@ -118,17 +120,42 @@ fn hash_compiled_inputs(entries: &[(String, PathBuf)]) -> Result<String, DeriveK
     Ok(format!("{:x}", h.finalize()))
 }
 
+fn rustc_extra_filename(stem: &str) -> Option<(&str, &str)> {
+    let idx = stem.rfind('-')?;
+    let (crate_name, extra) = stem.split_at(idx);
+    let extra = extra.strip_prefix('-')?;
+    if crate_name.is_empty() || extra.is_empty() || !extra.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    Some((crate_name, extra))
+}
+
 /// `.../build/<pkg>-<hash>/out/...` — cargo's generated-sources directory, which may sit
 /// outside the workspace when `CARGO_TARGET_DIR` does.
 fn is_cargo_out_dir_file(path: &Path) -> bool {
-    let mut parts = path.iter().map(|s| s.to_string_lossy());
-    while let Some(part) = parts.next() {
-        if part == "build" {
-            let _pkg = parts.next();
-            return parts.next().as_deref() == Some("out");
-        }
+    portable_out_dir_identity(path).is_some()
+}
+
+/// Host-independent identity for a cargo OUT_DIR file. The rustc extra-filename on the
+/// package directory and the `CARGO_TARGET_DIR` prefix are not declared producer inputs.
+fn portable_out_dir_identity(path: &Path) -> Option<String> {
+    let parts: Vec<String> = path
+        .iter()
+        .map(|s| s.to_string_lossy().replace('\\', "/"))
+        .collect();
+    let build_idx = parts.iter().position(|p| p == "build")?;
+    let pkg = parts.get(build_idx + 1)?;
+    if parts.get(build_idx + 2).map(String::as_str) != Some("out") {
+        return None;
     }
-    false
+    let rest = &parts[build_idx + 3..];
+    if rest.is_empty() {
+        return None;
+    }
+    let pkg = rustc_extra_filename(pkg)
+        .map(|(crate_name, _)| crate_name.to_string())
+        .unwrap_or_else(|| pkg.clone());
+    Some(format!("build/{pkg}/out/{}", rest.join("/")))
 }
 
 fn producer_entry_key(workspace: &Path, prerequisite: &str) -> (String, PathBuf) {
@@ -140,6 +167,9 @@ fn producer_entry_key(workspace: &Path, prerequisite: &str) -> (String, PathBuf)
     };
     if let Ok(rel) = path.strip_prefix(workspace) {
         return (rel.to_string_lossy().replace('\\', "/"), path);
+    }
+    if let Some(id) = portable_out_dir_identity(&path) {
+        return (id, path);
     }
     (prerequisite.replace('\\', "/"), path)
 }
@@ -154,16 +184,6 @@ fn keep_compiled_prerequisite(workspace: &Path, prerequisite: &str) -> bool {
         return true;
     }
     is_cargo_out_dir_file(&path)
-}
-
-fn rustc_extra_filename(stem: &str) -> Option<(&str, &str)> {
-    let idx = stem.rfind('-')?;
-    let (crate_name, extra) = stem.split_at(idx);
-    let extra = extra.strip_prefix('-')?;
-    if crate_name.is_empty() || extra.is_empty() || !extra.chars().all(|c| c.is_ascii_hexdigit()) {
-        return None;
-    }
-    Some((crate_name, extra))
 }
 
 fn rustc_artifact_crate_and_extra(filename: &str) -> Option<(String, String)> {
@@ -1076,14 +1096,49 @@ mod tests {
         std::fs::create_dir_all(gen.parent().unwrap()).unwrap();
         std::fs::write(&gen, b"gen-1").unwrap();
         std::fs::write(root.join("src.rs"), b"src").unwrap();
-        let set = vec![
-            compiled(&root, "src.rs"),
-            (gen.to_string_lossy().into_owned(), gen.clone()),
-        ];
+        let out_entry = producer_entry_key(&root, &gen.to_string_lossy());
+        assert_eq!(out_entry.0, "build/v1-compiler/out/generated.rs");
+        let set = vec![compiled(&root, "src.rs"), out_entry];
         let h0 = hash_compiled_inputs(&set).unwrap();
         std::fs::write(&gen, b"gen-2").unwrap();
-        assert_ne!(h0, hash_compiled_inputs(&set).unwrap());
+        assert_ne!(
+            h0,
+            hash_compiled_inputs(&[
+                compiled(&root, "src.rs"),
+                producer_entry_key(&root, &gen.to_string_lossy()),
+            ])
+            .unwrap()
+        );
         assert!(keep_compiled_prerequisite(&root, &gen.to_string_lossy()));
+    }
+
+    #[test]
+    fn out_dir_identity_is_portable_across_target_roots() {
+        let workspace = scratch("producer-out-ws");
+        let a = scratch("target-a")
+            .join("release")
+            .join("build")
+            .join("v1-compiler-aaaa")
+            .join("out")
+            .join("generated.rs");
+        let b = scratch("target-b")
+            .join("debug")
+            .join("build")
+            .join("v1-compiler-bbbb")
+            .join("out")
+            .join("generated.rs");
+        std::fs::create_dir_all(a.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(b.parent().unwrap()).unwrap();
+        std::fs::write(&a, b"same-gen").unwrap();
+        std::fs::write(&b, b"same-gen").unwrap();
+        let ka = producer_entry_key(&workspace, &a.to_string_lossy());
+        let kb = producer_entry_key(&workspace, &b.to_string_lossy());
+        assert_eq!(ka.0, kb.0);
+        assert_eq!(ka.0, "build/v1-compiler/out/generated.rs");
+        assert_eq!(
+            hash_compiled_inputs(&[ka]).unwrap(),
+            hash_compiled_inputs(&[kb]).unwrap()
+        );
     }
 
     #[test]

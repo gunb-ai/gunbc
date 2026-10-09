@@ -422,24 +422,32 @@ fn stamp_seed_semantic_build_config(manifest_dir: &Path) {
         hasher.update(b",");
         println!("cargo:rerun-if-env-changed=CARGO_FEATURE_{feature}");
     }
-    let mut manifests = vec![workspace_manifest, manifest_dir.join("Cargo.toml")];
+    let repo_root = manifest_dir.join("../../..");
+    let mut manifests = vec![
+        ("Cargo.toml".to_string(), workspace_manifest),
+        (
+            "src/v1/stage0/Cargo.toml".to_string(),
+            manifest_dir.join("Cargo.toml"),
+        ),
+    ];
     let listing = manifest_dir.join(LINKED_PARTITION_CRATES_PROJECTION);
     if let Ok(text) = std::fs::read_to_string(&listing) {
-        let repo_root = manifest_dir
-            .join("../../..")
-            .canonicalize()
-            .unwrap_or_else(|_| manifest_dir.join("../../.."));
         for line in text.lines().map(str::trim) {
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
-            manifests.push(repo_root.join(line).join("Cargo.toml"));
+            manifests.push((
+                format!("{line}/Cargo.toml"),
+                repo_root.join(line).join("Cargo.toml"),
+            ));
         }
     }
+    manifests.sort_by(|a, b| a.0.cmp(&b.0));
     hasher.update(b";manifests=");
-    for manifest in &manifests {
+    for (name, manifest) in &manifests {
         println!("cargo:rerun-if-changed={}", manifest.display());
-        hasher.update(manifest.to_string_lossy().as_bytes());
+        hasher.update((name.len() as u64).to_le_bytes());
+        hasher.update(name.as_bytes());
         hasher.update(b"=");
         match std::fs::read(manifest) {
             Ok(bytes) => {
