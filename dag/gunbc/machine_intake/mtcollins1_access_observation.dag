@@ -295,7 +295,7 @@ data mtcollins1_capability_row: BmcFirmwareReleaseCapabilityRow = BmcFirmwareRel
 
 // THE BOUND ON ONE READ-ONLY ipmitool EXCHANGE WITH THIS UNIT'S CONTROLLER, as `timeout --kill-after`
 // operands. A fact about reaching this BMC, not about any one run that reads it: the boot's diagnostic
-// bundle, its media attach and the UI bundle observation all bound their IPMI reads by it. It lives
+// bundle and its media attach bound their IPMI reads by it. It lives
 // here, with the endpoint it bounds, so a read-only mode does not import the boot closure to learn it.
 data mtcollins1_boot_ipmi_read_deadline: Second = second(count: 20)
 
