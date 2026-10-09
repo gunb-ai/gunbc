@@ -41,8 +41,12 @@ import gunbc.harness.harness_backend {
 }
 import gunbc.harness.harness_wire { HarnessWireShape, AnthropicMessagesShape, OpenAiChatCompletionsShape, harness_backend_url_for_endpoint }
 import gunbc.harness.harness_reasoning_wire {
-  HarnessServingUnit, harness_unit_model_id, HarnessReasoningLevel, harness_unit_placement, HarnessUnitPlacement, PlacedOnFleetSeat,
+  HarnessServingUnit, DeepseekV4FlashOnVllm, Glm53FlashOnVllm, Qwen38OnDusk, NemotronUltraFreeOnOpenRouter,
+  harness_unit_model_id, HarnessReasoningLevel, harness_unit_placement, HarnessUnitPlacement, PlacedOnFleetSeat,
   LeasedFromHostedQuota, harness_serving_unit_wire,
+}
+import gunbc.serving.qwen_dusk_replica {
+  dusk_chat_completions_url, dusk_served_model_id, dusk_occupancy_seats, dusk_seat_partition,
 }
 import gunbc.harness.harness_hosted_route {
   HarnessHostedAccess, HarnessHostedQuota, HostedBound, HostedBindRefused, harness_hosted_bind, HostedReleased, HostedReleaseRefused,
@@ -301,6 +305,7 @@ type HarnessSeatBinding
   | HarnessSeatPending { detail: String }
   | HarnessSeatRefused { detail: String }
   | HarnessHostedBound { url: String, model: NonEmptyStr, unit: HarnessServingUnit, level: HarnessReasoningLevel, access: HarnessHostedAccess }
+  | HarnessOwnedReplicaBound { url: String, model: NonEmptyStr, unit: HarnessServingUnit, grant: LeaseGrant, partition: PartitionId, ceiling: Nat, store: FabricStorageBinding }
 
 fn seat_bind_detail(group: FabricGroup, text: String) -> String {
   join([fabric_group_wire(g: group) as String, ": ", text], "")
@@ -1464,6 +1469,55 @@ fn harness_bind_hosted(short_hostname: String, unit: HarnessServingUnit, actor: 
   }
 }
 
+// AN OWNED OPENAI-COMPAT REPLICA TAKES A SEAT, NOT A QUOTA LEASE AND NOT A SPARK GROUP.
+// GPU concurrency is Unobserved (gunbc.serving.qwen_dusk_replica); the pool serializes one
+// occupant as fail-closed policy. Auth is the tailnet: no header file is minted.
+fn harness_bind_owned_replica(short_hostname: String, unit: HarnessServingUnit, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy) -> HarnessSeatBinding {
+  match unit {
+    DeepseekV4FlashOnVllm => HarnessSeatRefused { detail: join(["the unit ", harness_serving_unit_wire(unit: unit) as String, " is a spark fleet seat; bind it with harness_bind_seat"], "") }
+    Glm53FlashOnVllm => HarnessSeatRefused { detail: join(["the unit ", harness_serving_unit_wire(unit: unit) as String, " is a spark fleet seat; bind it with harness_bind_seat"], "") }
+    NemotronUltraFreeOnOpenRouter => HarnessSeatRefused { detail: join(["the unit ", harness_serving_unit_wire(unit: unit) as String, " is reached through a hosted quota lease; bind it with harness_bind_hosted"], "") }
+    Qwen38OnDusk => harness_bind_dusk_replica(short_hostname: short_hostname, actor: actor, attempt: attempt, policy: policy)
+  }
+}
+
+fn harness_bind_dusk_replica(short_hostname: String, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy) -> HarnessSeatBinding {
+  match event_log_store_for_host(short_hostname: short_hostname) {
+    HostStoreRefused { detail: d } => HarnessSeatRefused { detail: d }
+    HostStoreResolved { store: store, executor: _ } =>
+      match now_epoch_seconds() {
+        Absent => HarnessSeatRefused { detail: "the clock could not be read as epoch seconds" }
+        Present { value: now } => {
+          let partition = dusk_seat_partition
+          let ceiling = dusk_occupancy_seats
+          let root = harness_seat_pool_root(partition: partition, ceiling: ceiling)
+          match fabric_seat_acquire(
+            store: store, partition: partition, root: root, actor: actor,
+            request: SeatRequest { reference: attempt, amount: Measure { count: 1 }, at: now, term_seconds: policy.maximum_duration_seconds },
+            policy: policy, attempts: 3, budget: 4096,
+          ) {
+            SeatGranted { grant: g, generation: _, attempts_used: _ } =>
+              HarnessOwnedReplicaBound {
+                url: dusk_chat_completions_url() as String,
+                model: dusk_served_model_id,
+                unit: Qwen38OnDusk,
+                grant: g,
+                partition: partition,
+                ceiling: ceiling,
+                store: store,
+              }
+            SeatFull { wire: w, attempts_used: _ } => HarnessSeatPending { detail: w }
+            SeatContended { attempts: a } => HarnessSeatPending { detail: join(["the dusk-1 seat compare-and-set was contended ", to_string(a), " times"], "") }
+            SeatAcquireRefused { step: st, reason: why, attempts_used: _ } =>
+              HarnessSeatRefused { detail: join(["dusk-1 seat ", st, ": ", why], "") }
+            SeatStoreRefused { cause: c, attempts_used: _ } =>
+              HarnessSeatRefused { detail: join(["dusk-1 fabric DB: ", event_log_refusal_wire(cause: c)], "") }
+          }
+        }
+      }
+  }
+}
+
 fn harness_bind_fleet_seat(short_hostname: String, class: ServingCoTenancyClass, requirement: ServingModelRequirement, shape: HarnessWireShape, inputs: List<String>, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy) -> HarnessSeatBinding {
   let subject = harness_turn_subject(request: harness_turn_request(shape: shape, requirement: requirement, inputs: inputs), attempt: attempt)
   match event_log_store_for_host(short_hostname: short_hostname) {
@@ -1592,6 +1646,8 @@ fn harness_seat_pointer_of(binding: HarnessSeatBinding) -> HarnessSeatPointer? {
     HarnessSeatRefused { detail: _ } => none
     HarnessSeatPending { detail: _ } => none
     HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } => none
+    HarnessOwnedReplicaBound { url: _, model: _, unit: _, grant: g, partition: p, ceiling: _, store: _ } =>
+      Present { value: HarnessSeatPointer { partition: p, reference: g.reference, owner: g.reference } }
   }
 }
 
@@ -1618,6 +1674,12 @@ fn harness_release_seat(binding: HarnessSeatBinding, reason: NonEmptyStr) -> Har
         HostedReleaseRefused { detail: d } => HarnessSeatReleaseRefused { detail: d }
       }
     HarnessSeatBound { url: _, grant: g, partition: p, ceiling: ceiling, group_wire: _, launch: _, store: store, model: _, unit: _, class: _, seat: _ } =>
+      match now_epoch_seconds() {
+        Absent => HarnessSeatReleaseRefused { detail: "the clock could not be read as epoch seconds" }
+        Present { value: now } =>
+          release_retry(store: store, partition: p, ceiling: ceiling, reference: g.reference, reason: reason, now: now)
+      }
+    HarnessOwnedReplicaBound { url: _, model: _, unit: _, grant: g, partition: p, ceiling: ceiling, store: store } =>
       match now_epoch_seconds() {
         Absent => HarnessSeatReleaseRefused { detail: "the clock could not be read as epoch seconds" }
         Present { value: now } =>

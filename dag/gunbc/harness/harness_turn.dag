@@ -14,7 +14,7 @@ import gunbc.harness.harness_reasoning_wire {
   harness_serving_unit_wire, harness_reasoning_level_wire,
 }
 import gunbc.harness.harness_hosted_route {
-  HarnessBackendAccess, BackendAdmittedBySeat, BackendAdmittedByHostedQuota, HarnessHostedQuota, HostedRoundCharged,
+  HarnessBackendAccess, BackendAdmittedBySeat, BackendAdmittedByHostedQuota, BackendAdmittedByTailnetReplica, HarnessHostedQuota, HostedRoundCharged,
   HostedRoundQuotaFull, HostedRoundUnleasable, harness_hosted_round_charge, harness_hosted_refusal_cause,
   HostedRoundLease,
 }
@@ -1147,7 +1147,8 @@ fn harness_post_round(
         RoundUnprepared { posted: p } => RoundPosted { posted: p }
         RoundPrepared { wire_request_detail: wd } =>
           match config.backend_access {
-            BackendAdmittedBySeat => RoundPosted { posted: harness_send_round(config: config, round: round, header_file: none, wire_request_detail: wd) }
+            BackendAdmittedBySeat => RoundPosted { posted: harness_send_round(config: config, round: round, header_file: none, dump_headers: false, wire_request_detail: wd) }
+            BackendAdmittedByTailnetReplica => RoundPosted { posted: harness_send_round(config: config, round: round, header_file: none, dump_headers: true, wire_request_detail: wd) }
             BackendAdmittedByHostedQuota { header_file: hf, quota: q } => harness_hosted_round_post(config: config, round: round, header_file: hf, quota: q, wire_request_detail: wd)
           }
       }
@@ -1204,7 +1205,7 @@ fn harness_hosted_round_charged_post(config: HarnessTurnConfig, round: Int, head
         HostedInflightRefused { detail: d } => RoundQuotaUnleasable { detail: d }
         HostedInflightHeld { reference: r, store: st } => {
           let hold = HostedInflightHeld { reference: r, store: st }
-          let posted = harness_send_round(config: config, round: round, header_file: Present { value: header_file }, wire_request_detail: wire_request_detail)
+          let posted = harness_send_round(config: config, round: round, header_file: Present { value: header_file }, dump_headers: true, wire_request_detail: wire_request_detail)
           let released = harness_hosted_inflight_release(quota: quota, hold: hold, reason: "the transport returned" as NonEmptyStr)
           RoundPosted { posted: HarnessPostedRound { read: posted.read, wire_log_detail: posted.wire_log_detail, inflight_release_detail: released, rate_limited: posted.rate_limited, hosted_failure: posted.hosted_failure } }
         }
@@ -1250,9 +1251,10 @@ fn harness_send_round(
   config: HarnessTurnConfig,
   round: Int,
   header_file: NonEmptyStr?,
+  dump_headers: Bool,
   wire_request_detail: String?,
 ) -> HarnessPostedRound {
-    let posted = harness_post_json(config: config, header_file: header_file)
+    let posted = harness_post_json(config: config, header_file: header_file, dump_headers: dump_headers)
     let wire_response_path = harness_wire_log_path(config: config, round: round, kind: ".response.json")
     let wire_response = Filesystem.Write(path: wire_response_path, content: posted.body)
     let kept = Filesystem.Write(
@@ -1333,6 +1335,7 @@ fn harness_hosted_header_dump(posted: HarnessPostOutcome) -> HttpHeaderDump {
 fn harness_hosted_rate_limited(config: HarnessTurnConfig, posted: HarnessPostOutcome) -> OpenRouterRateLimitRefusal? {
   match config.backend_access {
     BackendAdmittedBySeat => none
+    BackendAdmittedByTailnetReplica => none
     BackendAdmittedByHostedQuota { header_file: _, quota: _ } =>
       openrouter_decode_rate_limited(body: posted.body, header_dump: harness_hosted_header_dump(posted: posted))
   }
@@ -1341,6 +1344,8 @@ fn harness_hosted_rate_limited(config: HarnessTurnConfig, posted: HarnessPostOut
 fn harness_hosted_failure(config: HarnessTurnConfig, posted: HarnessPostOutcome) -> HostedHttpFailure? {
   match config.backend_access {
     BackendAdmittedBySeat => none
+    BackendAdmittedByTailnetReplica =>
+      hosted_classify_round(body: posted.body, dump: harness_hosted_header_dump(posted: posted))
     BackendAdmittedByHostedQuota { header_file: _, quota: _ } =>
       hosted_classify_round(body: posted.body, dump: harness_hosted_header_dump(posted: posted))
   }
@@ -1350,16 +1355,30 @@ fn harness_response_headers_path(config: HarnessTurnConfig) -> String {
   join([config.request_scratch_path as String, ".response.headers"], "")
 }
 
-fn harness_post_json(config: HarnessTurnConfig, header_file: NonEmptyStr?) -> HarnessPostOutcome {
+fn harness_post_json(config: HarnessTurnConfig, header_file: NonEmptyStr?, dump_headers: Bool) -> HarnessPostOutcome {
   match header_file {
-    Absent => {
-      let posted = http.Client.PostJsonFromFile(
-        url: config.backend_url as NonEmptyStr,
-        request_body_file: config.request_scratch_path as String as NonEmptyStr,
-        max_seconds: to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr,
-      )
-      HarnessPostOutcome { body: posted.body, success: posted.success, headers: none }
-    }
+    Absent =>
+      if dump_headers {
+        let posted = http.Client.PostJsonFromFileWithResponseHeaders(
+          url: config.backend_url as NonEmptyStr,
+          request_body_file: config.request_scratch_path as String as NonEmptyStr,
+          response_headers_file: harness_response_headers_path(config: config) as NonEmptyStr,
+          max_seconds: to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr,
+        )
+        let dump = Filesystem.Read(path: harness_response_headers_path(config: config))
+        HarnessPostOutcome {
+          body: posted.body,
+          success: posted.success,
+          headers: Present { value: if dump.success { HeaderDumpRead { text: dump.content } } else { HeaderDumpUnread { cause: join(["the curl header dump ", harness_response_headers_path(config: config), " could not be read: ", dump.error], "") } } },
+        }
+      } else {
+        let posted = http.Client.PostJsonFromFile(
+          url: config.backend_url as NonEmptyStr,
+          request_body_file: config.request_scratch_path as String as NonEmptyStr,
+          max_seconds: to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr,
+        )
+        HarnessPostOutcome { body: posted.body, success: posted.success, headers: none }
+      }
     Present { value: hf } => {
       let posted = http.Client.PostJsonFromFileWithHeaderFile(
         url: config.backend_url as NonEmptyStr,
@@ -1383,6 +1402,7 @@ fn harness_post_json(config: HarnessTurnConfig, header_file: NonEmptyStr?) -> Ha
 fn harness_refusal_body_text(config: HarnessTurnConfig, body: String) -> String {
   match config.backend_access {
     BackendAdmittedBySeat => join(["body was: ", body], "")
+    BackendAdmittedByTailnetReplica => join(["body was: ", body], "")
     BackendAdmittedByHostedQuota { header_file: _, quota: _ } => join(["upstream answered: ", harness_hosted_refusal_cause(body: body)], "")
   }
 }

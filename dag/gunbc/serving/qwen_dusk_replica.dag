@@ -1,0 +1,87 @@
+module gunbc.serving.qwen_dusk_replica
+
+import std.types { String, Bool, NonEmptyStr, Port }
+import std.measure { TokenCount, token_count, token_count_value }
+import std.nat { Nat }
+import extdeps.uri { Uri, Http }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited }
+import product.capacity.event_chain { PartitionId }
+
+// An owned OpenAI-compatible replica on dusk-1, not an upstream with a published rate limit.
+// Capacity is occupancy on one machine (a serving seat), never extdeps.api_rate_limit.
+// ctrl's mini-agent (gunb-ai/ctrl pull 2292) reaches the same replica on a separate harness;
+// that config is not imported here.
+//
+// Observed from srv1, 2026-10-09: GET /v1/models on this MagicDNS base returned id qwen3.8-27b,
+// max_model_len 240000, owned_by ninfer. The MagicDNS name is the row; the tailnet IPv4 is the
+// same node and is not the locator this replica is named by.
+data dusk_models_get_observation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Http,
+    locator: "dusk-1.tailecbe08.ts.net:8080/v1/models",
+  }
+}
+
+data dusk_magicdns_host: NonEmptyStr = "dusk-1.tailecbe08.ts.net" as NonEmptyStr
+
+data dusk_openai_compat_port: Port = 8080
+
+data dusk_openai_compat_base_url: NonEmptyStr = "http://dusk-1.tailecbe08.ts.net:8080/v1" as NonEmptyStr
+
+fn dusk_chat_completions_url() -> NonEmptyStr {
+  join([dusk_openai_compat_base_url as String, "/chat/completions"], "") as NonEmptyStr
+}
+
+fn dusk_models_url() -> NonEmptyStr {
+  join([dusk_openai_compat_base_url as String, "/models"], "") as NonEmptyStr
+}
+
+data dusk_served_model_id: NonEmptyStr = "qwen3.8-27b" as NonEmptyStr
+
+data dusk_max_model_len: TokenCount = token_count(count: 240000)
+
+data dusk_owned_by_observed: NonEmptyStr = "ninfer" as NonEmptyStr
+
+data dusk_auth_boundary_wire_const: NonEmptyStr = "tailnet is the authentication boundary; no API key" as NonEmptyStr
+
+fn dusk_auth_boundary_wire() -> NonEmptyStr {
+  dusk_auth_boundary_wire_const
+}
+
+data dusk_gpu_concurrency_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "measure concurrent occupancy and GPU on the dusk-1 ninfer replica" as NonEmptyStr,
+}
+
+data dusk_occupancy_seats: Nat = 1
+
+data dusk_occupancy_basis: NonEmptyStr = "fail-closed serialization of one seat while GPU concurrency is Unobserved; not a GPU measurement" as NonEmptyStr
+
+data dusk_seat_partition: PartitionId = "dusk-1.qwen3.8-27b" as PartitionId
+
+data dusk_reasoning_disable_key_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "POST a dusk-1 chat completion that disables thinking and record the request member that did it" as NonEmptyStr,
+}
+
+data dusk_thinking_end_token: NonEmptyStr = "</think>" as NonEmptyStr
+
+data dusk_thinking_end_token_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "confirm the think-block closer on a dusk-1 completion, or name ninfer's schema" as NonEmptyStr,
+}
+
+data dusk_message_reasoning_field: NonEmptyStr = "reasoning" as NonEmptyStr
+
+data dusk_message_reasoning_field_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "decode a dusk-1 chat completion and name the message member that carries thinking, if any" as NonEmptyStr,
+}
+
+fn dusk_replica_receipt_wire() -> String {
+  join([
+    "owned replica ", dusk_served_model_id as String,
+    " owned_by=", dusk_owned_by_observed as String,
+    " at ", dusk_openai_compat_base_url as String,
+    "; ", dusk_auth_boundary_wire() as String,
+    "; max_model_len=", to_string(token_count_value(t: dusk_max_model_len)),
+    "; occupancy seats=", to_string(dusk_occupancy_seats),
+    " (", dusk_occupancy_basis as String, ")",
+  ], "")
+}

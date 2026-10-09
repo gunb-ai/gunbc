@@ -13,7 +13,7 @@ import gunbc.serving.admitted_model {
   serving_admits_id, serving_admit_advertised, ServingModelAdmitted, ServingModelNotAdmitted,
 }
 import gunbc.harness.harness_reasoning_wire {
-  DeepseekV4FlashOnVllm, Glm53FlashOnVllm, NemotronUltraFreeOnOpenRouter, harness_unit_model_id,
+  DeepseekV4FlashOnVllm, Glm53FlashOnVllm, Qwen38OnDusk, NemotronUltraFreeOnOpenRouter, harness_unit_model_id,
   harness_unit_declared_context_ceiling,
 }
 import gunbc.harness.harness_wire { harness_context_budget_for }
@@ -126,7 +126,7 @@ fn w_unit_is_glm(id: String) -> Bool {
   match serving_admits_id(id: id) {
     ServingModelNotAdmitted { advertised: _ } => false
     ServingModelAdmitted { id: _, unit: u } =>
-      match u { Glm53FlashOnVllm => true  DeepseekV4FlashOnVllm => false  NemotronUltraFreeOnOpenRouter => false }
+      match u { Glm53FlashOnVllm => true  DeepseekV4FlashOnVllm => false  Qwen38OnDusk => false  NemotronUltraFreeOnOpenRouter => false }
   }
 }
 
@@ -174,7 +174,7 @@ test fn the_admitted_id_is_the_advertised_one_and_not_the_units_canonical_id() -
      ServingModelAdmitted { id: i, unit: u } =>
        (i as String) == "glm-5.3-flash"
          && (i as String) != (harness_unit_model_id(unit: Glm53FlashOnVllm) as String)
-         && (match u { Glm53FlashOnVllm => true  DeepseekV4FlashOnVllm => false  NemotronUltraFreeOnOpenRouter => false })
+         && (match u { Glm53FlashOnVllm => true  DeepseekV4FlashOnVllm => false  Qwen38OnDusk => false  NemotronUltraFreeOnOpenRouter => false })
      ServingModelNotAdmitted { advertised: _ } => false
    })
     && (harness_unit_model_id(unit: Glm53FlashOnVllm) as String) != "glm-5.3-flash"

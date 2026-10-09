@@ -343,6 +343,35 @@ service http.Client {
     }
   }
 
+  // PostJsonFromFileWithResponseHeaders IS PostJsonFromFile PLUS curl -D, with no extra request
+  // header file: an OpenAI-compatible replica authenticated by the network boundary (the tailnet)
+  // still needs Retry-After and status on the dump for gunbc.harness.hosted_failure.
+  operation PostJsonFromFileWithResponseHeaders {
+    requires Network
+    input { url: NonEmptyStr, request_body_file: NonEmptyStr, response_headers_file: NonEmptyStr, max_seconds: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    transport shell {
+      argv: [
+        "curl",
+        "--fail-with-body",
+        "-sS",
+        "--max-time", "{max_seconds}",
+        "-D", "{response_headers_file}",
+        "-X", "POST",
+        "{url}",
+        "-H", "Content-Type: application/json",
+        "--data", "@{request_body_file}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "curl POST JSON from file with response headers failed"
+    }
+    mock_response {
+      0 => { body: "", success: false } "hermetic: no live endpoint; a transport that never connects, so the caller answers unreachable rather than fabricating a completion"
+    }
+  }
+
   operation PostFormFromFile {
     input { url: NonEmptyStr, request_body_file: NonEmptyStr, max_seconds: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }

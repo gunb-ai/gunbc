@@ -16,7 +16,7 @@ import product.capacity.pool_events {
 import product.capacity.lease { LeasePolicy, QuiescenceRequired }
 import gunbc.harness.harness_wire { OpenAiChatCompletionsShape }
 import gunbc.harness.harness_seat { harness_turn_request,
-  HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, HarnessHostedBound, harness_bind_seat, HarnessSeatReleased, HarnessHostedCredentialRemoved,
+  HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, HarnessHostedBound, HarnessOwnedReplicaBound, harness_bind_seat, HarnessSeatReleased, HarnessHostedCredentialRemoved,
   HarnessSeatReleaseRefused, harness_release_seat, harness_seat_release_wire, harness_now_epoch,
   AnyAdmittedModel,
 }
@@ -63,6 +63,7 @@ fn fabric_seat_probe(receipt: NonEmptyStr) -> ProcessExit {
     HarnessSeatRefused { detail: d } => exit_failure(reason: join(["seat probe: bind refused: ", d], ""))
     HarnessSeatPending { detail: d } => exit_failure(reason: join(["seat probe: placement pending: ", d], ""))
     HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } => exit_failure(reason: "seat probe: an any-model bind answered with a hosted binding, which harness_requirement_placement never yields")
+    HarnessOwnedReplicaBound { url: _, model: _, unit: _, grant: _, partition: _, ceiling: _, store: _ } => exit_failure(reason: "seat probe: an any-model bind answered with the dusk-1 owned replica, which is bound by name")
     HarnessSeatBound { url: u, grant: g, partition: p, ceiling: _, group_wire: gw, launch: launch, store: _, model: m, unit: _, class: c, seat: _ } => {
       let line = join([
         "host=", short, " group=", gw, " launch=", launch.process_start_field as String,

@@ -16,6 +16,9 @@ import gunbc.spark.serving_arm {
   ReasoningResponseProjection, ParsedReasoningField, InlineReasoning,
   gitcommit90_sm121_exl3_row, gunbc_sparkrun_ds4_row,
 }
+import gunbc.serving.qwen_dusk_replica {
+  dusk_served_model_id, dusk_max_model_len, dusk_thinking_end_token, dusk_message_reasoning_field,
+}
 import extdeps.deepseek.deepseek_v4 {
   deepseek_v4_vllm_thinking_kwarg, deepseek_v4_vllm_reasoning_effort_kwarg,
   deepseek_v4_thinking_end_token, deepseek_v4_chat_reasoning_field,
@@ -55,12 +58,14 @@ import extdeps.zhipu.glm_5_3_flash {
 type HarnessServingUnit
   = DeepseekV4FlashOnVllm
   | Glm53FlashOnVllm
+  | Qwen38OnDusk
   | NemotronUltraFreeOnOpenRouter
 
 fn harness_serving_unit_wire(unit: HarnessServingUnit) -> NonEmptyStr {
   match unit {
     DeepseekV4FlashOnVllm => "deepseek-v4-flash on vllm" as NonEmptyStr
     Glm53FlashOnVllm => "glm-5.3-flash on vllm" as NonEmptyStr
+    Qwen38OnDusk => "qwen3.8-27b on dusk-1" as NonEmptyStr
     NemotronUltraFreeOnOpenRouter => "nemotron-3-ultra:free on openrouter" as NonEmptyStr
   }
 }
@@ -78,6 +83,7 @@ fn harness_unit_placement(unit: HarnessServingUnit) -> HarnessUnitPlacement {
   match unit {
     DeepseekV4FlashOnVllm => PlacedOnFleetSeat
     Glm53FlashOnVllm => PlacedOnFleetSeat
+    Qwen38OnDusk => PlacedOnFleetSeat
     NemotronUltraFreeOnOpenRouter => LeasedFromHostedQuota
   }
 }
@@ -216,10 +222,23 @@ fn harness_openrouter_reasoning_kwargs(unit: HarnessServingUnit, level: HarnessR
   }
 }
 
+fn harness_dusk_reasoning_kwargs(level: HarnessReasoningLevel) -> HarnessReasoningKwargs {
+  match level {
+    ReasoningOff => ReasoningLevelUnsupported {
+      unit: harness_serving_unit_wire(unit: Qwen38OnDusk),
+      level: harness_reasoning_level_wire(level: ReasoningOff),
+      cause: "this replica reasons by default; the per-request member that disables thinking is Unobserved until a live dusk-1 call records it" as NonEmptyStr,
+    }
+    ReasoningStandard => ReasoningKwargsAdmitted { kwargs: [] }
+    ReasoningMaximum => ReasoningKwargsAdmitted { kwargs: [] }
+  }
+}
+
 fn harness_reasoning_kwargs_for(unit: HarnessServingUnit, level: HarnessReasoningLevel) -> HarnessReasoningKwargs {
   match unit {
     DeepseekV4FlashOnVllm => harness_deepseek_reasoning_kwargs(level: level)
     Glm53FlashOnVllm => harness_glm_reasoning_kwargs(level: level)
+    Qwen38OnDusk => harness_dusk_reasoning_kwargs(level: level)
     NemotronUltraFreeOnOpenRouter =>
       harness_openrouter_reasoning_kwargs(unit: unit, level: level, supported: nemotron_ultra_free_supported_efforts, mandatory: nemotron_ultra_free_reasoning_mandatory)
   }
@@ -234,6 +253,12 @@ fn harness_unit_thinking_requested(unit: HarnessServingUnit, level: HarnessReaso
   match unit {
     Glm53FlashOnVllm => true
     DeepseekV4FlashOnVllm =>
+      match level {
+        ReasoningOff => false
+        ReasoningStandard => true
+        ReasoningMaximum => true
+      }
+    Qwen38OnDusk =>
       match level {
         ReasoningOff => false
         ReasoningStandard => true
@@ -254,6 +279,7 @@ fn harness_unit_model_id(unit: HarnessServingUnit) -> NonEmptyStr {
   match unit {
     DeepseekV4FlashOnVllm => "deepseek-v4-flash:iq3s-split" as NonEmptyStr
     Glm53FlashOnVllm => glm_5_3_flash_model_id
+    Qwen38OnDusk => dusk_served_model_id
     NemotronUltraFreeOnOpenRouter => nemotron_ultra_free_model_id
   }
 }
@@ -268,6 +294,7 @@ fn harness_unit_tool_call_parser(unit: HarnessServingUnit) -> NonEmptyStr? {
   match unit {
     DeepseekV4FlashOnVllm => Present { value: "deepseek_v4" as NonEmptyStr }
     Glm53FlashOnVllm => Present { value: glm_5_3_flash_vllm_tool_call_parser }
+    Qwen38OnDusk => none
     NemotronUltraFreeOnOpenRouter => none
   }
 }
@@ -302,6 +329,7 @@ fn harness_unit_reasoning_projection(unit: HarnessServingUnit) -> ReasoningRespo
   match unit {
     DeepseekV4FlashOnVllm => gunbc_sparkrun_ds4_row.reasoning_projection
     Glm53FlashOnVllm => gitcommit90_sm121_exl3_row.reasoning_projection
+    Qwen38OnDusk => none
     NemotronUltraFreeOnOpenRouter => Present { value: ParsedReasoningField { field: openrouter_message_reasoning_field } }
   }
 }
@@ -331,6 +359,7 @@ fn harness_unit_model_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr {
   match unit {
     DeepseekV4FlashOnVllm => deepseek_v4_chat_reasoning_field
     Glm53FlashOnVllm => glm_5_3_flash_chat_reasoning_field
+    Qwen38OnDusk => dusk_message_reasoning_field
     NemotronUltraFreeOnOpenRouter => openrouter_message_reasoning_field
   }
 }
@@ -406,6 +435,7 @@ fn harness_unit_server_parses_reasoning(unit: HarnessServingUnit) -> Bool {
   match unit {
     DeepseekV4FlashOnVllm => false
     Glm53FlashOnVllm => true
+    Qwen38OnDusk => true
     NemotronUltraFreeOnOpenRouter => true
   }
 }
@@ -417,6 +447,7 @@ fn harness_unit_thinking_end_token(unit: HarnessServingUnit) -> NonEmptyStr {
   match unit {
     DeepseekV4FlashOnVllm => deepseek_v4_thinking_end_token
     Glm53FlashOnVllm => glm_5_3_flash_thinking_end_token
+    Qwen38OnDusk => dusk_thinking_end_token
     NemotronUltraFreeOnOpenRouter => nemotron_ultra_thinking_end_token
   }
 }
@@ -427,6 +458,7 @@ fn harness_unit_declared_context_ceiling(unit: HarnessServingUnit) -> TokenCount
   match unit {
     DeepseekV4FlashOnVllm => deepseek_v4_context_length
     Glm53FlashOnVllm => glm_5_3_flash_context_length
+    Qwen38OnDusk => dusk_max_model_len
     NemotronUltraFreeOnOpenRouter => nemotron_ultra_free_context_length
   }
 }

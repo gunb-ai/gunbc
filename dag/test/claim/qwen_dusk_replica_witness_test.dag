@@ -1,0 +1,75 @@
+module test.claim.qwen_dusk_replica_witness
+
+import std.types { Bool, String }
+import std.measure { token_count_value }
+import gunbc.serving.qwen_dusk_replica {
+  dusk_magicdns_host, dusk_openai_compat_port, dusk_openai_compat_base_url, dusk_chat_completions_url,
+  dusk_models_url, dusk_served_model_id, dusk_max_model_len, dusk_owned_by_observed,
+  dusk_auth_boundary_wire, dusk_gpu_concurrency_standing, dusk_occupancy_seats, dusk_replica_receipt_wire,
+}
+import extdeps.external_authority { TranscribedUncited, CitedToAuthority }
+import gunbc.harness.harness_reasoning_wire {
+  Qwen38OnDusk, NemotronUltraFreeOnOpenRouter, DeepseekV4FlashOnVllm, Glm53FlashOnVllm,
+  PlacedOnFleetSeat, LeasedFromHostedQuota, harness_unit_placement, harness_unit_model_id,
+  harness_reasoning_kwargs_for, ReasoningOff, ReasoningStandard, ReasoningMaximum,
+  ReasoningKwargsAdmitted, ReasoningLevelUnsupported, harness_serving_unit_wire,
+}
+import gunbc.harness.harness_hosted_route { harness_hosted_route_for }
+import extdeps.languages.json.emit { json_object, serialize_json }
+
+test fn dusk_is_named_by_magicdns_not_the_tailnet_ip() -> Bool {
+  (dusk_magicdns_host as String) == "dusk-1.tailecbe08.ts.net"
+    && dusk_openai_compat_port == 8080
+    && (dusk_openai_compat_base_url as String) == "http://dusk-1.tailecbe08.ts.net:8080/v1"
+    && !(dusk_openai_compat_base_url as String).contains("100.127.39.77")
+    && (dusk_chat_completions_url() as String) == "http://dusk-1.tailecbe08.ts.net:8080/v1/chat/completions"
+    && (dusk_models_url() as String) == "http://dusk-1.tailecbe08.ts.net:8080/v1/models"
+}
+
+test fn dusk_models_listing_facts_are_the_srv1_observation() -> Bool {
+  (dusk_served_model_id as String) == "qwen3.8-27b"
+    && token_count_value(t: dusk_max_model_len) == 240000
+    && (dusk_owned_by_observed as String) == "ninfer"
+    && (harness_unit_model_id(unit: Qwen38OnDusk) as String) == "qwen3.8-27b"
+}
+
+test fn dusk_auth_is_the_tailnet_and_not_a_secret() -> Bool {
+  (dusk_auth_boundary_wire() as String).contains("no API key")
+    && dusk_replica_receipt_wire().contains("no API key")
+}
+
+test fn dusk_gpu_concurrency_is_unobserved_and_occupancy_is_not_a_measurement() -> Bool {
+  (match dusk_gpu_concurrency_standing {
+    TranscribedUncited { read_obligation: o } => (o as String).contains("GPU")
+    CitedToAuthority { authority: _ } => false
+  })
+    && dusk_occupancy_seats == 1
+}
+
+test fn dusk_is_a_fleet_seat_with_no_hosted_quota_route() -> Bool {
+  (match harness_unit_placement(unit: Qwen38OnDusk) { PlacedOnFleetSeat => true  LeasedFromHostedQuota => false })
+    && (match harness_hosted_route_for(unit: Qwen38OnDusk) { Absent => true  Present { value: _ } => false })
+    && (match harness_unit_placement(unit: NemotronUltraFreeOnOpenRouter) { LeasedFromHostedQuota => true  PlacedOnFleetSeat => false })
+}
+
+test fn dusk_reasoning_off_refuses_until_the_disable_key_is_observed() -> Bool {
+  (match harness_reasoning_kwargs_for(unit: Qwen38OnDusk, level: ReasoningOff) {
+    ReasoningLevelUnsupported { unit: u, level: _, cause: c } =>
+      (u as String) == (harness_serving_unit_wire(unit: Qwen38OnDusk) as String)
+        && (c as String).contains("Unobserved")
+    ReasoningKwargsAdmitted { kwargs: _ } => false
+  })
+    && (match harness_reasoning_kwargs_for(unit: Qwen38OnDusk, level: ReasoningStandard) {
+      ReasoningKwargsAdmitted { kwargs: k } => serialize_json(v: json_object(k)) == "{}"
+      ReasoningLevelUnsupported { unit: _, level: _, cause: _ } => false
+    })
+    && (match harness_reasoning_kwargs_for(unit: Qwen38OnDusk, level: ReasoningMaximum) {
+      ReasoningKwargsAdmitted { kwargs: k } => serialize_json(v: json_object(k)) == "{}"
+      ReasoningLevelUnsupported { unit: _, level: _, cause: _ } => false
+    })
+}
+
+test fn dusk_is_not_a_spark_admitted_id() -> Bool {
+  (harness_unit_model_id(unit: DeepseekV4FlashOnVllm) as String) != (dusk_served_model_id as String)
+    && (harness_unit_model_id(unit: Glm53FlashOnVllm) as String) != (dusk_served_model_id as String)
+}

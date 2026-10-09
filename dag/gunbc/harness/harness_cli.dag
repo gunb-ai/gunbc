@@ -6,7 +6,7 @@ import std.checked_arithmetic { checked_int_to_nat }
 import gunbc.fabric_event_log_host { now_epoch_seconds }
 import product.capacity.event_chain { PartitionId }
 import extdeps.deepseek.deepseek_v4 { DeepseekV4ReasoningMode, DeepseekV4ThinkMax }
-import gunbc.harness.harness_reasoning_wire { HarnessReasoningLevel, ReasoningMaximum, harness_reasoning_level_wire }
+import gunbc.harness.harness_reasoning_wire { HarnessReasoningLevel, ReasoningMaximum, harness_reasoning_level_wire, HarnessServingUnit, Qwen38OnDusk, NemotronUltraFreeOnOpenRouter }
 import gunbc.harness.harness_throughput { harness_round_budget_steps }
 import gunbc.harness.harness_wire { HarnessWireShape, OpenAiChatCompletionsShape }
 import std.measure { TokenCount, token_count, token_count_value, Second, second, second_count }
@@ -29,15 +29,15 @@ import gunbc.harness.harness_supervisor_guidance { supervisor_system_prompt_at }
 import gunbc.harness.harness_goal_audit_guidance { harness_auditor_guidance_at, audit_guidance_prose }
 import gunbc.roadmap.roadmap_review_role { review_verdict_shape_text }
 import gunbc.harness.harness_wire { harness_context_budget_for }
-import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, NemotronUltraFreeOnOpenRouter }
-import gunbc.harness.harness_hosted_route { HarnessBackendAccess, BackendAdmittedBySeat, harness_hosted_backend_access, harness_hosted_access_wire }
+import gunbc.harness.harness_hosted_route { HarnessBackendAccess, BackendAdmittedBySeat, BackendAdmittedByTailnetReplica, harness_hosted_backend_access, harness_hosted_access_wire }
+import gunbc.serving.qwen_dusk_replica { dusk_replica_receipt_wire }
 import gunbc.serving.turn_admission {
   ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant, serving_co_tenancy_class_wire,
 }
 import gunbc.harness.harness_seat_pointer { harness_seat_pointer_path, harness_seat_pointer_json }
 import gunbc.serving.caller_retry_contract { caller_backlog_wire, serving_route_caller_backlog }
 import gunbc.harness.harness_seat { harness_turn_request, harness_seat_pointer_of,
-  HarnessSeatBinding, HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, HarnessHostedBound, harness_bind_seat, harness_bind_hosted,
+  HarnessSeatBinding, HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, HarnessHostedBound, HarnessOwnedReplicaBound, harness_bind_seat, harness_bind_hosted, harness_bind_owned_replica,
   HarnessSeatRelease, HarnessSeatReleased, HarnessHostedCredentialRemoved, HarnessSeatReleaseRefused, harness_release_seat,
   harness_seat_release_wire, harness_release_held, harness_release_capability,
   HarnessReleaseCapability, harness_release_capability_wire,
@@ -377,6 +377,7 @@ fn harness_bind_seat_waiting(
         HarnessSeatRefused { detail: _ } => acc
         HarnessSeatBound { url: _, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: _, unit: _, class: _, seat: _ } => acc
         HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } => acc
+        HarnessOwnedReplicaBound { url: _, model: _, unit: _, grant: _, partition: _, ceiling: _, store: _ } => acc
       },
   )
   waited.binding
@@ -512,6 +513,8 @@ fn harness_place_for(request: String, attempt: String, receipt: String) -> Proce
     }
     HarnessHostedBound { url: _, model: _, unit: _, level: _, access: _ } =>
       harness_place_receipt_failed(binding: binding, cause: "an any-model placement answered with a hosted binding, which holds no seat a router can be handed")
+    HarnessOwnedReplicaBound { url: _, model: _, unit: _, grant: _, partition: _, ceiling: _, store: _ } =>
+      harness_place_receipt_failed(binding: binding, cause: "an any-model placement answered with the dusk-1 owned replica, which is bound by name rather than as a spark group")
   }
 }
 
@@ -1089,20 +1092,21 @@ fn harness_binding_answer(binding: HarnessSeatBinding) -> HarnessBindingAnswer {
       BindingReady { backend: HarnessBoundBackend { url: u, model: m, unit: un, reasoning: harness_reasoning_mode, access: BackendAdmittedBySeat } }
     HarnessHostedBound { url: u, model: m, unit: un, level: l, access: a } =>
       BindingReady { backend: HarnessBoundBackend { url: u, model: m, unit: un, reasoning: l, access: harness_hosted_backend_access(access: a) } }
+    HarnessOwnedReplicaBound { url: u, model: m, unit: un, grant: _, partition: _, ceiling: _, store: _ } =>
+      BindingReady { backend: HarnessBoundBackend { url: u, model: m, unit: un, reasoning: harness_reasoning_mode, access: BackendAdmittedByTailnetReplica } }
   }
 }
 
-// THE HOSTED PROBE: the probe turn, placed on the hosted Nemotron 3 Ultra free listing by NAME. It is the
-// one entry that reaches a hosted unit, because an unnamed requirement never does (gunbc.harness.harness_seat
-// harness_requirement_placement): the listing is governed by NVIDIA's trial terms, so reaching it is an
-// operator's explicit act, not a placement default. It takes its tool environment as arguments, as the
-// worker does, so it runs on whatever host invokes it rather than assuming the MacBook's.
+// THE OPENAI-COMPAT PROBE: dusk-1's owned Qwen replica first (operator 2026-10-09), then the Nemotron
+// hosted listing remains reachable by name. An unnamed spark placement never lands on either.
+// Reach this replica from srv1/srv2 (tailnet); session containers cannot resolve dusk-1.
 // THE ROUTE'S STANDING IS WRITTEN BESIDE THE EVENTS BEFORE THE HOSTED PROBE'S TURN RUNS: the tier and daily
 // counters the key read reported, the quota rows each request is charged to, and the NVIDIA trial terms
 // that govern the endpoint. A run whose receipt cannot be written does not run, and gives its credential back.
 fn harness_hosted_route_receipt(binding: HarnessSeatBinding) -> String? {
   match binding {
     HarnessHostedBound { url: _, model: _, unit: _, level: _, access: a } => Present { value: harness_hosted_access_wire(access: a) }
+    HarnessOwnedReplicaBound { url: _, model: _, unit: _, grant: _, partition: _, ceiling: _, store: _ } => Present { value: dusk_replica_receipt_wire() }
     HarnessSeatBound { url: _, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: _, unit: _, class: _, seat: _ } => none
     HarnessSeatPending { detail: _ } => none
     HarnessSeatRefused { detail: _ } => none
@@ -1110,6 +1114,45 @@ fn harness_hosted_route_receipt(binding: HarnessSeatBinding) -> String? {
 }
 
 fn harness_hosted_probe_cli(worktree: String, timeout_program: String, request_scratch_path: String, events_path: String) -> ProcessExit {
+  let binding = harness_bind_owned_replica(short_hostname: harness_executor_short_hostname(), unit: Qwen38OnDusk, actor: join(["dusk-probe:", worktree], "") as NonEmptyStr, attempt: join(["dusk-probe:", worktree], "") as NonEmptyStr, policy: harness_seat_policy)
+  match harness_binding_answer(binding: binding) {
+    BindingRefused { detail } => harness_backend_refusal_exit(detail: detail)
+    BindingPending { detail } => harness_placement_pending_exit(detail: detail)
+    BindingReady { backend } => {
+      match harness_hosted_route_receipt(binding: binding) {
+        Absent => {
+          let seat_release = harness_release_seat(binding: binding, reason: "the hosted route receipt could not be derived" as NonEmptyStr)
+          ExitFailure { code: 1, reason: join(["hosted probe: the binding carries no hosted access to describe; ", harness_seat_release_wire(r: seat_release)], "") }
+        }
+        Present { value: receipt } => {
+          let written = Filesystem.Write(path: join([events_path, ".route"], ""), content: concat(receipt, "\n"))
+          if !written.success {
+            let seat_release = harness_release_seat(binding: binding, reason: "the hosted route receipt could not be written" as NonEmptyStr)
+            ExitFailure { code: 1, reason: join(["hosted probe: the route receipt could not be written to ", events_path, ".route: ", written.error, "; ", harness_seat_release_wire(r: seat_release)], "") }
+          } else {
+            let outcome = harness_run_turn(
+              config: harness_worker_config(
+                worktree: worktree as FilePath,
+                timeout_program: timeout_program as FilePath,
+                request_scratch_path: request_scratch_path as FilePath,
+                events_path: events_path as FilePath,
+                backend: backend,
+                system_prompt: harness_default_system_prompt,
+                alignment_chain_fingerprint: "",
+              ),
+              prompt: harness_probe_prompt,
+              step_budget: harness_default_step_budget,
+            )
+            let seat_release = harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr)
+            harness_turn_exit_released(outcome: outcome, seat: seat_release)
+          }
+        }
+      }
+    }
+  }
+}
+
+fn harness_nemotron_hosted_probe_cli(worktree: String, timeout_program: String, request_scratch_path: String, events_path: String) -> ProcessExit {
   let binding = harness_bind_hosted(short_hostname: harness_executor_short_hostname(), unit: NemotronUltraFreeOnOpenRouter, actor: join(["hosted-probe:", worktree], "") as NonEmptyStr, max_tokens: harness_default_max_token_count)
   match harness_binding_answer(binding: binding) {
     BindingRefused { detail } => harness_backend_refusal_exit(detail: detail)
