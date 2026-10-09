@@ -68,7 +68,7 @@ service http.Client {
   operation Get {
     requires Network
     input { url: NonEmptyStr }
-    output { body: String }
+    output { body: String, success: Bool }
     readonly
     transport rest {
       method: GET,
@@ -76,6 +76,11 @@ service http.Client {
     }
     response {
       2xx => String
+      4xx => String
+      5xx => String
+    }
+    mock_response {
+      0 => { body: "", success: false } "hermetic: no live HTTP endpoint; the GET refuses rather than fabricate a body"
     }
   }
 
@@ -189,7 +194,7 @@ service http.Client {
     }
     readonly
     transport shell {
-      argv: ["curl", "-fsS", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "--get", "{url}"]
+      argv: ["curl", "--disable", "-fsS", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "--get", "--data-binary", "@-", "{url}"]
     }
     stdin: query
     exit {
@@ -211,12 +216,12 @@ service http.Client {
       stderr: String from "stderr"
     }
     transport shell {
-      argv: ["curl", "-fsS", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "-X", "POST", "-H", "Content-Type: application/json", "-d", "@-", "-w", "\n%\{http_code}", "{url}"]
+      argv: ["curl", "--disable", "-sS", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "-X", "POST", "--data-binary", "@-", "-w", "\n%{http_code}", "{url}"]
     }
     stdin: request_body
     exit {
       0 => Unit
-      nonzero => String "http client POST within deadlines failed"
+      nonzero => Unit
     }
     mock_response {
       0 => { exit_code: 7, success: false, body: "", stderr: "hermetic: no live HTTP endpoint" } "hermetic: a transport that never connects, so a caller answers unreachable rather than fabricating a reply"
@@ -233,12 +238,12 @@ service http.Client {
       stderr: String from "stderr"
     }
     transport shell {
-      argv: ["curl", "-fsS", "--unix-socket", "{socket}", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "-X", "POST", "-H", "Content-Type: application/json", "-d", "@-", "-w", "\n%\{http_code}", "{url}"]
+      argv: ["curl", "--disable", "-sS", "--unix-socket", "{socket}", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "--data-binary", "@-", "-w", "\n%{http_code}", "{url}"]
     }
     stdin: request_body
     exit {
       0 => Unit
-      nonzero => String "http client POST over unix socket within deadlines failed"
+      nonzero => Unit
     }
     mock_response {
       0 => { exit_code: 7, success: false, body: "", stderr: "hermetic: no live socket" } "hermetic: a transport that never connects, so a caller answers unreachable rather than fabricating a reply"
