@@ -132,7 +132,7 @@ fn mask_embedded_provenance(image: &[u8], identity: &str) -> Result<Vec<u8>, Der
 
 /// Producer axis: the running seed with build identity masked. Unreadable image or
 /// unmaskable provenance is `ProducerInputsUnobserved`.
-fn producer_axis(_workspace: &Path) -> Result<String, DeriveKeyError> {
+fn producer_axis() -> Result<String, DeriveKeyError> {
     let path = running_seed_image()?;
     let bytes = std::fs::read(&path).map_err(|_| miss(PRODUCER_UNOBSERVED_CAUSE))?;
     if bytes.is_empty() {
@@ -216,7 +216,7 @@ pub(super) fn derive_key(
     let build_configuration =
         hex(super::emitted_closure_compile_host::probe_build_configuration_for_key().as_bytes());
     Ok(assemble_key(AxisInputs {
-        producer_compiler: producer_axis(workspace)?,
+        producer_compiler: producer_axis()?,
         source_closure,
         toolchain,
         build_configuration,
@@ -783,7 +783,7 @@ mod tests {
             format!("{:x}", sha2::Sha256::digest(&masked))
         );
         assert_eq!(
-            producer_axis(&super::super::process_workspace_root()).unwrap(),
+            producer_axis().unwrap(),
             format!("{:x}", sha2::Sha256::digest(&masked))
         );
     }
