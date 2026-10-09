@@ -1,5 +1,6 @@
 module gunbc.fleet.printer_project_delivery
 
+import gunbc.fleet_printer_access {PrinterCredentialSession,session_printer,session_credential,session_resolved_version}
 import std.types { NonEmptyStr, String, Bool, Secret, FilePath }
 import std.nat { Nat }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_version_resource }
@@ -697,6 +698,21 @@ fn deliver_project_to_printer(
         SecretCredentialFetchRefused { reason: reason } =>
           refuse_and_drop(printer: printer, payload: payload, cause: reason)
         SecretCredentialReady { credential: credential, resolved_version: credential_version } => {
+          transfer_with_credential(printer:printer,payload:payload,lan_address:lan_address,credential:credential,credential_version:credential_version)
+        }
+      }
+  }
+  }
+}
+
+fn deliver_project_with_session(session:PrinterCredentialSession,payload:IdentifiedProjectPayload) -> ProjectDelivery {
+ let printer=session_printer(s:session)
+ match printer_endpoint_address(printer:printer) {
+  PrinterAddressFound {address:a}=>transfer_with_credential(printer:printer,payload:payload,lan_address:a,credential:session_credential(s:session),credential_version:session_resolved_version(s:session))
+  PrinterAddressUnknown {printer:_}=>refuse_and_drop(printer:printer,payload:payload,cause:"Printer endpoint absent or ambiguous") PrinterAddressAmbiguous {printer:_}=>refuse_and_drop(printer:printer,payload:payload,cause:"Printer endpoint absent or ambiguous") PrinterAddressWrongClass {printer:_}=>refuse_and_drop(printer:printer,payload:payload,cause:"Printer endpoint absent or ambiguous")
+ }
+}
+fn transfer_with_credential(printer:PhysicalAssetIdentity,payload:IdentifiedProjectPayload,lan_address:NonEmptyStr,credential:Secret,credential_version:SmResolvedVersionIdentity) -> ProjectDelivery {
           endpoint = bambu_lan_endpoint(host: lan_address)
           match place_netrc_binding_privately(
             machine: endpoint.host,
@@ -735,9 +751,7 @@ fn deliver_project_to_printer(
                 )
             }
           }
-        }
-      }
-  }
-  }
-  }
 }
+}
+
+fn project_payload_digest(payload:IdentifiedProjectPayload) -> Digest {payload.content}

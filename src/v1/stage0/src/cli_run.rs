@@ -92,6 +92,7 @@ pub mod declaration_index;
 pub mod derived_row_roster;
 mod emitted_crate_workspace_host;
 mod native_lane_runner;
+mod native_product_cache;
 pub mod reach_base_standings;
 pub mod required_ci_measurement;
 mod required_floor_runner;
@@ -145,7 +146,8 @@ pub fn source_root_ingest_module_identities_for_ci(
 }
 pub use entry_resolve::{
     load_sources_for_entry, process_shared_index, resolve_entry_graph, resolve_entry_with_index,
-    resolve_stage_totals, source_root_ingest_content_hash_fnv1a64, whole_tree_resolved_ctx,
+    resolve_seeded_compile_closure, resolve_stage_totals, source_root_ingest_content_hash_fnv1a64,
+    whole_tree_resolved_ctx,
 };
 mod live_read_decode;
 pub(crate) use live_read_decode::*;
@@ -325,7 +327,7 @@ pub(crate) fn is_cargo_target_output_dir(
         && parent.join("Cargo.toml").is_file()
 }
 
-fn collect_dag_files_result(
+pub(crate) fn collect_dag_files_result(
     dir: &std::path::Path,
     files: &mut Vec<std::path::PathBuf>,
 ) -> Result<(), String> {
@@ -6451,10 +6453,9 @@ impl ModuleGraphFactsLive {
     /// reference edge (`selection_adjacency` minus `adjacency`) — i.e. the direct-import term
     /// a stripped (no `import` line) module is otherwise missing from its typed-module content
     /// key (DESIGN §3: consumes the same `selection_adjacency` authority affected-set selection
-    /// already reads; no second reference-edge producer). An import-bearing file's declared
-    /// imports are already covered by `resolved.resolved_imports`, so this returns empty for it
-    /// (`adjacency` and `selection_adjacency` agree on such a file — see
-    /// `reference_resolution_facts` pass 2).
+    /// already reads; no second reference-edge producer). For an import-bearing file it
+    /// returns the modules it reaches by qualified reference (bare names there are lexically bound) WITHOUT importing them;
+    /// its declared imports are already covered by `resolved.resolved_imports`.
     /// Workspace-relative repo paths `importer_repo_path` depends on ONLY through a strict-tier
     /// reference edge (`selection_adjacency` minus `adjacency`). The path-grain authority
     /// `selection_adjacency` already carries; module names are derived only for diagnostics.
@@ -24977,6 +24978,101 @@ pub fn render_selected_entry_closure_overlap_json(m: &SelectedEntryClosureOverla
     out
 }
 
+/// One selected claim and what its evaluation observed. `module_path` is the entry's AUTHORED
+/// module name (read off the `module` line by the module index), which is what the claim's label
+/// is minted from (`gunbc.discovery_census` `site_label`).
+pub struct ClaimRouteMember {
+    pub module_path: String,
+    pub function: String,
+    pub outcome: ClaimOutcome,
+    pub eval_steps: u64,
+    pub cpu_ms: u128,
+}
+
+/// THE CLAIM ROUTE'S EXECUTOR: the floor's discovery authority over the modules the operand can
+/// reach, then the floor's claim evaluation over the claims it selects.
+///
+/// NOTHING HERE DECIDES WHAT A CLAIM IS. Which `test` declarations a source enrolls is
+/// `floor_discovery_rows_over_sources` -- the same per-file authority fold the required floor runs,
+/// over a narrower subject -- and whether a claim held is `run_claim_measured`, the evaluation
+/// `claim_batch` and the floor share. The caller supplies two predicates: `module_selected`
+/// narrows the SUBJECT before discovery (an operand naming one module never pays for a corpus
+/// walk), and `claim_selected` narrows discovery's rows to the operand's own population.
+///
+/// One context per ENTRY, as `claim_batch` builds it: every claim of a module shares that module's
+/// resolved graph, and the eval-call memo is released at each claim's frame exit. Floor ADMISSION
+/// policy -- gate prefixes, prepared-subject exclusions, eval-step budget tiers -- is deliberately
+/// not applied: that is the `//:required` aggregate's question, and this route answers what a
+/// named claim OBSERVED, the distinction `gunbc.target_invocation` keeps for every direct
+/// invocation.
+pub fn run_claim_route(
+    source_roots: &[String],
+    module_selected: &dyn Fn(&str) -> bool,
+    claim_selected: &dyn Fn(&str, &str) -> bool,
+) -> Result<Vec<ClaimRouteMember>, String> {
+    let index = process_shared_index(source_roots);
+    let mut selected: Vec<(&String, &Rc<v1_compiler_compile::SourceFile>)> = index
+        .source_files
+        .iter()
+        .filter(|(module_path, _)| module_selected(module_path))
+        .collect();
+    if selected.is_empty() {
+        return Ok(Vec::new());
+    }
+    selected.sort_by(|a, b| a.0.cmp(b.0));
+    let module_for_path: std::collections::HashMap<String, String> = selected
+        .iter()
+        .map(|(m, sf)| (sf.path.replace('\\', "/"), (*m).clone()))
+        .collect();
+    let (graph, indices) = resolve_workspace_entry(source_roots, FLOOR_DISCOVERY_PRODUCER_ENTRY)
+        .map_err(|e| format!("floor discovery authority resolve: {e}"))?;
+    let frame = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let rows =
+        floor_discovery_rows_over_sources(&frame, selected.iter().map(|(_, sf)| sf.as_ref()))
+            .map_err(|refusal| refusal.rendered())?;
+    let mut groups: Vec<(String, String, Vec<String>)> = Vec::new();
+    for row in rows {
+        let Some(module_path) = module_for_path.get(row.entry.as_str()) else {
+            return Err(format!(
+                "cause=FloorDiscoveryEntryOutsideSubject entry={} — the discovery authority \
+                 enrolled an entry the selected subject does not hold",
+                row.entry
+            ));
+        };
+        if !claim_selected(module_path, &row.function) {
+            continue;
+        }
+        match groups.last_mut() {
+            Some((entry, _, functions)) if *entry == row.entry => functions.push(row.function),
+            _ => groups.push((row.entry, module_path.clone(), vec![row.function])),
+        }
+    }
+    let mut members = Vec::new();
+    for (entry, module_path, functions) in groups {
+        let (graph, source_indices) = resolve_entry_with_index(&index, &entry)
+            .map_err(|e| format!("resolve {entry}: {e}"))?;
+        let closure_subject = closure_subject_for_entry(&index, &entry)
+            .map_err(|e| format!("closure subject {entry}: {e}"))?;
+        let ctx = make_eval_context(
+            &graph,
+            source_indices,
+            v1_interpreter::ExecutionMode::Hermetic,
+        );
+        for function in functions {
+            let (outcome, receipt) = run_claim_measured(&ctx, &closure_subject, &function);
+            v1_interpreter::eval_call_memo_frame_exit(&ctx);
+            members.push(ClaimRouteMember {
+                module_path: module_path.clone(),
+                function,
+                outcome,
+                eval_steps: receipt.eval_steps,
+                cpu_ms: receipt.cpu_nanos / 1_000_000,
+            });
+        }
+    }
+    Ok(members)
+}
+
 pub fn discover_floor_witness_roster(
     source_roots: &[String],
     scan_dirs: &[String],
@@ -30259,8 +30355,8 @@ pub fn dependency_resolution_facts(
 ///
 /// WHAT IT DOES NOT DEMAND is the corpus. The declared-module index is the process-cached
 /// `build_module_path_index` the population read also consults; the reference half's pool name
-/// index is built only when the importer carries no `import` line, which is the one case whose
-/// edges depend on other files' names. An importer the population would not walk -- outside every
+/// index is built for every readable importer, since a reference edge depends on other files'
+/// names whether or not the importer carries `import` lines. An importer the population would not walk -- outside every
 /// pool root, or matched by an exclusion -- answers the empty list, as the population carries no
 /// row for it; so does an unreadable one, whose import half the population walk also skips.
 pub fn dependency_resolution_facts_at(
@@ -30293,8 +30389,7 @@ pub fn dependency_resolution_facts_at(
         entry_resolve::FileReferenceEdges::Edges(edges) => {
             reference_edges_as_import_facts(&edges, /* strict */ true)
         }
-        entry_resolve::FileReferenceEdges::ImportBearing
-        | entry_resolve::FileReferenceEdges::Unaccounted(_) => Vec::new(),
+        entry_resolve::FileReferenceEdges::Unaccounted(_) => Vec::new(),
     };
     union_dedup_import_facts_reference_first(reference_edges, import_edges)
 }
@@ -37421,6 +37516,135 @@ mod output_policy_decode_tests {
             Err(e) => e,
         };
         assert!(err.contains("progress"), "refusal names the channel: {err}");
+    }
+}
+
+#[cfg(test)]
+mod import_bearing_reference_edges {
+    //! An `import` line does not own a module's edge set: the producer unions reference edges for
+    //! every importer. Supplied fixture (pool names handed in), no corpus resolve.
+
+    use super::*;
+
+    fn names() -> entry_resolve::ReferencePoolNames {
+        entry_resolve::ReferencePoolNames {
+            decl_index: Default::default(),
+            module_names: [
+                "v2.std.artifact",
+                "v2.std.refinement",
+                "v2.std.node",
+                "v2.std.layer",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        }
+    }
+
+    const IMPORTING: &str =
+        "module v2.std.artifact\nimport v2.std.node\nfn g() -> Int { v2.std.refinement.k }\n";
+    const IMPORTLESS: &str = "module v2.std.artifact\nfn g() -> Int { v2.std.refinement.k }\n";
+
+    fn edge_targets(src: &str, imports_only_mutant: bool) -> Vec<String> {
+        if imports_only_mutant && !extract_import_paths(src).is_empty() {
+            return Vec::new();
+        }
+        let n = names();
+        let entry_resolve::FileReferenceEdges::Edges(edges) =
+            entry_resolve::reference_edges_for_file("v2/std/artifact.dag", Some(src), &n)
+        else {
+            panic!("a parsed file has edges");
+        };
+        let import_edges = entry_resolve::import_facts_for_file("v2/std/artifact.dag", src, |m| {
+            n.module_names.contains(m)
+        });
+        union_dedup_import_facts_reference_first(
+            entry_resolve::reference_edges_as_import_facts(&edges, true),
+            import_edges,
+        )
+        .into_iter()
+        .map(|f| f.import_module)
+        .collect()
+    }
+
+    /// RED: the qualified reference to a module the file does not import is an edge.
+    #[test]
+    fn an_import_bearing_file_carries_its_unimported_reference_edge() {
+        let t = edge_targets(IMPORTING, false);
+        assert!(t.contains(&"v2.std.refinement".to_string()), "{t:?}");
+        assert!(t.contains(&"v2.std.node".to_string()), "{t:?}");
+    }
+
+    /// The imports-only mutant is the pre-fix producer; the RED must reject it.
+    #[test]
+    fn the_imports_only_mutant_fails_the_red() {
+        let t = edge_targets(IMPORTING, true);
+        assert!(!t.contains(&"v2.std.refinement".to_string()));
+    }
+
+    /// Control: an import-less file's reference edges are the same under both producers.
+    #[test]
+    fn an_importless_file_is_unchanged() {
+        assert_eq!(
+            edge_targets(IMPORTLESS, false),
+            edge_targets(IMPORTLESS, true)
+        );
+        assert_eq!(
+            edge_targets(IMPORTLESS, false),
+            vec!["v2.std.refinement".to_string()]
+        );
+    }
+
+    fn homonym_names() -> entry_resolve::ReferencePoolNames {
+        let mut decl_index = HashMap::new();
+        decl_index.insert(
+            "Present".to_string(),
+            ["std.optional", "test.fixture.planted"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        );
+        entry_resolve::ReferencePoolNames {
+            decl_index,
+            module_names: ["std.optional", "test.fixture.planted"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        }
+    }
+
+    fn homonym_edges(src: &str) -> Vec<String> {
+        let entry_resolve::FileReferenceEdges::Edges(edges) =
+            entry_resolve::reference_edges_for_file(
+                "test/claim/a.dag",
+                Some(src),
+                &homonym_names(),
+            )
+        else {
+            panic!("a parsed file has edges");
+        };
+        edges.into_iter().map(|e| e.target_module).collect()
+    }
+
+    /// RED (reader defect): `Present` is bound by the file's own `import std.optional { Present }`.
+    /// A fixture module declaring the same spelling and nearer in the containment tree must not
+    /// become a phantom dependency of the importer; in a file that imports, a bare name is
+    /// lexically bound, never resolved by proximity.
+    #[test]
+    fn a_bare_name_in_an_import_bearing_file_is_not_resolved_to_a_pool_homonym() {
+        let src =
+            "module test.claim.a\nimport std.optional { Present }\nfn g() -> Int { Present }\n";
+        let t = homonym_edges(src);
+        assert!(!t.contains(&"test.fixture.planted".to_string()), "{t:?}");
+    }
+
+    /// Control: the same bare name in an IMPORT-LESS file still resolves by proximity (unchanged),
+    /// and a qualified reference in an import-bearing file is still an edge (the other test).
+    #[test]
+    fn the_same_bare_name_without_the_import_still_resolves() {
+        let src = "module test.claim.a\nfn g() -> Int { Present }\n";
+        let t = homonym_edges(src);
+        assert!(t.contains(&"test.fixture.planted".to_string()), "{t:?}");
     }
 }
 

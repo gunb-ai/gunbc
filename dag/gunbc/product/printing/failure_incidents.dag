@@ -1,0 +1,42 @@
+module product.printing.failure_incidents
+import std.types {String,List}
+
+// Original image identities and content hashes survive local scratch-directory cleanup.
+// Links require the original Drive sharing permissions; hashes identify downloaded HEIC bytes.
+// Physical inspection and telemetry completion are different evidence, neither substitutes for the other.
+type PhotoEvidence {filename:String,url:String,sha256:String}
+type CauseStanding = UnconfirmedCause | ConfirmedCause
+type PrintFailureIncident {
+ id:String,printer:String,project_sha256:String,records_path:String,
+ photos:List<PhotoEvidence>,observations:List<String>,
+ cause_standing:CauseStanding,cause_assessment:String,followup:List<String>,
+}
+data rear_fan_upright_20261005:PrintFailureIncident=PrintFailureIncident {
+ id:"2026-10-05-printer-02-rear-and-upper-posts",
+ printer:"printer-02",
+ project_sha256:"6c7fbb7afd5e6c9aaecc252c693df416e0cd170e8523e667e3a2cd49d0c9a5d1",
+ records_path:"artifacts/printing/rear-posts-2026-10-05",
+ photos:[ PhotoEvidence {filename:"IMG_0165.HEIC",url:"https://drive.google.com/file/d/1WC462GQnwxrI1Dx3bCG-fa1UPvzOV1TR/view",sha256:"0644b9f4268acd551b6439836743faba53764921746fe865a051e83f88d8be18"},
+ PhotoEvidence {filename:"IMG_0166.HEIC",url:"https://drive.google.com/file/d/12V8l_FrQ9J0JmiDav2mSDdQiaVqFgPoN/view",sha256:"6e517e05871af17b3668718cd884dc5d2f2289f763ad30491d5b61e3aa6edd74"},
+ PhotoEvidence {filename:"IMG_0167.HEIC",url:"https://drive.google.com/file/d/1VzDauIyzPo5IqAioG3lEQWJChQcb8Ho6/view",sha256:"36a613da2be2ad929e6da4ec4fe9d32b7a356f47540c480cbd13bb00f6d5dcba"}],
+ observations:[
+  "Photographs show loose extruded filament and distorted thin fan-area members on the removed build plate.",
+  "Operator reports cage-like geometry became messy approximately 60 percent of the way up; onset not captured.",
+  "Archive places M140 at 152 x 42 x 168 mm and G140 at 152 x 15 x 152 mm, upright despite modeled flat export planes.",
+  "Start readback matched the intended project in RUNNING with error zero. The retained terminal-report.json later matches that same project in FINISH at 100 percent with error zero, despite physical failure.",
+  "Posts and pins look recognizable in photos, but their physical acceptance is unrecorded. Printer-01 pieces were reported intact.",
+  "Retrospective toolpath and raw profile evidence is retained in artifacts/printing/process-observation-2026-10-05, keyed by the exact project SHA-256. It records commanded retraction and a workload change when the upper posts finish; it does not locate the photographed failure onset."
+ ],
+ cause_standing:UnconfirmedCause,
+ cause_assessment:"Upright thin-member instability, detachment, support failure, nozzle contact and cooling/oozing changes as other objects finish are plausible. Still images after removal cannot establish the first event. Commanded retraction is present, but that does not prove it was sufficient. Publisher acknowledgement loss is not evidence of a geometry failure or duplicate start.",
+ followup:[
+  "Reprint only failed M140 and G140 flat on separate plates after preparation checks.",
+  "Prevent packing from silently overriding modeled print planes.",
+  "Model generated supports separately from functional geometry and retain per-object deposited height.",
+  "Add build-stage stability qualification; orientation preservation alone is not a physics proof.",
+  "Keep telemetry completion separate from physical acceptance and attach subsequent inspection evidence."
+ ],
+}
+
+// Append independent incident rows to this roster as evidence accumulates.
+data incidents:List<PrintFailureIncident> =[rear_fan_upright_20261005]

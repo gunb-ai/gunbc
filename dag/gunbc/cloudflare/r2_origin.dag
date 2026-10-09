@@ -533,13 +533,24 @@ fn bucket_purpose_lifecycle_rules(purpose: BucketPurpose) -> List<R2LifecycleRul
 
 // THE CACHE'S READER AND ITS PUBLISHER HOLD DIFFERENT TOKENS. The read token is held by every
 // consumer that serves from the cache (hw boot, fleet, heal); the write token only by the canonical
-// publisher, and it is create-only by admission. A merge-group run holds neither. Neither is minted
-// yet: gunbc.cloudflare.r2_token_mint_run run_cache_object_read / run_cache_object_write mint them, so
-// both are Unminted naming those entries and every cache transfer refuses at this standing, typed and
-// before any network call, until a run's stored version is pinned here by a reviewed row change.
+// publisher, and it is create-only by admission. Both are minted by
+// gunbc.cloudflare.r2_token_mint_run run_cache_object_read / run_cache_object_write and pinned below
+// from those runs' receipts, so a cache transfer now reaches the credential step.
 data fabric_cache_blobs_read_secret_id: NonEmptyStr = "cloudflare-r2-cache-blobs-read-token"
 
 data fabric_cache_blobs_write_secret_id: NonEmptyStr = "cloudflare-r2-cache-blobs-write-token"
+
+// PINNED FROM THE MINT RUNS' RECEIPT ARTIFACTS (2026-10-07): read mint run 37687544709 and write mint
+// run 37691247413 each reported version_resource .../versions/1 and a token id, which is the S3
+// access key id. Re-derived by gunbc.cloudflare.r2_token_mint_run list_account_tokens_for_reconcile;
+// a rotation changes the id and the version together.
+data fabric_cache_blobs_read_secret_version: NonEmptyStr = "1"
+
+data fabric_cache_blobs_read_access_key_id: NonEmptyStr = "93e354504deedd9ea78d2346027bd912"
+
+data fabric_cache_blobs_write_secret_version: NonEmptyStr = "1"
+
+data fabric_cache_blobs_write_access_key_id: NonEmptyStr = "69d7b8f9a0748ee85dc0908bd84f76a6"
 
 fn fabric_cache_blobs_standing() -> R2OriginStanding {
   match allocated_bucket(purpose: FabricCacheBlobs {}) {
@@ -551,13 +562,19 @@ fn fabric_cache_blobs_standing() -> R2OriginStanding {
           jurisdiction: R2JurisdictionDefault,
           location_hint: row.location_hint,
           purpose: FabricCacheBlobs {},
-          read_credential: OriginCredentialUnminted {
-            mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint_run", decl_name: "run_cache_object_read"),
-            secret_id: fabric_cache_blobs_read_secret_id,
+          read_credential: OriginCredentialPinned {
+            access_key_id: fabric_cache_blobs_read_access_key_id,
+            token_value: secret_ref_pin_version(
+              ref: fleet_secret_ref(secret_id: fabric_cache_blobs_read_secret_id),
+              version: fabric_cache_blobs_read_secret_version,
+            ),
           },
-          write_credential: OriginCredentialUnminted {
-            mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint_run", decl_name: "run_cache_object_write"),
-            secret_id: fabric_cache_blobs_write_secret_id,
+          write_credential: OriginCredentialPinned {
+            access_key_id: fabric_cache_blobs_write_access_key_id,
+            token_value: secret_ref_pin_version(
+              ref: fleet_secret_ref(secret_id: fabric_cache_blobs_write_secret_id),
+              version: fabric_cache_blobs_write_secret_version,
+            ),
           },
         }
       }

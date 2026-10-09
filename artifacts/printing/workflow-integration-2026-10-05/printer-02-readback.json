@@ -1,0 +1,99 @@
+{
+  "project_sha256": "6d74494ed9e71612045ef64ee2dd47c0d6a7485a82ddc01e59086ef7c418ae49",
+  "objects": [
+    "CL1-1",
+    "CL11"
+  ],
+  "seconds": 14692,
+  "grams": 85.02,
+  "paths": {
+    "bounds": [
+      10.488,
+      39.626,
+      0.2,
+      170.955,
+      140.909,
+      24.0
+    ],
+    "arcs": 47631,
+    "extrusion": {
+      "Brim": 33.724589999999964,
+      "Support": 919.3926399999929,
+      "Outer wall": 3579.6635900000656,
+      "Inner wall": 11228.30170000027,
+      "Gap infill": 8.093209999999996,
+      "Bottom surface": 11.552780000000004,
+      "Internal solid infill": 4993.460459999739,
+      "Sparse infill": 4278.589150000499,
+      "Support interface": 930.8770800000029,
+      "Overhang wall": 79.32230999999986,
+      "Bridge": 677.3305500000065,
+      "Top surface": 750.1538199999924,
+      "Internal Bridge": 990.5930000000058
+    },
+    "supports": {
+      "CL1-1": 926.4087999999996,
+      "CL11": 923.8609200000018
+    }
+  },
+  "support_fraction": 0.06496492941696702,
+  "warnings": [
+    {
+      "msg": "bed_temperature_too_high_than_filament",
+      "level": "3",
+      "error_code": "1000C001"
+    },
+    {
+      "msg": "not_support_traditional_timelapse",
+      "level": "2",
+      "error_code": "10018003"
+    },
+    {
+      "msg": "not_support_traditional_timelapse",
+      "level": "3",
+      "error_code": "1000C003"
+    }
+  ],
+  "cad_binding": {
+    "cad_manifest_sha256": "a4b7c7eeddf5032ec97a304e7ad2866b60ddfea452f5dbcaa32e96215e6d7f62",
+    "steps": {
+      "CL1-1": "83f84eb8119090eabccb7d14a6d835fff71d98ad2d3d44c7f682b90c96db1efb",
+      "CL11": "80a25eed5efc3dac35768befbfc68190be4f28e6a5f9ebd25d7a28479bcdb941"
+    },
+    "placements": [
+      {
+        "id": "CL1-1",
+        "rotation_degrees": [
+          0,
+          0,
+          0
+        ],
+        "minimum_xy_um": [
+          6000,
+          10000
+        ]
+      },
+      {
+        "id": "CL11",
+        "rotation_degrees": [
+          0,
+          0,
+          0
+        ],
+        "minimum_xy_um": [
+          48000,
+          10000
+        ]
+      }
+    ],
+    "pack_program_sha256": "e072d1285d3f629e4cc4ac5e7262f23746ea315cd093d0160c9465620d63997b"
+  },
+  "source_project_sha256": "d39bd15aedea0bf298c9d295e9cef0e6c3443bb6b320971cd47299c30d09cb11",
+  "profile_sha256": {
+    "machine": "9dec6ea4e57bb3fcdff48c4b22a061459baebbce55d60cbedcb03afe68c6d5ab",
+    "filament": "1f6178d40844c64d089ae1d3fbbcfb0eede5f0cd6bb1eed36eae2c17be66b64a",
+    "process": "88e4e544332014d2382640abfb61fd42eb2961d4b9b60c3ecdc703797c6ef659"
+  },
+  "orca_archive_sha256": "e1a07275a25f176626c55a5df39e91bc4476d8c28ee4a3192ff758e29dd5c3ba",
+  "reader_program_sha256": "b5db9466a6cbbb3163e168edde69fa8c5364fffc90b87614c86ff7b2bc906349"
+}

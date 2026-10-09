@@ -1,0 +1,18 @@
+module gunbc.fleet.printer_selection
+
+import std.types { String, Bool }
+import std.content_hash { sha256_hex_digest }
+import extdeps.cloud.gcp.secret_manager { sm_version_id_is_number }
+import gunbc.fleet_asset_identity { PhysicalAssetIdentity }
+import gunbc.fleet_printer_access { printer_access_code_loci }
+
+type PrinterWorkflowSelection = PrinterSelected { printer: PhysicalAssetIdentity } | PrinterSelectionRefused
+fn select_printer(name: String) -> PrinterWorkflowSelection {
+  let matches=printer_access_code_loci |> filter(p => (p.printer as String)==name)
+  if length(matches)!=1 { PrinterSelectionRefused }
+  else { fold(matches,init:PrinterSelectionRefused,f:fn(_,p){PrinterSelected {printer:p.printer}}) }
+}
+fn print_inputs_admitted(version:String,digest:String,bed_clear:String) -> Bool {
+  sm_version_id_is_number(version:version) && bed_clear=="true" &&
+  match sha256_hex_digest(hex:digest) { Present {value:_}=>true Absent=>false }
+}

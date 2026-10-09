@@ -75,7 +75,12 @@ import extdeps.tools.e2fsprogs {
   decode_dumpe2fs_superblock, Ext2SuperblockRead, Ext2SuperblockUnreadable, ext2_superblock_magic,
 }
 import extdeps.systemd.journalctl
-import extdeps.systemd.systemd_run { systemd_run_property_argv, SystemdRunProperty }
+import extdeps.exec.command { argv_words }
+import extdeps.systemd.systemd_run {
+  SystemdRunProperty, SystemdRunCommandReady, SystemdRunCommandRefused,
+  systemd_run_transient_unit_command, systemd_run_transient_retained_unit_command, systemd_run_command_argument_words,
+  systemd_run_option_words_refused_cause_detail,
+}
 import gunbc.runner_microvm_lifecycle {
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
   ResourceReadback, ResourceAbsent, ResourcePresent, ResourceUnreadable,
@@ -1145,7 +1150,6 @@ fn launch_attempt(attempt: MicroVmAttempt, invocation_id: NonEmptyStr, plan: Att
   }
 }
 
-// Re-read time after staging. Preparing an image never extends the absolute lease.
 fn attempt_jailer_at_launch(receipt: AttemptStagingReceipt) -> ArgvCommand? {
   match receipt.lease_expires_unix {
     Absent => Present { value: receipt.jailer }
@@ -1162,23 +1166,29 @@ fn attempt_jailer_at_launch(receipt: AttemptStagingReceipt) -> ArgvCommand? {
   }
 }
 
+// The projection refuses a word the wire cannot carry; there is no started unit to observe, so the
+// refusal takes the same failure arm a failed start takes, carrying the refusal's reason.
 fn run_jailer_in_cell(attempt: MicroVmAttempt, invocation_id: NonEmptyStr, receipt: AttemptStagingReceipt) -> AttemptLaunch {
   let unit = runner_microvm_attempt_unit_name(attempt: attempt)
   match attempt_jailer_at_launch(receipt: receipt) {
     Absent => VmmStartFailed { unit: unit, detail: "lease expired during staging or launch clock is unreadable" }
-    Present { value: jailer } => {
-      let started = systemd.SystemdRun.RunTransientRetained(
+    Present { value: jailer } =>
+      match systemd_run_transient_retained_unit_command(
         unit: unit,
-        property_argv: systemd_run_property_argv(properties: concat([
+        properties: concat([
           runner_microvm_attempt_slice_property(attempt: attempt),
           runner_microvm_attempt_part_of_property(attempt: attempt),
           attempt_invocation_env_setting(invocation_id: invocation_id),
-        ], receipt.runtime_properties)),
-        command_argv: concat([jailer.program.invocation as String], jailer.arguments),
-      )
-      if started.success { VmmStarted { unit: unit, receipt: receipt } }
-      else { VmmStartFailed { unit: unit, detail: trim(s: started.stderr) } }
-    }
+        ], receipt.runtime_properties),
+        command_argv: argv_words(command: jailer),
+      ) {
+        SystemdRunCommandRefused { cause: why } => VmmStartFailed { unit: unit, detail: systemd_run_option_words_refused_cause_detail(cause: why) }
+        SystemdRunCommandReady { command: command } => {
+          let started = systemd.SystemdRun.RunTransient(command_argv: systemd_run_command_argument_words(command: command))
+          if started.success { VmmStarted { unit: unit, receipt: receipt } }
+          else { VmmStartFailed { unit: unit, detail: trim(s: started.stderr) } }
+        }
+      }
   }
 }
 
