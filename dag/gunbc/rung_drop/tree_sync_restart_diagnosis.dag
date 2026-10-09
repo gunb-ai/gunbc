@@ -1,0 +1,34 @@
+module gunbc.rung_drop.tree_sync_restart_diagnosis
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop {
+  RungDrop,
+  Standing,
+  TypedDeclaration,
+  GuaranteeRung,
+  Mitigatable,
+  OutsideTheLadder,
+  RungDropReason,
+  DeletedWithoutReplacement,
+}
+
+data tree_sync_restart_diagnosis: RungDrop = RungDrop {
+  identity: "tree_sync_restart_diagnosis" as NonEmptyStr,
+
+  subject: "tree_sync_restart_step_with_diagnosis synchronous restart failure diagnosis",
+
+  declared: "2026-10-09",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: Mitigatable,
+    temporary: OutsideTheLadder,
+    reason: DeletedWithoutReplacement,
+    population: [
+      "the synchronous restart step on srv1 (tree_sync_unit_name = gunbc-tree-sync.service)",
+      "the synchronous restart step on srv2 (tree_sync_unit_name = gunbc-tree-sync.service)",
+    ],
+    restoration_trigger: "a typed composite operation or realization-layer failure handler invokes systemctl_status_read on restart failure and surfaces the UnitStatusCapture as structured data; the new operation replaces tree_sync_restart_step_with_diagnosis and the drop is retired by the operator who ships it",
+  },
+}

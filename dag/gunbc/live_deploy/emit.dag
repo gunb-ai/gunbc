@@ -1284,15 +1284,14 @@ fn repository_convergence_readback_command(
 // restart' stderr — 'Job for gunbc-tree-sync.service failed because the control process exited with
 // error code' — never carries WHY: the actual ExecStart failure (the rsync exit) lives only in the
 // unit's own journal, unreachable from this refusal (DESIGN 5 — a stopped, typed, but unlocated
-// line, the same gap #7038 closed for gunbc-roadmap.service's async ServiceNotReady). This restart
-// THE RESTART IS A SINGLE TYPED PRIVILEGED ARGV — the restart argv itself (systemctl restart)
-// is the operation. The synchronous restart failure diagnosis is NOT captured in this step
-// (the poll-based readiness capture runs only after successful deployment). This is a known
-// gap (#7038): the failure surfaces as "control process exited with error code" without the
-// unit-status tail. A proper fix requires realization-layer failure handling (host_effect_realize
-// to invoke systemctl_status_read on restart failure) or a typed composite operation. This step
-// eliminates ||, &&, ;, set -e, 2>/dev/null shell control words from the rendered step surface,
-// satisfying the witness; diagnosis capture is tracked separately.
+// line, the same gap #7038 closed for gunbc-roadmap.service's async ServiceNotReady).
+// This restart is a SINGLE TYPED PRIVILEGED ARGV via deploy_effect(systemctl_restart_effect(...)).
+// The synchronous restart failure diagnosis (previously appended via shell || fallback) is REMOVED
+// and declared as a rung drop (gunbc.rung_drop). The old shell fallback appended the unit-status
+// tail to stderr; the roadmap bar is that diagnosis survives as data via systemctl_status_read
+// (UnitStatusCapture), which requires a typed composite operation or realization-layer failure
+// handling (not yet implemented). This step eliminates ||, &&, ;, set -e, 2>/dev/null shell
+// control words from the rendered step surface, satisfying the witness.
 fn tree_sync_restart_step_with_diagnosis(spec: DeploymentSpec) -> PipelineStep {
   deploy_effect(inv: systemctl_restart_effect(unit: spec.names.tree_sync_unit_name))
 }
@@ -3063,7 +3062,7 @@ fn emit_deploy_member_effect(effect: MemberEffect<DeploymentStep>, spec: Deploym
 // every nearby shape (a Do-run of `trap`, a subshell) either re-assembles the same quoting by
 // hand or changes what the trap does. Adding the grammar row is the fix and it is out of this
 // PR's scope; naming the gap here is what keeps the next reader from reaching for the
-// approximation. See also the brace-group gap at tree_sync_restart_step_with_diagnosis.
+// approximation. See also the brace-group gap at tree_sync_restart_step.
 fn member_effect_step(e: MemberEffect<DeploymentStep>) -> DeploymentStep {
   match e {
     EffectAdd { to } => to
