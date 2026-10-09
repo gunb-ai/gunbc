@@ -64,7 +64,7 @@ import v2.std.compilers.target_model {
   concrete_syntax_token_to_node,
 }
 import v2.std.text { String }
-import v2.std.integer { integer_int_to_decimal_string }
+import std.integer { int_to_decimal_string }
 
 type FormalTerminal {
   identity: Symbol
@@ -2607,7 +2607,7 @@ fn grammar_infix_row_node(row: InfixOperatorRow) -> Node {
       grammar_named_edge(name: ^grammar_terminal_token_class_node_projection, target: grammar_atom(identity: row.token_class)),
       grammar_named_edge(
         name: ^grammar_infix_binding_power_node_projection,
-        target: grammar_atom(identity: symbol_intern_lexeme(lexeme: integer_int_to_decimal_string(value: row.binding_power)))
+        target: grammar_atom(identity: symbol_intern_lexeme(lexeme: int_to_decimal_string(value: row.binding_power)))
       ),
       grammar_named_edge(
         name: ^grammar_infix_associativity_node_projection,
