@@ -312,7 +312,7 @@ fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<Stri
   }
   match n.inferred {
     Present { value: TypeVariable { id: tv } } =>
-      if type_var_in_fn_generic_scope(id: tv, generic_param_names: emit_info.fn_generic_param_names) { to_pascal(name: tv) } else { "_" }
+      if type_var_in_fn_generic_scope(id: tv, generic_param_names: emit_info.fn_generic_param_names) { rust_carrier_optional_wrap(n: n, rendered: to_pascal(name: tv)) } else { "_" }
     _ =>
       match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
         Present { value: applied } =>
@@ -1445,7 +1445,7 @@ fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shar
   } else {
     match n.inferred {
       Present { value: TypeVariable { id: tv } } =>
-        if type_var_in_fn_generic_scope(id: tv, generic_param_names: generic_param_names) { to_pascal(name: tv) } else { "_" }
+        if type_var_in_fn_generic_scope(id: tv, generic_param_names: generic_param_names) { rust_carrier_optional_wrap(n: n, rendered: to_pascal(name: tv)) } else { "_" }
       _ =>
         match rust_render_checkpoint_scalar_bare(n: n, source_indices: source_indices, shared_types: shared_types, env: env) {
           Present { value: scalar } => scalar
@@ -1687,7 +1687,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
         Present { value: exact } => rust_carrier_optional_wrap(n: n, rendered: exact)
         Absent =>
       if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
-        to_pascal(name: name)
+        rust_carrier_optional_wrap(n: n, rendered: to_pascal(name: name))
       } else if bare_native_alias != none {
         rust_carrier_optional_wrap(n: n, rendered: bare_native_alias.value)
       } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && is_host_text_carrier_type(n: n, source_indices: source_indices) {
@@ -1759,6 +1759,12 @@ fn rust_fn_sig_preserves_authored_alias_leaf(name: String, decision: TypeRealiza
   }
 }
 
+// A TYPE PARAMETER CARRIES ITS OWN CARDINALITY, AND EVERY ARM THAT SPELLS ONE WRAPS IT HERE. `K?` on a
+// declared parameter is a leaf whose return_cardinality is CardOptional. The four arms that spell a
+// type parameter -- the declared-generic leaf in render_rust_decl_type and in
+// render_rust_alias_rhs_type, and the TypeVariable arms of render_rust_type and render_rust_applied_type_arg
+// -- returned the bare name, so `get: K?` in a generic record emitted `K`: an absent value had no
+// representation (gunbc.recurring_failure_mode optional_type_parameter_emitted_without_its_cardinality).
 fn rust_carrier_optional_wrap(n: Node, rendered: String) -> String {
   let is_optional = n.return_cardinality == CardOptional
   if is_optional {
@@ -1932,7 +1938,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
   }
   let name = authored_name_at(source_indices: source_indices, node: n)
   if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
-    to_pascal(name: name)
+    rust_carrier_optional_wrap(n: n, rendered: to_pascal(name: name))
   } else if n.connective == NoConnective && n.children |> count == 0 {
     match rust_exact_reference_spelling(n: n, source_indices: source_indices, env: scope.type_env) {
       Present { value: exact } => exact
