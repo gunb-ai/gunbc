@@ -1,0 +1,38 @@
+module test.claim.workspace_workflow_dispatch_witness_test
+
+import std.types { Bool }
+import gunbc.fleet_converge_workflow {
+  WorkspaceAllocationPlan, WorkspaceImageBuild,
+  fleet_converge_mode_scope, fleet_converge_mode_job_id, fleet_converge_shared_job_id,
+  fleet_converge_mode_release_product, CompilerPairOnly,
+  fleet_converge_mode_fleet_ssh_key_demand, FleetSshKeyNotConsumed,
+}
+import gunbc.fleet_converge_scope { WorkspaceAllocationOnly }
+import gunbc.ci_spec { gunbc_ci_workspace_image_build_invoke }
+import gunbc.workspace_image_delivery { workspace_image_artifact_paths }
+
+test fn workspace_allocation_uses_its_existing_scope() -> Bool {
+  (match fleet_converge_mode_scope(mode: WorkspaceAllocationPlan) {
+    Present { value: WorkspaceAllocationOnly } => true
+    Present { value: _ } => false
+    Absent => false
+  }) && all([WorkspaceImageBuild], mode =>
+    match fleet_converge_mode_scope(mode: mode) { Absent => true Present { value: _ } => false })
+}
+
+test fn workspace_operations_use_the_serialized_host_job_without_fleet_credentials() -> Bool {
+  all([WorkspaceAllocationPlan, WorkspaceImageBuild], mode =>
+    fleet_converge_mode_job_id(mode: mode) == fleet_converge_shared_job_id
+      && fleet_converge_mode_release_product(mode: mode) == CompilerPairOnly
+      && fleet_converge_mode_fleet_ssh_key_demand(mode: mode) == FleetSshKeyNotConsumed)
+}
+
+test fn workspace_image_build_preserves_ownership_and_archives_only_the_product() -> Bool {
+  let build = gunbc_ci_workspace_image_build_invoke()
+  let paths = workspace_image_artifact_paths()
+  string_contains(s: build, pattern: "fakeroot -- ")
+    && string_contains(s: build, pattern: "workspace_image_build_wet")
+    && string_contains(s: paths, pattern: "/workspace.ext4")
+    && !string_contains(s: paths, pattern: "workspace-tree")
+    && !string_contains(s: paths, pattern: "squashfs")
+}

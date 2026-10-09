@@ -1,5 +1,7 @@
 module gunbc.workspace_commissioning_dispatch
 
+import gunbc.workspace_allocation_dispatch { workspace_allocation_prepare_cli, workspace_allocation_readback_cli }
+
 import std.types { String, NonEmptyStr, Bool, CommitSha }
 import std.decl_ref { decl_ref }
 import std.algebra { trim }
@@ -199,3 +201,7 @@ fn workspace_dispatch_offer_cli() -> CliWireResponse {
     }
   } }
 }
+
+// Reconcile only already-admitted owner intent; these entries cannot create or release a request.
+fn workspace_dispatch_allocation_plan_cli() -> CliWireResponse { workspace_allocation_prepare_cli() }
+fn workspace_dispatch_allocation_readback_cli() -> CliWireResponse { workspace_allocation_readback_cli() }

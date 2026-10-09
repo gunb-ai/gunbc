@@ -5,5 +5,5 @@ import std.types { NonEmptyStr }
 // The pinned workspace guest image the commissioning fleet path installs and admits. It is the
 // output digest of the pinned-base workspace image builder (gunbc.workspace_guest_image).
 fn workspace_demo_image_identity() -> NonEmptyStr {
-  "97859b4f8e206e3398f02dc4070fad14cb5b7a7ec29e305a8895405750044305"
+  "a64c13977ed6e493e75a6edc3a8b42eb713b1d2de2c3e43759b33550e31af553"
 }

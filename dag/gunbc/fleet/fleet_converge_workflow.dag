@@ -1,5 +1,8 @@
 module gunbc.fleet_converge_workflow
 
+import gunbc.ci_spec { gunbc_ci_workspace_allocation_plan_invoke, gunbc_ci_workspace_image_build_invoke }
+import gunbc.workspace_image_delivery { workspace_image_artifact_name, workspace_image_staging_root, workspace_image_artifact_paths }
+
 import gunbc.fleet_printer_access {printer_access_code_loci}
 import gunbc.auth.approval_keyring_pins {approval_submission_mac_key_path_env,approval_capability_mac_key_path_env,approval_store_receipt_mac_key_path_env}
 import gunbc.auth.approval_decision_store {approval_mac_key_path}
@@ -8,7 +11,7 @@ import gunbc.auth.approval_store_receipt {approval_store_receipt_mac_key_path}
 import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
 
 import extdeps.github.expressions { Expression, ContextAccess, Github, StringLiteral, Equals, LogicalOr, LogicalAnd, interpolate }
-import gunbc.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironment, FabricAllocationStoreOnly, WorkspaceSlotCommissioningOnly, LiveDeploy }
+import gunbc.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironment, FabricAllocationStoreOnly, WorkspaceSlotCommissioningOnly, WorkspaceAllocationOnly, LiveDeploy }
 import gunbc.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
 
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
@@ -94,7 +97,7 @@ import gunbc.fleet_workflow_steps {
   ci_release_bins_outcome_step_for,
   ci_release_build_step_for,
   ci_release_bins_pack_step_for,
-  ci_fleet_wif_auth_step,
+  ci_fleet_wif_auth_step, ci_fleet_wif_auth_step_when,
   ci_fleet_key_agent_step,
   ci_fleet_key_agent_step_when,
   ci_fleet_key_agent_cleanup_step,
@@ -308,6 +311,8 @@ type FleetConvergeWorkflowMode
   | LaunchEnvironmentPlan
   | AllocationStorePlan
   | WorkspaceCommissioningPlan
+  | WorkspaceAllocationPlan
+  | WorkspaceImageBuild
   | FleetApply
   | OrgActionsObserve
   | AppControlPlaneObserve
@@ -387,6 +392,8 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     LaunchEnvironmentPlan => "launch_environment_plan"
     AllocationStorePlan => "allocation_store_plan"
     WorkspaceCommissioningPlan => "workspace_commissioning_plan"
+    WorkspaceAllocationPlan => "workspace_allocation_plan"
+    WorkspaceImageBuild => "workspace_image_build"
     FleetApply => "apply"
     OrgActionsObserve => "org_actions_observe"
     AppControlPlaneObserve => "app_control_plane_observe"
@@ -483,7 +490,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, SparkV41CheckpointMaterialize, SparkV41RowStoreEncode, SparkV41RowStoreReadback, SparkV41EngramDifferential, SparkRuntimeImageProduce, SparkRuntimeImageDistribute, SparkArmGroupLoad, SparkArmCheckpointMaterialize, SparkArmGroupObserve, SparkArmGroupLaunchPlan, SparkArmGroupLaunch, SparkV41ServingLoad, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, ApprovalDeviceEnrolmentCodeIssue, MtCollins1Boot, MtCollins1FanObserve, MtCollins1UiBundleObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, FabricWriterIdentityObserve, PairServingD0, MicrovmRunnerGroupEnsure, GcpIamConverge, NamecheapObserve, PrinterWorkflow]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, SparkV41CheckpointMaterialize, SparkV41RowStoreEncode, SparkV41RowStoreReadback, SparkV41EngramDifferential, SparkRuntimeImageProduce, SparkRuntimeImageDistribute, SparkArmGroupLoad, SparkArmCheckpointMaterialize, SparkArmGroupObserve, SparkArmGroupLaunchPlan, SparkArmGroupLaunch, SparkV41ServingLoad, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, ApprovalDeviceEnrolmentCodeIssue, MtCollins1Boot, MtCollins1FanObserve, MtCollins1UiBundleObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, FabricWriterIdentityObserve, PairServingD0, MicrovmRunnerGroupEnsure, GcpIamConverge, NamecheapObserve, PrinterWorkflow]
 // WHICH RELEASE PRODUCT A MODE'S JOB RUNS, NAMED PER MODE WITH NO WILDCARD (as the scope and fleet-key
 // matches above name theirs). A mode whose steps run only gunbc and claim_executor declares the
 // compiler pair (gunbc.fleet_release_bins_key compiler_pair_release_product): its build job then
@@ -498,6 +505,8 @@ fn fleet_converge_mode_release_product(mode: FleetConvergeWorkflowMode) -> Fleet
     LaunchEnvironmentPlan => SixteenBinaryPack
     AllocationStorePlan => SixteenBinaryPack
     WorkspaceCommissioningPlan => SixteenBinaryPack
+    WorkspaceAllocationPlan => CompilerPairOnly
+    WorkspaceImageBuild => CompilerPairOnly
     FleetApply => SixteenBinaryPack
     OrgActionsObserve => SixteenBinaryPack
     AppControlPlaneObserve => SixteenBinaryPack
@@ -609,6 +618,8 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     LaunchEnvironmentPlan => Present { value: LaunchEnvironment }
     AllocationStorePlan => Present { value: FabricAllocationStoreOnly }
     WorkspaceCommissioningPlan => Present { value: WorkspaceSlotCommissioningOnly }
+    WorkspaceAllocationPlan => Present { value: WorkspaceAllocationOnly }
+    WorkspaceImageBuild => none
     FleetApply => none
     OrgActionsObserve => none
     AppControlPlaneObserve => none
@@ -772,6 +783,8 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     LaunchEnvironmentPlan => FleetSshKeyConsumed
     AllocationStorePlan => FleetSshKeyConsumed
     WorkspaceCommissioningPlan => FleetSshKeyConsumed
+    WorkspaceAllocationPlan => FleetSshKeyNotConsumed
+    WorkspaceImageBuild => FleetSshKeyNotConsumed
     FleetApply => FleetSshKeyConsumed
     AppControlPlaneObserve => FleetSshKeyConsumed
     MicrovmHostConverge => FleetSshKeyConsumed
@@ -1231,7 +1244,7 @@ data fleet_converge_launch_environment_plan_step_if: String = fleet_converge_mod
 data fleet_converge_allocation_store_plan_step_if: String = fleet_converge_mode_step_if(mode: AllocationStorePlan)
 data fleet_converge_workspace_commissioning_plan_step_if: String = fleet_converge_mode_step_if(mode: WorkspaceCommissioningPlan)
 
-data fleet_converge_any_plan_step_if: String = fleet_converge_any_mode_step_if(modes: [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan])
+data fleet_converge_any_plan_step_if: String = fleet_converge_any_mode_step_if(modes: [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan])
 data fleet_converge_apply_step_if: String = fleet_converge_mode_step_if(mode: FleetApply)
 data fleet_converge_org_actions_step_if: String = fleet_converge_mode_step_if(mode: OrgActionsObserve)
 data fleet_converge_org_runner_roster_step_if: String = fleet_converge_mode_step_if(mode: OrgRunnerRosterObserve)
@@ -1435,6 +1448,8 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     LaunchEnvironmentPlan => ExecutorDomain
     AllocationStorePlan => ExecutorDomain
     WorkspaceCommissioningPlan => ExecutorDomain
+    WorkspaceAllocationPlan => ExecutorDomain
+    WorkspaceImageBuild => ExecutorDomain
     FleetApply => ExecutorDomain
     OrgActionsObserve => ExecutorDomain
     AppControlPlaneObserve => ExecutorDomain
@@ -3633,6 +3648,9 @@ fn fleet_converge_microvm_controller_install_job() -> Job {
       [
         ci_release_bins_download_step(),
         ci_release_bins_unpack_verify_step(),
+        fleet_converge_receipt_download_step(id: "workspace_image_download", name: "Download the workspace image selected for installation",
+          artifact: workspace_image_artifact_name, path: workspace_image_staging_root,
+          run_id_expression: "${{ inputs.workspace_image_run_id }}"),
         fleet_converge_microvm_controller_install_step(),
       ]
     ),
@@ -4426,7 +4444,7 @@ fn fleet_converge_credential_prelude_steps() -> List<Step> {
     ci_release_bins_download_step(),
     ci_release_bins_unpack_verify_step_for(pair_modes: fleet_converge_compiler_pair_mode_wires()),
     fleet_converge_pair_serving_d0_admit_step(),
-    ci_fleet_wif_auth_step(),
+    ci_fleet_wif_auth_step_when(if_condition: Present { value: concat("!(", concat(fleet_converge_any_mode_step_if(modes: [WorkspaceImageBuild, WorkspaceAllocationPlan]), ")")) }),
     ci_fleet_key_agent_step_when(if_condition: Present { value: fleet_converge_fleet_ssh_key_step_if }),
   ]
 }
@@ -4447,6 +4465,9 @@ fn fleet_converge_job() -> Job {
         fleet_converge_launch_environment_plan_step(),
         fleet_converge_allocation_store_plan_step(),
         fleet_converge_workspace_commissioning_plan_step(),
+        fleet_converge_workspace_operation_step(mode: WorkspaceAllocationPlan, run: gunbc_ci_workspace_allocation_plan_invoke()),
+        fleet_converge_workspace_operation_step(mode: WorkspaceImageBuild, run: gunbc_ci_workspace_image_build_invoke()),
+        fleet_converge_workspace_image_upload_step(),
         fleet_converge_plan_upload_step(),
         fleet_converge_plan_download_step(),
         fleet_converge_apply_step(),
@@ -4698,6 +4719,8 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     LaunchEnvironmentPlan => fleet_converge_shared_job_id
     AllocationStorePlan => fleet_converge_shared_job_id
     WorkspaceCommissioningPlan => fleet_converge_shared_job_id
+    WorkspaceAllocationPlan => fleet_converge_shared_job_id
+    WorkspaceImageBuild => fleet_converge_shared_job_id
     FleetApply => fleet_converge_shared_job_id
     OrgActionsObserve => fleet_converge_shared_job_id
     AppControlPlaneObserve => fleet_converge_shared_job_id
@@ -4976,6 +4999,8 @@ fn fleet_converge_gcp_iam_converge_job() -> Job {
 // THE DISPATCH INPUTS, AS THEIR OWN ROW: the workflow consumes them below, and a witness over
 // what the operator can name reads this list rather than building every job to reach it.
 data fleet_converge_dispatch_inputs: List<DispatchInput> = [
+  DispatchInput { name: "workspace_image_run_id", description: Present { value: "Image build run to download for controller install; installed bytes must match the reviewed image pin" }, required: false, default: none, type: InputString },
+
   DispatchInput {
     name: "host",
     description: Present { value: "Executor fleet host (runner pinned here; plan mode observes this host)" },
@@ -5344,5 +5369,34 @@ fn fleet_converge_printer_job() -> Job {
       contents: Present { value: PermRead }, pull_requests: none, issues: none,
       actions: Present { value: PermRead }, id_token: Present { value: PermWrite },
     } },
+  }
+}
+
+// Image production and allocation preparation share the bounded host job; allocation uses reviewed apply.
+fn fleet_converge_workspace_operation_step(mode: FleetConvergeWorkflowMode, run: String) -> Step {
+  RunStep {
+    name: Present { value: concat("Workspace: ", fleet_converge_workflow_mode_wire(mode: mode)) },
+    id: Present { value: fleet_converge_workflow_mode_wire(mode: mode) }, run: run, shell: none,
+    env: Present { value: [
+      kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ inputs.host }}")),
+      kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ inputs.expected_revision }}")),
+    ] },
+    working_directory: none, if_condition: Present { value: fleet_converge_mode_step_if(mode: mode) },
+    continue_on_error: none, timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_workspace_image_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Archive the exact workspace image build and digest receipt" },
+    id: Present { value: "workspace_image_upload" }, uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: workspace_image_artifact_name)),
+      kv(key: "path", value: yaml_string(s: workspace_image_artifact_paths())),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 90)),
+      kv(key: "compression-level", value: yaml_int(n: 6)),
+    ] }, env: none, if_condition: Present { value: fleet_converge_mode_step_if(mode: WorkspaceImageBuild) },
+    continue_on_error: none, timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
 }

@@ -1,5 +1,10 @@
 module gunbc.live_deploy.emit
 
+import gunbc.workspace_artifact_policy { workspace_demo_image_identity }
+import gunbc.workspace_image_delivery { workspace_image_staging_root }
+import gunbc.workspace_guest_image { workspace_image_path, workspace_installed_image_root }
+import gunbc.microvm_guest_artifacts { runner_guest_kernel_artifact, runner_guest_base_artifact_path, ArtifactDigestPinned, ArtifactDigestUnpinned, ArtifactDigestNotPinnable }
+
 import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_grant_path, workspace_dispatch_grant_content }
 
 import gunbc.live_deploy.release_environment { installed_release_environment, installed_release_unit }
@@ -2245,7 +2250,7 @@ fn microvm_controller_install_intent(revision: ReleaseRevisionBinding) -> Pipeli
             base_root: microvm_controller_root,
             revision: revision,
           ),
-          microvm_controller_vmm_install_steps(revision: revision),
+          microvm_controller_vmm_install_steps(revision: revision) + workspace_image_install_steps(revision: revision),
         ),
       ),
       concat(
@@ -3563,4 +3568,27 @@ fn workspace_dispatch_grant_steps(revision: ReleaseRevisionBinding) -> List<Pipe
     deploy_raw(command: rename_no_target_directory_command(source: pending, dest: workspace_dispatch_grant_path)),
     deploy_raw(command: installed_visudo_policy_check_command(path: workspace_dispatch_grant_path)),
   ]
+}
+
+// Copy only the named files, never extract an archive as root. Verify the administrator-owned
+// destination after copying: a transport/staging race cannot turn different bytes into admission.
+fn workspace_image_install_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  let dir = workspace_installed_image_root(release_dir: microvm_controller_release_dir(revision: revision), identity: workspace_demo_image_identity())
+  let kernel = concat(concat(dir, "/"), runner_guest_kernel_artifact.filename as String)
+  let rootfs = concat(dir, "/workspace.ext4")
+  match runner_guest_kernel_artifact.integrity {
+    ArtifactDigestPinned { digest, provenance: _ } => [
+      deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: dir)),
+      deploy_raw(command: install_file_owned_command(mode: install_file_shared_mode,
+        owner: microvm_controller_owner, group: microvm_controller_owner,
+        source: runner_guest_base_artifact_path(root: workspace_image_staging_root, artifact: runner_guest_kernel_artifact), dest: kernel)),
+      deploy_raw(command: digest_shell_verify_line(digest: digest, file_path: kernel as NonEmptyStr)),
+      deploy_raw(command: install_file_owned_command(mode: install_file_shared_mode,
+        owner: microvm_controller_owner, group: microvm_controller_owner,
+        source: workspace_image_path(root: workspace_image_staging_root), dest: rootfs)),
+      deploy_raw(command: digest_shell_verify_line(digest: sha256_digest(hex: workspace_demo_image_identity()), file_path: rootfs as NonEmptyStr)),
+    ]
+    ArtifactDigestUnpinned { cause: _ } => [deploy_raw(command: "exit 1")]
+    ArtifactDigestNotPinnable { cause: _ } => [deploy_raw(command: "exit 1")]
+  }
 }

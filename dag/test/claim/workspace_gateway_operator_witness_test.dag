@@ -1,0 +1,12 @@
+module test.claim.workspace_gateway_operator_witness_test
+
+import std.types { Bool }
+import std.process { ExitSuccess, ExitFailure }
+import gunbc.workspace_gateway_operator { workspace_gateway_refresh_operator_wet }
+
+test fn gateway_refresh_refuses_unbounded_or_noncanonical_durations_before_observation() -> Bool {
+  all(["", "0", "-1", "3601", "01", "forever"], duration => match workspace_gateway_refresh_operator_wet(seconds: duration) {
+    ExitFailure { code: _, reason } => starts_with(s: reason, prefix: "GatewayRefreshRefused:")
+    ExitSuccess => false
+  })
+}

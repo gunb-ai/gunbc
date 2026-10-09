@@ -14,7 +14,7 @@ fn workspace_dispatch_operation(release_dir: NonEmptyStr, function: NonEmptyStr)
 }
 
 data workspace_dispatch_grant_path: String = "/etc/sudoers.d/gunbc-workspace-commissioning"
-data workspace_dispatch_functions: List<NonEmptyStr> = ["workspace_dispatch_plan_cli", "workspace_dispatch_stage_cli", "workspace_dispatch_complete_cli", "workspace_dispatch_offer_cli"]
+data workspace_dispatch_functions: List<NonEmptyStr> = ["workspace_dispatch_plan_cli", "workspace_dispatch_stage_cli", "workspace_dispatch_complete_cli", "workspace_dispatch_offer_cli", "workspace_dispatch_allocation_plan_cli", "workspace_dispatch_allocation_readback_cli"]
 
 fn workspace_dispatch_grant_content(release_dir: NonEmptyStr) -> String {
   join(flat_map([fleet_generation_writer(), fleet_posix_operator_user.name], grantee =>

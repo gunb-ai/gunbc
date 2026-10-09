@@ -1,5 +1,8 @@
 module gunbc.live_deploy.apply
 
+import gunbc.workspace_artifact_policy { workspace_demo_image_identity }
+import gunbc.workspace_guest_image { workspace_installed_image, WorkspaceImageVerified, WorkspaceImageRefused }
+
 import gunbc.workspace_commissioning_executor_input { workspace_executor_installed_adapter_matches }
 import gunbc.workspace_commissioning_executor_unit { workspace_executor_unit_instance_name }
 import gunbc.runner_microvm_slot_unit { microvm_controller_requires_ci_reservation_unit }
@@ -1052,7 +1055,10 @@ fn microvm_controller_install_readback_exit(candidate: CandidateRelease) -> Proc
           ExitSuccess => if workspace_executor_installed_adapter_matches(
             release_dir: approval_broker_release_dir(root: microvm_controller_root, revision: revision),
             slot: runner_slot_instance_name(slot: srv1_microvm_shakedown_slot())) {
-            ExitSuccess
+            match workspace_installed_image(release_dir: approval_broker_release_dir(root: microvm_controller_root, revision: revision), identity: workspace_demo_image_identity()) {
+              WorkspaceImageVerified { image: _ } => ExitSuccess
+              WorkspaceImageRefused { reason } => exit_failure(reason: concat("microvm_controller_install: ", reason))
+            }
           } else { exit_failure(reason: "microvm_controller_install: executor scripts or loaded unit failed exact readback") }
           refused => refused
         }

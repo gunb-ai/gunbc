@@ -1,0 +1,76 @@
+module gunbc.workspace_gateway_operator
+
+import std.types { String, NonEmptyStr, Int, Timestamp }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.measure { second }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import extdeps.languages.json.emit { serialize_json }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.auth.approval_capability { utc_instant_seconds_after }
+import gunbc.fabric_storage_binding { fabric_state_storage_binding }
+import gunbc.fleet_known_hosts_anchor { FleetOpenSshTrustPolicy, fleet_ssh_attempt_identity, materialize_fleet_known_hosts_anchor, fleet_openssh_trust_policy_of }
+import gunbc.workspace_operator_request { workspace_operator_on_candidate_host, workspace_operator_is_enrolled }
+import gunbc.runner_slot_allocation { workspace_execution_slot_identities }
+import gunbc.workspace_gateway_observer { workspace_refresh_gateway_wet }
+import gunbc.workspace_gateway_store { WorkspaceGatewayEvidenceRead, WorkspaceGatewayEvidenceUnavailable }
+import gunbc.workspace_gateway_admission { workspace_gateway_refusal, workspace_gateway_evidence_json }
+
+// A foreground operator command, bounded to one hour. It maintains the existing 60-second
+// forwarding observation while an operator exercises a workspace. It owns no lease or VM
+// effects, installs no service or timer, and the root controller never receives the agent.
+fn workspace_gateway_refresh_operator_wet(seconds: String) -> ProcessExit {
+  match parse_int(s: seconds) {
+    Absent => exit_failure(reason: "GatewayRefreshRefused: canonical duration in seconds required")
+    Present { value: duration } => if duration < 1 || duration > 3600 || to_string(duration) != seconds {
+      exit_failure(reason: "GatewayRefreshRefused: duration must be 1..3600 seconds")
+    } else if !workspace_operator_on_candidate_host() || !workspace_operator_is_enrolled() {
+      exit_failure(reason: "GatewayRefreshRefused: operator enrollment and workspace host required")
+    } else { match shell.Env.Get(name: "SSH_AUTH_SOCK").value {
+      Absent => exit_failure(reason: "GatewayRefreshRefused: select the operator SSH agent")
+      Present { value: agent } => if agent == "" { exit_failure(reason: "GatewayRefreshRefused: operator agent is empty") }
+      else { match clock_now_probed_at() {
+        Absent => exit_failure(reason: "GatewayRefreshRefused: clock unavailable")
+        Present { value: started } => match fleet_ssh_attempt_identity(raw: concat("workspace-gateway-", serialize_content_hash(hash: content_hash_of_value(value: started)))) {
+          Absent => exit_failure(reason: "GatewayRefreshRefused: attempt identity invalid")
+          Present { value: attempt } => match fleet_openssh_trust_policy_of(outcome: materialize_fleet_known_hosts_anchor(attempt: attempt)) {
+            Absent => exit_failure(reason: "GatewayRefreshRefused: enrolled host keys could not be materialized")
+            Present { value: trust } => workspace_gateway_refresh_until(started: started, duration: duration,
+              trust: trust, agent_socket: agent as NonEmptyStr)
+          }
+        }
+      } }
+    } }
+  }
+}
+
+fn workspace_gateway_refresh_until(started: Timestamp, duration: Int, trust: FleetOpenSshTrustPolicy,
+  agent_socket: NonEmptyStr) -> ProcessExit {
+  match clock_now_probed_at() {
+    Absent => exit_failure(reason: "GatewayRefreshRefused: clock unavailable")
+    Present { value: now } => {
+      let elapsed = utc_instant_seconds_after(later: now, earlier: started)
+      if elapsed < 0 { exit_failure(reason: "GatewayRefreshRefused: clock moved backwards") }
+      else if elapsed >= duration { ExitSuccess }
+      else {
+        let refusals = flat_map(workspace_execution_slot_identities(), slot =>
+          match workspace_refresh_gateway_wet(store: fabric_state_storage_binding(), slot: slot, trust: trust, agent_socket: agent_socket) {
+            WorkspaceGatewayEvidenceUnavailable { reason } => [reason as String]
+            WorkspaceGatewayEvidenceRead { evidence } => match workspace_gateway_refusal(slot: slot, evidence: evidence, now: evidence.observed_at) {
+              Present { value: reason } => [reason as String]
+              Absent => {
+                let receipt = Filesystem.Write(path: "target/workspace-gateway.json", content: concat(serialize_json(v: workspace_gateway_evidence_json(evidence: evidence)), "\n"))
+                if receipt.success { [] } else { [receipt.error] }
+              }
+            }
+          })
+        if count(refusals) != 0 { exit_failure(reason: join(refusals, "; ")) }
+        else if !sleep_delay_seconds_second_carrier_projection(duration: second(count: 15)) {
+          exit_failure(reason: "GatewayRefreshRefused: wait failed")
+        } else { workspace_gateway_refresh_until(started: started, duration: duration, trust: trust, agent_socket: agent_socket) }
+      }
+    }
+  }
+}
