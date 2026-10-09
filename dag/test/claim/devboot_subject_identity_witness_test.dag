@@ -20,8 +20,6 @@ import gunbc.live_deploy.spec {
   Dependency,
   ArtifactStep,
   DeploymentDependencyStep,
-  EnsuredHostDirectory,
-  EnsuredManagedHostDirectory,
   EnsuredPackage,
   ensured_subject_identity,
   deployment_ensured_steps,
@@ -31,8 +29,11 @@ import gunbc.live_deploy.spec {
   TeardownActs,
   TeardownOutsideOwnership,
   deployment_srv1_target,
+  deployment_srv1_host_directories,
+  deployment_directory_demands,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
 import extdeps.toolchain.types {
   TargetTriple,
   ToolchainRequirement,
@@ -715,67 +716,34 @@ test fn an_interrupted_build_is_not_settled() -> Bool {
   !execution_is_settled(execution: ExecutionInterrupted { detail: "producer died" })
 }
 
-// THE STORE ROOT IS ENSURED, AND THESE ROWS SAY WHAT THAT BUYS. It projects the gunbc.host_layout
-// authority rather than respelling the path; it reaches the apply order, so a deploy converges it;
-// and its teardown REFUSES, so no retract can remove it.\n\nThe third row is the one the incident
-// earned. Wiring this root into the OWNED roster made a lab twin's retract remove the production
-// artifact store -- caught by the twin disjointness claims, which is why those claims were left
-// exactly as they were. A hazard caught once by a claim about something else deserves a control of
-// its own, so the refusal is asserted directly here rather than left to depend on two tests that
-// are really about twins.
+// THE STORE ROOT IS A HOST DIRECTORY DEMAND, AND THESE ROWS SAY WHAT THAT BUYS. It projects the
+// gunbc.host_layout authority rather than respelling the path; it reaches the deployment's directory
+// list, so a deploy creates and reads it back through the owned-directory provider; and no retract can
+// remove it, because a retract tears down only owned steps and no step names it.\n\nThe third row is
+// the one the incident earned: wiring this root into the OWNED roster once made a lab twin's retract
+// remove the production artifact store, so the refusal is asserted directly here.
 
-fn devboot_ensured_step_projects_layout(acc: Int, step: DeploymentDependencyStep) -> Int {
-  match step.subject {
-    EnsuredHostDirectory { path, owner } =>
-      if (path as String) == (srv1_devboot_artifact_store_root as String) { acc + 1 } else { acc }
-    EnsuredPackage { package } => acc
-    EnsuredManagedHostDirectory { admission: _ } => acc
-  }
+fn devboot_root_count(ts: List<OwnedDirectoryTarget>) -> Int {
+  count(filter(xs: ts, predicate: t => (owned_directory_path(t: t) as String) == (srv1_devboot_artifact_store_root as String)))
 }
 
-test fn the_devboot_store_root_is_an_ensured_host_resource_projecting_the_layout_row() -> Bool {
-  fold(
-    deployment_ensured_steps(instance: srv1_live_dashboard_instance(), target: deployment_srv1_target()),
-    init: 0,
-    f: (acc, step) => devboot_ensured_step_projects_layout(acc: acc, step: step),
-  ) == 1
-}
-
-fn same_path(a: String, b: String) -> Bool { a == b }
-
-fn step_is_devboot_root(step: DeploymentStep) -> Bool {
-  match step {
-    Dependency { step: dep } =>
-      same_path(a: ensured_subject_identity(subject: dep.subject) as String, b: srv1_devboot_artifact_store_root as String)
-    ArtifactStep { step: art } => false
-  }
+test fn the_devboot_store_root_is_a_host_directory_demand_projecting_the_layout_row() -> Bool {
+  devboot_root_count(ts: deployment_srv1_host_directories()) == 1
 }
 
 test fn the_devboot_store_root_reaches_the_deploy_apply_path() -> Bool {
-  let spec = deployment_spec_srv1()
-  fold(spec.steps, init: false, f: (acc, step) => acc || step_is_devboot_root(step: step))
+  devboot_root_count(ts: deployment_directory_demands(spec: deployment_spec_srv1())) == 1
 }
 
-// THE CONTROL FOR THE HAZARD THAT WAS ACTUALLY HIT. A retract must not be able to remove the
-// artifact store, and this asserts it at the step level: the devboot root's teardown disposition
-// refuses with TeardownOutsideOwnership. If someone moves this root back into the owned roster,
-// TeardownActs replaces the refusal and this row goes red -- which is exactly the edit that, last
-// time, would have let a lab twin's retract delete production's artifacts.
+fn step_is_devboot_root(step: DeploymentStep) -> Bool {
+  match step {
+    ArtifactStep { step: art } => (art.path as String) == (srv1_devboot_artifact_store_root as String)
+    Dependency { step: _ } => false
+  }
+}
 
+// THE CONTROL FOR THE HAZARD THAT WAS ACTUALLY HIT: no owned step -- the only thing a retract removes --
+// names the artifact store. Moving the root back into the owned roster reds this row.
 test fn no_retract_can_remove_the_devboot_store_root() -> Bool {
-  let spec = deployment_spec_srv1()
-  fold(
-    spec.steps,
-    init: false,
-    f: (acc, step) =>
-      if step_is_devboot_root(step: step) {
-        match deployment_step_teardown_disposition(step: step) {
-          TeardownRefuses { cause } => true
-          TeardownActs => false
-        }
-      } else {
-        acc
-      },
-  )
+  !any(deployment_spec_srv1().steps, step => step_is_devboot_root(step: step))
 }
-
