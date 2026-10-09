@@ -71,7 +71,7 @@ import std.optional {
   optional_present
 }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_init, qualified_name_last_segment, qualified_name_to_dotted_string }
-import v2.std.node_query { BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child, is_wildcard_pattern }
+import v2.std.node_query { BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child, is_wildcard_pattern, member_edge_type_node }
 import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_member_formal }
@@ -6821,12 +6821,231 @@ fn infer_gather_child_context(parent: Node, frame: InferFrame, acc: InferGatherF
         match parent.kind {
           ComputationNode { behavior: Match } =>
             infer_match_arm_child_frame(parent: parent, frame: frame, acc: acc, edge: edge, resolved: resolved)
+          ComputationNode { behavior: Transform } =>
+            infer_application_actual_child_frame(parent: parent, frame: frame, acc: acc, edge: edge, resolved: resolved)
           ComputationNode { behavior: _ } => infer_frame_inherited(frame: frame)
           TypeNode { connective: _ } => infer_frame_inherited(frame: frame)
         }
       }
-    Authored { name: _ } => infer_frame_inherited(frame: frame)
+    Authored { name: _ } =>
+      match parent.kind {
+        ComputationNode { behavior: Transform } =>
+          infer_application_actual_child_frame(parent: parent, frame: frame, acc: acc, edge: edge, resolved: resolved)
+        ComputationNode { behavior: _ } => infer_frame_inherited(frame: frame)
+        TypeNode { connective: _ } => infer_frame_inherited(frame: frame)
+      }
     StructuralLabel { label: _ } => infer_frame_inherited(frame: frame)
+  }
+}
+
+// AN UNDECLARED LAMBDA ACTUAL IS TYPED FROM THE FORMAL OF THIS APPLICATION, after the actuals
+// that precede it in authored order have been judged (gather prefix of infer_judge_formal_args).
+// One judgment per actual: this prefix is the same fold the transform row will finish. A lambda
+// before the actual that instantiates T (f-before-o) sees no instance; T stays underived and is
+// never minted (infer_operand_declared_type_instantiated). Binder types share InferFrame.binder_types.
+fn infer_application_actual_child_frame(parent: Node, frame: InferFrame, acc: InferGatherFoldAcc, edge: Edge, resolved: ResolvedTree) -> InferFrame {
+  match parent.children {
+    Empty => infer_frame_inherited(frame: frame)
+    Cons { head: callee, tail: _ } =>
+      if callee.target == edge.target {
+        infer_frame_inherited(frame: frame)
+      } else {
+        match infer_application_lambda_expected_binder_types(application: parent, actual: edge.target, entries: acc.entries, resolved: resolved) {
+          Absent => infer_frame_inherited(frame: frame)
+          Present { value: rows } =>
+            InferFrame {
+              instances: frame.instances,
+              binder_types: infer_append_binder_types(xs: frame.binder_types, ys: rows),
+              entering: InferFrameEnteredPlain
+            }
+        }
+      }
+  }
+}
+
+fn infer_list_prefix<T>(xs: List<T>, n: Int) -> List<T> {
+  if n <= 0 {
+    Empty
+  } else {
+    match xs {
+      Empty => Empty
+      Cons { head: h, tail: t } => Cons { head: h, tail: infer_list_prefix(xs: t, n: n - 1) }
+    }
+  }
+}
+
+type InferActualIndexWalk {
+  idx: Int
+  found: Optional<Int>
+}
+
+fn infer_actual_authored_index(actuals: List<Edge>, actual: Node) -> Optional<Int> {
+  fold(actuals, init: InferActualIndexWalk { idx: 0, found: optional_absent() }, f: fn(acc, e) {
+    match acc.found {
+      Present { value: _ } => acc
+      Absent =>
+        if e.target == actual {
+          InferActualIndexWalk { idx: acc.idx, found: optional_present(value: acc.idx) }
+        } else {
+          InferActualIndexWalk { idx: acc.idx + 1, found: acc.found }
+        }
+    }
+  }).found
+}
+
+fn infer_application_lambda_expected_binder_types(
+  application: Node,
+  actual: Node,
+  entries: List<InferredFactsEntry>,
+  resolved: ResolvedTree
+) -> Optional<List<InferBinderType>> {
+  match infer_operator_arrow(operator: actual) {
+    Absent => optional_absent()
+    Present { value: lambda } =>
+      match infer_actual_authored_index(actuals: application_actual_edges(site: application), actual: actual) {
+        Absent => optional_absent()
+        Present { value: idx } =>
+          match infer_application_formal_args_prefix_instances(
+            application: application,
+            entries: entries,
+            resolved: resolved,
+            prefix_len: idx
+          ) {
+            Absent => optional_absent()
+            Present { value: instances } =>
+              match infer_application_formal_at(application: application, entries: entries, idx: idx) {
+                Absent => optional_absent()
+                Present { value: formal } =>
+                  match infer_operand_declared_type_instantiated(
+                    declared: infer_type_instantiated(t: formal.declared, instances: instances),
+                    instances: instances
+                  ) {
+                    Absent => optional_absent()
+                    Present { value: expected } =>
+                      if infer_declared_type_mentions_free_formal(declared: expected, instances: instances) {
+                        optional_absent()
+                      } else {
+                        infer_lambda_domain_binder_types(lambda: lambda, expected: expected)
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn infer_application_formal_at(application: Node, entries: List<InferredFactsEntry>, idx: Int) -> Optional<InhabitanceFormal> {
+  match infer_application_formals(node: application, entries: entries) {
+    FormalsUnresolved => optional_absent()
+    FormalsOrderRefused { reason: _ } => optional_absent()
+    FormalsInDeclaredOrder { formals: formals } =>
+      match infer_application_formal_args(node: application, formals: formals, entries: entries) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: pairs, diagnostics: _ } =>
+          match list_at_optional(xs: pairs, index: idx) {
+            Absent => optional_absent()
+            Present { value: pair } => optional_present(value: pair.formal)
+          }
+      }
+  }
+}
+
+fn infer_application_formal_args_prefix_instances(
+  application: Node,
+  entries: List<InferredFactsEntry>,
+  resolved: ResolvedTree,
+  prefix_len: Int
+) -> Optional<List<TypeVariableInstance>> {
+  match infer_application_formals(node: application, entries: entries) {
+    FormalsUnresolved => optional_absent()
+    FormalsOrderRefused { reason: _ } => optional_absent()
+    FormalsInDeclaredOrder { formals: formals } =>
+      match infer_application_formal_args(node: application, formals: formals, entries: entries) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: pairs, diagnostics: _ } =>
+          match infer_judge_formal_args(
+            position: position_direct_call_argument(),
+            site: JudgedAtApplication { application: application },
+            entries: entries,
+            declarations: resolved.resolved_declarations,
+            pairs: infer_list_prefix(xs: pairs, n: prefix_len),
+            type_params: infer_application_type_params(node: application, entries: entries)
+          ) {
+            Rejected { diagnostics: _ } => optional_absent()
+            Accepted { value: instances, diagnostics: _ } => optional_present(value: instances)
+          }
+      }
+  }
+}
+
+fn infer_lambda_domain_binder_types(lambda: Node, expected: Node) -> Optional<List<InferBinderType>> {
+  match list_at_optional(xs: node_positional_child_targets(node: lambda), index: 0) {
+    Absent => optional_absent()
+    Present { value: domain } =>
+      match infer_lambda_domain_binder_count(domain: domain) {
+        Absent => optional_absent()
+        Present { value: n } =>
+          if n == 0 {
+            optional_absent()
+          } else {
+            match infer_expected_domain_types(expected: expected) {
+              Absent => optional_absent()
+              Present { value: types } =>
+                if length(xs: types) == n {
+                  optional_present(
+                    value: list_map(xs: types, f: fn(t) {
+                      InferBinderType { site: lambda.occurrence_id, derived: t }
+                    })
+                  )
+                } else {
+                  optional_absent()
+                }
+            }
+          }
+      }
+  }
+}
+
+fn infer_lambda_domain_binder_count(domain: Node) -> Optional<Int> {
+  match domain.kind {
+    TypeNode { connective: Conj } =>
+      optional_present(
+        value: fold(domain.children, init: 0, f: fn(n, e) {
+          match e.label {
+            Authored { name: _ } => n + 1
+            Positional => n
+            StructuralLabel { label: _ } => n
+          }
+        })
+      )
+    TypeNode { connective: _ } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
+  }
+}
+
+fn infer_expected_domain_types(expected: Node) -> Optional<List<Node>> {
+  match infer_operator_arrow(operator: expected) {
+    Present { value: arrow } =>
+      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+        Absent => optional_absent()
+        Present { value: domain } => infer_expected_domain_types(expected: domain)
+      }
+    Absent =>
+      match expected.kind {
+        TypeNode { connective: Conj } =>
+          fold(expected.children, init: Present { value: Empty }, f: fn(acc, e) {
+            match acc {
+              Absent => Absent
+              Present { value: ts } =>
+                match member_edge_type_node(e: e) {
+                  Absent => Absent
+                  Present { value: t } => Present { value: list_snoc_item(xs: ts, item: t) }
+                }
+            }
+          })
+        TypeNode { connective: _ } => optional_present(value: [expected])
+        ComputationNode { behavior: _ } => optional_present(value: [expected])
+      }
   }
 }
 

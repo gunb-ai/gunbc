@@ -1,0 +1,53 @@
+module v2.test.claim.compiler.lambda_expected_formal
+
+import v2.test.claim.type_param_binder_frame { tpb_assemble }
+import v2.compiler.infer { infer }
+import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
+import v2.std.collection { List }
+import std.algebra { Cons, Empty }
+import std.types { Bool, String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: an undeclared lambda actual `fn(n) { n }` at an application, typed from the formal
+// of that application after preceding actuals have been judged (v2.compiler.infer
+// infer_application_actual_child_frame). T unfixed is not minted. Do not annotate the lambda
+// parameter (DESIGN §5).
+//
+// WITNESS SHAPE (DESIGN section 3): ONE real-path inhabitance — value-then-lambda assembles and
+// infers. The left-to-right red is a second assemble of a module whose lambda precedes the
+// instantiating actual (n stays underived). If that red later supplies its tree, this inhabitance
+// remains the one real path.
+
+data lef_value_then_lambda_src: String = "module p\n\nfn after(x: Int, f: fn(Int) -> Int) -> Int {\n  f(x)\n}\n\nfn k() -> Int {\n  after(1, fn(n) { n })\n}"
+
+data lef_lambda_then_value_src: String = "module p\n\nfn before(f: fn(Int) -> Int, x: Int) -> Int {\n  f(x)\n}\n\nfn k() -> Int {\n  before(fn(n) { n }, 1)\n}"
+
+fn lef_infer_terminal(src: String) -> Symbol {
+  match tpb_assemble(src: src) {
+    Rejected { diagnostics: r } => r.head.reason
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Rejected { diagnostics: r2 } => lef_last_reason(xs: r2.tail, last: r2.head.reason)
+        Accepted { value: _, diagnostics: _ } => ^infers
+      }
+  }
+}
+
+fn lef_last_reason(xs: List<Diagnostic>, last: Symbol) -> Symbol {
+  match xs {
+    Empty => last
+    Cons { head: h, tail: t } => lef_last_reason(xs: t, last: h.reason)
+  }
+}
+
+test fn lef_value_then_lambda_infers_holds() -> Bool {
+  lef_infer_terminal(src: lef_value_then_lambda_src) == ^infers
+}
+
+// L-to-R: the lambda is the first actual, so T is unfixed at entry and n stays underived.
+test fn lef_lambda_then_value_does_not_infer_as_int_holds() -> Bool {
+  lef_infer_terminal(src: lef_lambda_then_value_src) != ^infers
+}

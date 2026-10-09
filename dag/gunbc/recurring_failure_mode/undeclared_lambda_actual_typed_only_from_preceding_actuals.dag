@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.undeclared_lambda_actual_typed_only_from_preceding_actuals
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data undeclared_lambda_actual_typed_only_from_preceding_actuals: RecurringFailureMode = RecurringFailureMode {
+  identity: "undeclared_lambda_actual_typed_only_from_preceding_actuals" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: an undeclared lambda actual `fn(n) { ... }` at an application is typed from the application's formal only after actuals that precede it in authored order have been judged. A lambda written before the actual that instantiates T (f-before-o) sees no instance; n stays underived. Infer never mints T.",
+    "HARM: treating f-before-o as if T were already Int would fabricate a type the gather order has not established (DESIGN §5). The token_stream link of N7 is value-then-lambda (`bind_outcome(o, fn(token_stream) { ... })`); the reverse order is a recorded red, not a silent Int.",
+    "RUNG FOUND AT: mechanically preventable (lef_lambda_then_value_does_not_infer_as_int_holds). CEILING: structurally guaranteed once gather prefix of infer_judge_formal_args is the only judgment of each actual. NEXT-RUNG TRIGGER: application actuals judged once at gather and carried to the transform row, so the row does not re-fold inhabitance.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.infer", decl_name: "infer_application_actual_child_frame", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.compiler.lambda_expected_formal", decl_name: "lef_lambda_then_value_does_not_infer_as_int_holds", field: WholeDeclaration },
+  ],
+}
