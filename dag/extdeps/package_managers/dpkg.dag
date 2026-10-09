@@ -1,4 +1,6 @@
 module extdeps.dpkg
+import extdeps.exec.command {ArgvCommand,argv_command}
+import extdeps.exec.program {uncataloged_program}
 
 import std.types { NonEmptyStr, Bool, List, Int, Unit }
 import std.algebra { Cons, Empty, trim }
@@ -113,4 +115,10 @@ fn dpkg_query_status_verdict_of(exit_code: Int, stdout: String, stderr: String) 
   } else {
     DpkgQueryUndecidable { reason: join(["dpkg-query exited ", to_string(exit_code), ": ", trim(s: stderr)], "") }
   }
+}
+
+// The same status query through the typed local command seam, preserving all three
+// process outputs for dpkg_query_status_verdict_of.
+fn dpkg_query_status_command(package:NonEmptyStr) -> ArgvCommand {
+ argv_command(program:uncataloged_program(invocation:dpkg_query_program),arguments:dpkg_query_status_argv(package:package).skip(n:1))
 }

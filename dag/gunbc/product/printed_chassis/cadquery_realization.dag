@@ -1,4 +1,7 @@
 module product.printed_chassis.cadquery_realization
+import product.printed_chassis.assembly_geometry {Primitive,Block,RoundPrism,AssemblyPart}
+import product.printed_chassis.assembly_review_checks {primitive_positive,component}
+import std.euclidean_geometry {Axis3X,Axis3Y,Axis3Z}
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { Micrometer, micrometer, micrometer_count }
@@ -429,7 +432,7 @@ fn coupon_wire_row(op: CouponOperation) -> RawOperationRow {
     OpThroughHole { diameter: d, center_x: x, center_y: y } =>
       raw_operation_row(
         kind: "through_hole",
-        diameter_um: micrometer_count(m: d),
+        diameter_um: d,
         center_x_um: micrometer_count(m: x),
         center_y_um: micrometer_count(m: y),
       )
@@ -447,9 +450,9 @@ fn expected_coupon_cadquery_program() -> CouponProgramGeneration {
       let g = contract.specimen.geometry
       let envelope = raw_realization_envelope(
         schema_version: contract_schema_version,
-        plate_x_um: micrometer_count(m: g.plate.size_x),
-        plate_y_um: micrometer_count(m: g.plate.size_y),
-        plate_z_um: micrometer_count(m: g.plate.size_z),
+        plate_x_um: g.plate.size_x,
+        plate_y_um: g.plate.size_y,
+        plate_z_um: g.plate.size_z,
         orientation_datum: coupon_wire_row(op: g.orientation_datum),
         ladder_holes: fold(g.ladder_holes, init: [], f: fn(acc, op) {
           concat(acc, [coupon_wire_row(op: op)])
@@ -540,4 +543,46 @@ fn plate_part_from_standoff_gauge(g: StandoffGaugeGeometry) -> AdmittedPlatePart
     plate: standoff_gauge_plate(g: g),
     holes: standoff_gauge_holes(g: g),
   }
+}
+
+// Review CSG shares this module's exact dimension renderer, but deliberately produces a
+// distinct program carrier. This is no AdmittedRealizationV0 or fabrication capability.
+type ReviewCsgAction = BeginReviewSolid | UnionReviewSolid | CutReviewSolid
+type ReviewCadQueryProgram sole_constructor {source:NonEmptyStr}
+type ReviewCadQueryEmission = ReviewCadQueryEmitted {program:ReviewCadQueryProgram} | ReviewCadQueryRefused {reason:String}
+fn review_program_source(p:ReviewCadQueryProgram) -> String {p.source as String}
+fn review_dimension(prefix:String,n:Int) -> SourceSubstitution {SourceSubstitution {prefix:prefix,rendering:micrometre_millimetre_wire(m:micrometer(count:n))}}
+fn review_primitive_line(p:Primitive,action:ReviewCsgAction) -> LineEmission {
+ let start=match action {BeginReviewSolid=>"result = " UnionReviewSolid=>"result = result.fuse(" CutReviewSolid=>"result = result.cut("}
+ let end=match action {BeginReviewSolid=>"\n" UnionReviewSolid=>")\n" CutReviewSolid=>")\n"}
+ match p {
+ Block {size:s,center:c}=>emit_line(substitutions:[
+ SourceSubstitution {prefix:concat(start,"cq.Workplane('XY').box("),rendering:micrometre_millimetre_wire(m:s.size_x)},
+ SourceSubstitution {prefix:",",rendering:micrometre_millimetre_wire(m:s.size_y)},
+ SourceSubstitution {prefix:",",rendering:micrometre_millimetre_wire(m:s.size_z)},
+ review_dimension(prefix:", centered=(True,True,True)).val().translate((",n:component(p:c,a:Axis3X)),
+ review_dimension(prefix:",",n:component(p:c,a:Axis3Y)),review_dimension(prefix:",",n:component(p:c,a:Axis3Z))],tail:concat("))",end))
+ RoundPrism {diameter:d,length:l,axis:a,center:c}=>{
+ let axis=match a {Axis3X=>"(1,0,0)" Axis3Y=>"(0,1,0)" Axis3Z=>"(0,0,1)"}
+ emit_line(substitutions:[
+ SourceSubstitution {prefix:concat(start,"cq.Solid.makeCylinder("),rendering:micrometre_half_millimetre_wire(m:d)},
+ SourceSubstitution {prefix:",",rendering:micrometre_millimetre_wire(m:l)},
+ SourceSubstitution {prefix:",cq.Vector(0,0,0),cq.Vector",rendering:MillimetreRendered {wire:axis as NonEmptyStr}},
+ review_dimension(prefix:").translate((",n:component(p:c,a:Axis3X)),
+ SourceSubstitution {prefix:"-",rendering:micrometre_half_millimetre_wire(m:micrometer(count:match a {Axis3X=>micrometer_count(m:l) Axis3Y=>0 Axis3Z=>0}))},
+ review_dimension(prefix:",",n:component(p:c,a:Axis3Y)),
+ SourceSubstitution {prefix:"-",rendering:micrometre_half_millimetre_wire(m:micrometer(count:match a {Axis3Y=>micrometer_count(m:l) Axis3X=>0 Axis3Z=>0}))},
+ review_dimension(prefix:",",n:component(p:c,a:Axis3Z)),
+ SourceSubstitution {prefix:"-",rendering:micrometre_half_millimetre_wire(m:micrometer(count:match a {Axis3Z=>micrometer_count(m:l) Axis3X=>0 Axis3Y=>0}))}
+ ],tail:concat("))",end))
+ }
+ }
+}
+fn review_part_lines(p:AssemblyPart) -> List<LineEmission> {
+ concat(map(enumerate(p.adds),r=>review_primitive_line(p:r.second,action:if r.first==0 {BeginReviewSolid} else {UnionReviewSolid})),concat(map(p.cuts,c=>review_primitive_line(p:c,action:CutReviewSolid)),[LineEmitted {text:"_review_shapes.append(result.clean())\n"}]))
+}
+fn realize_review_parts(parts:List<AssemblyPart>) -> ReviewCadQueryEmission {
+ if length(parts)==0||!all(parts,p=>length(p.adds)>0&&all(concat(p.adds,p.cuts),q=>primitive_positive(p:q))) {return ReviewCadQueryRefused {reason:"Empty or non-positive review geometry"}}
+ let scan=fold(flat_map(parts,p=>review_part_lines(p:p)),init:LineScan {lines:[],refusal:NoDimensionRefused},f:scan_line)
+ match scan.refusal {DimensionRefused {micrometres:_}=>ReviewCadQueryRefused {reason:"Dimension unrenderable"} NoDimensionRefused=>ReviewCadQueryEmitted {program:ReviewCadQueryProgram {source:join([cadquery_preamble,"_review_shapes = []\n",join(scan.lines,"")],"") as NonEmptyStr}}}
 }

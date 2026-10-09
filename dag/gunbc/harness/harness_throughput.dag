@@ -273,6 +273,12 @@ fn ledger_read_line(line: String) -> LineRead {
 // FIRST GAP WINS, IN STREAM ORDER, and it decides for the whole ledger before any row is kept --
 // the fail-closed half of the same fold. A ledger missing the rows it could not read is a shorter
 // run that looks complete.
+//
+// A READ STREAM WITH NO ROUND ROW IS AN OBSERVATION OF NO ROUND, NOT A GAP. It used to answer
+// RoundsUnobserved, which made an attempt whose agent has not finished its first round look the
+// same as one whose rounds were never captured. Whether a stream was captured at all is the
+// caller's fact (gunbc.roadmap_workflow_progress reads the events only of a modeled attempt with a
+// readable stream), so this reader states only what the stream it was given holds.
 fn harness_round_ledger_from_events(body: String) -> HarnessRoundLedger {
   let reads = map(split(s: body, delimiter: "\n"), l => ledger_read_line(line: l))
   match fold(reads, init: none, f: (acc, r) =>
@@ -293,11 +299,7 @@ fn harness_round_ledger_from_events(body: String) -> HarnessRoundLedger {
           LineIsNotOurs => []
           LineIsGap { cause: _ } => []
         })
-      if list_length(items: rows) == 0 {
-        RoundsUnobserved { reason: "no clocked round.usage row in the event stream" as NonEmptyStr }
-      } else {
-        RoundsObserved { rounds: rows }
-      }
+      RoundsObserved { rounds: rows }
     }
   }
 }
@@ -316,7 +318,9 @@ fn harness_throughput_from_ledger(ledger: HarnessRoundLedger) -> HarnessThroughp
   match ledger {
     RoundsUnobserved { reason: r } => ThroughputUnobserved { reason: r }
     RoundsObserved { rounds: rs } =>
-      if list_length(items: rs) < 2 {
+      if list_length(items: rs) == 0 {
+        ThroughputUnobserved { reason: "no clocked round yet" as NonEmptyStr }
+      } else if list_length(items: rs) < 2 {
         ThroughputUnobserved { reason: "one clocked round so far; an interval needs two" as NonEmptyStr }
       } else {
         let first = rs.first()
@@ -389,14 +393,28 @@ type SegmentFold {
   segments: List<RoundSegment>
 }
 
-fn round_segment_kind(now: Int?, last_measured: Int?, tool_calls: Int?) -> RoundSegmentKind {
+// HOW FAR THE WORKTREE'S CHANGED-PATH COUNT ROSE OVER THE LAST MEASURED VALUE. It is an
+// observation of the tree, not a count of writes: it is the one statement of "kind is a delta"
+// above, read by the strip's kind below and by the build meter's changed-path marks
+// (gunbc.roadmap.roadmap_build_meter), so the two cannot disagree about which rounds changed the
+// tree. An unread count has no rise; a first measurement rises from an unmeasured tree, which is
+// a fresh worktree with nothing changed. The result may be zero or negative (a commit lowers the
+// count); only a positive rise is drawn.
+fn round_changed_path_count_rise(now: Int?, last_measured: Int?) -> Int? {
   match now {
-    Absent => UnmeasuredRound
+    Absent => none
     Present { value: n } =>
       match last_measured {
-        Absent => if n > 0 { WriteRound } else { round_segment_kind_unwritten(tool_calls: tool_calls) }
-        Present { value: m } => if n > m { WriteRound } else { round_segment_kind_unwritten(tool_calls: tool_calls) }
+        Absent => Present { value: n }
+        Present { value: m } => Present { value: n - m }
       }
+  }
+}
+
+fn round_segment_kind(now: Int?, last_measured: Int?, tool_calls: Int?) -> RoundSegmentKind {
+  match round_changed_path_count_rise(now: now, last_measured: last_measured) {
+    Absent => UnmeasuredRound
+    Present { value: rise } => if rise > 0 { WriteRound } else { round_segment_kind_unwritten(tool_calls: tool_calls) }
   }
 }
 

@@ -64,7 +64,12 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: [issue_tracker_session_capture]
+  further_citations: [
+    issue_tracker_session_capture,
+    issue_tracker_visual_capture_origin,
+    issue_tracker_visual_capture_local,
+    issue_tracker_visual_capture_shared,
+  ]
 }
 
 // Versioned by the capture date of the cited session: this interface model states what was
@@ -79,7 +84,10 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // email-shaped route validation) lands — owner rulings amending the capture-verified vocabulary.
 // Bumped 2026-09-27: descriptive types, modeled sort keys, and the uniform served
 // roster without TYPE or a project-only count slot (owner-directed amendments).
-data issue_tracker_interface_version: NonEmptyStr = "2026-09-27"
+// Bumped 2026-10-04: the measured design language (type, palette in both schemes, metrics, card,
+// status chip and button anatomy) from the signed-out capture of that date, and the
+// owner-directed dark token row replaced by the captured dark palette.
+data issue_tracker_interface_version: NonEmptyStr = "2026-10-04"
 
 // The stock sidebar roster, verbatim from the owner's logged-in session (2026-09-22). The first
 // seven entries each have exactly one derivation fn below; the last four are navigation and
@@ -442,28 +450,323 @@ data issue_tracker_visual_tokens: IssueTrackerVisualTokens = IssueTrackerVisualT
   font_heading: "Google Sans, Roboto, Arial, sans-serif",
 }
 
-// THE DARK-SCHEME ROW, owner-directed 2026-09-23 (production defect: dark mode painted the
-// light-only tokens on dark ground). The 2026-09-22 capture is a LIGHT capture; these are the
-// product's dark-scheme equivalents for the SAME token set, per the owner's ruling — text
-// #e8eaed / #9aa0a6 on surfaces #202124 / #292a2d, borders #3c4043 / #5f6368, action blue
-// #8ab4f8 (hover #aecbfa), error #f28b82, highlight the dark selection blue. Same type, same
-// slots, same hue roles — one token structure, two scheme values; the style layer emits one per
-// scheme under the theme machinery's selector grammar. Re-capture against a saved dark session
-// supersedes these rows under the interface version rule.
-data issue_tracker_visual_tokens_dark: IssueTrackerVisualTokens = IssueTrackerVisualTokens {
-  text_primary: Srgb8 { r: 232, g: 234, b: 237 },
-  text_secondary: Srgb8 { r: 154, g: 160, b: 166 },
-  text_tertiary: Srgb8 { r: 154, g: 160, b: 166 },
-  border_default: Srgb8 { r: 60, g: 64, b: 67 },
-  border_strong: Srgb8 { r: 95, g: 99, b: 104 },
-  background_subtle: Srgb8 { r: 32, g: 33, b: 36 },
-  background_hover: Srgb8 { r: 41, g: 42, b: 45 },
-  highlight: Srgb8 { r: 26, g: 58, b: 92 },
+// THE MEASURED DESIGN LANGUAGE, CAPTURED 2026-10-04. Everything from here to the action
+// vocabulary was read from the running product with getComputedStyle and bounding boxes: the
+// public Chromium instance (issues.chromium.org), signed out, headless Chromium at 1440x1100 CSS
+// px, device scale 1. The screenshots, the probe output and the instrument that produced them are
+// in the local capture folder; the fifteen first-pass screenshots are also in the shared folder.
+// These rows are MEASUREMENTS: a value gunbc adopts differently (a rounded size, a row height, a
+// link ink for a grey ground) is recorded by the adopting module and never written back here.
+data issue_tracker_visual_capture_origin: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "issues.chromium.org"
+  }
+}
+
+data issue_tracker_visual_capture_local: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: File
+    locator: "~/issue-tracker-shots"
+  }
+}
+
+data issue_tracker_visual_capture_shared: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "drive.google.com/drive/folders/14rcDZQtJAHzrAYimoRNmm7rBS1HqV_9b?usp=sharing"
+  }
+}
+
+type IssueTrackerVisualCapture {
+  captured_on: NonEmptyStr
+  origin: ExternalAuthority
+  local_copy: ExternalAuthority
+  shared_copy: ExternalAuthority
+  session: NonEmptyStr
+  viewport_width_px: Int
+  viewport_height_px: Int
+}
+
+data issue_tracker_visual_capture: IssueTrackerVisualCapture = IssueTrackerVisualCapture {
+  captured_on: "2026-10-04",
+  origin: issue_tracker_visual_capture_origin,
+  local_copy: issue_tracker_visual_capture_local,
+  shared_copy: issue_tracker_visual_capture_shared,
+  session: "signed out",
+  viewport_width_px: 1440,
+  viewport_height_px: 1100,
+}
+
+// THE MEASURED PALETTE, one row per scheme. Slots are named for where the colour was read: the
+// content column behind the cards, a card, the comment field, body text, muted text, the
+// hairline, the action colour and a card's leading bar. The light row reads
+// the slots the 2026-09-22 token row already carries from that row, because the two captures
+// agree and one colour has one spelling in this module. The dark row replaces the owner-directed
+// dark tokens of 2026-09-23: it holds only what the dark capture shows, so a slot the capture
+// did not reach (hover, highlight, error, pressed action) has no dark value here at all.
+type IssueTrackerMeasuredPalette {
+  ground: Srgb8
+  card: Srgb8
+  field: Srgb8
+  text: Srgb8
+  text_muted: Srgb8
+  hairline: Srgb8
+  action: Srgb8
+  leading_bar: Srgb8
+}
+
+data issue_tracker_measured_palette_light: IssueTrackerMeasuredPalette = IssueTrackerMeasuredPalette {
+  ground: issue_tracker_visual_tokens.background_subtle,
+  card: Srgb8 { r: 255, g: 255, b: 255 },
+  field: issue_tracker_visual_tokens.background_subtle,
+  text: issue_tracker_visual_tokens.text_primary,
+  text_muted: issue_tracker_visual_tokens.text_secondary,
+  hairline: issue_tracker_visual_tokens.border_default,
+  action: issue_tracker_visual_tokens.action,
+  leading_bar: issue_tracker_visual_tokens.action,
+}
+
+data issue_tracker_measured_palette_dark: IssueTrackerMeasuredPalette = IssueTrackerMeasuredPalette {
+  ground: Srgb8 { r: 24, g: 25, b: 27 },
+  card: Srgb8 { r: 24, g: 25, b: 27 },
+  field: Srgb8 { r: 36, g: 37, b: 40 },
+  text: Srgb8 { r: 255, g: 255, b: 255 },
+  text_muted: Srgb8 { r: 154, g: 160, b: 166 },
+  hairline: Srgb8 { r: 60, g: 64, b: 67 },
   action: Srgb8 { r: 138, g: 180, b: 248 },
-  action_hover: Srgb8 { r: 174, g: 203, b: 250 },
-  error: Srgb8 { r: 242, g: 139, b: 130 },
-  font_body: "Roboto, Arial, sans-serif",
-  font_heading: "Google Sans, Roboto, Arial, sans-serif",
+  leading_bar: issue_tracker_visual_tokens.action,
+}
+
+// THE MEASURED TYPE SCALE, one row per place the product sets text. Size is carried in tenths of
+// a CSS px because the markdown heading computes to 18.2px (1.4em of the 13px body); line height
+// is rounded to whole px (the card label computes to 15.23); tracking is hundredths of a px and is recorded only where the product sets it
+// deliberately (the card label's 0.8px) -- the sub-pixel per-size tracking Material applies to
+// every other row is not part of this model. The code face computes to a web-font alias for the
+// platform monospace, so it is recorded as the generic family rather than under that alias.
+type IssueTrackerMeasuredFace
+  = IssueTrackerFaceBody
+  | IssueTrackerFaceHeading
+  | IssueTrackerFaceMonospace
+
+type IssueTrackerMeasuredInk
+  = IssueTrackerInkText
+  | IssueTrackerInkMuted
+  | IssueTrackerInkAction
+  | IssueTrackerInkCode
+
+type IssueTrackerMeasuredCase
+  = IssueTrackerCaseAuthored
+  | IssueTrackerCaseUppercase
+
+type IssueTrackerMeasuredText {
+  face: IssueTrackerMeasuredFace
+  size_tenths_px: Int
+  line_height_px: Int
+  weight: Int
+  ink: IssueTrackerMeasuredInk
+  letter_case: IssueTrackerMeasuredCase
+  tracking_hundredths_px: Int
+}
+
+type IssueTrackerMeasuredTypeScale {
+  body: IssueTrackerMeasuredText
+  field_label: IssueTrackerMeasuredText
+  card_label: IssueTrackerMeasuredText
+  section_heading: IssueTrackerMeasuredText
+  control: IssueTrackerMeasuredText
+  control_small: IssueTrackerMeasuredText
+  title: IssueTrackerMeasuredText
+  markdown_heading: IssueTrackerMeasuredText
+  chip: IssueTrackerMeasuredText
+  inline_code: IssueTrackerMeasuredText
+}
+
+data issue_tracker_measured_type_scale: IssueTrackerMeasuredTypeScale = IssueTrackerMeasuredTypeScale {
+  body: IssueTrackerMeasuredText { face: IssueTrackerFaceBody, size_tenths_px: 130, line_height_px: 18, weight: 400, ink: IssueTrackerInkText, letter_case: IssueTrackerCaseAuthored, tracking_hundredths_px: 0 },
+  field_label: IssueTrackerMeasuredText { face: IssueTrackerFaceBody, size_tenths_px: 120, line_height_px: 16, weight: 500, ink: IssueTrackerInkMuted, letter_case: IssueTrackerCaseAuthored, tracking_hundredths_px: 0 },
+  card_label: IssueTrackerMeasuredText { face: IssueTrackerFaceBody, size_tenths_px: 110, line_height_px: 15, weight: 500, ink: IssueTrackerInkText, letter_case: IssueTrackerCaseUppercase, tracking_hundredths_px: 80 },
+  section_heading: IssueTrackerMeasuredText { face: IssueTrackerFaceBody, size_tenths_px: 130, line_height_px: 18, weight: 700, ink: IssueTrackerInkMuted, letter_case: IssueTrackerCaseAuthored, tracking_hundredths_px: 0 },
+  control: IssueTrackerMeasuredText { face: IssueTrackerFaceHeading, size_tenths_px: 140, line_height_px: 20, weight: 500, ink: IssueTrackerInkAction, letter_case: IssueTrackerCaseAuthored, tracking_hundredths_px: 0 },
+  control_small: IssueTrackerMeasuredText { face: IssueTrackerFaceHeading, size_tenths_px: 130, line_height_px: 20, weight: 500, ink: IssueTrackerInkAction, letter_case: IssueTrackerCaseAuthored, tracking_hundredths_px: 0 },
+  title: IssueTrackerMeasuredText { face: IssueTrackerFaceHeading, size_tenths_px: 180, line_height_px: 24, weight: 400, ink: IssueTrackerInkText, letter_case: IssueTrackerCaseAuthored, tracking_hundredths_px: 0 },
+  markdown_heading: IssueTrackerMeasuredText { face: IssueTrackerFaceBody, size_tenths_px: 182, line_height_px: 24, weight: 500, ink: IssueTrackerInkText, letter_case: IssueTrackerCaseAuthored, tracking_hundredths_px: 0 },
+  chip: IssueTrackerMeasuredText { face: IssueTrackerFaceBody, size_tenths_px: 120, line_height_px: 22, weight: 400, ink: IssueTrackerInkText, letter_case: IssueTrackerCaseAuthored, tracking_hundredths_px: 0 },
+  inline_code: IssueTrackerMeasuredText { face: IssueTrackerFaceMonospace, size_tenths_px: 130, line_height_px: 18, weight: 400, ink: IssueTrackerInkCode, letter_case: IssueTrackerCaseAuthored, tracking_hundredths_px: 0 },
+}
+
+// Inline code ink, read on the light capture only (the dark capture shows no inline code).
+data issue_tracker_measured_code_ink_light: Srgb8 = Srgb8 { r: 24, g: 128, b: 56 }
+
+// THE MEASURED METRICS, in CSS px at device scale 1. One corner radius serves cards, chips,
+// buttons, inputs and status; inline code has its own. Heights are drawn heights. The relation
+// table's header is 32 and its rows 33; grid rows are 37.
+type IssueTrackerMeasuredMetrics {
+  radius_px: Int
+  code_radius_px: Int
+  top_bar_height_px: Int
+  tab_height_px: Int
+  chip_height_px: Int
+  button_small_height_px: Int
+  button_height_px: Int
+  relation_header_height_px: Int
+  relation_row_height_px: Int
+  grid_row_height_px: Int
+}
+
+data issue_tracker_measured_metrics: IssueTrackerMeasuredMetrics = IssueTrackerMeasuredMetrics {
+  radius_px: 4,
+  code_radius_px: 2,
+  top_bar_height_px: 48,
+  tab_height_px: 34,
+  chip_height_px: 22,
+  button_small_height_px: 24,
+  button_height_px: 32,
+  relation_header_height_px: 32,
+  relation_row_height_px: 33,
+  grid_row_height_px: 37,
+}
+
+// CARD ANATOMY: card-coloured fill, a hairline border, the shared radius, uniform padding and an
+// outer margin; the description and status-update cards thicken the leading border into a bar in
+// the action colour. The label row (the uppercase card label, with author, time and an overflow
+// menu on the product) is 36px tall.
+type IssueTrackerMeasuredCard {
+  padding_px: Int
+  outer_margin_px: Int
+  border_px: Int
+  leading_bar_px: Int
+  label_row_height_px: Int
+}
+
+data issue_tracker_measured_card: IssueTrackerMeasuredCard = IssueTrackerMeasuredCard {
+  padding_px: 16,
+  outer_margin_px: 8,
+  border_px: 1,
+  leading_bar_px: 4,
+  label_row_height_px: 36,
+}
+
+// STATUS CHIP ANATOMY: the chip height tall on the shared radius, with 4px side padding and a 1px
+// ring drawn inside its box. Open statuses pair a pale tint with a saturated ring; Fixed is
+// card-coloured text on a fill in the muted text colour with a ring of the same colour; Obsolete
+// and Duplicate are body text on a pale grey with a ring in the muted text colour. The plain
+// chip (component path, ancestor chain) is the header chip row below.
+type IssueTrackerMeasuredStatusChip {
+  side_padding_px: Int
+  ring_px: Int
+}
+
+data issue_tracker_measured_status_chip: IssueTrackerMeasuredStatusChip = IssueTrackerMeasuredStatusChip {
+  side_padding_px: 4,
+  ring_px: 1,
+}
+
+// HEADER CHIP ANATOMY: the component path and the ancestor chain above the title are each one chip
+// of the chip height on the shared radius, with 6px side padding, no border, and a fill that is
+// 6% of black over whatever is behind it. The ancestor chain lists every ancestor id through to
+// the current issue inside the one chip, separated by a ">" glyph.
+type IssueTrackerMeasuredHeaderChip {
+  side_padding_px: Int
+  fill_ink_pct: Int
+}
+
+data issue_tracker_measured_header_chip: IssueTrackerMeasuredHeaderChip = IssueTrackerMeasuredHeaderChip {
+  side_padding_px: 6,
+  fill_ink_pct: 6,
+}
+
+// PRIORITY MARK ANATOMY: the priority as body text in a box 23 wide and the chip height tall,
+// inside a 2px border on the shared radius, with 2px of side padding inside the border (the rail's
+// priority, probe t1-detail rail.priority). The border is transparent except on P1, where
+// it is the action colour. P0 was not captured.
+type IssueTrackerMeasuredPriorityMark {
+  width_px: Int
+  border_px: Int
+  side_padding_px: Int
+}
+
+data issue_tracker_measured_priority_mark: IssueTrackerMeasuredPriorityMark = IssueTrackerMeasuredPriorityMark {
+  width_px: 23,
+  border_px: 2,
+  side_padding_px: 2,
+}
+
+// RELATION TABLE ANATOMY (the Dependencies and Blocking tabs): the Parents, Blockers and Child
+// issues sections are 32px apart inside one card, and each is the same table. Cells carry 4px
+// side padding over a 1px hairline. Each level of nesting
+// indents a child row's title by 24px (the product also draws an 18px disclosure chevron there,
+// which no element here adopts). A closed row
+// sits on the row-hover grey with its text in the muted colour (light capture only: the dark
+// relation table was not captured).
+type IssueTrackerMeasuredRelationTable {
+  section_gap_px: Int
+  cell_side_padding_px: Int
+  row_line_px: Int
+  level_indent_px: Int
+  closed_row_ground: Srgb8
+}
+
+data issue_tracker_measured_relation_table: IssueTrackerMeasuredRelationTable = IssueTrackerMeasuredRelationTable {
+  section_gap_px: 32,
+  cell_side_padding_px: 4,
+  row_line_px: 1,
+  level_indent_px: 24,
+  closed_row_ground: issue_tracker_visual_tokens.background_hover,
+}
+
+// FIELD RAIL ANATOMY (the issue metadata sidebar, shots 01 and 15; probes t1-detail and
+// t8-detail2): a column 331 wide including a 1px hairline on its leading edge, with no card.
+// Each field is inset 19px from both sides and its rows are 36px apart (a 20px row between 8px
+// margins; one row measured 37). The label sits in a column 23% of the row, clamped to 80..120px
+// (the product's bv2-field-label-spacer), followed by 10px of padding; the value is set at
+// 13/20 on one line, and a long identity is truncated rather than wrapped. A person is shown
+// with a 12px circular avatar before the address.
+type IssueTrackerMeasuredFieldRail {
+  width_px: Int
+  divider_px: Int
+  side_inset_px: Int
+  row_pitch_px: Int
+  label_column_pct: Int
+  label_column_min_px: Int
+  label_column_max_px: Int
+  label_gap_px: Int
+  value_line_height_px: Int
+  inline_avatar_px: Int
+}
+
+data issue_tracker_measured_field_rail: IssueTrackerMeasuredFieldRail = IssueTrackerMeasuredFieldRail {
+  width_px: 331,
+  divider_px: 1,
+  side_inset_px: 19,
+  row_pitch_px: 36,
+  label_column_pct: 23,
+  label_column_min_px: 80,
+  label_column_max_px: 120,
+  label_gap_px: 10,
+  value_line_height_px: 20,
+  inline_avatar_px: 12,
+}
+
+// BUTTON ANATOMY: three kinds on the shared radius, all in the heading face at weight 500. Filled
+// is card-coloured text on the action colour; outlined is an action-coloured label on the card
+// colour inside a hairline; text is the action-coloured label alone. Two sizes, the two button
+// heights of the metrics row, with 10px and 12px side padding. A disabled button draws its label
+// at 38% and its border or fill at 12% of one ink.
+type IssueTrackerMeasuredButton {
+  small_side_padding_px: Int
+  side_padding_px: Int
+  border_px: Int
+  disabled_label_pct: Int
+  disabled_boundary_pct: Int
+}
+
+data issue_tracker_measured_button: IssueTrackerMeasuredButton = IssueTrackerMeasuredButton {
+  small_side_padding_px: 10,
+  side_padding_px: 12,
+  border_px: 1,
+  disabled_label_pct: 38,
+  disabled_boundary_pct: 12,
 }
 
 // THE ISSUE'S ACTIONS AND THE PRODUCT'S BUTTON IDIOMS (owner directive 2026-09-24: the
@@ -510,14 +813,18 @@ fn issue_action_wire(kind: IssueActionKind) -> String {
 
 // THE BUTTON IDIOMS: a contained primary button (filled action blue, the "Create Issue" shape)
 // for the surface's primary action, or a flat text button (action-blue label, no fill) for
-// secondary actions.
+// secondary actions. The outlined idiom (an action-blue label inside a hairline on the card
+// colour) was measured on the 2026-10-04 capture: the issue header's "Hotlists" button and the
+// relation sections' "Add" buttons.
 type IssueActionButtonIdiom
   = IssueButtonContainedPrimary
+  | IssueButtonOutlined
   | IssueButtonText
 
 fn issue_button_idiom_wire(idiom: IssueActionButtonIdiom) -> String {
   match idiom {
     IssueButtonContainedPrimary => "contained-primary"
+    IssueButtonOutlined => "outlined"
     IssueButtonText => "text"
   }
 }

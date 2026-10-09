@@ -1,0 +1,18 @@
+module gunbc.fleet.printer_tool_readiness
+
+import std.types { Bool }
+import extdeps.tools.mosquitto_pub { mosquitto_pub_cli_tool, mosquitto_pub_help_command, mosquitto_pub_help_observation_admitted }
+import gunbc.host_cli_dependency { observe_host_cli_dependency, HostCliDependencyPresent, HostCliDependencyAbsent }
+import gunbc.command_runner { run_shell_command_observe_outcome }
+import extdeps.exec.command { LocalExec }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
+
+fn printer_mqtt_tool_ready() -> Bool {
+  match observe_host_cli_dependency(tool: mosquitto_pub_cli_tool) {
+    HostCliDependencyAbsent { absence: _ } => false
+    HostCliDependencyPresent => match run_shell_command_observe_outcome(command: mosquitto_pub_help_command(), transport: LocalExec) {
+      ProcessRan { observation: o } => mosquitto_pub_help_observation_admitted(observation: o)
+      ProcessNotSpawned { program: _, cause: _ } => false
+    }
+  }
+}

@@ -1,0 +1,79 @@
+module product.printed_chassis.stack_geometry
+
+import product.printed_chassis.cooler_configuration {CoolerConfiguration,DynatronW1,NoctuaU14sAmp4926,noctua_envelope}
+import std.types { Bool, Int, List }
+import std.nat { Nat }
+import std.measure { Micrometer, micrometer, micrometer_count }
+import std.affine_space { signed_frame_component_count }
+import product.printed_chassis.assembly_geometry { AssemblyPart, Cassette, FixedFrame }
+import product.printed_chassis.assembly_review_checks { Bounds, primitive_bounds, joined }
+import product.printed_chassis.cassette { tray_w, tray_d, panel_t, printed_parts }
+import product.printed_chassis.rack_assembly { hardware }
+
+// THE MILK-CRATE STACK'S DIMENSIONS, DERIVED FROM THE CASSETTE RATHER THAN TRANSCRIBED.
+//
+// The withdrawn frame proposal carried `stack_pitch: Int = 158000` as a literal. A pitch is a
+// consequence: the tallest thing a cassette carries plus the lowest thing hanging under its tray
+// plus the hand clearance a service action needs. Reading it off the parts means a taller cooler
+// or a deeper rear socket moves the pitch, and nothing has to remember to edit a number.
+//
+// Y is up, as in the cassette frame; part bounds are the half-micrometre doubled bounds
+// assembly_review_checks already computes, halved here once. Clearance volumes count: a service
+// volume that the next tray would intrude on is a real obstruction.
+//
+// WHAT IS A PROPOSAL AND SAYS SO: service_clearance and the pillar section. Neither is derived
+// from anything cited; both are design choices the mechanics and harness instruments consume,
+// and both are the knobs a review would turn.
+
+fn cassette_parts() -> List<AssemblyPart> {
+  filter(concat(printed_parts(), hardware()), p => match p.scope { Cassette => true FixedFrame => false })
+}
+
+fn part_bounds(p: AssemblyPart) -> Bounds? {
+  match p.adds.first() {
+    Absent => none
+    Present { value: first } => Present { value: fold(p.adds, init: primitive_bounds(p: first), f: fn(acc, q) { joined(a: acc, b: primitive_bounds(p: q)) }) }
+  }
+}
+
+// Highest and lowest Y a part reaches in the assembly frame, micrometres.
+fn part_top(p: AssemblyPart) -> Int {
+  match part_bounds(p: p) { Absent => 0 Present { value: b } => signed_frame_component_count(c: p.at.y) + b.hi_y / 2 }
+}
+fn part_bottom(p: AssemblyPart) -> Int {
+  match part_bounds(p: p) { Absent => 0 Present { value: b } => signed_frame_component_count(c: p.at.y) + b.lo_y / 2 }
+}
+
+fn tallest_cassette_part_top() -> Int {
+  fold(cassette_parts(), init: 0, f: fn(acc, p) { let t = part_top(p: p) if t > acc { t } else { acc } })
+}
+fn lowest_cassette_part_bottom() -> Int {
+  fold(cassette_parts(), init: 0, f: fn(acc, p) { let b = part_bottom(p: p) if b < acc { b } else { acc } })
+}
+
+// Hand clearance between the tallest part of one unit and the lowest hanging part of the next.
+data service_clearance: Micrometer = micrometer(count: 20000)
+
+fn stack_pitch() -> Int { tallest_cassette_part_top() - lowest_cassette_part_bottom() + micrometer_count(m: service_clearance) as Int }
+
+// The corner pillar section, a square of this side, four per cassette. A proposal; the
+// mechanics instrument prices it and the pillar geometry change owns its final shape. The known
+// obstruction it must resolve: the rear arm sockets occupy the rear corners below the tray.
+data pillar_side: Micrometer = micrometer(count: 20000)
+fn pillar_section_area_mm2() -> Nat { (micrometer_count(m: pillar_side) / 1000) * (micrometer_count(m: pillar_side) / 1000) }
+fn pillar_height() -> Int { stack_pitch() - micrometer_count(m: panel_t) as Int }
+
+// Half-extents of the footprint the stack stands on, for the tipping derivation.
+fn footprint_half_depth() -> Int { micrometer_count(m: tray_d) as Int / 2 }
+fn footprint_half_width() -> Int { micrometer_count(m: tray_w) as Int / 2 }
+
+// Preserve the W1 review while deriving the residential variant from its own envelope.
+fn cassette_parts_for_cooler(cooler:CoolerConfiguration,contact_plane_um:Micrometer) -> List<AssemblyPart> {
+ map(cassette_parts(),p=>if p.id=="CPU" {match cooler {DynatronW1=>p NoctuaU14sAmp4926=>noctua_envelope(contact_plane_um:contact_plane_um)}} else {p})
+}
+fn stack_pitch_for_cooler(cooler:CoolerConfiguration,contact_plane_um:Micrometer) -> Int {
+ let parts=cassette_parts_for_cooler(cooler:cooler,contact_plane_um:contact_plane_um)
+ let top=fold(parts,init:0,f:(n,p)=>if part_top(p:p)>n {part_top(p:p)} else {n})
+ let bottom=fold(parts,init:0,f:(n,p)=>if part_bottom(p:p)<n {part_bottom(p:p)} else {n})
+ top-bottom+micrometer_count(m: service_clearance) as Int
+}

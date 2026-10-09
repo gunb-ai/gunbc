@@ -89,6 +89,13 @@ type SystemdUnitProperty
   | WantsProperty
   | InvocationIDProperty
   | FragmentPathProperty
+  | StandardOutputProperty
+  | StandardErrorProperty
+  | ProtectSystemProperty
+  | ProtectHomeProperty
+  | PrivateTmpProperty
+  | ReadWritePathsProperty
+  | RemainAfterExitProperty
   | JobProperty
 
 // THE WIRE SPELLING AS A SEALED WORD, SO THE CLOSED TYPE SURVIVES ALL THE WAY TO THE ARGV.
@@ -158,6 +165,13 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     WantsProperty => "Wants" as NonEmptyStr
     InvocationIDProperty => "InvocationID" as NonEmptyStr
     FragmentPathProperty => "FragmentPath" as NonEmptyStr
+    StandardOutputProperty => "StandardOutput" as NonEmptyStr
+    StandardErrorProperty => "StandardError" as NonEmptyStr
+    ProtectSystemProperty => "ProtectSystem" as NonEmptyStr
+    ProtectHomeProperty => "ProtectHome" as NonEmptyStr
+    PrivateTmpProperty => "PrivateTmp" as NonEmptyStr
+    ReadWritePathsProperty => "ReadWritePaths" as NonEmptyStr
+    RemainAfterExitProperty => "RemainAfterExit" as NonEmptyStr
     JobProperty => "Job" as NonEmptyStr
   }
 }

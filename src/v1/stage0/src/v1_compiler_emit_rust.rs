@@ -18575,67 +18575,34 @@ pub fn v1_fn_body_derived_clone_param_names(
                 emit_info.type_decl_items.clone(),
                 si.clone(),
             );
-        let rc_match_clone_param_names = v1_fn_body_rc_match_clone_bound_param_names(
-            body.clone(),
-            generic_param_names.clone(),
-            shared_types.clone(),
-            emit_info.clone(),
-            si.clone(),
-        );
-        crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
-            derived_clone_param_names.clone(),
-            rc_match_clone_param_names.clone(),
-        )
-    }
-}
-
-pub fn v1_fn_body_rc_match_clone_bound_param_names(
-    body: Rc<Node>,
-    generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let here = match (*body.expr_data.clone()).clone() {
+        let rc_match_clone_param_names = match (*body.expr_data.clone()).clone() {
             ExprData::ExprMatch => {
                 let scrutinee = crate::v1_std_core::match_scrutinee(body.clone());
                 match scrutinee.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: rt, .. }) => {
+                        let scrut_type =
+                            crate::v1_std_core::authored_name_at(si.clone(), rt.clone());
+                        let arms = crate::v1_std_core::match_arm_nodes(body.clone());
                         let rc_match = analyze_rc_match(
                             scrutinee.clone(),
-                            crate::v1_std_core::match_arm_nodes(body.clone()),
-                            crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                rt.clone(),
-                            ),
+                            arms.clone(),
+                            scrut_type.clone(),
                             shared_types.clone(),
                             emit_info.clone(),
-                            source_indices.clone(),
+                            si.clone(),
                         );
-                        crate::v1_compiler_trait_bound_witness::v1_rc_match_scrutinee_clone_bound_param_names(generic_param_names.clone(), Rc::new({ let mut __result = Vec::new(); for c in rt.children.clone().iter().cloned() { __result.push(crate::v1_std_core::authored_name_at(source_indices.clone(), c.clone())); } __result }), rc_match.needs_deref.clone())
+                        crate::v1_compiler_trait_bound_witness::v1_rc_match_scrutinee_clone_bound_param_names(generic_param_names.clone(), Rc::new({ let mut __result = Vec::new(); for c in rt.children.clone().iter().cloned() { __result.push(crate::v1_std_core::authored_name_at(si.clone(), c.clone())); } __result }), rc_match.needs_deref.clone())
                     }
                     _ => Rc::new(vec![]),
                 }
             }
             _ => Rc::new(vec![]),
         };
-        body.children.clone().iter().cloned().fold(
-            here.clone(),
-            |acc: Rc<Vec<String>>, child: Rc<Node>| {
-                crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
-                    acc,
-                    v1_fn_body_rc_match_clone_bound_param_names(
-                        child.clone(),
-                        generic_param_names.clone(),
-                        shared_types.clone(),
-                        emit_info.clone(),
-                        source_indices.clone(),
-                    ),
-                )
-            },
+        crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
+            derived_clone_param_names.clone(),
+            rc_match_clone_param_names.clone(),
         )
-    })
+    }
 }
 
 pub fn v1_fn_bounds_by_param(
@@ -40010,34 +39977,37 @@ pub fn emit_capability_method(
     }
 }
 
-pub fn data_value_has_cross_refs(value: Rc<Node>) -> bool {
+pub fn data_value_is_json_literal_tree(value: Rc<Node>) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*value.expr_data.clone()).clone() {
-            ExprData::ExprVar {
-                binding_kind: _, ..
-            } => true,
-            ExprData::ExprCall { .. } => true,
+            ExprData::ExprLiteral { value: _, .. } => true,
             ExprData::ExprListLit => {
-                let mut __found = false;
+                let mut __all = true;
                 for c in value.children.clone().iter().cloned() {
-                    if data_value_has_cross_refs(c.clone()) {
-                        __found = true;
+                    if !(data_value_is_json_literal_tree(c.clone())) {
+                        __all = false;
                         break;
                     }
                 }
-                __found
+                __all
             }
             ExprData::ExprRecordLit { parent_enum: _, .. } => {
-                let mut __found = false;
+                let mut __all = true;
                 for f in value.children.clone().iter().cloned() {
-                    if data_value_has_cross_refs(crate::v1_std_core::field_init_node_value(
-                        f.clone(),
+                    if !(data_value_is_json_literal_tree(
+                        crate::v1_std_core::field_init_node_value(f.clone()),
                     )) {
-                        __found = true;
+                        __all = false;
                         break;
                     }
                 }
-                __found
+                __all
+            }
+            ExprData::ExprUnaryOp {
+                op: UnaryOpKind::Neg,
+                ..
+            } => {
+                data_value_is_json_literal_tree(crate::v1_std_core::unaryop_operand(value.clone()))
             }
             _ => false,
         }
@@ -40460,7 +40430,7 @@ pub fn emit_data_def_body(
                 if ((crate::v1_compiler_emit::has_nested_records_node(
                     type_node.clone(),
                     scope.type_env.clone().source_indices.clone(),
-                ) && !data_value_has_cross_refs(value.clone()))
+                ) && data_value_is_json_literal_tree(value.clone()))
                     && !data_row_type_forbids_deserialize(
                         type_node.clone(),
                         emit_info.clone(),
