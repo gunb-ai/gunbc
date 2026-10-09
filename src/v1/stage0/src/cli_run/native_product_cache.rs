@@ -193,7 +193,6 @@ pub(super) fn assemble_key(i: AxisInputs) -> ProductKey {
 pub(super) fn derive_key(
     source_roots: &[String],
     entry: &str,
-    workspace: &Path,
 ) -> Result<ProductKey, DeriveKeyError> {
     let unreadable = |c: String| DeriveKeyError::Unreadable { cause: c };
     let index = super::try_process_shared_index_for_pool(source_roots, true).map_err(|c| {
