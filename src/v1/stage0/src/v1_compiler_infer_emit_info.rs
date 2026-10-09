@@ -865,28 +865,8 @@ pub fn derive_variant_to_enum(
         )
 }
 
-pub fn is_known_variant(
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-    name: String,
-) -> bool {
-    {
-        let mut __found = false;
-        for summary in Rc::new(v1_rt::map_values(&type_summaries)).iter().cloned() {
-            if match (*summary.repr.clone()).clone() {
-                TypeRepr::EnumRepr { unit_only: _, .. } => {
-                    crate::v1_compiler_infer_types::emit_map_has(
-                        summary.variant_name_set.clone(),
-                        name.clone(),
-                    )
-                }
-                _ => false,
-            } {
-                __found = true;
-                break;
-            }
-        }
-        __found
-    }
+pub fn is_known_variant(variant_to_enum: Rc<HashMap<String, String>>, name: String) -> bool {
+    v1_rt::map_contains_key(&variant_to_enum, name.clone())
 }
 
 pub fn variant_belongs_to_enum(

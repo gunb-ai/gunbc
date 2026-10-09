@@ -580,13 +580,8 @@ fn derive_variant_to_enum(type_summaries: Map<String, TypeSummary>) -> Map<Strin
   )
 }
 
-fn is_known_variant(type_summaries: Map<String, TypeSummary>, name: String) -> Bool {
-  map_values(type_summaries) |> any(summary =>
-    match summary.repr {
-      EnumRepr { unit_only: _ } => emit_map_has(m: summary.variant_name_set, key: name)
-      _ => false
-    }
-  )
+fn is_known_variant(variant_to_enum: Map<String, String>, name: String) -> Bool {
+  map_contains_key(variant_to_enum, name)
 }
 
 fn variant_belongs_to_enum(type_summaries: Map<String, TypeSummary>, variant_name: String, enum_name: String) -> Bool {

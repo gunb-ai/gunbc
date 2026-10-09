@@ -9816,8 +9816,10 @@ pub fn reference_derived_candidate_disposition(
     variant_to_enum: Rc<HashMap<String, String>>,
     in_type_position: bool,
 ) -> Rc<ReferenceDerivedCandidateDisposition> {
-    if (crate::v1_compiler_infer_emit_info::is_known_variant(type_summaries.clone(), name.clone())
-        && !in_type_position.clone())
+    if (crate::v1_compiler_infer_emit_info::is_known_variant(
+        emit_info.variant_to_enum.clone(),
+        name.clone(),
+    ) && !in_type_position.clone())
     {
         match v1_rt::map_get(&variant_to_enum, name.clone()) {
             Some(parent) => {
@@ -10463,7 +10465,7 @@ let plan_module_env = match v1_rt::map_get(&module_index.by_name.clone(), this_m
 };
 let block_lines = emit_specific_import_use_lines(provider.clone(), crate::gunbc_rust_emitted_edge::module_to_filename(provider.clone()), names.clone(), applied_type_argument_names.clone(), emit_info.clone(), registry.clone(), local_type_names.clone(), export_sets.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone(), plan_module_env.clone());
 let emitted_here = Rc::new({ let mut __result = Vec::new(); for l in block_lines.iter().cloned() { __result.extend((*imported_names_in_use_line(l.text.clone())).iter().cloned()); } __result });
-let fallback = Rc::new({ let mut __result = Vec::new(); for nm in names.iter().cloned() { __result.extend((*if ({ let mut __found = false; for e in emitted_here.iter().cloned() { if (e.clone() == nm.clone()) { __found = true; break; } } __found } || (crate::v1_compiler_infer_emit_info::is_known_variant(emit_info.type_summaries.clone(), nm.clone()) && !crate::v1_compiler_infer_types::emit_map_has(type_position_set.clone(), nm.clone()))) {
+let fallback = Rc::new({ let mut __result = Vec::new(); for nm in names.iter().cloned() { __result.extend((*if ({ let mut __found = false; for e in emitted_here.iter().cloned() { if (e.clone() == nm.clone()) { __found = true; break; } } __found } || (crate::v1_compiler_infer_emit_info::is_known_variant(emit_info.variant_to_enum.clone(), nm.clone()) && !crate::v1_compiler_infer_types::emit_map_has(type_position_set.clone(), nm.clone()))) {
                 Rc::new(vec![])
             } else {
                 if provider_proven_exports_symbol(nm.clone(), provider.clone(), export_sets.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone()) {
@@ -11414,6 +11416,7 @@ pub fn is_import_graph_type_name(
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
+    variant_to_enum: Rc<HashMap<String, String>>,
 ) -> bool {
     if has_physical_type_def_in_module_filename(
         name.clone(),
@@ -11452,7 +11455,7 @@ pub fn is_import_graph_type_name(
                 false
             } else {
                 if crate::v1_compiler_infer_emit_info::is_known_variant(
-                    type_summaries.clone(),
+                    variant_to_enum.clone(),
                     name.clone(),
                 ) {
                     false
@@ -12095,6 +12098,7 @@ pub fn import_module_enum_scope(
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
+    variant_to_enum: Rc<HashMap<String, String>>,
 ) -> Rc<Vec<String>> {
     {
         let physical = enum_names_in_module(
@@ -12112,7 +12116,7 @@ pub fn import_module_enum_scope(
                         let mut __result = Vec::new();
                         for n in Rc::new(v1_rt::sorted_map_keys(&exported)).iter().cloned() {
                             if (crate::v1_compiler_infer_emit_info::is_known_variant(
-                                type_summaries.clone(),
+                                variant_to_enum.clone(),
                                 n.clone(),
                             ) && (crate::v1_compiler_infer_emit_info::is_enum_in_summaries(
                                 type_summaries.clone(),
@@ -13533,6 +13537,7 @@ pub fn import_variant_parent_for_name(
     module_index: Rc<ModuleIndex>,
     imported_enums: Rc<Vec<String>>,
     import_module_enums: Rc<Vec<String>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
 ) -> String {
     if is_import_graph_type_name(
         n.clone(),
@@ -13543,6 +13548,7 @@ pub fn import_variant_parent_for_name(
         type_summaries.clone(),
         source_indices.clone(),
         module_index.clone(),
+        variant_to_enum.clone(),
     ) {
         "".to_string()
     } else {
@@ -13996,6 +14002,7 @@ pub fn emit_specific_import_use_lines(
                     typed_modules.clone(),
                     source_indices.clone(),
                     module_index.clone(),
+                    emit_info.variant_to_enum.clone(),
                 );
                 let top_level = Rc::new({
                     let mut __result = Vec::new();
@@ -14009,11 +14016,12 @@ pub fn emit_specific_import_use_lines(
                             type_summaries.clone(),
                             source_indices.clone(),
                             module_index.clone(),
+                            emit_info.variant_to_enum.clone(),
                         ) {
                             true
                         } else {
                             if crate::v1_compiler_infer_emit_info::is_known_variant(
-                                type_summaries.clone(),
+                                emit_info.variant_to_enum.clone(),
                                 n.clone(),
                             ) {
                                 {
@@ -14085,6 +14093,7 @@ pub fn emit_specific_import_use_lines(
                                 module_index.clone(),
                                 imported_enums.clone(),
                                 import_module_enums.clone(),
+                                emit_info.variant_to_enum.clone(),
                             ));
                         }
                         __result
@@ -14114,12 +14123,13 @@ pub fn emit_specific_import_use_lines(
                             module_index.clone(),
                             imported_enums.clone(),
                             import_module_enums.clone(),
+                            emit_info.variant_to_enum.clone(),
                         ) != "".to_string())
                         {
                             false
                         } else {
                             if (crate::v1_compiler_infer_emit_info::is_known_variant(
-                                type_summaries.clone(),
+                                emit_info.variant_to_enum.clone(),
                                 n.clone(),
                             ) && (authored_import_binds_provider_declaration(
                                 n.clone(),
@@ -14267,6 +14277,7 @@ pub fn emit_specific_import_use_lines(
                             type_summaries.clone(),
                             source_indices.clone(),
                             module_index.clone(),
+                            emit_info.variant_to_enum.clone(),
                         ) {
                             __result.push(n);
                         }
@@ -14285,6 +14296,7 @@ pub fn emit_specific_import_use_lines(
                             type_summaries.clone(),
                             source_indices.clone(),
                             module_index.clone(),
+                            emit_info.variant_to_enum.clone(),
                         ) == false)
                         {
                             __result.push(n);
@@ -14526,7 +14538,7 @@ Rc::new(vec![Rc::new(RustUseLine {
                         let variants = Rc::new({ let mut __result = Vec::new(); for n in deduped_names.iter().cloned() { if if ((n.clone() == "None".to_string()) || (n.clone() == "Some".to_string())) {
                             false
                         } else {
-                            if is_import_graph_type_name(n.clone(), import_module.clone(), typed_modules.clone(), registry.clone(), export_sets.clone(), type_summaries.clone(), source_indices.clone(), module_index.clone()) {
+                            if is_import_graph_type_name(n.clone(), import_module.clone(), typed_modules.clone(), registry.clone(), export_sets.clone(), type_summaries.clone(), source_indices.clone(), module_index.clone(), emit_info.variant_to_enum.clone()) {
                                 false
                             } else {
                                 if { let mut __found = false; for e in import_module_enums.iter().cloned() { if (e.clone() == n.clone()) { __found = true; break; } } __found } {
@@ -26266,7 +26278,7 @@ pub fn discriminant_zero_field_variant_tag(
                         let last = crate::v1_std_core::qualified_last_segment(tn.clone());
                         if ((last.clone() != "".to_string())
                             && crate::v1_compiler_infer_emit_info::is_known_variant(
-                                emit_info.type_summaries.clone(),
+                                emit_info.variant_to_enum.clone(),
                                 last.clone(),
                             ))
                         {
