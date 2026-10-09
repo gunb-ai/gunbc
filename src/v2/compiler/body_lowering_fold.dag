@@ -12112,17 +12112,6 @@ fn body_lower_resource_decl_declared_kind_optional(shell: Node) -> Optional<Decl
   }
 }
 
-// AN `alias` DECLARATION REFUSES, AT ITSELF, UNTIL ITS BINDING ROW IS CARRIED (operator ruling via
-// stern-bear-500, 2026-10-05). The `alias Name = a.b.C` form (dag_grammar_alias_decl_expr, keyword
-// kw_alias) is NOT a type alias `type X = Y`, which lowers as a type declaration. Lowered as metadata,
-// the declaration was grafted as a member named Name whose row nothing read from the normalized tree,
-// so Name resolved to its own grafted node instead of a.b.C: a silent wrong answer (DESIGN section 5).
-// No .dag source declares one. The carry is gunbc.recurring_failure_mode
-// alias_declaration_binding_row_not_carried; when it lands this arm is deleted.
-fn body_lower_alias_decl_refused(shell: Node) -> Outcome<Node> {
-  outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_alias_binding_row_not_carried, n: shell))
-}
-
 fn body_lower_production_emitted(shell: Node, emitted: Symbol, fn_body_pass_through: Bool) -> Outcome<BodyLowering> {
   if emitted == ^dag_surface_service_decl {
     body_term_sealed_lowering(o: body_lower_service_decl(shell: shell, admit_set_aside: false), shape: LoweredServiceDeclaration)
@@ -12130,8 +12119,6 @@ fn body_lower_production_emitted(shell: Node, emitted: Symbol, fn_body_pass_thro
     body_term_sealed_lowering(o: body_lower_resource_decl(shell: shell), shape: LoweredResourceDeclaration)
   } else if emitted == ^dag_surface_type_decl {
     body_term_sealed_lowering(o: body_lowering_lowered(o: body_lower_type_decl(shell: shell)), shape: LoweredTypeDeclaration)
-  } else if emitted == ^dag_surface_alias_decl {
-    body_lowering_lowered(o: body_lower_alias_decl_refused(shell: shell))
   } else if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
     body_lowering_lowered(o: outcome_accepted(value: shell))
   } else if emitted == ^dag_surface_type_variant {

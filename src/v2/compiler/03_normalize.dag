@@ -90,6 +90,7 @@ import v2.compiler.namespace_graft {
 import v2.extdeps.languages.dag {
   dag_grammar_root,
   dag_surface_kw_then_ident_from_captured,
+  alias_binding_row_from_decl_node,
   import_binding_rows_from_decl_node,
   namespace_graft_unwrap_module_working_root,
   parse_production_captured_child_optional,
@@ -383,6 +384,11 @@ fn normalize_node_fold_children_classified(n: Node, under_fn_decl: Bool, keep_ch
 // the caller and passed to each, rather than each folding node_subtree_nodes itself. DESIGN section
 // 2: two demands whose least common ancestor holds the value share it rather than recomputing it,
 // and this stage is one the floor already measures as over-budget.
+// AN `alias Name = a.b.C` DECLARATION IS THE SAME ROW (v2.std.namespace_alias AliasBindingRow): one
+// binding naming one target, read here for the same reason -- the graft dissolves the declaration
+// (v2.compiler.namespace_graft namespace_graft_unit_disposition), so this is the only moment it can
+// be read. An import is the transmutation of N such rows (docs/plans/namespace-resolution-design.md
+// section 13), so both forms land on one carrier and one binding fold.
 fn import_binding_capture(tree: ParseTree, nodes: List<Node>) -> Outcome<FreeMonoid<AliasBindingRow>> {
   fold_list(
     xs: nodes,
@@ -394,7 +400,13 @@ fn import_binding_capture(tree: ParseTree, nodes: List<Node>) -> Outcome<FreeMon
           match parse_production_emitted_identity_optional(node: n) {
             Absent => acc
             Present { value: id } =>
-              if id != ^dag_surface_import_decl {
+              if id == ^dag_surface_alias_decl {
+                match alias_binding_row_from_decl_node(decl: n, module_root: tree) {
+                  Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                  Accepted { value: row, diagnostics: _ } =>
+                    Accepted { value: list_snoc_item(xs: rows, item: row), diagnostics: v2.std.diagnostic.None }
+                }
+              } else if id != ^dag_surface_import_decl {
                 acc
               } else {
                 match import_binding_rows_from_decl_node(decl: n, module_root: tree) {
