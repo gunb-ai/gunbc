@@ -1683,11 +1683,6 @@ pub enum EnvironmentLoadRefusal {
     /// `kernel_type_set`, not the grammar, and an operator reading the refusal must be told which
     /// fact was unreadable.
     KernelSetNotReadable { revision: String, cause: String },
-    /// The base revision's own compiler could not answer for it (`cli_run::base_facts`). Base
-    /// facts are never evaluated by this binary, so this is the base side's only refusal route.
-    BaseCompiler {
-        refusal: super::base_facts::BaseFactRefusal,
-    },
 }
 
 /// The operator-facing text of a refusal.
@@ -1708,9 +1703,6 @@ pub fn environment_load_refusal_text(refusal: &EnvironmentLoadRefusal) -> String
             "{path} does not exist at revision {revision}, so the value it declares cannot be \
                  read"
         ),
-        EnvironmentLoadRefusal::BaseCompiler { refusal } => {
-            super::base_facts::base_fact_refusal_text(refusal)
-        }
         EnvironmentLoadRefusal::ClosureNotEvaluable { revision, cause } => {
             format!("the declaring closure at revision {revision} did not evaluate: {cause}")
         }
@@ -2253,39 +2245,6 @@ pub fn environment_agreement(
     head: &str,
     live: &LiveDagIndex,
 ) -> Result<EnvironmentAgreement, EnvironmentLoadRefusal> {
-    environment_agreement_supplied(repo, base, head, live, || base_compiler_supply(base))
-}
-
-/// `environment_agreement` with the base compiler named by the caller. The supply is asked for only
-/// on the differing path, so an ordinary change that edits no grammar needs no base compiler.
-pub fn environment_agreement_supplied(
-    repo: &std::path::Path,
-    base: &str,
-    head: &str,
-    live: &LiveDagIndex,
-    supply: impl FnOnce() -> Result<super::base_facts::BaseCompilerSupply, EnvironmentLoadRefusal>,
-) -> Result<EnvironmentAgreement, EnvironmentLoadRefusal> {
-    let differing = environment_differing_paths(repo, base, head, live)?;
-    if differing.is_empty() {
-        return Ok(EnvironmentAgreement::Identical);
-    }
-    Ok(EnvironmentAgreement::Differs {
-        base_environment: base_parse_environment(repo, base, &supply()?)?,
-        differing_paths: differing,
-    })
-}
-
-/// THE ENVIRONMENT READER'S DEMAND: the parse-environment closure's files whose content differs
-/// between the two revisions. Empty means the reader answers `Identical` without the base compiler;
-/// non-empty is exactly when it asks for one. `base_facts::base_compiler_demand` consumes this same
-/// function, so the job's fetch decision and the reader cannot disagree about when a base answer is
-/// needed.
-pub fn environment_differing_paths(
-    repo: &std::path::Path,
-    base: &str,
-    head: &str,
-    live: &LiveDagIndex,
-) -> Result<Vec<String>, EnvironmentLoadRefusal> {
     let closure = closure_paths_of(ENVIRONMENT_MODULE_PATH, live)?;
     let mut differing = Vec::new();
     for path in &closure {
@@ -2293,7 +2252,13 @@ pub fn environment_differing_paths(
             differing.push(path.clone());
         }
     }
-    Ok(differing)
+    if differing.is_empty() {
+        return Ok(EnvironmentAgreement::Identical);
+    }
+    Ok(EnvironmentAgreement::Differs {
+        base_environment: load_parse_environment_at(repo, base)?,
+        differing_paths: differing,
+    })
 }
 
 /// The path whose declarations the kernel-name set is derived from.
@@ -2320,18 +2285,6 @@ pub fn kernel_set_serves_both(
     base: &str,
     head: &str,
 ) -> Result<bool, EnvironmentLoadRefusal> {
-    kernel_set_serves_both_supplied(repo, base, head, &base_compiler_supply(base)?)
-}
-
-/// THE KERNEL READER'S DEMAND: whether `kernel_set_serves_both` must ask the base compiler. Equal
-/// CONTENT of the declaring file is the free answer (false); an absent base is not equal to anything
-/// and goes on to the base read, which refuses it. `base_facts::base_compiler_demand` consumes this
-/// same function.
-pub fn kernel_set_read_demands_base(
-    repo: &std::path::Path,
-    base: &str,
-    head: &str,
-) -> Result<bool, EnvironmentLoadRefusal> {
     let base_blob =
         blob_id_at(repo, base, KERNEL_TYPES_PATH).map_err(|e| as_kernel_set_refusal(base, e))?;
     // THE HEAD'S DECLARATION MUST EXIST. This binary's set speaks for the head only because the
@@ -2343,95 +2296,16 @@ pub fn kernel_set_read_demands_base(
             revision: head.to_string(),
             cause: format!("{KERNEL_TYPES_PATH} does not exist at this revision"),
         })?;
-    Ok(base_blob.as_deref() != Some(head_blob.as_str()))
-}
-
-/// `kernel_set_serves_both` with the base compiler named by the caller rather than by the floor
-/// job's environment -- the route controls take, so they drive the same comparison.
-pub fn kernel_set_serves_both_supplied(
-    repo: &std::path::Path,
-    base: &str,
-    head: &str,
-    supply: &super::base_facts::BaseCompilerSupply,
-) -> Result<bool, EnvironmentLoadRefusal> {
-    if !kernel_set_read_demands_base(repo, base, head)? {
+    // Equal CONTENT is the free answer; an absent base is not equal to anything and goes on to the
+    // base read, which refuses it.
+    if base_blob.as_deref() == Some(head_blob.as_str()) {
         return Ok(true);
     }
     let head_names: BTreeSet<String> = crate::std_types::kernel_type_set()
         .keys()
         .cloned()
         .collect();
-    Ok(base_kernel_names(repo, base, supply)? == head_names)
-}
-
-/// The floor job's statement of the base compiler, read once per base question.
-fn base_compiler_supply(
-    base: &str,
-) -> Result<super::base_facts::BaseCompilerSupply, EnvironmentLoadRefusal> {
-    super::base_facts::base_compiler_supply_from_env().map_err(|cause| {
-        EnvironmentLoadRefusal::RevisionUnreadable {
-            revision: base.to_string(),
-            step: "base compiler supply".to_string(),
-            cause,
-        }
-    })
-}
-
-/// THE BASE SIDE IS ANSWERED BY THE BASE'S OWN COMPILER (`cli_run::base_facts`), never evaluated
-/// here: a head that deleted a builtin the base calls would otherwise make the base unreadable.
-fn base_fact(
-    repo: &std::path::Path,
-    base: &str,
-    kind: super::base_facts::BaseFactKind,
-    supply: &super::base_facts::BaseCompilerSupply,
-) -> Result<serde_json::Value, EnvironmentLoadRefusal> {
-    super::base_facts::base_fact_from_base_compiler(supply, repo, base, kind)
-        .map_err(|refusal| EnvironmentLoadRefusal::BaseCompiler { refusal })
-}
-
-/// `dag_parse_environment` at `base`, as the base revision's compiler evaluates it.
-fn base_parse_environment(
-    repo: &std::path::Path,
-    base: &str,
-    supply: &super::base_facts::BaseCompilerSupply,
-) -> Result<std::rc::Rc<crate::std_syntax::ParseEnvironment>, EnvironmentLoadRefusal> {
-    let value = base_fact(
-        repo,
-        base,
-        super::base_facts::BaseFactKind::ParseEnvironment,
-        supply,
-    )?;
-    serde_json::from_value::<crate::std_syntax::ParseEnvironment>(value)
-        .map(std::rc::Rc::new)
-        .map_err(|e| EnvironmentLoadRefusal::ValueNotDecodable {
-            revision: base.to_string(),
-            cause: format!("the base compiler's parse environment: {e}"),
-        })
-}
-
-/// The kernel names `std.types` declares at `base`, as the base revision's compiler evaluates them.
-fn base_kernel_names(
-    repo: &std::path::Path,
-    base: &str,
-    supply: &super::base_facts::BaseCompilerSupply,
-) -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
-    use super::base_facts as bf;
-    let kind = bf::BaseFactKind::KernelNames;
-    // ONE SUBJECT, ONE REFUSAL ARM: the base compiler declining to evaluate the set is the kernel
-    // set being unreadable at that revision. A missing, pending or mismatched compiler is not about
-    // the set, and keeps its own typed arm.
-    let value = base_fact(repo, base, kind, supply).map_err(|e| match e {
-        EnvironmentLoadRefusal::BaseCompiler {
-            refusal: bf::BaseFactRefusal::BaseFactRefused { cause, .. },
-        } => EnvironmentLoadRefusal::KernelSetNotReadable {
-            revision: base.to_string(),
-            cause,
-        },
-        other => other,
-    })?;
-    bf::base_fact_names(value, base, kind)
-        .map(|v| v.into_iter().collect())
-        .map_err(|refusal| EnvironmentLoadRefusal::BaseCompiler { refusal })
+    Ok(kernel_names_at(repo, base)? == head_names)
 }
 
 /// The kernel names `std.types` declares at `revision`, read from that revision's own tree.

@@ -1,8 +1,6 @@
 module gunbc.fleet_desired_candidate
 
-import std.types { String, List, Int }
-import std.measure { Second, second_count }
-import std.optional { Present, Absent }
+import std.types { String, List }
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected, NonEmptyDiagnostics, diagnostics_reason_lexemes }
 import v2.workflow.bash_emit { bash_emit_stmts }
@@ -89,254 +87,13 @@ fn absent_and_stop(reason: String) -> Node {
 }
 
 fn fleet_desired_candidate_fetch_statements() -> List<Node> {
-  compiler_pair_candidate_fetch_statements(
-    revision: bash_build_command_from_lits(lits: ["git", "rev-parse", "HEAD"]),
-    wait: NoCandidateWait,
-    export: CandidateStandingOutputOnly,
-  )
-}
-
-// HOW LONG A FETCH WAITS FOR A CANDIDATE THAT IS STILL BEING BUILT. fleet-desired runs after its
-// revision LANDED, so the queue run that built its candidate has finished and there is nothing to
-// wait for: it reads only successful runs. The required floor on a merge_group judges against the
-// PREVIOUS group's head, whose run is usually still in flight; there the fetch reads the run
-// whatever its status and polls for the artifact up to a declared bound
-// (gunbc.compiler_gate_workflow compiler_gate_base_compiler_wait). Trusting an unfinished run is
-// sound only because nothing trusts the run at all: the canonical consumer verifies the pack's
-// CONTENT -- kind, source closure equal to the base's tree, every member's digest -- before
-// anything executes.
-type CandidateWait
-  = NoCandidateWait
-  | PollForCandidate { polls: Int, interval: Second }
-
-// WHERE THE STANDING GOES. fleet-desired branches on a step output; the required floor also hands
-// the standing to claim_executor through the job environment (cli_run::base_facts), which is the
-// one reader that decides what an absent or pending base compiler means.
-type CandidateStandingExport
-  = CandidateStandingOutputOnly
-  | CandidateStandingToBaseCompilerEnv
-
-fn candidate_run_status_filter(wait: CandidateWait) -> String {
-  match wait {
-    NoCandidateWait => "&status=success"
-    PollForCandidate { polls: _, interval: _ } => ""
-  }
-}
-
-fn candidate_run_absent_reason(wait: CandidateWait) -> String {
-  match wait {
-    NoCandidateWait => "no successful merge_group run of the required workflow on this revision"
-    PollForCandidate { polls: _, interval: _ } => "no merge_group run of the required workflow on this revision: it landed without the queue"
-  }
-}
-
-fn candidate_artifact_absent_reason(wait: CandidateWait) -> String {
-  match wait {
-    NoCandidateWait => "the newest successful merge_group run of this revision holds no unexpired candidate artifact"
-    PollForCandidate { polls: _, interval: _ } => "the newest merge_group run of this revision holds no unexpired candidate artifact"
-  }
-}
-
-fn append_env(line: Node) -> Node {
-  bash_build_with_redir_to_file(
-    inner: bash_build_pipe(left: cmd(ws: [lit(t: "echo"), line]), right: cmd(ws: [lit(t: "tee"), lit(t: "-a"), var(n: "GITHUB_ENV")])),
-    path: lit(t: "/dev/null"),
-  )
-}
-
-fn standing_statements(standing: String, detail: Node, export: CandidateStandingExport) -> List<Node> {
-  concat([append_output(line: join(["standing=", standing], ""))], match export {
-    CandidateStandingOutputOnly => []
-    CandidateStandingToBaseCompilerEnv => [
-      append_env(line: lit(t: join(["GUNBC_BASE_COMPILER_STANDING=", standing], ""))),
-      append_env(line: words(ws: [lit(t: "GUNBC_BASE_COMPILER_REVISION="), var(n: "CHECKED_OUT")])),
-      append_env(line: words(ws: [lit(t: "GUNBC_BASE_COMPILER_DETAIL="), detail])),
-    ]
-  })
-}
-
-fn stop_statements(message: String, standing: String, detail: Node, export: CandidateStandingExport) -> List<Node> {
-  concat(
-    concat([cmd(ws: [lit(t: "echo"), lit(t: join(["pair-candidate: ", standing, " (", message, ")"], ""))])], standing_statements(standing: standing, detail: detail, export: export)),
-    [bash_build_exit(code: "0")],
-  )
-}
-
-fn stop_with(message: String, standing: String, detail: Node, export: CandidateStandingExport) -> Node {
-  bash_build_stmt_list_from_nodes(stmts: stop_statements(message: message, standing: standing, detail: detail, export: export))
-}
-
-fn artifact_query_statements() -> List<Node> {
   [
-    or_refuse(
-      check: api_get(
-        url: words(ws: [var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"), lit(t: "/actions/runs/"), var(n: "RUN_ID"), lit(t: join(["/artifacts?per_page=100&name=", compiler_pair_candidate_artifact_name], ""))]),
-        out: dir(file: "artifacts.json"),
-      ),
-      name: "ArtifactsUnreadable", message: "the Actions API did not answer the candidate artifact query; that is not absence",
-    ),
-    or_refuse(
-      check: cmd(ws: [lit(t: "jq"), lit(t: "-e"), lit(t: ".total_count == (.artifacts | length)"), dir(file: "artifacts.json")]),
-      name: "ArtifactsListingTruncated", message: "the run's candidate artifact listing is not complete on one page; an unread page is not absence",
-    ),
-    assign_sub(name: "ARTIFACT_ID", body: cmd(ws: [
-      lit(t: "jq"), lit(t: "-r"),
-      lit(t: "[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | reverse | .[0].id // empty"),
-      dir(file: "artifacts.json"),
-    ])),
-  ]
-}
-
-// THE POLL'S DECISION, AS A PURE FOLD OVER WHAT IT OBSERVED. The poll makes two kinds of
-// observation of the base's merge_group run -- its candidate artifacts, and its status -- and a run
-// can upload between them: empty, then completed, then present is an ordinary interleaving. What to
-// conclude from a sequence of observations is a decision about the ORDER of reads, not about the
-// shell that performs them, so it lives here as data: `candidate_poll_step` is the one transition,
-// `candidate_poll_decide` folds it over a supplied sequence, and the emitted poll below asks
-// `candidate_poll_step` what to do after each observation instead of restating the rule in shell.
-// Completion moves to a state that awaits ONE MORE artifact read; only that read's emptiness is
-// absence, because concluding it from the earlier empty read would refuse a base compiler that
-// exists.
-type CandidateObservation
-  = ArtifactsEmpty
-  | ArtifactsPresent
-  | RunInFlight
-  | RunCompleted
-
-type CandidatePollStanding
-  = CandidatePresent
-  | CandidateUnavailable
-  | CandidatePending
-  | CandidateObservationOutOfOrder
-
-type CandidatePollState
-  = AwaitingArtifacts
-  | AwaitingStatus
-  | AwaitingArtifactsAfterCompletion
-  | CandidatePollConcluded { standing: CandidatePollStanding }
-
-// An artifact read is followed by a status read only while the artifacts are empty; a status read
-// is followed by an artifact read. Any other order is not a sequence this poll produces, and it is
-// refused as such rather than read as either answer.
-fn candidate_poll_step(state: CandidatePollState, observation: CandidateObservation) -> CandidatePollState {
-  match state {
-    CandidatePollConcluded { standing: s } => CandidatePollConcluded { standing: s }
-    AwaitingArtifacts => match observation {
-      ArtifactsPresent => CandidatePollConcluded { standing: CandidatePresent }
-      ArtifactsEmpty => AwaitingStatus
-      RunInFlight => CandidatePollConcluded { standing: CandidateObservationOutOfOrder }
-      RunCompleted => CandidatePollConcluded { standing: CandidateObservationOutOfOrder }
-    }
-    AwaitingStatus => match observation {
-      RunCompleted => AwaitingArtifactsAfterCompletion
-      RunInFlight => AwaitingArtifacts
-      ArtifactsEmpty => CandidatePollConcluded { standing: CandidateObservationOutOfOrder }
-      ArtifactsPresent => CandidatePollConcluded { standing: CandidateObservationOutOfOrder }
-    }
-    AwaitingArtifactsAfterCompletion => match observation {
-      ArtifactsPresent => CandidatePollConcluded { standing: CandidatePresent }
-      ArtifactsEmpty => CandidatePollConcluded { standing: CandidateUnavailable }
-      RunInFlight => CandidatePollConcluded { standing: CandidateObservationOutOfOrder }
-      RunCompleted => CandidatePollConcluded { standing: CandidateObservationOutOfOrder }
-    }
-  }
-}
-
-fn candidate_poll_standing(state: CandidatePollState) -> CandidatePollStanding {
-  match state {
-    CandidatePollConcluded { standing: s } => s
-    AwaitingArtifacts => CandidatePending
-    AwaitingStatus => CandidatePending
-    AwaitingArtifactsAfterCompletion => CandidatePending
-  }
-}
-
-// A sequence that ends unconcluded is a run still in flight: pending, never absence.
-fn candidate_poll_decide(observations: List<CandidateObservation>) -> CandidatePollStanding {
-  candidate_poll_standing(state: fold(observations, AwaitingArtifacts, (state, o) => candidate_poll_step(state: state, observation: o)))
-}
-
-// What the emitted poll does from a state the step reached. A concluded absence stops; a state that
-// awaits artifacts reads them (after the interval, when the run is still in flight) and, if they are
-// empty, does whatever the step decides next. A concluded presence emits nothing: ARTIFACT_ID is set
-// and the fetch proceeds to download.
-fn poll_after(state: CandidatePollState, interval: Second, export: CandidateStandingExport) -> List<Node> {
-  match state {
-    CandidatePollConcluded { standing: s } => match s {
-      CandidatePresent => []
-      CandidatePending => []
-      CandidateUnavailable => stop_statements(message: "the revision's merge_group run completed without an unexpired candidate artifact", standing: "absent", detail: words(ws: [lit(t: "run="), var(n: "RUN_ID"), lit(t: " completed with no candidate")]), export: export)
-      CandidateObservationOutOfOrder => [refuse(name: "PollObservationOutOfOrder", message: "the candidate poll observed the run in an order its decision does not admit")]
-    }
-    AwaitingArtifactsAfterCompletion => concat(artifact_query_statements(), [
-      bash_build_if(
-        cond: test_words(ws: [lit(t: "-z"), var(n: "ARTIFACT_ID")]),
-        body: bash_build_stmt_list_from_nodes(stmts: poll_after(state: candidate_poll_step(state: state, observation: ArtifactsEmpty), interval: interval, export: export)),
-      ),
-    ])
-    AwaitingArtifacts => concat([cmd(ws: [lit(t: "sleep"), lit(t: to_string(second_count(s: interval)))])], artifact_query_statements())
-    AwaitingStatus => []
-  }
-}
-
-// ONE POLL, UNROLLED: a bounded, forward sequence rather than a loop, so the wait's bound is the
-// statement count. It runs only while ARTIFACT_ID is empty -- the state AwaitingStatus -- reads the
-// run's status, and hands that observation to candidate_poll_step.
-fn poll_statements(interval: Second, export: CandidateStandingExport) -> List<Node> {
-  [
-    bash_build_if(
-      cond: test_words(ws: [lit(t: "-z"), var(n: "ARTIFACT_ID")]),
-      body: bash_build_stmt_list_from_nodes(stmts: [
-        or_refuse(
-          check: api_get(
-            url: words(ws: [var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"), lit(t: "/actions/runs/"), var(n: "RUN_ID")]),
-            out: dir(file: "run.json"),
-          ),
-          name: "RunUnreadable", message: "the Actions API did not answer the candidate run's status; that is not absence",
-        ),
-        assign_sub(name: "RUN_STATUS", body: cmd(ws: [lit(t: "jq"), lit(t: "-r"), lit(t: ".status"), dir(file: "run.json")])),
-        bash_build_if_else(
-          cond: test_words(ws: [var(n: "RUN_STATUS"), lit(t: "="), lit(t: "completed")]),
-          then_body: bash_build_stmt_list_from_nodes(stmts: poll_after(state: candidate_poll_step(state: AwaitingStatus, observation: RunCompleted), interval: interval, export: export)),
-          else_body: bash_build_stmt_list_from_nodes(stmts: poll_after(state: candidate_poll_step(state: AwaitingStatus, observation: RunInFlight), interval: interval, export: export)),
-        ),
-      ]),
-    ),
-  ]
-}
-
-fn repeat_polls(n: Int, interval: Second, export: CandidateStandingExport) -> List<Node> {
-  if n <= 0 { [] } else { concat(poll_statements(interval: interval, export: export), repeat_polls(n: n - 1, interval: interval, export: export)) }
-}
-
-fn wait_statements(wait: CandidateWait, export: CandidateStandingExport) -> List<Node> {
-  match wait {
-    NoCandidateWait => []
-    PollForCandidate { polls: n, interval: i } => concat(repeat_polls(n: n, interval: i, export: export), [
-      bash_build_if(
-        cond: test_words(ws: [lit(t: "-z"), var(n: "ARTIFACT_ID")]),
-        body: stop_with(
-          message: join(["the revision's merge_group run is still in flight and uploaded no candidate within ", to_string(n * (second_count(s: i) as Int)), "s"], ""),
-          standing: "pending",
-          detail: words(ws: [lit(t: "run="), var(n: "RUN_ID"), lit(t: join([" waited=", to_string(n * (second_count(s: i) as Int)), "s"], ""))]),
-          export: export,
-        ),
-      ),
-    ])
-  }
-}
-
-// THE FETCH, FOR ANY REVISION: `revision` is the command that prints the commit whose candidate is
-// wanted (fleet-desired: the checkout; the floor: its base). The wait decides only how an UNFINISHED
-// run is treated; transport and listing failures refuse identically at every revision.
-fn compiler_pair_candidate_fetch_statements(revision: Node, wait: CandidateWait, export: CandidateStandingExport) -> List<Node> {
-  concat([
     cmd(ws: [lit(t: "rm"), lit(t: "-rf"), dir(file: "")]),
     cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), dir(file: "")]),
-    assign_sub(name: "CHECKED_OUT", body: revision),
+    assign_sub(name: "CHECKED_OUT", body: bash_build_command_from_lits(lits: ["git", "rev-parse", "HEAD"])),
     or_refuse(
       check: api_get(
-        url: words(ws: [var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"), lit(t: join(["/actions/runs?event=merge_group", candidate_run_status_filter(wait: wait), "&per_page=100&head_sha="], "")), var(n: "CHECKED_OUT")]),
+        url: words(ws: [var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"), lit(t: "/actions/runs?event=merge_group&status=success&per_page=100&head_sha="), var(n: "CHECKED_OUT")]),
         out: dir(file: "runs.json"),
       ),
       name: "RunsUnreadable", message: "the Actions API did not answer the merge_group run query; that is not absence",
@@ -353,9 +110,24 @@ fn compiler_pair_candidate_fetch_statements(revision: Node, wait: CandidateWait,
       ], "")),
       dir(file: "runs.json"),
     ])),
-    bash_build_if(cond: test_words(ws: [lit(t: "-z"), var(n: "RUN_ID")]), body: absent_or_stop(reason: candidate_run_absent_reason(wait: wait), export: export)),
-  ], concat(artifact_query_statements(), concat(wait_statements(wait: wait, export: export), [
-    bash_build_if(cond: test_words(ws: [lit(t: "-z"), var(n: "ARTIFACT_ID")]), body: absent_or_stop(reason: candidate_artifact_absent_reason(wait: wait), export: export)),
+    bash_build_if(cond: test_words(ws: [lit(t: "-z"), var(n: "RUN_ID")]), body: absent_and_stop(reason: "no successful merge_group run of the required workflow on this revision")),
+    or_refuse(
+      check: api_get(
+        url: words(ws: [var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"), lit(t: "/actions/runs/"), var(n: "RUN_ID"), lit(t: join(["/artifacts?per_page=100&name=", compiler_pair_candidate_artifact_name], ""))]),
+        out: dir(file: "artifacts.json"),
+      ),
+      name: "ArtifactsUnreadable", message: "the Actions API did not answer the candidate artifact query; that is not absence",
+    ),
+    or_refuse(
+      check: cmd(ws: [lit(t: "jq"), lit(t: "-e"), lit(t: ".total_count == (.artifacts | length)"), dir(file: "artifacts.json")]),
+      name: "ArtifactsListingTruncated", message: "the run's candidate artifact listing is not complete on one page; an unread page is not absence",
+    ),
+    assign_sub(name: "ARTIFACT_ID", body: cmd(ws: [
+      lit(t: "jq"), lit(t: "-r"),
+      lit(t: "[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | reverse | .[0].id // empty"),
+      dir(file: "artifacts.json"),
+    ])),
+    bash_build_if(cond: test_words(ws: [lit(t: "-z"), var(n: "ARTIFACT_ID")]), body: absent_and_stop(reason: "the newest successful merge_group run of this revision holds no unexpired candidate artifact")),
     or_refuse(
       check: api_get(
         url: words(ws: [var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"), lit(t: "/actions/artifacts/"), var(n: "ARTIFACT_ID"), lit(t: "/zip")]),
@@ -379,100 +151,13 @@ fn compiler_pair_candidate_fetch_statements(revision: Node, wait: CandidateWait,
       path: lit(t: "/dev/null"),
     ),
     cmd(ws: [lit(t: "echo"), words(ws: [lit(t: "pair-candidate: present, artifact "), var(n: "ARTIFACT_ID")])]),
-  ], standing_statements(standing: "present", detail: words(ws: [lit(t: "artifact="), var(n: "ARTIFACT_ID")]), export: export))))
-}
-
-// fleet-desired's absence keeps its own wording and builds; the floor's is a typed standing.
-fn absent_or_stop(reason: String, export: CandidateStandingExport) -> Node {
-  match export {
-    CandidateStandingOutputOnly => absent_and_stop(reason: reason)
-    CandidateStandingToBaseCompilerEnv => stop_with(message: reason, standing: "absent", detail: lit(t: reason), export: export)
-  }
-}
-
-data fleet_desired_candidate_fetch_script_row: CandidateScriptRow = candidate_script_row(
-  script: "gunbc.fleet_desired_candidate fleet_desired_candidate_fetch_script",
-  statements: fleet_desired_candidate_fetch_statements(),
-)
-
-fn fleet_desired_candidate_fetch_script() -> String {
-  candidate_script_text(row: fleet_desired_candidate_fetch_script_row)
-}
-
-// A REFUSED EMISSION IS DATA, NEVER TEXT. bash_emit refuses statements its grammar has no
-// production for, and that refusal used to be read here as the empty string: the step was then
-// generated with no script at all, and the workflow carried no trace of why. Each script is instead a
-// row holding the fold's own outcome beside the symbol that produced it, so the two readers --
-// workflow generation, which refuses to emit (candidate_scripts_refusal), and the step's text,
-// which a step must carry -- answer from one value. A Rejected row's text is a step that refuses
-// at runtime, naming the script and the fold's reasons; it is never empty and never a success.
-type CandidateScriptRow { script: String, outcome: Outcome<String> }
-
-fn candidate_script_row(script: String, statements: List<Node>) -> CandidateScriptRow {
-  CandidateScriptRow { script: script, outcome: bash_emit_stmts(statements: statements, set_e: true) }
-}
-
-fn candidate_script_refusal_text(row: CandidateScriptRow, diagnostics: NonEmptyDiagnostics) -> String {
-  join(["REFUSED ", row.script, ": v2.workflow.bash_emit refused its statements (", diagnostics_reason_lexemes(diagnostics: diagnostics), ")"], "")
-}
-
-fn candidate_script_text(row: CandidateScriptRow) -> String {
-  match row.outcome {
-    Accepted { value: v, diagnostics: _ } => v
-    Rejected { diagnostics: ds } => script_emission_refused_text(script: row.script, diagnostics: ds)
-  }
-}
-
-// The first refused row, as the generation refusal a workflow emits instead of its YAML.
-fn candidate_scripts_refusal(rows: List<CandidateScriptRow>) -> String? {
-  fold(rows, Absent, (found, row) => match found {
-    Present { value: _ } => found
-    Absent => match row.outcome {
-      Accepted { value: _, diagnostics: _ } => Absent
-      Rejected { diagnostics: ds } => Present { value: candidate_script_refusal_text(row: row, diagnostics: ds) }
-    }
-  })
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// THE FLOOR'S DEMAND, DECIDED BY THE HEAD BINARY. `program` is the head's claim_executor; its
-// `--base-compiler-demand` resolves the base through the floor's own resolver (gunbc.diff_baseline,
-// every event the workflow runs on) and asks each base-fact reader its own predicate, printing
-// `revision=`, `demanded=` and `facts=` lines. The step writes them as its outputs. The workflow
-// selects no base and decides no demand of its own: it fetches only on demanded=true, for that
-// revision, and on demanded=false states not-demanded for it so a reader that asks anyway refuses
-// typed (BaseCompilerNotDemanded) rather than reading as never supplied.
-data base_compiler_demand_out: String = "base-compiler-demand.out"
-data base_compiler_demanded_revision_env: String = "GUNBC_BASE_COMPILER_DEMANDED_REVISION"
-
-fn base_compiler_demand_statements(program: String) -> List<Node> {
-  let out = words(ws: [var(n: "RUNNER_TEMP"), lit(t: join(["/", base_compiler_demand_out], ""))])
-  [
-    bash_build_with_redir_to_file(inner: cmd(ws: [lit(t: program), lit(t: "--base-compiler-demand")]), path: out),
-    bash_build_with_redir_to_file(
-      inner: bash_build_pipe(left: cmd(ws: [lit(t: "cat"), out]), right: cmd(ws: [lit(t: "tee"), lit(t: "-a"), var(n: "GITHUB_OUTPUT")])),
-      path: lit(t: "/dev/stderr"),
-    ),
+    append_output(line: "standing=present"),
   ]
 }
 
-fn base_compiler_not_demanded_statements() -> List<Node> {
-  concat([
-    bash_build_assign(name: "CHECKED_OUT", value: var(n: base_compiler_demanded_revision_env)),
-    cmd(ws: [lit(t: "echo"), words(ws: [lit(t: "pair-candidate: not demanded (no base fact is read at "), var(n: "CHECKED_OUT"), lit(t: "; nothing fetched)")])]),
-  ], standing_statements(standing: "not-demanded", detail: lit(t: "no base fact demanded"), export: CandidateStandingToBaseCompilerEnv))
+fn fleet_desired_candidate_fetch_script() -> String {
+  match bash_emit_stmts(statements: fleet_desired_candidate_fetch_statements(), set_e: true) {
+    Accepted { value: v, diagnostics: _ } => v
+    Rejected { diagnostics: ds } => script_emission_refused_text(script: "gunbc.fleet_desired_candidate fleet_desired_candidate_fetch_script", diagnostics: ds)
+  }
 }
-
-// The floor's fetch reads the decided revision from the demand step, never from git.
-fn base_compiler_demanded_revision() -> Node {
-  cmd(ws: [lit(t: "printf"), lit(t: "%s"), var(n: base_compiler_demanded_revision_env)])
-}
-
-fn base_compiler_demand_script_row(program: String) -> CandidateScriptRow {
-  candidate_script_row(script: "gunbc.fleet_desired_candidate base_compiler_demand_script_row", statements: base_compiler_demand_statements(program: program))
-}
-
-data base_compiler_not_demanded_script_row: CandidateScriptRow = candidate_script_row(
-  script: "gunbc.fleet_desired_candidate base_compiler_not_demanded_script_row",
-  statements: base_compiler_not_demanded_statements(),
-)

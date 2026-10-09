@@ -179,39 +179,6 @@ fn write_floor_worker_terminal(outcome: &str, detail: &str) -> Result<(), String
     fs::rename(&tmp, &path).map_err(|e| format!("publish worker terminal {}: {e}", path.display()))
 }
 
-fn base_fact_mode(args: &[String]) -> Result<ExitCode, ExitCode> {
-    use v1_compiler::cli_run::base_facts as bf;
-    let (fact, revision) = match args {
-        [_, flag, fact, rev_flag, revision]
-            if flag == "--base-fact" && rev_flag == "--base-revision" =>
-        {
-            (fact, revision)
-        }
-        _ => {
-            eprintln!("claim_executor: usage: --base-fact <fact> --base-revision <commit>");
-            return Err(ExitCode::from(2));
-        }
-    };
-    let kind = bf::parse_base_fact_kind(fact).map_err(|e| {
-        eprintln!("{e}");
-        ExitCode::from(2)
-    })?;
-    let repo = std::env::current_dir().map_err(|e| {
-        eprintln!("claim_executor: --base-fact: current directory: {e}");
-        ExitCode::from(2)
-    })?;
-    match bf::emit_base_fact(&repo, revision, kind) {
-        Ok(answer) => {
-            println!("{answer}");
-            Ok(ExitCode::SUCCESS)
-        }
-        Err(e) => {
-            eprintln!("{e}");
-            Err(ExitCode::from(1))
-        }
-    }
-}
-
 fn run() -> Result<ExitCode, ExitCode> {
     // BEFORE ANY WORK, AND BEFORE ARGUMENTS, because a limit acquired after the first large
     // allocation bounds nothing that already happened. On a machine that already binds this
@@ -228,26 +195,6 @@ fn run() -> Result<ExitCode, ExitCode> {
     }
 
     let args: Vec<String> = std::env::args().collect();
-    // THE BASE SIDE OF `v1_compiler::cli_run::base_facts`: this binary, built from a base
-    // revision, answers one base fact for that revision and exits. It is the whole command line --
-    // the floor runs it as a separate process and reads stdout as the versioned contract.
-    if args.get(1).map(String::as_str) == Some("--base-fact") {
-        return base_fact_mode(&args);
-    }
-    // THE HEAD SIDE'S DECISION, before the floor runs: which base, and whether any base fact will be
-    // read there. The floor job fetches a base compiler only on `demanded=true`.
-    if args.len() == 2 && args[1] == "--base-compiler-demand" {
-        return match v1_compiler::cli_run::base_facts::emit_base_compiler_demand() {
-            Ok(lines) => {
-                print!("{lines}");
-                Ok(ExitCode::SUCCESS)
-            }
-            Err(e) => {
-                eprintln!("{e}");
-                Err(ExitCode::from(1))
-            }
-        };
-    }
     let mut source_roots: Vec<String> = Vec::new();
     let mut verify_artifacts: Vec<String> = Vec::new();
     let mut verify_artifacts_mode = false;

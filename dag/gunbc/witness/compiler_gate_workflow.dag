@@ -70,7 +70,7 @@ module gunbc.compiler_gate_workflow
 // reused across runs, or preparation scoped to a diff's closure) and its runtime fits the fleet;
 // then witnesses.yml is emitted by gunbc.witness_floor_workflow again and this module is deleted.
 
-import std.measure { Minute, minute, minute_count, Second, second, second_count, seconds_per_minute }
+import std.measure { Minute, minute, minute_count }
 import std.types { Bool, Int, List, String }
 import std.optional { Present, Absent }
 import v2.std.algebra { list_map, filter, length }
@@ -165,16 +165,7 @@ import gunbc.fleet_release_bins_key {
   compiler_pair_release_product, release_bins_key_script_for, release_bins_pack_manifest_script_for,
   release_bins_pack_object_script, release_bins_pack_object_path_expression,
   compiler_pair_candidate_artifact_name, compiler_pair_candidate_retention_whole_days,
-  release_bins_base_compiler_script_for,
 }
-import gunbc.fleet_desired_candidate {
-  compiler_pair_candidate_fetch_statements, CandidateScriptRow, candidate_script_row, candidate_script_text, candidate_scripts_refusal,
-  PollForCandidate, CandidateStandingToBaseCompilerEnv,
-  base_compiler_demand_script_row, base_compiler_not_demanded_script_row, base_compiler_demanded_revision,
-  base_compiler_demanded_revision_env,
-}
-import gunbc.claim_executor_cli { claim_executor_program }
-import v2.extdeps.languages.bash_build { bash_build_command_with_words, bash_build_word_lit, bash_build_word_var }
 import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command, repo_self_test_command, repo_self_slice_cost_control_command }
 import extdeps.exec.command { shell_command_render }
 import extdeps.github.expressions { interpolate, ContextAccess, Needs, Github, Expression, default_expression_spellings }
@@ -816,7 +807,7 @@ fn compiler_gate_candidate_upload_step() -> Step {
 }
 
 fn compiler_gate_floor_bound_steps() -> List<CompilerGateBoundStep> {
-  concat(list_append(compiler_gate_fleet_prelude_bound_steps(), compiler_gate_base_compiler_bound_steps()), concat([
+  concat(compiler_gate_fleet_prelude_bound_steps(), concat([
     CompilerGateBoundStep {
       step: compiler_gate_floor_run_step(),
       role: consumes_only(capabilities: [RustfmtCapability]),
@@ -1002,146 +993,8 @@ fn compiler_gate_floor_job() -> Job {
     timeout_minutes: Present { value: compiler_gate_floor_timeout_minutes },
     continue_on_error: none,
     concurrency: none,
-    permissions: Present { value: compiler_gate_floor_permissions }
+    permissions: Present { value: compiler_gate_permissions }
   }
-}
-
-// THE FLOOR READS ACTIONS ARTIFACTS: it fetches the base revision's compiler pair candidate
-// (compiler_gate_base_compiler_bound_steps) from the merge-queue run that built it. Read only, on the
-// one job that needs it; operator decision 2026-10-06.
-data compiler_gate_floor_permissions: WorkflowPermissions = WorkflowPermissions {
-  contents: Present { value: PermRead },
-  pull_requests: none,
-  issues: none,
-  actions: Present { value: PermRead },
-  id_token: none
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// THE BASE REVISION'S OWN COMPILER (cli_run::base_facts).
-//
-// The floor judges three base-side facts -- the cost-debt roster, the parse environment, the
-// kernel-name set -- and judging them with THIS revision's binary is judging one revision with
-// another's compiler (gunbc#13378: a head that deletes a builtin the base calls makes the base
-// unevaluable). So after the head's build, the floor fetches the merge queue's compiler pair
-// candidate FOR THE BASE (gunbc.fleet_desired_candidate, the fetch fleet-desired already runs),
-// verifies it as that revision's canonical pair (gunbc.fleet_release_bins_key, the same verifier,
-// keyed to the base's tree) and hands claim_executor its path. claim_executor stays the one authority
-// for WHICH commit is the base: the fetch names the commit it fetched for, and the binary refuses
-// BaseCompilerRevisionMismatch when that is not its own decision. Absence and pending are standings
-// the binary reads, so they refuse only when a base fact is actually demanded.
-//
-// WHICH BASE, AND WHETHER ANY BASE FACT IS READ, ARE THE HEAD BINARY'S DECISIONS
-// (claim_executor --base-compiler-demand): the base comes from the floor's own resolver
-// (gunbc.diff_baseline, which maps every event this workflow runs on -- pull_request, merge_group,
-// workflow_dispatch, exact replay, operator override), and each fact's demand is its reader's own
-// predicate. The workflow selects no base and decides no demand: a second base policy here refused
-// on workflow_dispatch (no base sha in that event's payload), and a fetch gated only on the head's
-// restore made every group pay the wait and the Actions API's failure modes for a base fact
-// nobody reads.
-data compiler_gate_base_compiler_demand_step_id: String = "base_compiler_demand"
-
-fn compiler_gate_base_compiler_demand_output(key: String) -> String {
-  join(["steps.", compiler_gate_base_compiler_demand_step_id, ".outputs.", key], "")
-}
-
-fn compiler_gate_base_compiler_demanded_revision_env() -> YamlKeyValue {
-  kv(key: base_compiler_demanded_revision_env, value: yaml_string(s: join(["${{ ", compiler_gate_base_compiler_demand_output(key: "revision"), " }}"], "")))
-}
-
-// THE WAIT IS A DECLARED POLICY BUDGET, NOT A MEASUREMENT. On a merge_group the base is the previous
-// group's head, whose run usually started before this one and uploads its candidate right after
-// its build step; this step runs after THIS run's own build, so most of that wait has already
-// elapsed. The bound is the budget sharp-raven-357 ruled on 2026-10-06 (about two build steps), a
-// policy over how long a stacked group may wait for its base, and no figure here is an oracle:
-// the observation it is set against is re-derived, never transcribed, by reading the Actions API
-// for the compiler-pair-candidate artifacts of merge_group runs (artifact created_at against its
-// workflow run's run_started_at). Past the budget the floor refuses BaseCompilerPending rather
-// than ejecting on a guess; if those refusals are observed, the next rung is building the base
-// inside the floor on that miss (gunbc.recurring_failure_mode
-// base_compiler_pending_on_a_stacked_merge_group), never a longer wait.
-fn compiler_gate_base_compiler_wait() -> Second { second(count: 20 * 60) }
-fn compiler_gate_base_compiler_poll_interval() -> Second { second(count: 60) }
-
-fn compiler_gate_base_compiler_polls() -> Int {
-  (second_count(s: compiler_gate_base_compiler_wait()) / second_count(s: compiler_gate_base_compiler_poll_interval())) as Int
-}
-
-data compiler_gate_base_compiler_fetch_step_id: String = "base_compiler"
-
-data compiler_gate_base_compiler_fetch_script_row: CandidateScriptRow = candidate_script_row(
-  script: "gunbc.compiler_gate_workflow compiler_gate_base_compiler_fetch_script_row",
-  statements: compiler_pair_candidate_fetch_statements(
-    revision: base_compiler_demanded_revision(),
-    wait: PollForCandidate {
-      polls: compiler_gate_base_compiler_polls(),
-      interval: compiler_gate_base_compiler_poll_interval(),
-    },
-    export: CandidateStandingToBaseCompilerEnv,
-  ),
-)
-
-data compiler_gate_base_compiler_demand_script_row: CandidateScriptRow = base_compiler_demand_script_row(program: claim_executor_program().invocation as String)
-
-// Every candidate script the floor job carries; workflow generation refuses on the first refused one.
-fn compiler_gate_candidate_script_rows() -> List<CandidateScriptRow> {
-  [compiler_gate_base_compiler_demand_script_row, base_compiler_not_demanded_script_row, compiler_gate_base_compiler_fetch_script_row]
-}
-
-fn compiler_gate_base_compiler_bound_steps() -> List<CompilerGateBoundStep> {
-  [
-    CompilerGateBoundStep {
-      step: compiler_gate_seed_run_step(
-        name: "Decide which base the floor judges against and whether it reads a base fact there",
-        id: Present { value: compiler_gate_base_compiler_demand_step_id },
-        script: candidate_script_text(row: compiler_gate_base_compiler_demand_script_row),
-        env: [],
-        condition: Present { value: "steps.build_witness_fold.outcome == 'success'" },
-        timeout: none,
-      ),
-      role: capability_neutral,
-      step_name: "Decide which base the floor judges against and whether it reads a base fact there",
-    },
-    CompilerGateBoundStep {
-      step: compiler_gate_seed_run_step(
-        name: "Record that the floor reads no base fact",
-        id: none,
-        script: candidate_script_text(row: base_compiler_not_demanded_script_row),
-        env: [compiler_gate_base_compiler_demanded_revision_env()],
-        condition: Present { value: join([compiler_gate_base_compiler_demand_output(key: "demanded"), " == 'false'"], "") },
-        timeout: none,
-      ),
-      role: capability_neutral,
-      step_name: "Record that the floor reads no base fact",
-    },
-    CompilerGateBoundStep {
-      step: RunStep {
-        name: Present { value: "Fetch the base revision's compiler pair candidate" },
-        id: Present { value: compiler_gate_base_compiler_fetch_step_id },
-        run: candidate_script_text(row: compiler_gate_base_compiler_fetch_script_row),
-        shell: none,
-        env: Present { value: [kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")), compiler_gate_base_compiler_demanded_revision_env()] },
-        working_directory: none,
-        if_condition: Present { value: join([compiler_gate_base_compiler_demand_output(key: "demanded"), " == 'true'"], "") },
-        continue_on_error: none,
-        timeout_minutes: Present { value: second_count(s: compiler_gate_base_compiler_wait()) / seconds_per_minute() + 10 }
-      },
-      role: capability_neutral,
-      step_name: "Fetch the base revision's compiler pair candidate",
-    },
-    CompilerGateBoundStep {
-      step: compiler_gate_seed_run_step(
-        name: "Verify the base revision's compiler pair and install it beside the head's",
-        id: none,
-        script: release_bins_base_compiler_script_for(product: compiler_pair_release_product()),
-        env: [],
-        condition: Present { value: join(["steps.", compiler_gate_base_compiler_fetch_step_id, ".outputs.standing == 'present'"], "") },
-        timeout: none,
-      ),
-      role: capability_neutral,
-      step_name: "Verify the base revision's compiler pair and install it beside the head's",
-    },
-  ]
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2234,9 +2087,6 @@ fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
         WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
           WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
         WorkflowToolchainHomesAdmitted =>
-          match candidate_scripts_refusal(rows: compiler_gate_candidate_script_rows()) {
-          Present { value: r } => WitnessFloorGenerationRefused { reason: r }
-          Absent =>
           if compiler_gate_unit_test_capability_closure_holds() && compiler_gate_emit_build_capability_closure_holds() && compiler_gate_seed_capability_closure_holds() && compiler_gate_floor_capability_closure_holds() && compiler_gate_generated_capability_closure_holds() && compiler_gate_floor_scripts_are_renderable() && compiler_gate_lane_standings_hold() && compiler_gate_merge_path_runs_on_the_fleet() {
             match emit_yaml(v: project_workflow_to_yaml(workflow: compiler_gate_workflow)) {
               EmittedYaml { text: t } => WitnessFloorGenerated { content: t }
@@ -2244,7 +2094,6 @@ fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
             }
           } else {
             WitnessFloorGenerationRefused { reason: compiler_gate_capability_refusal_reason }
-          }
           }
       }
   }
