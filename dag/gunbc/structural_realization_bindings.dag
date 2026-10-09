@@ -110,8 +110,13 @@ data structural_ordering_rows: List<StructuralOrderingBinding> = [
 //
 // A ROW MAY ONLY STATE A REALIZATION THAT IS ALREADY TRUE OF THE CARRIER ON EVERY ROUTE, under the
 // same discipline as the rows above: it is never added to make a failing site compile.
+//
+// std.nat Nat's row declares its RANGE, the naturals' non-negativity: a kernel literal at Nat is its own
+// value (DirectLiteral) exactly when std.types range admits it (min 0, no max). v2 infer reads this row to
+// elaborate a literal at Nat and derives `-1`'s refusal from the range -- Nat has no literal homomorphism
+// row, so the two rosters still partition (std.literal_elaboration, "a declaration is never both").
 data kernel_grounding_rows: List<KernelGrounding> = [
-  KernelGrounding { source_kind: KernelIntLiteral, carrier: decl_ref(module_path: "std.nat", decl_name: "Nat") }
+  KernelGrounding { source_kind: KernelIntLiteral, carrier: decl_ref(module_path: "std.nat", decl_name: "Nat"), min: Present { value: 0 }, max: Absent }
 ]
 
 // WHICH KERNEL MINTS STAND FOR A CORPUS DECLARATION (std.literal_elaboration

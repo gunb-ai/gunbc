@@ -216,7 +216,6 @@ fn program_assembly_phase_tokenize(
 fn program_assembly_phase_parse_seeded(
   tokens: Outcome<TokenStream>,
   prepared: PreparedGrammar,
-  residue: Diagnostics,
   seed: OccurrenceIdAllocator
 ) -> Outcome<ParseArtifact> {
   match tokens {
@@ -227,7 +226,6 @@ fn program_assembly_phase_parse_seeded(
         inner: parse_module_prepared_seeded(
           tokens: token_stream,
           prepared: prepared,
-          validation_residue: residue,
           seed: seed
         )
       )
@@ -351,7 +349,6 @@ fn program_assembly_read_to_normalized_root_seeded(
   read: DagSourceReadWitness,
   lex: PreparedLexRules,
   prepared: PreparedGrammar,
-  residue: Diagnostics,
   seed: OccurrenceIdAllocator,
   scope: Fnv1a64Structural
 ) -> ProgramAssemblySeededReadResult {
@@ -361,7 +358,6 @@ fn program_assembly_read_to_normalized_root_seeded(
       parse_module_prepared_seeded(
         tokens: token_stream,
         prepared: prepared,
-        validation_residue: residue,
         seed: seed
       )
     }
@@ -456,7 +452,6 @@ fn program_assembly_fold_step(
   read: DagSourceReadWitness,
   lex: PreparedLexRules,
   prepared: PreparedGrammar,
-  residue: Diagnostics,
   scope: Fnv1a64Structural
 ) -> ProgramAssemblyLocatedFoldState {
   match state {
@@ -467,7 +462,6 @@ fn program_assembly_fold_step(
         read: read,
         lex: lex,
         prepared: prepared,
-        residue: residue,
         seed: seed,
         scope: scope
       )
@@ -545,7 +539,7 @@ fn program_assembly_ingest_scope(ingest: SourceRootIngest) -> SourceRefListDiges
   source_ref_list_digest_build(refs: fold_list(
     xs: ingest,
     empty: Empty,
-    cons: fn(acc, read) { list_snoc_item(xs: acc, item: source_ref_for_storage_path(path: read.artifact.file_path)) }
+    cons: fn(acc, read) { list_snoc_item(xs: acc, item: source_ref_for_storage_path(path: read.artifact.file_path, source_root: read.source_root)) }
   ))
 }
 
@@ -566,7 +560,7 @@ fn program_assembly_fold_ingest_located(
       match prepare_grammar(grammar: lm.grammar) {
         Rejected { diagnostics: d } =>
           ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: span_index_empty() }
-        Accepted { value: prepared, diagnostics: residue } =>
+        Accepted { value: prepared, diagnostics: _ } =>
           let lex = prepare_lex_rules(rules: lm.lex)
           match program_assembly_ingest_scope(ingest: ingest) {
             SourceRefListDigestNonStructuralRefused { path: _ } =>
@@ -585,7 +579,7 @@ fn program_assembly_fold_ingest_located(
                   advisories: None
                 },
                 cons: fn(state, read) {
-                  program_assembly_fold_step(state: state, read: read, lex: lex, prepared: prepared, residue: residue, scope: scope)
+                  program_assembly_fold_step(state: state, read: read, lex: lex, prepared: prepared, scope: scope)
                 }
               )
           }

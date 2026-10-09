@@ -1,6 +1,7 @@
 module gunbc.machine_intake_arrival_converge
 
-import std.types { List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.content_hash { content_hash_equal }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.goal_assessment {
   ObservationAttempt,
@@ -19,7 +20,7 @@ import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import extdeps.bmc.endpoint { BmcControllerEndpoint, BmcEndpoint, BmcFirmwareFamily, Redfish }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.access_profile { SurfaceManagerIdentity }
-import gunbc.machine_intake_receipt { EvidenceRef }
+import gunbc.machine_intake_receipt { EvidenceRef, same_intake_subject }
 import gunbc.machine_intake_phase {
   ArrivalPhase,
   AccessDiscover,
@@ -40,6 +41,7 @@ import gunbc.machine_intake_phase {
   Placement,
   arrival_phases_all,
   intake_phase_rank,
+  machine_qualification_policy_digest,
 }
 import gunbc.machine_intake_subject {
   AssemblyManifest,
@@ -77,6 +79,7 @@ import gunbc.machine_intake_mtjade1_access_observation {
   fru_gap_text,
   smbios_gap_text,
   sol_session_controller,
+  mtjade1_smbios_sol_attribution,
   provisional_assembly_of_fru,
   read_mtjade1_current_manager_read,
   read_mtjade1_fru,
@@ -85,9 +88,12 @@ import gunbc.machine_intake_mtjade1_access_observation {
 import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_unit_key_standing }
 import gunbc.machine_intake_bmc_rotation_route {
   BmcRotationRouteStanding,
+  BmcAccountWriteRequest,
   ObservedSurfaceRead,
   rotation_route_candidate,
   redfish_account_password_write,
+  rotation_apply_authority,
+  rotation_route_request_identity,
 }
 import gunbc.machine_intake_bmc_rotation_route_evidence { manager_read_receipt, mtjade1_observed_endpoint }
 import gunbc.host_convergence_protocol { HostEffectDomainProjection, inspect_via_host_effect_projection }
@@ -104,6 +110,39 @@ import gunbc.machine_intake_prior_life_boundary {
   prior_life_receipt_key,
   prior_life_receipt_consumed_identity,
 }
+import gunbc.machine_intake_bmc_secure {
+  BmcSecureGoal,
+  BmcAccountStateObservation,
+  BmcSecureStateInspected,
+  BmcSecureStateUnobserved,
+  BmcSecurePhaseConverged,
+  BmcSecurePhaseRefused,
+  BmcSecurePhaseNoop,
+  BmcSecurePhaseApplied,
+  BmcSecurePhaseReceipt,
+  inspect_bmc_secure_state,
+  bmc_secure_phase_noop,
+  bmc_secure_phase_applied,
+  BmcAccountApplication,
+  ManagedCredentialReference,
+  managed_reference_same,
+  bmc_account_state_observation_same,
+}
+import gunbc.auth.authorization_pattern_selection {
+  InterlockedBy, InterlockPending,
+}
+import gunbc.auth.standing_operator_grant {
+  StandingOperatorGrant,
+  StandingGrantHost,
+  StandingBmcSecureAccountWrite,
+  standing_grant_covers,
+  standing_grant_arm_interlock,
+}
+import gunbc.auth.privileged_effect_census { ruling_interlock_is_rostered }
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.fleet_host_identity { operator_host_named, operator_host_mtjade1 }
+import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
+import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted, RedemptionRefused }
 import gunbc.fleet.convergence_fold {
   ConvergenceRunId,
   StepSubjectKey,
@@ -123,24 +162,35 @@ import gunbc.fleet.convergence_fold {
   StepIncomplete,
   ConvergenceReceiptProjection,
   ConvergenceRunVerdict,
+  RunConverged,
+  RunStopped,
+  RunIncomplete,
+  RunOutcomesRefused,
   admit_convergence_plan,
   fold_convergence_run,
   step_instance_key,
   step_outcome_receipt,
+  ungated_readonly_step,
+  StepGatedOnAuthorization,
+  InstanceAuthorization,
+  instance_authorization,
 }
 
-// THE ARRIVAL CONVERGENCE PREFIX (docs/plans/managed-host-untangle.md, cuts O1c-1 and O1c-2): the first
-// real consumer of gunbc.fleet.convergence_fold. Its three steps are the first three phases of
-// gunbc.machine_intake_phase arrival_phases_all -- AccessDiscover, IdentityBindProvisional and
-// PriorLifeBoundary -- each a protocol step through gunbc.host_convergence_protocol
+// THE ARRIVAL CONVERGENCE PREFIX (docs/plans/managed-host-untangle.md, cuts O1c-1 through O1c-3): the
+// first real consumer of gunbc.fleet.convergence_fold. Its four steps are the first four phases of
+// gunbc.machine_intake_phase arrival_phases_all -- AccessDiscover, IdentityBindProvisional,
+// PriorLifeBoundary and BmcSecure -- each a protocol step through gunbc.host_convergence_protocol
 // HostEffectDomainProjection (observe, assess, decide) with its own row in
 // gunbc.host_convergence_census. The first two are read-only: the only decision either can reach is
 // Noop (the phase's goal is read back as already holding) or Refuse; neither has an Apply, so an Apply
 // decision is itself a typed refusal, and the read each consumes is a committed capture.
 // PriorLifeBoundary is the first effectful step: its archive arm writes the controller's prior-life
 // records to the evidence store and reads them back, DRY in this cut
-// (gunbc.machine_intake_prior_life_boundary), so it is the one step that can be INCOMPLETE. Nothing
-// here performs a live BMC call or a live store write. gunbc.bmc_onboarding is not imported.
+// (gunbc.machine_intake_prior_life_boundary), so it is the one step that can be INCOMPLETE.
+// BmcSecure is the first GATED step: Apply refuses unless authorization is discharged for that unit
+// and that run (standing grant, operator capability, or federated workload principal selected before
+// the fold); Noop needs no discharge. Nothing here performs a live BMC credential write.
+// gunbc.bmc_onboarding is not imported.
 //
 // ORDERING TIME. No field of the read-only steps is an ordering clock. The controller's own DateTime is
 // kept as an AccessDiscover observation only; the observer clock (gunbc.clock_read) orders the
@@ -153,6 +203,8 @@ data access_discover_step_ref: DeclarationRef = decl_ref(module_path: "gunbc.mac
 data identity_bind_provisional_step_ref: DeclarationRef = decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "identity_bind_provisional")
 
 data prior_life_boundary_step_ref: DeclarationRef = decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "prior_life_boundary")
+
+data bmc_secure_step_ref: DeclarationRef = decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "bmc_secure")
 
 // A read-only phase has no remedy. The plan type of its projection is sealed to this module and this
 // module constructs none, so an Apply over a read-only phase has no value to carry.
@@ -454,6 +506,7 @@ type ArrivalStepReceipt
   = AccessDiscoverReceipt { receipt: AccessDiscoverEstablished }
   | IdentityBindReceipt { receipt: IdentityBoundProvisional }
   | PriorLifeBoundaryReceipt { receipt: PriorLifeBoundaryEstablished }
+  | BmcSecureReceipt { receipt: BmcSecureStepEstablished }
 
 type ArrivalStepRefusal
   = AccessDiscoverObserveRefused { cause: AccessObserveRefusal }
@@ -464,17 +517,37 @@ type ArrivalStepRefusal
   | ReadOnlyPhaseSatisfiedWithoutEvidence { phase: ArrivalPhase }
   | PriorLifeIdentityForAnotherInstance { identity: StepInstanceKey }
   | PriorLifeBoundaryRefused { cause: PriorLifeRefusal }
+  | BmcSecureIdentityForAnotherInstance { identity: StepInstanceKey }
+  | BmcSecureAuthorizationUndischarged
+  | BmcSecurePhaseDomainRefused
+  | BmcSecureApplyInputsMissing
+  | BmcSecureApplicationForAnotherInstance { subject: MachineIntakeSubject }
+  | BmcSecureApplicationNotTheInspectedTransition
 
-// A STEP WHOSE EFFECT WAS ATTEMPTED AND IS NOT GROUNDED BY ITS READBACK. Only PriorLifeBoundary has
-// an effect in this prefix; the read-only phases cannot be incomplete.
 type ArrivalStepIncomplete
   = PriorLifeBoundaryIncomplete { cause: PriorLifeIncomplete }
+
+type BmcSecureStepEstablished sole_constructor {
+  key: StepInstanceKey
+  consumed_prior_life: StepInstanceKey
+  phase: BmcSecurePhaseReceipt
+}
+
+fn bmc_secure_step_established(key: StepInstanceKey, consumed_prior_life: StepInstanceKey, phase: BmcSecurePhaseReceipt) -> BmcSecureStepEstablished
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "bmc_secure"),
+    decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "bmc_secure_bound"),
+  ]
+{
+  BmcSecureStepEstablished { key: key, consumed_prior_life: consumed_prior_life, phase: phase }
+}
 
 fn arrival_receipt_key(r: ArrivalStepReceipt) -> StepInstanceKey {
   match r {
     AccessDiscoverReceipt { receipt: a } => a.key
     IdentityBindReceipt { receipt: i } => i.key
     PriorLifeBoundaryReceipt { receipt: p } => prior_life_receipt_key(r: p)
+    BmcSecureReceipt { receipt: b } => b.key
   }
 }
 
@@ -483,11 +556,25 @@ fn arrival_receipt_consumed(r: ArrivalStepReceipt) -> List<StepInstanceKey> {
     AccessDiscoverReceipt { receipt: _ } => []
     IdentityBindReceipt { receipt: i } => [i.consumed_access]
     PriorLifeBoundaryReceipt { receipt: p } => [prior_life_receipt_consumed_identity(r: p)]
+    BmcSecureReceipt { receipt: b } => [b.consumed_prior_life]
+  }
+}
+
+fn arrival_receipt_authorization_required(r: ArrivalStepReceipt) -> Bool {
+  match r {
+    AccessDiscoverReceipt { receipt: _ } => false
+    IdentityBindReceipt { receipt: _ } => false
+    PriorLifeBoundaryReceipt { receipt: _ } => false
+    BmcSecureReceipt { receipt: b } =>
+      match b.phase.decision {
+        BmcSecurePhaseNoop { observation: _ } => false
+        BmcSecurePhaseApplied { plan: _, application: _, post_read: _ } => true
+      }
   }
 }
 
 fn arrival_receipt_projection() -> ConvergenceReceiptProjection<ArrivalStepReceipt> {
-  convergence_receipt_projection(key_of: arrival_receipt_key, consumed_of: arrival_receipt_consumed)
+  convergence_receipt_projection(key_of: arrival_receipt_key, consumed_of: arrival_receipt_consumed, authorization_required_of: arrival_receipt_authorization_required)
 }
 
 fn read_only_refusal(phase: ArrivalPhase, decision: UpsertDecision<ReadOnlyPhaseRemedy>) -> ArrivalStepRefusal {
@@ -582,6 +669,251 @@ fn prior_life_boundary(key: StepInstanceKey, identity: IdentityBoundProvisional,
   }
 }
 
+type BmcSecureApplyInputs {
+  application: BmcAccountApplication
+  post_read: BmcAccountStateObservation
+}
+
+type BmcSecureInputs {
+  goal: BmcSecureGoal
+  reading: BmcAccountStateObservation
+  grant: StandingOperatorGrant?
+  capability: Redemption?
+  apply: BmcSecureApplyInputs?
+}
+
+// A federated principal is not a discharge input. StandingBmcSecureAccountWrite on the operator-ssh
+// units is WorkloadIdentityUnbindable, so FederatedScopedGrant is not a selected pattern for this
+// effect. A NonEmptyStr here was a silent widen (review 38602): any string minted Apply.
+
+fn bmc_secure_account_rotation_site() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "plan_bmc_account_action")
+}
+
+fn grant_discharges_bmc_secure_account_write(g: StandingOperatorGrant, host: HostIdentity) -> Bool {
+  standing_grant_covers(g: g, scope: StandingGrantHost { host: host }, effect: StandingBmcSecureAccountWrite)
+    && match standing_grant_arm_interlock(g: g, e: StandingBmcSecureAccountWrite) {
+      InterlockPending { obligation: _ } => false
+      InterlockedBy { hold: h } =>
+        ruling_interlock_is_rostered(site_ref: bmc_secure_account_rotation_site(), interlock: h)
+    }
+}
+
+fn capability_discharges_bmc_secure_account_write(
+  r: Redemption,
+  standing: BmcRotationRouteStanding,
+  request: BmcAccountWriteRequest,
+  key: StepInstanceKey,
+) -> Bool {
+  match r {
+    RedemptionRefused { cause: _ } => false
+    RedemptionAdmitted { claims: cl, decided_by: _ } =>
+      match cl.decision {
+        ProposeDeny => false
+        ProposeApprove =>
+          cl.authority == rotation_apply_authority
+            && (cl.attempt as NonEmptyStr) == (key.run as NonEmptyStr)
+            && (cl.request_revision as String) == (rotation_route_request_identity(standing: standing, request: request) as String)
+      }
+  }
+}
+
+fn bound_bmc_secure_host(key: StepInstanceKey) -> HostIdentity? {
+  operator_host_named(label: key.subject as NonEmptyStr)
+}
+
+fn bound_host_owns_this_controller(host: HostIdentity, endpoint: BmcControllerEndpoint) -> Bool {
+  host_identity_eq(a: host, b: operator_host_mtjade1)
+    && (endpoint.host as String) == (sol_session_controller(a: mtjade1_smbios_sol_attribution).host as String)
+}
+
+fn bmc_secure_instance_joins_this_controller(
+  key: StepInstanceKey,
+  identity_subject: MachineIntakeSubject,
+  reading: BmcAccountStateObservation,
+  standing: BmcRotationRouteStanding,
+) -> Bool {
+  same_intake_subject(left: reading.subject, right: identity_subject)
+    && (key.run as String) == (identity_subject.attempt_id as String)
+    && (standing.endpoint.host as String) == (reading.endpoint.host as String)
+    && match bound_bmc_secure_host(key: key) {
+      Absent => false
+      Present { value: host } => bound_host_owns_this_controller(host: host, endpoint: standing.endpoint)
+    }
+}
+
+fn capability_discharge(
+  key: StepInstanceKey,
+  inputs: BmcSecureInputs,
+  standing: BmcRotationRouteStanding,
+  request: BmcAccountWriteRequest,
+) -> InstanceAuthorization?
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "discharge_bmc_secure_apply"),
+  ]
+{
+  match inputs.capability {
+    Present { value: r } =>
+      if capability_discharges_bmc_secure_account_write(r: r, standing: standing, request: request, key: key) {
+        match r {
+          RedemptionAdmitted { claims: _, decided_by: by } => Present { value: instance_authorization(key: key, principal: by) }
+          RedemptionRefused { cause: _ } => none
+        }
+      } else {
+        none
+      }
+    Absent => none
+  }
+}
+
+fn discharge_bmc_secure_apply(
+  key: StepInstanceKey,
+  identity_subject: MachineIntakeSubject,
+  inputs: BmcSecureInputs,
+  standing: BmcRotationRouteStanding,
+  request: BmcAccountWriteRequest,
+) -> InstanceAuthorization?
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "bmc_secure_bound"),
+    decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "converge_arrival_through_bmc_secure"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_uncovered_grant_falls_through_to_capability"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_uncovered_grant_refuses_a_capability_for_another_request"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_a_foreign_bound_host_key_cannot_mint_from_this_instance_controller"),
+  ]
+{
+  if !bmc_secure_instance_joins_this_controller(key: key, identity_subject: identity_subject, reading: inputs.reading, standing: standing) {
+    none
+  } else {
+    match bound_bmc_secure_host(key: key) {
+      Absent => none
+      Present { value: host } =>
+        match inputs.grant {
+          Present { value: g } =>
+            if grant_discharges_bmc_secure_account_write(g: g, host: host) {
+              Present { value: instance_authorization(key: key, principal: g.principal) }
+            } else {
+              capability_discharge(key: key, inputs: inputs, standing: standing, request: request)
+            }
+          Absent =>
+            capability_discharge(key: key, inputs: inputs, standing: standing, request: request)
+        }
+    }
+  }
+}
+
+fn managed_generation_advances_the_requested(requested: ManagedCredentialReference, planned: ManagedCredentialReference) -> Bool {
+  requested.account == planned.account
+    && requested.role == planned.role
+    && (requested.secret.project as String) == (planned.secret.project as String)
+    && requested.secret.secret == planned.secret.secret
+    && planned.credential_epoch > requested.credential_epoch
+}
+
+fn bmc_account_observation_is_the_inspected_pre_state(inspected: BmcAccountStateObservation, diverged: BmcAccountStateObservation) -> Bool {
+  bmc_account_state_observation_same(a: inspected, b: diverged)
+}
+
+fn bmc_secure_application_joins_this_instance(
+  identity_subject: MachineIntakeSubject,
+  inspected_reading: BmcAccountStateObservation,
+  requested_goal: BmcSecureGoal,
+  application: BmcAccountApplication,
+) -> ArrivalStepRefusal? {
+  if !same_intake_subject(left: application.plan.subject, right: identity_subject) {
+    Present { value: BmcSecureApplicationForAnotherInstance { subject: application.plan.subject } }
+  } else if !bmc_account_observation_is_the_inspected_pre_state(inspected: inspected_reading, diverged: application.plan.diverged) {
+    Present { value: BmcSecureApplicationNotTheInspectedTransition }
+  } else if !managed_reference_same(a: requested_goal.published_break_glass, b: application.plan.goal.published_break_glass) {
+    Present { value: BmcSecureApplicationNotTheInspectedTransition }
+  } else if !content_hash_equal(left: machine_qualification_policy_digest(policy: requested_goal.policy), right: machine_qualification_policy_digest(policy: application.plan.goal.policy)) {
+    Present { value: BmcSecureApplicationNotTheInspectedTransition }
+  } else if !managed_generation_advances_the_requested(requested: requested_goal.managed, planned: application.plan.goal.managed) {
+    Present { value: BmcSecureApplicationNotTheInspectedTransition }
+  } else {
+    none
+  }
+}
+
+// Apply and discharge consume the bound subject's identity and the instance keys, not the
+// AccessDiscover/IdentityBind capture parses. Those steps remain the prefix; this is the BMC
+// grain after PriorLifeBoundary.
+fn bmc_secure_bound(
+  key: StepInstanceKey,
+  identity_key: StepInstanceKey,
+  identity_subject: MachineIntakeSubject,
+  prior_key: StepInstanceKey,
+  inputs: BmcSecureInputs,
+) -> StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "bmc_secure"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "bmc_secure_bound_refuses_foreign_apply"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_without_authorization_refuses_after_a_real_apply"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_for_a_later_break_glass_generation_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_another_channel_state_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_a_different_present_controller_clock_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_a_present_controller_clock_over_absent_is_refused"),
+  ]
+{
+  if (identity_key.run as NonEmptyStr) != (key.run as NonEmptyStr) || (identity_key.subject as NonEmptyStr) != (key.subject as NonEmptyStr) {
+    StepRefused { key: key, cause: BmcSecureIdentityForAnotherInstance { identity: identity_key } }
+  } else if (prior_key.run as NonEmptyStr) != (key.run as NonEmptyStr) || (prior_key.subject as NonEmptyStr) != (key.subject as NonEmptyStr) {
+    StepRefused { key: key, cause: BmcSecureIdentityForAnotherInstance { identity: prior_key } }
+  } else {
+    match inspect_bmc_secure_state(subject: identity_subject, goal: inputs.goal, reading: inputs.reading) {
+      BmcSecureStateUnobserved { cause: _ } => StepRefused { key: key, cause: BmcSecurePhaseDomainRefused }
+      BmcSecureStateInspected { observed: _, assessment: a, decision: d } =>
+        match d {
+          Noop =>
+            match bmc_secure_phase_noop(subject: identity_subject, goal: inputs.goal, reading: inputs.reading) {
+              BmcSecurePhaseConverged { receipt: phase } =>
+                StepEstablished { receipt: BmcSecureReceipt { receipt: bmc_secure_step_established(key: key, consumed_prior_life: prior_key, phase: phase) } }
+              BmcSecurePhaseRefused { cause: _ } => StepRefused { key: key, cause: BmcSecurePhaseDomainRefused }
+            }
+          Refuse { reason: _ } => StepRefused { key: key, cause: BmcSecurePhaseDomainRefused }
+          Apply { plan: _ } =>
+            match inputs.apply {
+              Absent => StepRefused { key: key, cause: BmcSecureApplyInputsMissing }
+              Present { value: ap } =>
+                match bmc_secure_application_joins_this_instance(
+                  identity_subject: identity_subject,
+                  inspected_reading: inputs.reading,
+                  requested_goal: inputs.goal,
+                  application: ap.application,
+                ) {
+                  Present { value: c } => StepRefused { key: key, cause: c }
+                  Absent =>
+                    match discharge_bmc_secure_apply(
+                      key: key,
+                      identity_subject: identity_subject,
+                      inputs: inputs,
+                      standing: ap.application.plan.managed_write.route,
+                      request: ap.application.plan.managed_write.request,
+                    ) {
+                      Absent => StepRefused { key: key, cause: BmcSecureAuthorizationUndischarged }
+                      Present { value: _ } =>
+                        match bmc_secure_phase_applied(application: ap.application, post_read: ap.post_read) {
+                          BmcSecurePhaseConverged { receipt: phase } =>
+                            StepEstablished { receipt: BmcSecureReceipt { receipt: bmc_secure_step_established(key: key, consumed_prior_life: prior_key, phase: phase) } }
+                          BmcSecurePhaseRefused { cause: _ } => StepRefused { key: key, cause: BmcSecurePhaseDomainRefused }
+                        }
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
+fn bmc_secure(key: StepInstanceKey, identity: IdentityBoundProvisional, prior: PriorLifeBoundaryEstablished, inputs: BmcSecureInputs) -> StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete> {
+  bmc_secure_bound(
+    key: key,
+    identity_key: identity.key,
+    identity_subject: identity.subject,
+    prior_key: prior_life_receipt_key(r: prior),
+    inputs: inputs,
+  )
+}
+
 // ── THE PLAN: a prefix of the authority's order, never a second list ───────────────────────────
 
 fn arrival_order_authority() -> ConvergenceOrderAuthority<IntakePhase> {
@@ -599,10 +931,15 @@ fn arrival_planning_authority() -> ConvergencePlanningAuthority<IntakePhase> {
 // the plan; it is never skipped.
 fn arrival_step_of_phase(phase: ArrivalPhase) -> ConvergenceStep<IntakePhase>? {
   match phase {
-    AccessDiscover => Present { value: ConvergenceStep { identity: access_discover_step_ref, order_member: Arrival { phase: AccessDiscover }, preconditions: [] } }
-    IdentityBindProvisional => Present { value: ConvergenceStep { identity: identity_bind_provisional_step_ref, order_member: Arrival { phase: IdentityBindProvisional }, preconditions: [SameSubject { step: access_discover_step_ref }] } }
-    PriorLifeBoundary => Present { value: ConvergenceStep { identity: prior_life_boundary_step_ref, order_member: Arrival { phase: PriorLifeBoundary }, preconditions: [SameSubject { step: identity_bind_provisional_step_ref }] } }
-    BmcSecure => none
+    AccessDiscover => Present { value: ungated_readonly_step(identity: access_discover_step_ref, order_member: Arrival { phase: AccessDiscover }, preconditions: []) }
+    IdentityBindProvisional => Present { value: ungated_readonly_step(identity: identity_bind_provisional_step_ref, order_member: Arrival { phase: IdentityBindProvisional }, preconditions: [SameSubject { step: access_discover_step_ref }]) }
+    PriorLifeBoundary => Present { value: ungated_readonly_step(identity: prior_life_boundary_step_ref, order_member: Arrival { phase: PriorLifeBoundary }, preconditions: [SameSubject { step: identity_bind_provisional_step_ref }]) }
+    BmcSecure => Present { value: ConvergenceStep {
+      identity: bmc_secure_step_ref,
+      order_member: Arrival { phase: BmcSecure },
+      preconditions: [SameSubject { step: prior_life_boundary_step_ref }],
+      gate: StepGatedOnAuthorization,
+    } }
     BootDeliveryEstablish => none
     DiagnosticBootAttest => none
     InventoryConform => none
@@ -682,21 +1019,56 @@ fn arrival_prefix_outcomes(run: ConvergenceRunId, subject: StepSubjectKey, read:
                   [access, identity, prior_life_boundary(key: step_instance_key(run: run, step: prior_life_boundary_step_ref, subject: subject), identity: i, platform: prior_life.platform, world: prior_life.world)]
                 AccessDiscoverReceipt { receipt: _ } => [access, identity]
                 PriorLifeBoundaryReceipt { receipt: _ } => [access, identity]
+                BmcSecureReceipt { receipt: _ } => [access, identity]
               }
             Absent => [access, identity]
           }
         }
         IdentityBindReceipt { receipt: _ } => [access]
         PriorLifeBoundaryReceipt { receipt: _ } => [access]
+        BmcSecureReceipt { receipt: _ } => [access]
       }
   }
 }
 
-fn fold_arrival_prefix(steps: List<ConvergenceStep<IntakePhase>>, run: ConvergenceRunId, subject: StepSubjectKey, outcomes: List<StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>>) -> ArrivalPrefixVerdict {
+fn arrival_prefix_outcomes_through_bmc_secure(run: ConvergenceRunId, subject: StepSubjectKey, read: CurrentManagerRead, inputs: IdentityBindInputs, prior_life: PriorLifeInputs, bmc: BmcSecureInputs) -> List<StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>> {
+  let prefix = arrival_prefix_outcomes(run: run, subject: subject, read: read, inputs: inputs, prior_life: prior_life)
+  match prefix.last() {
+    Absent => prefix
+    Present { value: last } =>
+      match step_outcome_receipt(outcome: last) {
+        Absent => prefix
+        Present { value: r } =>
+          match r {
+            PriorLifeBoundaryReceipt { receipt: p } =>
+              match prefix |> filter(o => match step_outcome_receipt(outcome: o) { Present { value: ir } => match ir { IdentityBindReceipt { receipt: _ } => true  _ => false }  Absent => false }) |> first() {
+                Absent => prefix
+                Present { value: id_out } =>
+                  match step_outcome_receipt(outcome: id_out) {
+                    Absent => prefix
+                    Present { value: ir } =>
+                      match ir {
+                        IdentityBindReceipt { receipt: i } =>
+                          concat(prefix, [bmc_secure(key: step_instance_key(run: run, step: bmc_secure_step_ref, subject: subject), identity: i, prior: p, inputs: bmc)])
+                        AccessDiscoverReceipt { receipt: _ } => prefix
+                        PriorLifeBoundaryReceipt { receipt: _ } => prefix
+                        BmcSecureReceipt { receipt: _ } => prefix
+                      }
+                  }
+              }
+            AccessDiscoverReceipt { receipt: _ } => prefix
+            IdentityBindReceipt { receipt: _ } => prefix
+            BmcSecureReceipt { receipt: _ } => prefix
+          }
+      }
+  }
+}
+
+fn fold_arrival_prefix(steps: List<ConvergenceStep<IntakePhase>>, run: ConvergenceRunId, subject: StepSubjectKey, outcomes: List<StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>>, discharges: List<InstanceAuthorization>) -> ArrivalPrefixVerdict {
   match admit_convergence_plan(planning: arrival_planning_authority(), steps: steps) {
     ConvergencePlanRefused { cause: c } => ArrivalPlanRefused { cause: c }
     ConvergencePlanAdmitted { plan: plan } =>
-      ArrivalRunFolded { verdict: fold_convergence_run(plan: plan, run: run, subject: subject, outcomes: outcomes, projection: arrival_receipt_projection()) }
+      ArrivalRunFolded { verdict: fold_convergence_run(plan: plan, run: run, subject: subject, outcomes: outcomes, projection: arrival_receipt_projection(), discharges: discharges) }
   }
 }
 
@@ -704,7 +1076,34 @@ fn converge_arrival_prefix(run: ConvergenceRunId, subject: StepSubjectKey, read:
   match arrival_prefix_steps(phases: arrival_prefix_through(last: arrival_prefix_last)) {
     ArrivalPrefixPhaseUnstepped { phase: p } => ArrivalPrefixUnstepped { phase: p }
     ArrivalPrefixStepped { steps: steps } =>
-      fold_arrival_prefix(steps: steps, run: run, subject: subject, outcomes: arrival_prefix_outcomes(run: run, subject: subject, read: read, inputs: inputs, prior_life: prior_life))
+      fold_arrival_prefix(steps: steps, run: run, subject: subject, outcomes: arrival_prefix_outcomes(run: run, subject: subject, read: read, inputs: inputs, prior_life: prior_life), discharges: [])
+  }
+}
+
+// Apply mints through discharge_bmc_secure_apply. Noop never requires a fold discharge
+// (arrival_receipt_authorization_required is false on BmcSecurePhaseNoop), so a grant
+// copied here would be unused.
+fn converge_arrival_through_bmc_secure(run: ConvergenceRunId, subject: StepSubjectKey, read: CurrentManagerRead, inputs: IdentityBindInputs, prior_life: PriorLifeInputs, bmc: BmcSecureInputs) -> ArrivalPrefixVerdict {
+  match arrival_prefix_steps(phases: arrival_prefix_through(last: BmcSecure)) {
+    ArrivalPrefixPhaseUnstepped { phase: p } => ArrivalPrefixUnstepped { phase: p }
+    ArrivalPrefixStepped { steps: steps } => {
+      let key = step_instance_key(run: run, step: bmc_secure_step_ref, subject: subject)
+      let discharges = match bmc.apply {
+        Present { value: ap } =>
+          match discharge_bmc_secure_apply(
+            key: key,
+            identity_subject: bmc.reading.subject,
+            inputs: bmc,
+            standing: ap.application.plan.managed_write.route,
+            request: ap.application.plan.managed_write.request,
+          ) {
+            Present { value: d } => [d]
+            Absent => []
+          }
+        Absent => []
+      }
+      fold_arrival_prefix(steps: steps, run: run, subject: subject, outcomes: arrival_prefix_outcomes_through_bmc_secure(run: run, subject: subject, read: read, inputs: inputs, prior_life: prior_life, bmc: bmc), discharges: discharges)
+    }
   }
 }
 
@@ -740,5 +1139,16 @@ fn converge_mtjade1_arrival_prefix(run: ConvergenceRunId, prior_life: DryPriorLi
     read: read_mtjade1_current_manager_read(),
     inputs: mtjade1_identity_bind_inputs(),
     prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life },
+  )
+}
+
+fn converge_mtjade1_arrival_through_bmc_secure(run: ConvergenceRunId, prior_life: DryPriorLifeWorld, bmc: BmcSecureInputs) -> ArrivalPrefixVerdict uses fs: std.resources.Filesystem {
+  converge_arrival_through_bmc_secure(
+    run: run,
+    subject: "mtjade1" as StepSubjectKey,
+    read: read_mtjade1_current_manager_read(),
+    inputs: mtjade1_identity_bind_inputs(),
+    prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life },
+    bmc: bmc,
   )
 }

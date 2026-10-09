@@ -1,5 +1,6 @@
 module gunbc.bmc_fan_converge
 
+import extdeps.board_authority { BoardAuthorityRef }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import std.algebra { trim }
@@ -78,7 +79,6 @@ import extdeps.bmc.openbmc_fan_control {
   openbmc_zone_failsafe,
   openbmc_tach_health,
 }
-import extdeps.boards.types { BaseboardModel }
 import extdeps.crypto.hash { Digest }
 import extdeps.filesystem.linux {
   LinuxOverlayParsed,
@@ -199,7 +199,7 @@ data bmc_fan_atomic_transaction_dissolution_trigger: DissolutionCondition = unbo
 
 type BmcFanConvergeTarget {
   host: ComputeHost
-  board: BaseboardModel
+  board: BoardAuthorityRef
   onboarding: BmcOnboardingPlan
   projection: BmcFanPolicyProjectionCapability?
   durability_generation: StatePerturbationGeneration

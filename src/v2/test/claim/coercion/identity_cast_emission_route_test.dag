@@ -6,6 +6,7 @@ import std.optional { Absent }
 import v2.compiler.self_host.closure_emission {
   ClosureEmissionLocated, ClosureMemberEmitted, ClosureMemberRefused, emit_closure_from_ingest_located,
 }
+import v2.compiler.target_carriers { emit_module_decl_separator }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_type_atom_node }
 import v2.extdeps.languages.rust { rust_target_model }
@@ -28,11 +29,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // section 3). Two inhabitance rows still drive the door on this module, on the required gate.
 // gunbc.rung_drop identity_cast_route_new_witness_eval_step_cost retired when those inhabitance
 // identities billed inside the new-witness eval-step budget on gunbc#13489 required floor run
-// 37522243686 (artifact required-floor-claim-cost). The native partner builds and runs the emitted
-// text; it is not the last execution of the door.
+// 37522243686 (artifact required-floor-claim-cost). Native builds the same member text this
+// inhabitance asserts by exact equality.
 data identity_cast_source: String = "module v2.test.identity_cast\n\nfn f(x: Int) -> Int { x as Int }\n"
 
 data refused_cast_source: String = "module v2.test.identity_cast\n\nfn f(x: Int) -> Bool { x as Bool }\n"
+
+data identity_cast_supplied_emitted_text: String = concat("fn f(x: i32) -> i32 { x }", emit_module_decl_separator)
 
 type IdentityCastRouteVerdict
   = IdentityCastEntryEmitted { text: String, members: Int }
@@ -84,7 +87,7 @@ fn refused_cast_route_verdict() -> IdentityCastRouteVerdict {
 fn identity_cast_route_admitted_holds(v: IdentityCastRouteVerdict) -> Bool {
   match v {
     IdentityCastEntryEmitted { text: t, members: n } =>
-      n == 1 && string_contains(s: t, pattern: "fn f(x: i32) -> i32")
+      n == 1 && t == identity_cast_supplied_emitted_text
     IdentityCastEntryRefused { reason: _, members: _ } => false
     IdentityCastClosureRefused { reason: _ } => false
   }

@@ -248,7 +248,7 @@ pub fn parse_target_pattern(text: &str) -> Result<TargetPattern, TargetPatternRe
 /// `gunbc.target_binding` `V2NativeCensusReading`: which census verb and reader a native-census row takes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum V2NativeCensusReading {
-    ResolveRefusal,
+    RefusalCensus,
     TypeDeclarationUse,
 }
 
@@ -358,7 +358,7 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("v2-native-census"),
             TargetProducer::V2NativeCensus {
-                reading: V2NativeCensusReading::ResolveRefusal,
+                reading: V2NativeCensusReading::RefusalCensus,
             },
         ),
         (
@@ -847,7 +847,7 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::V2NativeCli => run_v2_native_cli(&v2_native_cli_source_roots()),
         TargetProducer::V2NativeFrontier => run_v2_native_frontier(&self_host_source_roots()),
         TargetProducer::V2NativeCensus {
-            reading: V2NativeCensusReading::ResolveRefusal,
+            reading: V2NativeCensusReading::RefusalCensus,
         } => run_v2_native_census(&self_host_source_roots()),
         TargetProducer::V2NativeCensus {
             reading: V2NativeCensusReading::TypeDeclarationUse,
@@ -1230,12 +1230,18 @@ fn run_v2_native_census(source_roots: &[String]) -> InvocationOutcome {
             termination: Termination::ObservationHeld,
             message: format!(
                 "v2-native-census: modules={} file_refusals={} advised_files={} residual_rows={} \
-                 cause_groups={}; the rows grouped by fatal reason are the cause_group lines above",
+                 inferred={} infer_refused={} cause_groups={} roots={} type_census={}; the rows \
+                 grouped by fatal reason are the cause_group lines above, ranked by closure fan-out \
+                 in the census_root lines",
                 run.modules,
                 run.file_refusals,
                 run.advised_files,
                 run.residual_rows,
-                run.cause_groups
+                run.inferred,
+                run.infer_refused,
+                run.cause_groups,
+                run.roots,
+                run.type_census.word()
             ),
         },
         Err(cause) => InvocationOutcome {

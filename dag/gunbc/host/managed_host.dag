@@ -205,8 +205,6 @@ data mtcollins1_bmc_secure_standing_drop_ref: DeclarationRef = decl_ref(
 fn drop_is_standing_citation(drop: RungDrop, cited: DeclarationRef) -> Bool {
   match drop.standing {
     Retired { trigger_fired: _ } => false
-    // A superseded drop is not standing either: a ruling ended it and its loss moved to the holder
-    // named in the arm (gunbc.rung_drop RungDropStanding), so a record citing it is uncovered.
     Superseded { ruling: _, decision_record: _, loss_holder: _ } => false
     Standing => (drop.identity as String) == (cited.decl_name as String)
   }

@@ -50,7 +50,7 @@ import gunbc.target_binding {
   DifferentialReadingExecutionRefused, DifferentialObservationAssemblyRefused,
   BareReferenceChannelOutcomeProducer,
   SelfHostBehavioralEquivalenceProducer,
-  V2NativeCensusProducer, ResolveRefusalReading, TypeDeclarationUseReading,
+  V2NativeCensusProducer, RefusalCensusReading, TypeDeclarationUseReading,
   DependencyDemandCensusProducer,
   GenericIdentityCensusProducer,
   InterpolationHoleCensusProducer,
@@ -259,14 +259,19 @@ fn v2_native_frontier_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "v2-native-frontier" } }
 }
 
-// THE NATIVE CENSUS INSTRUMENT: the emitted compiler's `census-resolve` verb over the self-host
-// corpus, every front-end and resolve refusal GROUPED BY THE FATAL REASON
-// (v2.compiler.compile native_census_cause_groups_add) with the head kept as a member field. An
-// import cascade is collapsed to its root (census C): each cascaded module is one member under the
-// root's reason, and the roots are ranked by closure fan-out (native_census_roots_ranked). It is
-// THE route to that census: the binary's `census` / `census-resolve` verbs remain only as this row's
-// realization and are not a second documented peer route, which is the --self-host precedent this
-// file states for `//gunbc/instruments:self-host` (DESIGN section 3, Building & checks).
+// THE NATIVE CENSUS INSTRUMENT: the emitted compiler's `census-infer` verb over the self-host
+// corpus (census part 2, docs/plans/census-part-2-inference-design.md section 6: the same label,
+// reaching one more stage). Every front-end, resolve and infer refusal is GROUPED BY THE FATAL REASON
+// (v2.compiler.compile native_census_cause_groups_add), with the stage and head kept as member
+// fields. An import cascade is collapsed to its root (census C): each cascaded module is one member
+// under the root's reason. At infer the only cascade is a refused closure provider leading an
+// importer's chain (native_census_infer_cascade). The roots are ranked by closure fan-out
+// (native_census_roots_ranked), and each is marked against the native test target's closure
+// (native_census_subject_closure). The receipt's stderr names the host memory budget's source. It is
+// THE route to that census: the binary's `census` / `census-resolve` / `census-infer` verbs remain
+// only as this row's realization and are not a second documented peer route, which is the
+// --self-host precedent this file states for `//gunbc/instruments:self-host` (DESIGN section 3,
+// Building & checks).
 // IT IS A REPORT, AND ITS VERDICT SAYS ONLY THAT: a census that completed is held, and a run that
 // printed no complete terminal is the subject unreached. It has NO did-not-hold arm on purpose. A
 // partition check (members summed over groups == rows reported) was tried and withdrawn in review
@@ -643,7 +648,7 @@ fn type_declaration_use_census_binding() -> TargetBinding {
 }
 
 fn v2_native_census_binding() -> TargetBinding {
-  TargetBinding { target: v2_native_census_label() producer: V2NativeCensusProducer { reading: ResolveRefusalReading } }
+  TargetBinding { target: v2_native_census_label() producer: V2NativeCensusProducer { reading: RefusalCensusReading } }
 }
 
 fn v2_native_frontier_binding() -> TargetBinding {

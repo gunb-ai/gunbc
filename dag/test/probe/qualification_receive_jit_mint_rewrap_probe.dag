@@ -1,0 +1,21 @@
+module test.probe.qualification_receive_jit_mint_rewrap_probe
+
+// THIS MODULE MUST NOT RESOLVE. It is the rewrap that needs no forged literal: hold an authorized
+// dispatch A and a legitimate delivery B, and hand B's credential and runner id to receive_jit_mint
+// under A. Unsealed, the result carries bound.dispatch == A and every equality on the dispatch admits
+// it. The witness test.claim.runner_qualification_delivery_rewrap_witness requires the refusal at
+// receive_jit_mint's admission. dag/test/probe/ sits under the whole-tree strict-resolve exclusion,
+// so this source reaches the compiler only through that witness.
+
+import gunbc.runner.runner_jit_perform {
+  AuthorizedJitMintDispatch, BoundJitCredential, JitCredentialDelivery, JitMintDispatchAuthorized,
+  receive_jit_mint,
+}
+import extdeps.github.actions_jit_runner { JitConfigMinted }
+
+fn rewrap_through_the_receiver(a: AuthorizedJitMintDispatch, b: BoundJitCredential) -> JitCredentialDelivery {
+  receive_jit_mint(
+    dispatch: JitMintDispatchAuthorized { dispatch: a },
+    outcome: JitConfigMinted { config: b.credential, runner_id: b.runner_id },
+  )
+}

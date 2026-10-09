@@ -1,5 +1,6 @@
 module gunbc.fleet.mtcollins_firmware_baseline
 
+import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.interval { degenerate_interval }
@@ -262,7 +263,7 @@ fn baseline_assessment() -> DecisionAssessment {
         constraint: c.identity,
         evidence: "a gate at 1 applied to every candidate before dominance" as NonEmptyStr,
       }),
-    parameters: [ParameterBound { parameter: id_param_board, evidence: "AmpereMtCollins (mtcollins1)" as NonEmptyStr }],
+    parameters: [ParameterBound { parameter: id_param_board, evidence: "Mt. Collins board (mtcollins1)" as NonEmptyStr }],
     selected_candidate: Absent,
     term_drops: [],
     physical_model: PhysicalModelEstablished { terms: [id_term] },

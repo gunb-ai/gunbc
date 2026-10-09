@@ -1,9 +1,9 @@
 module v2.test.parse.newline_dual_role_operator_parse
 
 import v2.compiler.parse { parse_module_prepared }
-import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_lex, dag_lex_rules, dag_target_model, parse_production_emitted_identity_optional }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.extdeps.languages.dag { dag_lex_rules, dag_target_model, parse_production_emitted_identity_optional }
 import v2.std.algebra { fold_list }
 import v2.std.collection { map_lookup }
 import v2.std.compilers.lexing { lex_rule_set_matching_rules, lex_rule_token_class_optional }
@@ -41,9 +41,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // (v1.compiler.parse is_ambiguous_prefix_infix_newline_boundary). `-` is infix and prefix, and the
 // dag grammar has no statement terminator, so `x` then a line `- 1` is either one subtraction or two
 // statements; v2 read it as one, silently, and since block forms became operands (#12817) a block
-// statement followed by a `-` line merged the same way. The dag grammar's additive continuation now
-// refuses a line-break-preceded `-` with NewlineBeforeDualRoleOperator at the `-`
-// (v2.extdeps.languages.dag dag_grammar_additive_expr_helper). Each side of the rule, through the
+// statement followed by a `-` line merged the same way. The dag grammar's binary operator table now
+// refuses a line-break-preceded `-` with NewlineBeforeDualRoleOperator at the `-`: its continuation
+// guard (v2.extdeps.languages.dag dag_grammar_additive_newline_minus_guard) runs at every
+// continuation point of dag_grammar_binary_expr_expr. Each side of the rule, through the
 // live prepared grammar on a lexed stream (which carries its layout): the next-line forms refuse at
 // the `-`, for a plain operand and for a block, and the same-line form parses. The
 // mutation that reds the refusals is test.claim.parse_test_newline_dual_role_operator_mutation.
@@ -51,11 +52,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn n_tokenize_parse(text: String, file: Symbol) -> Outcome<Node> {
   match dag_prepared_grammar() {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: prepared, diagnostics: residue } =>
+    Accepted { value: prepared, diagnostics: _ } =>
       bind_outcome(
-        o: tokenize(text: text, file: file, rules: dag_lex()),
+        o: tokenize_prepared(text: text, file: file, prepared: dag_prepared_lex()),
         f: fn(token_stream) {
-          match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
+          match parse_module_prepared(tokens: token_stream, prepared: prepared) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
           }
@@ -103,13 +104,13 @@ test fn a_newline_minus_after_a_block_refuses_holds() -> Bool {
   n_refuses_at_minus(text: newline_minus_after_block_source, file: ^probe_nl_block, start: 58, end: 59)
 }
 
-// THE ROUTE, NOT ONLY THE VERDICT. The newline refusal is a not-predicate guard in sequence before
-// the additive operator, not a choice alternative beside subtraction (the 2026-10-02 zero-ambiguity
+// THE ROUTE, NOT ONLY THE VERDICT. The newline refusal is a not-predicate guard run before the
+// operator table reads an operator, not a choice alternative beside subtraction (the 2026-10-02 zero-ambiguity
 // ruling: both arms began with `-`, so only order kept them apart). A same-line `-` must therefore
 // reach the subtraction route: its tree holds no NEGATION -- a unary_expr node with another
 // unary_expr beneath it (`-` then the operand's own unary layer), as opposed to the single unary layer
 // every operand passes through, which subtraction's two operands each hold side by side under the
-// binary node. A leading `-` takes the negation route and holds exactly one, which is the control
+// one application node. A leading `-` takes the negation route and holds exactly one, which is the control
 // that the count discriminates the two routes at all. Each claim pays one parse.
 data leading_minus_source: String = "module probe.nl_neg\n\ndata d: Int = -1\n"
 

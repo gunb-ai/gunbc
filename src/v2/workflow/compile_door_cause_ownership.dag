@@ -62,7 +62,7 @@ data known_frontier_causes: List<CauseOwnership> = [
   CauseOwnership {
     cause: ^parse_g0_tokens_remain,
     lane: MigrationOwned,
-    flip_trigger: "no per-cause trigger — same grammar-surgery class as parse_grammar_choice_overlap_residue (nimble-boar-198). Measured 2026-09-09 by the gunbc.witness_v2_native_route census as the fatal refusal on 706 real v2.test.* modules through the emitted native binary"
+    flip_trigger: "no per-cause trigger — grammar-surgery class (nimble-boar-198). Measured 2026-09-09 by the gunbc.witness_v2_native_route census as the fatal refusal on 706 real v2.test.* modules through the emitted native binary"
   },
   CauseOwnership {
     cause: ^tokenize_lex_e1_unrecognized_char,

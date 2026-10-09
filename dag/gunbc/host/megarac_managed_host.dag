@@ -16,7 +16,7 @@ import gunbc.managed_host {
 import gunbc.megarac_operation_standing {
   MegaRacOperation, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming,
   MegaRacOperationEvidence, MegaRacCurrentBuild, CurrentBuildRead, CurrentBuildKnownUnread, CurrentBuildUnobserved,
-  megarac_operation_grounded_at, megarac_operation_executed_at, megarac_current_build,
+  megarac_operation_executed_at, megarac_current_build,
 }
 import gunbc.machine_intake_megarac_operation_evidence { mtcollins1_megarac_operation_evidence }
 
@@ -30,7 +30,7 @@ import gunbc.machine_intake_megarac_operation_evidence { mtcollins1_megarac_oper
 // AN OPERATION IS ADMITTED ONLY WHERE IT IS GROUNDED. gunbc.megarac_operation_standing grounds an
 // operation at an observed controller identity -- baseboard and firmware together -- from committed
 // evidence (gunbc.machine_intake_megarac_operation_evidence): a receipt joined to a reading of that
-// build, or a route recovered from what that build served. A MegaRAC appliance of another product line
+// build. A MegaRAC appliance of another product line
 // reporting the same raw version is refused, and so is Mt. Jade's MegaRAC at 2.11, which none of these
 // operations was ever run on.
 //
@@ -84,26 +84,16 @@ fn megarac_binding_step(host: ManagedHost) -> MegaRacBindingStep {
   }
 }
 
-// WHAT GROUNDING AN ADMISSION REQUIRES: the frozen production path accepts a route recovered from a served
-// artifact; the current-build gate accepts only an executed operation.
-type MegaRacGroundingRequirement
-  = GroundedByExecutionOrServedRecovery
-  | GroundedByExecutionOnly
-
 // THE ONE MINT OF AdmittedMegaRacHost, and it decides from the sealed evidence itself, never from a
 // supplied verdict. It is admitted only to the two admissions below, each of which runs the binding and
 // family step (and, for the gate, the current-build step) before reaching it.
-fn megarac_grounded_admission(evidence: MegaRacOperationEvidence, binding: ManagedHostBinding, operation: MegaRacOperation, identity: BmcObservedIdentity, requirement: MegaRacGroundingRequirement) -> MegaRacHostAdmission
+fn megarac_grounded_admission(evidence: MegaRacOperationEvidence, binding: ManagedHostBinding, operation: MegaRacOperation, identity: BmcObservedIdentity) -> MegaRacHostAdmission
   admit_callers: [
     decl_ref(module_path: "gunbc.megarac_managed_host", decl_name: "admit_megarac_host_observed_in"),
     decl_ref(module_path: "gunbc.megarac_managed_host", decl_name: "admit_megarac_host_at_current_build"),
   ]
 {
-  let grounded = match requirement {
-    GroundedByExecutionOrServedRecovery => megarac_operation_grounded_at(evidence: evidence, operation: operation, identity: identity)
-    GroundedByExecutionOnly => megarac_operation_executed_at(evidence: evidence, operation: operation, identity: identity)
-  }
-  if grounded {
+  if megarac_operation_executed_at(evidence: evidence, operation: operation, identity: identity) {
     MegaRacHostAdmitted { host: AdmittedMegaRacHost { binding: binding, operation: operation, firmware: identity.firmware } }
   } else {
     MegaRacHostRefused { cause: MegaRacOperationNotGrounded { operation: operation, identity: identity } }
@@ -118,7 +108,7 @@ fn admit_megarac_host(host: ManagedHost, operation: MegaRacOperation) -> MegaRac
 fn admit_megarac_host_observed_in(evidence: MegaRacOperationEvidence, host: ManagedHost, operation: MegaRacOperation) -> MegaRacHostAdmission {
   match megarac_binding_step(host: host) {
     MegaRacBindingRefused { cause: c } => MegaRacHostRefused { cause: c }
-    MegaRacBindingAdmissible { binding: b } => megarac_grounded_admission(evidence: evidence, binding: b, operation: operation, identity: b.observation.identity, requirement: GroundedByExecutionOrServedRecovery)
+    MegaRacBindingAdmissible { binding: b } => megarac_grounded_admission(evidence: evidence, binding: b, operation: operation, identity: b.observation.identity)
   }
 }
 
@@ -139,7 +129,7 @@ fn admit_megarac_host_at_current_build(evidence: MegaRacOperationEvidence, host:
           MegaRacHostRefused { cause: MegaRacObservationNotCurrent { observed: observed, current: t.to } }
         CurrentBuildRead { reading: r } =>
           if bmc_firmware_release_identity_eq(a: r.identity.firmware, b: observed) {
-            megarac_grounded_admission(evidence: evidence, binding: b, operation: operation, identity: r.identity, requirement: GroundedByExecutionOnly)
+            megarac_grounded_admission(evidence: evidence, binding: b, operation: operation, identity: r.identity)
           } else {
             MegaRacHostRefused { cause: MegaRacObservationNotCurrent { observed: observed, current: r.identity.firmware } }
           }
