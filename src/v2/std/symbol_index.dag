@@ -90,6 +90,7 @@ type SymbolIndex {
   declared_type_params: Map<QualifiedName, Node>
   declared_resources: Map<QualifiedName, ResourceDeclared>
   namespace_bodies: Map<QualifiedName, NamespaceBodyDeclared>
+  construction_confinements: Map<QualifiedName, ConstructionConfinement>
   module_roots: Map<QualifiedName, ModuleRootDeclared>
 }
 
@@ -127,6 +128,26 @@ type ResourceDeclared {}
 // service spine. General lexical ascent is XL-5's namespace cut; this boundary is scoped to the spine.
 type NamespaceBodyDeclared {}
 
+// WHO MAY INTRODUCE A DECLARATION, keyed by its declaring path (gunbc.rung_drop
+// g0_type_decl_modifier_parse_without_sealing_property, admit_callers_discarded_on_the_native_route).
+// One value per confined declaration, and every value IS a confinement, for the reason
+// DeclaredPayloadKind is a value and not a Bool. The two arms are the two seed properties the native
+// route used to drop: a `sole_constructor` type is introduced -- by record construction or by a cast
+// into it -- only inside its declaring module (v1 sole_constructor_construction_diags); a fn
+// declaring `admit_callers` is referenced only from a declaration on its list (v1
+// constructor_call_admission_diags). Written by v2.compiler.symbol_index_fill in the same pass that
+// writes the declarations, from ModuleBindingSource confinements; read by
+// v2.compiler.construction_confinement, the stage that refuses an introduction outside it.
+type ConstructionConfinement
+  = ConstructionSealedToModule
+  | CallersAdmitted { callers: FreeMonoid<QualifiedName> }
+
+// One confined declaration of a module, by leaf name, as the normalize capture carries it; the fill
+// qualifies the name by the module's own path exactly as it does a record name.
+type DeclaredConfinement {
+  name: Symbol
+  confinement: ConstructionConfinement
+}
 // A PATH THAT IS A MODULE'S OWN ROOT, stored as the map's value for the reason ResourceDeclared is.
 // Written by v2.compiler.symbol_index_fill for every module it fills; read by
 // symbol_index_lexical_collect, which STOPS ASCENDING there (operator ruling 2026-10-04: no
@@ -146,6 +167,7 @@ fn empty_symbol_index() -> SymbolIndex {
     declared_type_params: empty_map(),
     declared_resources: empty_map(),
     namespace_bodies: empty_map(),
+    construction_confinements: empty_map(),
     module_roots: empty_map()
   }
 }
@@ -226,6 +248,7 @@ fn symbol_index_track_global_bare(
               declared_type_params: index.declared_type_params,
               declared_resources: index.declared_resources,
               namespace_bodies: index.namespace_bodies,
+              construction_confinements: index.construction_confinements,
               module_roots: index.module_roots
             }
           Present { value: GlobalBareUnique { node: existing, path: existing_path } } =>
@@ -247,6 +270,7 @@ fn symbol_index_track_global_bare(
                 declared_type_params: index.declared_type_params,
                 declared_resources: index.declared_resources,
                 namespace_bodies: index.namespace_bodies,
+                construction_confinements: index.construction_confinements,
                 module_roots: index.module_roots
               }
             }
@@ -264,6 +288,7 @@ fn symbol_index_track_global_bare(
               declared_type_params: index.declared_type_params,
               declared_resources: index.declared_resources,
               namespace_bodies: index.namespace_bodies,
+              construction_confinements: index.construction_confinements,
               module_roots: index.module_roots
             }
         }
@@ -296,6 +321,7 @@ fn symbol_index_insert(index: SymbolIndex, qualified_path: QualifiedName, resolv
     declared_type_params: index.declared_type_params,
     declared_resources: index.declared_resources,
     namespace_bodies: index.namespace_bodies,
+    construction_confinements: index.construction_confinements,
     module_roots: index.module_roots
   }
   symbol_index_track_global_bare(
@@ -327,6 +353,7 @@ fn symbol_index_mark_declared_payload(index: SymbolIndex, qualified_path: Qualif
     declared_type_params: index.declared_type_params,
     declared_resources: index.declared_resources,
     namespace_bodies: index.namespace_bodies,
+    construction_confinements: index.construction_confinements,
     module_roots: index.module_roots
   }
 }
@@ -359,6 +386,7 @@ fn symbol_index_mark_declared_resource(index: SymbolIndex, qualified_path: Quali
     declared_type_params: index.declared_type_params,
     declared_resources: map_insert(m: index.declared_resources, key: qualified_path, value: ResourceDeclared {}),
     namespace_bodies: index.namespace_bodies,
+    construction_confinements: index.construction_confinements,
     module_roots: index.module_roots
   }
 }
@@ -373,6 +401,7 @@ fn symbol_index_mark_namespace_body(index: SymbolIndex, qualified_path: Qualifie
     declared_type_params: index.declared_type_params,
     declared_resources: index.declared_resources,
     namespace_bodies: map_insert(m: index.namespace_bodies, key: qualified_path, value: NamespaceBodyDeclared {}),
+    construction_confinements: index.construction_confinements,
     module_roots: index.module_roots
   }
 }
@@ -387,6 +416,7 @@ fn symbol_index_mark_module_root(index: SymbolIndex, qualified_path: QualifiedNa
     declared_type_params: index.declared_type_params,
     declared_resources: index.declared_resources,
     namespace_bodies: index.namespace_bodies,
+    construction_confinements: index.construction_confinements,
     module_roots: map_insert(m: index.module_roots, key: qualified_path, value: ModuleRootDeclared {})
   }
 }
@@ -413,6 +443,7 @@ fn symbol_index_mark_declared_type_params(index: SymbolIndex, qualified_path: Qu
     declared_type_params: map_insert(m: index.declared_type_params, key: qualified_path, value: params),
     declared_resources: index.declared_resources,
     namespace_bodies: index.namespace_bodies,
+    construction_confinements: index.construction_confinements,
     module_roots: index.module_roots
   }
 }
@@ -540,6 +571,7 @@ fn symbol_index_bind_at(
       declared_type_params: index.declared_type_params,
       declared_resources: index.declared_resources,
       namespace_bodies: index.namespace_bodies,
+      construction_confinements: index.construction_confinements,
       module_roots: index.module_roots
     }
     if is_empty(xs: prior) {
@@ -552,6 +584,7 @@ fn symbol_index_bind_at(
         declared_type_params: recorded.declared_type_params,
         declared_resources: recorded.declared_resources,
         namespace_bodies: recorded.namespace_bodies,
+        construction_confinements: recorded.construction_confinements,
         module_roots: recorded.module_roots
       }
     } else {
@@ -694,4 +727,25 @@ fn symbol_index_lexical_lookup(
       acc: Empty
     )
   )
+}
+
+fn symbol_index_mark_construction_confinement(index: SymbolIndex, qualified_path: QualifiedName, confinement: ConstructionConfinement) -> SymbolIndex {
+  SymbolIndex {
+    entries: index.entries,
+    global_bare: index.global_bare,
+    bound_declarings: index.bound_declarings,
+    declared_payloads: index.declared_payloads,
+    renaming_aliases: index.renaming_aliases,
+    declared_type_params: index.declared_type_params,
+    declared_resources: index.declared_resources,
+    namespace_bodies: index.namespace_bodies,
+    construction_confinements: map_insert(m: index.construction_confinements, key: qualified_path, value: confinement),
+    module_roots: index.module_roots
+  }
+}
+
+// The confinement a declaring path carries, or Absent for an unconfined declaration: map_lookup is
+// total, so there is no failure arm that could answer "unconfined" for a lookup that did not run.
+fn symbol_index_construction_confinement_at(index: SymbolIndex, qualified_path: QualifiedName) -> Optional<ConstructionConfinement> {
+  map_lookup(m: index.construction_confinements, key: qualified_path)
 }

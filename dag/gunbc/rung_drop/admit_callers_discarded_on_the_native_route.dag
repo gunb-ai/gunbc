@@ -1,7 +1,7 @@
 module gunbc.rung_drop.admit_callers_discarded_on_the_native_route
 
 import std.types { List, NonEmptyStr, String }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Retired, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // DECLARED 2026-09-22 (Pkg11b batch 2, ruling via neat-boar-16). `admit_callers: [decl_ref(..)]`
@@ -22,7 +22,7 @@ data admit_callers_discarded_on_the_native_route: RungDrop = RungDrop {
   identity: "admit_callers_discarded_on_the_native_route" as NonEmptyStr,
   subject: "native route enforces admit_callers: a call from a declaration outside a fn's admitted caller list refuses",
   declared: "2026-09-22",
-  standing: Standing,
+  standing: Retired { trigger_fired: "2026-10-03 -- the capability, observed on the native route (v2.test.claim.construction_confinement.construction_confinement): v2.compiler.construction_confinement, entered from v2.compiler.infer infer, checks caller admission from the fn's declared admit_callers list and refuses construction_confinement_reason_caller_not_admitted, located at the reference, for a reference from any declaration outside it (cc_real_route_refuses_exactly_the_outside_introductions_holds counts exactly one on the whole native path, beside an admitted call that raises none; cc_non_admitted_caller_refuses_holds and cc_admitted_caller_is_admitted_holds hold it at the stage's interface) -- the seed's v1 constructor_call_admission_diags. THE CARRIER DIVERGES FROM THE ONE THIS ROW NAMED, with its reason: the list is not carried on the Arrow. It is a fact ABOUT the declaration, read by a stage that needs the closure, so it rides the same route the sole_constructor property does -- captured at normalize (v2.compiler.body_lowering_fold body_lower_fn_decl_declared_admitted_callers onto NormalizedTree declared_admitted_callers), filled into the closure index as v2.std.symbol_index CallersAdmitted -- and v2.std.node arrow_signature_edges_conform is unchanged. The carrier lands with its consumer in one change, which is the capability the trigger asked for. A clause entry that is not decl_ref(module_path, decl_name) refuses at normalize (body_lowering_reason_admit_callers_entry_not_decl_ref), as v1 AdmitCallersEntryNotDeclRef does; the empty-list refusal is kept." as NonEmptyStr },
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,

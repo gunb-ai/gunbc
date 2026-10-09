@@ -769,6 +769,7 @@ fn fps_root_kind_namespace() -> Namespace {
       declared_type_params: index.declared_type_params,
       declared_resources: index.declared_resources,
       namespace_bodies: index.namespace_bodies,
+      construction_confinements: index.construction_confinements,
       module_roots: index.module_roots
     },
     module_qn: base.module_qn,

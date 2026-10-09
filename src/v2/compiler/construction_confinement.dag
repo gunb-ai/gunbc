@@ -1,0 +1,218 @@
+module v2.compiler.construction_confinement
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.namespace_graft { namespace_graft_module_body_optional }
+import v2.extdeps.languages.dag { qualified_name_from_module_node }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { contains, fold_list }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  Diagnostics,
+  None,
+  Rejected,
+  Some,
+  Unavailable,
+  UserInputBoundary,
+  diagnostics_merge,
+  diagnostics_singleton,
+  node_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node { Authored, Edge, Node, Positional, StructuralLabel, node_subtree_nodes }
+import v2.std.node_query { construct_tag_path_optional }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, qualified_name_init, qualified_name_snoc }
+import v2.std.symbol_index {
+  CallersAdmitted,
+  ConstructionConfinement,
+  ConstructionSealedToModule,
+  SymbolIndex,
+  symbol_index_construction_confinement_at
+}
+import v2.std.type_binder { cast_target_optional }
+
+// CONSTRUCTOR CONFINEMENT ON THE NATIVE ROUTE (gunbc.rung_drop
+// g0_type_decl_modifier_parse_without_sealing_property, admit_callers_discarded_on_the_native_route).
+// Two seed properties, one question -- may THIS declaration introduce THAT one -- asked of a resolved
+// subject against the facts the symbol index carries (v2.std.symbol_index ConstructionConfinement,
+// written by v2.compiler.symbol_index_fill from the normalize captures):
+//
+// - a `sole_constructor` type is introduced only inside its declaring module: a record construction
+//   of it, or a cast into it, from any other module refuses, located at the introduction. This is
+//   the seed's v1 sole_constructor_construction_diags (record literal and cast arms), whose
+//   same-file test is a same-module test here because a module is one file.
+// - a fn declaring `admit_callers` is referenced only from a declaration on its list: any reference
+//   from another declaration refuses, located at the reference. This is the seed's v1
+//   constructor_call_admission_diags. The caller is the subject's top-level declaration whose body
+//   holds the reference, keyed `<module>.<decl>` exactly as a decl_ref entry names it.
+//
+// WHY A STAGE OF ITS OWN, ENTERED FROM v2.compiler.infer infer. The question needs the enclosing
+// declaration, which infer's bottom-up fold does not carry and resolve's walk drops below an Arrow
+// (DeclaringPosition NotDeclaring); a pass over the resolved subject's top-level members has it by
+// construction. It is entered from infer's entry so every route that types a tree -- the program
+// route, the single-tree route, the native door -- holds the wall, and none can type a tree that
+// skipped it.
+//
+// FAIL-CLOSED: a subject whose module name cannot be read has no module to be inside, so every
+// sealed introduction refuses; a subject whose module body cannot be found is walked whole with no
+// enclosing declaration, so every reference to an admission-bearing fn refuses -- the seed's
+// "<unknown>" caller arm. Neither absence is read as "inside".
+
+fn construction_confinement_sealed_reason() -> Symbol {
+  ^construction_confinement_reason_sole_constructor_outside_declaring_module
+}
+
+fn construction_confinement_caller_reason() -> Symbol {
+  ^construction_confinement_reason_caller_not_admitted
+}
+
+fn construction_confinement_diagnostic(reason: Symbol, at: Node) -> Diagnostics {
+  Some {
+    diagnostics: diagnostics_singleton(d: Diagnostic {
+      reason: reason,
+      at: node_locus(node: at),
+      correction: Unavailable { reason: UserInputBoundary }
+    })
+  }
+}
+
+// Whether `module` may introduce the sealed type at `path`: only its declaring module may.
+fn construction_confinement_inside(module: Optional<QualifiedName>, path: QualifiedName) -> Bool {
+  match module {
+    Present { value: m } => qualified_name_init(qn: path) == m
+    Absent => false
+  }
+}
+
+// A sealed introduction at `n` of the type at `path`, or nothing.
+fn construction_confinement_sealed_at(
+  index: SymbolIndex,
+  module: Optional<QualifiedName>,
+  n: Node,
+  path: QualifiedName
+) -> Diagnostics {
+  match symbol_index_construction_confinement_at(index: index, qualified_path: path) {
+    Present { value: c } =>
+      match c {
+        ConstructionSealedToModule =>
+          if construction_confinement_inside(module: module, path: path) {
+            None
+          } else {
+            construction_confinement_diagnostic(reason: construction_confinement_sealed_reason(), at: n)
+          }
+        CallersAdmitted { callers: _ } => None
+      }
+    Absent => None
+  }
+}
+
+// The cast's target declaration, when it is a resolved declaration reference.
+fn construction_confinement_cast_target_path(n: Node) -> Optional<QualifiedName> {
+  match cast_target_optional(n: n) {
+    Present { value: target } => declaration_reference_path_optional(node: target)
+    Absent => optional_absent()
+  }
+}
+
+// A reference at `n` to the declaration at `path` from `caller`: refused when that declaration admits
+// a caller list and `caller` is not on it.
+fn construction_confinement_reference_at(
+  index: SymbolIndex,
+  caller: Optional<QualifiedName>,
+  n: Node,
+  path: QualifiedName
+) -> Diagnostics {
+  match symbol_index_construction_confinement_at(index: index, qualified_path: path) {
+    Present { value: c } =>
+      match c {
+        CallersAdmitted { callers: cs } =>
+          match caller {
+            Present { value: d } =>
+              if contains(xs: cs, item: d, eq: fn(a, b) { a == b }) {
+                None
+              } else {
+                construction_confinement_diagnostic(reason: construction_confinement_caller_reason(), at: n)
+              }
+            Absent => construction_confinement_diagnostic(reason: construction_confinement_caller_reason(), at: n)
+          }
+        ConstructionSealedToModule => None
+      }
+    Absent => None
+  }
+}
+
+// Every refusal one node raises: as a record construction, as a cast, and as a reference.
+fn construction_confinement_node(
+  index: SymbolIndex,
+  module: Optional<QualifiedName>,
+  caller: Optional<QualifiedName>,
+  n: Node
+) -> Diagnostics {
+  let constructed = match construct_tag_path_optional(n: n) {
+    Present { value: p } => construction_confinement_sealed_at(index: index, module: module, n: n, path: p)
+    Absent => None
+  }
+  let cast = match construction_confinement_cast_target_path(n: n) {
+    Present { value: p } => construction_confinement_sealed_at(index: index, module: module, n: n, path: p)
+    Absent => None
+  }
+  let referenced = match declaration_reference_path_optional(node: n) {
+    Present { value: p } => construction_confinement_reference_at(index: index, caller: caller, n: n, path: p)
+    Absent => None
+  }
+  diagnostics_merge(outer: diagnostics_merge(outer: constructed, inner: cast), inner: referenced)
+}
+
+fn construction_confinement_subtree(
+  index: SymbolIndex,
+  module: Optional<QualifiedName>,
+  caller: Optional<QualifiedName>,
+  root: Node
+) -> Diagnostics {
+  fold_list(
+    xs: node_subtree_nodes(root: root),
+    empty: None,
+    cons: fn(acc, n) {
+      diagnostics_merge(outer: acc, inner: construction_confinement_node(index: index, module: module, caller: caller, n: n))
+    }
+  )
+}
+
+// One member of the module body: an authored edge is a declaration, and its name is the caller.
+fn construction_confinement_member(
+  index: SymbolIndex,
+  module: Optional<QualifiedName>,
+  edge: Edge
+) -> Diagnostics {
+  let caller = match edge.label {
+    Authored { name: name } =>
+      match module {
+        Present { value: m } => optional_present(value: qualified_name_snoc(qn: m, segment: name))
+        Absent => optional_absent()
+      }
+    StructuralLabel { label: _ } => optional_absent()
+    Positional => optional_absent()
+  }
+  construction_confinement_subtree(index: index, module: module, caller: caller, root: edge.target)
+}
+
+// THE ONE QUESTION: every introduction in the subject that its confinements refuse. None admits it.
+fn construction_confinement_refusals(tree: ResolvedTree) -> Diagnostics {
+  let module = match qualified_name_from_module_node(root: tree.root) {
+    Accepted { value: m, diagnostics: _ } => optional_present(value: m)
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+  match namespace_graft_module_body_optional(root: tree.root) {
+    Present { value: body } =>
+      fold_list(
+        xs: body.children,
+        empty: None,
+        cons: fn(acc, e) {
+          diagnostics_merge(outer: acc, inner: construction_confinement_member(index: tree.symbol_index, module: module, edge: e))
+        }
+      )
+    Absent =>
+      construction_confinement_subtree(index: tree.symbol_index, module: module, caller: optional_absent(), root: tree.root)
+  }
+}
