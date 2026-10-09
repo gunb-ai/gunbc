@@ -1,0 +1,34 @@
+module test.claim.ci.witnesses_cold_run_receipt_witness_test
+
+import std.types { Bool, String, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.cutover_receipt {
+  CutoverReceipt, CutoverReading, ReceiptUnrecorded, ReceiptRecorded,
+  cutover_receipt_is_recorded, cutover_receipt_has_reading, cutover_receipt_names_runs,
+  witnesses_cold_run_receipt
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ACCEPTANCE ORACLE FOR witnesses-cold-run-phase-peaks, RED BY DESIGN. PINNED AT LAUNCH.
+
+// RED TODAY: a cold run is recorded from a named run on a named host with the per-step peaks.
+test fn the_cold_run_receipt_is_recorded_from_a_named_run() -> Bool {
+  cutover_receipt_names_runs(r: witnesses_cold_run_receipt, count: 1)
+    && cutover_receipt_has_reading(r: witnesses_cold_run_receipt, name: "emit_build_self_host.peak")
+    && cutover_receipt_has_reading(r: witnesses_cold_run_receipt, name: "emit_build_v2_native_cli.peak")
+}
+
+// CONTROL: a receipt with no run id is not recorded, so a peak copied from nowhere cannot stand.
+test fn a_peak_above_the_trip_refuses() -> Bool {
+  !cutover_receipt_is_recorded(r: ReceiptRecorded {
+    run_ids: [], host: "h", readings: [CutoverReading { name: "emit_build_self_host.peak", value: "1" }]
+  })
+}
+
+// CONTROL: a cold claim beside a cache hit refuses; the receipt must name the cache state reading.
+test fn a_cold_claim_beside_a_cache_hit_refuses() -> Bool {
+  !cutover_receipt_has_reading(r: ReceiptRecorded {
+    run_ids: ["r"], host: "h", readings: [CutoverReading { name: "emit_build_self_host.peak", value: "1" }]
+  }, name: "cache_state")
+}

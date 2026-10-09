@@ -1,0 +1,56 @@
+module gunbc.cutover_receipt
+
+import std.types { String, List, Bool, Int, list_length }
+import v2.std.algebra { any }
+
+// THE RECEIPT A V2 CUTOVER ROADMAP NODE HANDS BACK, AS A TYPED STANDING.
+//
+// Each cutover node (gunbc.roadmap_authority: fleet-slot-no-swap-envelope-converged,
+// witnesses-cold-run-phase-peaks, seed-build-dependency-cache-measurement,
+// materialization-verified-exact-reuse-arm, v1-maintenance-admission-first-purpose-receipt) ends in
+// an OBSERVATION of a named run, not in a statement about the code. A reading copied from nowhere is
+// the fabricated field DESIGN section 5 forbids, so the standing has exactly two arms and the
+// recorded one cannot be written without the runs it came from: no run id, no receipt.
+//
+// The rows below are born ReceiptUnrecorded, and that is the RED each node's acceptance witness
+// pins. A worker flips a row by recording the run, never by editing the witness. Each row dissolves
+// into its consumer's own carrier when that carrier exists (the roster the node builds), at which
+// point the row is deleted in the same change.
+
+type CutoverReading {
+  name: String
+  value: String
+}
+
+type CutoverReceipt
+  = ReceiptUnrecorded
+  | ReceiptRecorded { run_ids: List<String>, host: String, readings: List<CutoverReading> }
+
+fn cutover_receipt_is_recorded(r: CutoverReceipt) -> Bool {
+  match r {
+    ReceiptUnrecorded => false
+    ReceiptRecorded { run_ids: runs, host: host, readings: readings } =>
+      list_length(items: runs) > 0 && host != "" && list_length(items: readings) > 0
+  }
+}
+
+fn cutover_receipt_has_reading(r: CutoverReceipt, name: String) -> Bool {
+  match r {
+    ReceiptUnrecorded => false
+    ReceiptRecorded { run_ids: _, host: _, readings: readings } => any(readings, x => x.name == name)
+  }
+}
+
+fn cutover_receipt_names_runs(r: CutoverReceipt, count: Int) -> Bool {
+  match r {
+    ReceiptUnrecorded => false
+    ReceiptRecorded { run_ids: runs, host: _, readings: _ } =>
+      list_length(items: runs) == count && !any(runs, x => x == "")
+  }
+}
+
+data fleet_slot_envelope_readback: CutoverReceipt = ReceiptUnrecorded
+data witnesses_cold_run_receipt: CutoverReceipt = ReceiptUnrecorded
+data seed_build_cache_pair_receipt: CutoverReceipt = ReceiptUnrecorded
+data verified_exact_reuse_first_run_receipt: CutoverReceipt = ReceiptUnrecorded
+data v1_maintenance_first_admission_receipt: CutoverReceipt = ReceiptUnrecorded
