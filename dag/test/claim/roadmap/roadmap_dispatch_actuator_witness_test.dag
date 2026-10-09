@@ -25,7 +25,6 @@ import gunbc.roadmap_status { DerivableLine, Unsigned }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_spawner { next_spawnable, dispatch_brief_template, node_title }
-import gunbc.roadmap_authority { declared_roadmap_nodes }
 import std.upsert_decision {
   Absent,
   Apply,
@@ -1235,14 +1234,6 @@ test fn witness_continuation_origin_branches_the_worktree_from_the_prior_attempt
         && !string_contains(s: git_wire, pattern: "\0origin/main")
     }
   }
-}
-
-// THE AUTHORITY ROW, READ BY THE TEST ITSELF. The drift controls below require the preamble to
-// carry the arc's title AS THE AUTHORITY DECLARES IT, so the expectation is projected here rather
-// than transcribed: editing the authority row moves this expectation with it, and a hand-copied
-// preamble goes red.
-fn authority_node_opt(id: String) -> RoadmapNode? {
-  (declared_roadmap_nodes() |> filter(n => (n.node as String) == id)).first()
 }
 
 // THE SUPPLIED UNROOTED SPECIMEN (§3: a witness discriminates at one interface). The claims below
