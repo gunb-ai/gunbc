@@ -69,6 +69,13 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // Re-adding any one falsifier cadence would restore one door; it would not restore
 // the refusal, which needs a required run to enter the discovery path. Both halves
 // are in the restoration trigger for that reason.
+// SHRINK LOG. 2026-10-05 — src/v2/test/claim/long/cwc_resolution_probe_test.dag [whole],
+// 9 identities, RETIRED because a consumer now executes them, not exempted: gunbc#13333 enrolled
+// cwc_malformed_nary_coproduct_normalize_rejects in v2.workflow.floor_expected_red, and the floor
+// refused the pair as ExpectedRedFreezeIntersection. A claim cannot be both never-executed and
+// known-red. The row deletes, so the required floor runs the file. The same change deleted
+// cwc_malformed_nary_coproduct_fail_open_control (the negation of its sibling) and repaired the
+// resolve door that cwc_cwc_module_resolve_accepts reads.
 // SHRINK LOG. 2026-10-06 — accumulator_copy lean/bash/swift/glob freeze identities deleted, not
 // renamed: their test-fn bodies were a weaker contract than zero_suspects_within_ratchet (typed
 // Filesystem.Read existence). The priced-out file_gate walks live as ordinary fns consumed by
@@ -895,16 +902,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     functions: [
       "cross_tree_real_ingest_v2_to_dag_admitted_holds",
       "cross_tree_real_ingest_dag_to_v2_denied_holds"
-    ]
-  },
-  FrozenPathDeferral {
-    entry: "src/v2/test/claim/long/cwc_resolution_probe_test.dag",
-    functions: [
-      "cwc_norm_two_variant_accepts", "cwc_norm_three_variant_accepts",
-      "cwc_non_coproduct_rhs_passes_through", "cwc_malformed_nary_coproduct_normalize_rejects",
-      "cwc_malformed_nary_coproduct_fail_open_control", "cwc_norm_review_event_accepts",
-      "cwc_cwc_module_resolve_accepts", "cwc_review_normalized_has_disj",
-      "cwc_review_disj_has_four_arms"
     ]
   },
   FrozenPathDeferral {
