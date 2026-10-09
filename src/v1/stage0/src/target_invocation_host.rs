@@ -3651,7 +3651,7 @@ fn run_interpolation_hole_census(source_roots: &[String]) -> InvocationOutcome {
     for line in standing.lines() {
         println!("interpolation-hole-census: {line}");
     }
-    let mut paths: Vec<std::path::PathBuf> = Vec::new();
+    let mut paths = Vec::new();
     for root in source_roots {
         if let Err(detail) =
             cli_run::collect_dag_files_result(std::path::Path::new(root), &mut paths)
@@ -3660,9 +3660,9 @@ fn run_interpolation_hole_census(source_roots: &[String]) -> InvocationOutcome {
         }
     }
     let mut corpus: Vec<Rc<SourceFile>> = Vec::new();
-    for path in &paths {
-        let path = path.to_string_lossy().to_string();
-        match std::fs::read_to_string(&path) {
+    for source in &paths {
+        let path = source.path().to_string_lossy().to_string();
+        match source.read() {
             Ok(content) => corpus.push(Rc::new(SourceFile { path, content })),
             Err(err) => return unreached(format!("corpus file {path}: {err}")),
         }
