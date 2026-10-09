@@ -146,6 +146,7 @@ import v2.std.node {
   MapLiteralEntryEdge,
   MapLiteralEntriesEdge,
   MatchArmScopeExitEdge,
+  ConstantMemberEdge,
   core_edge,
   labeled_core_is,
   StructuralLabel,
@@ -4321,8 +4322,10 @@ fn body_lower_repeated_param_binding_diagnostic(edge: Edge) -> Diagnostic {
 // returns it: that is the seed's own realization (v1.compiler.emit_rust emits a data item as a
 // nullary fn and calls it at every reference), and it lets the existing Arrow, product and literal
 // derivations ground the member with no data-specific infer rule. The data-versus-fn distinction a
-// reference site needs is not carried by this shape; it lives in the declaration index
-// (v2.std.decl_index data_decl_type_facts), which reads the parse, not this tree. A shell whose
+// reference site needs IS carried, by one marker on the Arrow (body_lower_constant_member_arrow, v2.std.node
+// ConstantMemberEdge): a reference to the member uses its value. v2.std.decl_index data_decl_type_facts
+// still answers the same question for a corpus CENSUS over the parse (a second reader of the fact, declared
+// as a frontier until a corpus index over lowered roots exists to read the marker instead). A shell whose
 // name, declared type or value is not reachable is retained as the counted frontier, exactly as
 // the fn arm retains, never guessed.
 // THE INITIALIZER IS ALREADY LOWERED WHEN THIS ARM RUNS. normalize_node_ctx folds a declaration's
@@ -4373,7 +4376,7 @@ fn body_lower_data_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
                                 )
                                 Present { value: data_name } =>
                                   let signature = declared_signature(params: [], source: shell)
-                                  let arrow = body_lower_callable_arrow(
+                                  let arrow = body_lower_constant_member_arrow(arrow: body_lower_callable_arrow(
                                     source: shell,
                                     domain: signature.domain,
                                     codomain: declared_type,
@@ -4382,7 +4385,7 @@ fn body_lower_data_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
                                     body: optional_present(
                                       value: body_lower_position_function_values(node: reified_body, path: body_lower_unpositioned_path())
                                     )
-                                  )
+                                  ))
                                   body_lowering_lowered(
                                     o: outcome_with_diagnostics(
                                       value: body_lower_fn_decl_named_member_wrap(
@@ -4402,6 +4405,19 @@ fn body_lower_data_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
           }
       }
   }
+}
+
+// THE DATA ARROW CARRIES THE ONE FACT THAT DISTINGUISHES IT FROM A NULLARY FN (v2.std.node
+// ConstantMemberEdge): a reference to it uses its value. Without the marker the lowered member was
+// indistinguishable from `fn x() -> T`, so infer typed a bare reference `x` as the function () -> T
+// and every data reference at a declared position refused (a String data row as a concat argument,
+// an Int data row as an Int initializer). The fact is kept on the carrier that owns it instead of
+// being re-read from the parse.
+fn body_lower_constant_member_arrow(arrow: Node) -> Node {
+  node_rebuild(
+    n: arrow,
+    children: list_snoc_item(xs: arrow.children, item: core_edge(marker: ConstantMemberEdge, target: node_synthetic(kind: TypeNode { connective: Conj }, children: [])))
+  )
 }
 
 // THE DECLARED ORDER, CARRIED ON THE ARROW. Every Arrow built from a declared signature carries one

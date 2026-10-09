@@ -157,6 +157,19 @@ type StructuralEdgeLabel
 // in the scope enclosing the match, so no pattern binder reaches the rest
 // (v2.compiler.resolve resolve_match_arm_admitted, its one consumer). It adds no behavior kind;
 // a marked Bind anywhere else is a malformed tree.
+//
+// ConstantMemberEdge: A NULLARY ARROW THAT IS A `data` CONSTANT. A named edge (targeting an empty
+// Conj, as MatchArmScopeExitEdge is) on the Arrow body lowering builds for `data x: T = e`
+// (v2.compiler.body_lowering_fold body_lower_data_decl_to_member, its one producer). The Arrow is the
+// same member a nullary `fn x() -> T` lowers to; the marker is the one fact that differs: a reference
+// to a marked Arrow USES ITS VALUE, so it is typed at the Arrow's declared codomain T
+// (v2.compiler.infer infer_declaration_reference_facts_indexed) and evaluates to the value of the
+// nullary application (v2.compiler.eval), while a reference to an unmarked Arrow denotes the function.
+// It adds no behavior kind. WHAT HOLDS IT, stated at its rung: its one producer marks only the Arrow
+// of a `data` declaration (nullary by construction), and the reader answers Absent for the marker on a
+// non-Arrow (v2.test.claim.compiler.data_reference_value drv_a_marked_non_arrow_is_not_a_constant). No
+// wall refuses the marker on a NON-nullary Arrow: that holds only by the single producer, so a second
+// producer must add that wall rather than rely on this note.
 type CoreEdgeLabel
   = ArrowBodyEdge
   | ArrowSignatureOrderEdge
@@ -186,6 +199,7 @@ type CoreEdgeLabel
   | MapLiteralEntryEdge
   | MapLiteralEntriesEdge
   | MatchArmScopeExitEdge
+  | ConstantMemberEdge
 
 fn core_edge_label(marker: CoreEdgeLabel) -> EdgeLabel {
   StructuralLabel { label: CoreMarker { marker: marker } }
@@ -250,6 +264,7 @@ fn core_edge_labels() -> List<CoreEdgeLabel> {
     MapLiteralEntryEdge,
     MapLiteralEntriesEdge,
     MatchArmScopeExitEdge,
+    ConstantMemberEdge,
   ]
 }
 
@@ -285,6 +300,7 @@ fn core_edge_label_canonical_symbol(marker: CoreEdgeLabel) -> Symbol {
     MapLiteralEntryEdge => ^core_map_literal_entry_edge
     MapLiteralEntriesEdge => ^core_map_literal_entries_edge
     MatchArmScopeExitEdge => ^core_match_arm_scope_exit_edge
+    ConstantMemberEdge => ^core_constant_member_edge
   }
 }
 type Edge {
@@ -828,10 +844,15 @@ data arrow_signature_order_label: EdgeLabel = StructuralLabel { label: CoreMarke
 // (v2.std.symbol_index symbol_index_declares_resource_at) or that repeats one. Like the other two it is
 // metadata to every value reader: v2.compiler.infer and v2.std.type_binder node_inferred_subtree_nodes
 // skip every arrow_named_edge_is_contract edge.
+// THE FOURTH, ConstantMemberEdge: what a `data` Arrow promises about its USE -- a reference to it is the
+// value of its nullary application, not the function. Its target is an empty Conj and carries no
+// vocabulary, so v2.std.arrow_contract has nothing to check on it; like the other three it is metadata to
+// every value reader, and it is read only by v2.std.node_query arrow_constant_member_codomain.
 fn arrow_named_edge_is_contract(e: Edge) -> Bool {
   edge_is_core(e: e, marker: ArrowEffectClaimsEdge)
     || edge_is_core(e: e, marker: ArrowExecutionModeClaimEdge)
     || edge_is_core(e: e, marker: ArrowResourceRequirementsEdge)
+    || edge_is_core(e: e, marker: ConstantMemberEdge)
 }
 
 
@@ -1416,12 +1437,18 @@ fn classify_arrow_body_form(target: Node) -> ArrowBodyForm {
 // not hold still refuses with the same reason, now raised at the USE by eval_type_node_atom's own arm, where
 // it means what it says. What disappears is a refusal based solely on the body's FORM; what remains is the
 // refusal based on a missing binding, which is the only one that was ever a fact about the program.
+//
+// DeclarationReferenceBody IS ADMITTED ON THE SAME REASONING. A fn whose body is a reference to a `data`
+// constant (`fn f() -> Int { k }`) refused here by FORM before eval reached the reference, so the one
+// route that evaluates a constant (v2.compiler.eval eval_constant_member_body, keyed on v2.std.node
+// ConstantMemberEdge) could never run. A declaration reference that is not a constant still refuses at
+// the USE, with ^eval_rejected_runtime_binding_lookup_miss raised by eval_type_node_atom's own arm.
 fn arrow_body_admits_eval_entry(form: ArrowBodyForm) -> Bool {
   match form {
     UnsupportedArrowBody => false
     DirectAtomBody => true
     RecordConstructBody => false
-    DeclarationReferenceBody => false
+    DeclarationReferenceBody => true
     ParameterReferenceBody => true
     LexicalReferenceBody => true
     FunctionValueBody => false
