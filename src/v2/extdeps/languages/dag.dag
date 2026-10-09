@@ -7610,6 +7610,60 @@ fn namespace_graft_node_is_conj(node: Node) -> Bool {
 // would re-create the one-Named-Conj level the fill misreads.
 data namespace_graft_module_body_identity: Symbol = ^namespace_graft_module_body
 
+fn dag_identity_is_module_surface(id: Symbol) -> Bool {
+  (id == ^dag_surface_module) || (id == namespace_graft_module_body_identity)
+}
+
+// A MODULE SURFACE is identified by what the node IS: parse/emit production identity
+// dag_surface_module, the graft body's producer stamp, or a synthetic Atom whose
+// identity is dag_surface_module. A header child edge is not identity (review 77909).
+fn dag_node_is_module_surface(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } => dag_identity_is_module_surface(id: id)
+    Absent =>
+      match node_atom_identity_optional(node: node) {
+        Present { value: id } => dag_identity_is_module_surface(id: id)
+        Absent => false
+      }
+  }
+}
+
+// THE RECORD-FIELD CARRIER PREDICATE the unit-modeling and lifecycle-carrier lenses share.
+// A Conj is a record-field carrier unless THIS NODE is a module surface. A sibling that
+// happens to be a module surface does not opt the whole Conj out (DESIGN §5: refuse the
+// member, never widen to the container). Other connectives are not record payloads; Disj
+// arm payloads are Conjs and are judged when those Conjs are visited.
+fn dag_node_is_record_field_carrier(node: Node) -> Bool {
+  namespace_graft_node_is_conj(node: node) && !dag_node_is_module_surface(node: node)
+}
+
+fn dag_authored_name_is_parse_production_projection(name: Symbol) -> Bool {
+  (name == ^grammar_production_identity_node_projection) ||
+    (name == ^grammar_production_captured_node_projection)
+}
+
+// Stamp edges on a MODULE SURFACE only. Same spelling on an ordinary record is a user field
+// and must still be judged (DESIGN §5: refuse, never widen).
+fn dag_edge_is_module_surface_parse_projection(carrier: Node, name: Symbol) -> Bool {
+  dag_node_is_module_surface(node: carrier) &&
+    dag_authored_name_is_parse_production_projection(name: name)
+}
+
+// Per-edge skip by identity only (DESIGN §5: refuse, never widen). A non-binder record
+// field that is an Atom or Disj must still be member_not_a_binder. fn-decl is the
+// production identity dag_surface_fn_decl (unchanged meaning for other callers).
+// test-fn identity lives only here, not in dag_node_is_fn_decl.
+fn dag_node_is_namespace_member_target(node: Node) -> Bool {
+  if dag_node_is_module_surface(node: node) || dag_node_is_fn_decl(node: node) {
+    true
+  } else {
+    match parse_production_emitted_identity_optional(node: node) {
+      Present { value: id } => id == ^dag_surface_test_fn_decl
+      Absent => false
+    }
+  }
+}
+
 // The one constructor of the marker node: emitted by namespace_graft_build_body_conj.
 // It is a surface identity atom, not a type denotation, so infer grounds it with the
 // grammar authority's surface-production type (dag_grammar_production_member_declared_type)

@@ -78,6 +78,11 @@ import v2.extdeps.languages.dag {
 // same-path shadow module is unwritable upstream of this gate. Grain: root - one rooted whole-tree
 // walk locating dag_surface_module wrappers; per-module work is a bounded read of one small
 // declaration subtree, never a per-node subtree re-walk (the required_lens_grain_note O(n^2) bar).
+// Door grain (validate_then_compile / compile_source_root_ingest_with_admission) still
+// refuses a trivial module at member_not_a_binder on the unmarked QN spine. That is
+// not claimed green here (DESIGN §4b(1); review 77921). find_witness_reason_no_candidate
+// is infer, before lenses, and is not inhabitance (DESIGN §3). The member-kind channel
+// that would classify the spine is gunbc#13513.
 // Corpus grain: the same fold is consumed at parse grain by the live witness in
 // src/v2/test/claim/long/mandatory_tag_extdeps_corpus_test.dag over dag/extdeps/** via
 // filesystem_list_dag_files + filesystem_read + the v2 grammar - the Node-tree projection that
