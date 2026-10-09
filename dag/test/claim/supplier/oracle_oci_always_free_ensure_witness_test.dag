@@ -22,7 +22,8 @@ import gunbc.oracle_oci.instance_ensure {
   oci_instance_decision, oci_observed_instance_of, oci_free_plan, oci_launch_body,
   oci_query_value, OciQueryEncoded, OciQueryRefused, oci_out_of_host_capacity, oci_free_authorized_keys,
   oci_select_offering, oci_domain_answer, DomainOffers, DomainLacks, DomainReadRefused,
-  oci_attachments_disagreement, oci_definitive_non_creation,
+  oci_attachments_disagreement, oci_answer_retires_record, oci_parse_launch_record, oci_launch_record_text,
+  oci_replay_window_open, OciLaunchRecorded, OciLaunchRecordMalformed,
   CandidateDomains, CandidateDomainsRefused,
 }
 import product.supplier.oracle_oci { FitsAlwaysFree, ExceedsAlwaysFree, oci_always_free_fit }
@@ -287,12 +288,45 @@ test fn a_held_instance_must_be_attached_to_the_selected_subnet() -> Bool {
     && oci_attachments_disagreement(rows: json_items(text: "[{\"id\":\"a\",\"lifecycleState\":\"DETACHED\",\"subnetId\":\"sn1\"}]"), subnet: "sn1") != ""
 }
 
-// Only a definitive non-creation clears a launch record: a 4xx other than 409 and 429, or out of host
-// capacity. A 5xx, a throttle or a conflict keeps it, so the next run re-sends the same request.
-test fn only_a_definitive_non_creation_releases_the_launch_record() -> Bool {
-  oci_definitive_non_creation(status: 400, body: "{}")
-    && oci_definitive_non_creation(status: 500, body: "{\"message\":\"Out of host capacity.\"}")
-    && !oci_definitive_non_creation(status: 409, body: "{}")
-    && !oci_definitive_non_creation(status: 429, body: "{}")
-    && !oci_definitive_non_creation(status: 503, body: "{}")
+// THE LAUNCH RECORD'S LIFECYCLE (side-chat review on gunbc#13351). Only the run that created a record,
+// on its first send, retires it on a definitive non-creation. A re-send never retires it: an auth
+// rejection on a re-send after an unknown original keeps the record. A 5xx, a throttle or a conflict
+// keeps it on any send.
+test fn only_a_first_send_definitive_refusal_retires_the_record() -> Bool {
+  oci_answer_retires_record(first_send: true, status: 400, body: "{}")
+    && oci_answer_retires_record(first_send: true, status: 500, body: "{\"message\":\"Out of host capacity.\"}")
+    && !oci_answer_retires_record(first_send: false, status: 401, body: "{}")
+    && !oci_answer_retires_record(first_send: false, status: 403, body: "{}")
+    && !oci_answer_retires_record(first_send: false, status: 400, body: "{}")
+    && !oci_answer_retires_record(first_send: true, status: 409, body: "{}")
+    && !oci_answer_retires_record(first_send: true, status: 429, body: "{}")
+    && !oci_answer_retires_record(first_send: true, status: 503, body: "{}")
+}
+
+// The record round-trips its first-send time and exact body, and a record outside the retry-token
+// window is not re-sent.
+test fn the_record_carries_its_send_time_and_expires_from_replay() -> Bool {
+  let round = match oci_parse_launch_record(content: oci_launch_record_text(sent_at: 1000, body: "{\"a\": 1}\n{\"b\": 2}")) {
+    OciLaunchRecorded { sent_at, body } => sent_at == 1000 && body == "{\"a\": 1}\n{\"b\": 2}"
+    OciLaunchRecordMalformed { cause } => false
+  }
+  let malformed = match oci_parse_launch_record(content: "not-a-time\n{}") {
+    OciLaunchRecordMalformed { cause } => true
+    OciLaunchRecorded { sent_at, body } => false
+  }
+  round && malformed
+    && oci_replay_window_open(sent_at: 1000, now: 1000 + 3600)
+    && !oci_replay_window_open(sent_at: 1000, now: 1000 + 82800)
+    && !oci_replay_window_open(sent_at: 1000, now: 999)
+}
+
+// An SSH rule restricted to a source port does not admit a client connecting from an ephemeral port;
+// the same rule without the source restriction does (side-chat review on gunbc#13351).
+test fn a_source_port_restricted_ssh_rule_is_not_admitted() -> Bool {
+  let subnet = one(text: "{\"id\":\"sn\",\"securityListIds\":[\"sl1\"]}")
+  let egress = "\"egressSecurityRules\":[{\"protocol\":\"all\",\"destination\":\"0.0.0.0/0\"}]"
+  let restricted = one(text: join(["{\"id\":\"sl1\",\"ingressSecurityRules\":[{\"protocol\":\"6\",\"source\":\"0.0.0.0/0\",\"tcpOptions\":{\"sourcePortRange\":{\"min\":22,\"max\":22},\"destinationPortRange\":{\"min\":22,\"max\":22}}}],", egress, "}"], ""))
+  let full = one(text: join(["{\"id\":\"sl1\",\"ingressSecurityRules\":[{\"protocol\":\"6\",\"source\":\"0.0.0.0/0\",\"tcpOptions\":{\"sourcePortRange\":{\"min\":1,\"max\":65535},\"destinationPortRange\":{\"min\":22,\"max\":22}}}],", egress, "}"], ""))
+  oci_access_disagreement(subnet_row: subnet, lists: [restricted]) != ""
+    && oci_access_disagreement(subnet_row: subnet, lists: [full]) == ""
 }

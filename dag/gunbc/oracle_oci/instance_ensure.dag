@@ -2,7 +2,9 @@ module gunbc.oracle_oci.instance_ensure
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.resources { Network }
-import std.measure { Gigabyte, gigabyte, gigabyte_count }
+import std.measure { Gigabyte, gigabyte, gigabyte_count, Second, second, second_count }
+import std.algebra { trim }
+import extdeps.clock { Clock }
 import v2.std.algebra { any }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_bool, json_int, serialize_json }
 import extdeps.cloud.oracle_oci_request_signing { OciPostJson }
@@ -326,27 +328,72 @@ fn oci_out_of_host_capacity(status: Int, body: String) -> Bool {
 //
 // A launch whose reply was lost must not be followed by a different launch for the same member. The
 // retry token is derived from the request's path and body, so it protects only a re-send of the SAME
-// body; a re-run that chose a newer image, or another domain, would be a new request Oracle cannot
-// recognize. So the exact request is recorded before it is sent, and while that record stands the
-// converge re-sends exactly it (same body, same token) instead of choosing again.
+// body. So the exact request is recorded before it is sent, with the time it was first sent, and while
+// that record stands the converge re-sends exactly it instead of choosing again.
 //
-// The record is created with WriteCreateNew, an exclusive create, so it is also the ownership of the
-// attempt: a run that finds the record already being created, or present, does not start another. It
-// is cleared when the member is observed in the instance list (the launch is resolved), or when Oracle
-// answers with a definitive non-creation: a 4xx other than 409 and 429, or out-of-host-capacity. Any
-// other outcome (a lost reply, a 5xx, a throttle, a conflict) keeps it, so the next run re-sends the
-// same request. Retry tokens expire after 24 hours; by then a created instance is listed and clears the
-// record.
+// THE RECORD'S LIFECYCLE IS NARROW ON PURPOSE, because retiring it is the dangerous transition:
+//   - It is CREATED only with WriteCreateNew, an exclusive create, so one run owns each generation.
+//   - It is RETIRED in exactly two cases. (a) The member is observed in the instance list, so the
+//     launch is resolved. (b) The run that created it gets a definitive non-creation on that FIRST
+//     send (a 4xx other than 409 and 429, or out of host capacity). No other run can create a record
+//     while this one exists, so that delete cannot remove a newer generation.
+//   - A RE-SEND never retires it, whatever it answers. A 401 or 403 on a re-send says nothing about
+//     what the original send did, so the record stays, and the converge asks for reconciliation.
+//   - A record older than oci_launch_replay_window is not re-sent, because Oracle's retry tokens expire
+//     after 24 hours and may be invalidated earlier. Past that window the converge refuses and asks for
+//     reconciliation, rather than re-sending on a deduplication that may no longer hold.
+// RECONCILIATION is an operator step: look for the instance in the console, then delete the record.
+//
+// The record lives in /etc/gunbc/oracle-oci, the root-only directory the custody converge creates for
+// the API key (gunbc.host_credential_custody_converge OracleOciApiSigningKey). It is stable across
+// checkouts, and every run that can sign can also read it.
 //
 // There is one candidate domain per launch. A1 launches refuse (below), and a micro goes to the domain
 // ListShapes names, so the converge never moves a pending launch to another domain.
 
+data oci_launch_record_dir: String = "/etc/gunbc/oracle-oci"
+
+data oci_launch_replay_window: Second = second(count: 82800)
+
 fn oci_launch_attempt_path(planned: OciPlannedInstance) -> String {
-  join(["target/oci-launch-attempt-", planned.name as String, ".json"], "")
+  join([oci_launch_record_dir, "/launch-attempt-", planned.name as String, ".json"], "")
+}
+
+// The record is the first-send time in epoch seconds, one newline, then the exact body.
+fn oci_launch_record_text(sent_at: Int, body: String) -> String {
+  join([to_string(sent_at), body], "\n")
+}
+
+type OciLaunchRecord
+  = OciLaunchRecorded { sent_at: Int, body: String }
+  | OciLaunchRecordMalformed { cause: String }
+
+fn oci_parse_launch_record(content: String) -> OciLaunchRecord {
+  let lines = split(s: content, delimiter: "\n")
+  match lines.first() {
+    Absent => OciLaunchRecordMalformed { cause: "the record is empty" }
+    Present { value: head } =>
+      match parse_int(s: head) {
+        Absent => OciLaunchRecordMalformed { cause: "the record's first line is not epoch seconds" }
+        Present { value: sent_at } =>
+          if lines.length() < 2 { OciLaunchRecordMalformed { cause: "the record carries no body" } }
+          else { OciLaunchRecorded { sent_at: sent_at, body: join(lines.skip(n: 1), "\n") } }
+      }
+  }
+}
+
+// PURE: whether a recorded attempt is still inside the window in which a re-send is a retry of it.
+fn oci_replay_window_open(sent_at: Int, now: Int) -> Bool {
+  now >= sent_at && now - sent_at < second_count(s: oci_launch_replay_window)
 }
 
 fn oci_definitive_non_creation(status: Int, body: String) -> Bool {
   (status >= 400 && status < 500 && status != 409 && status != 429) || oci_out_of_host_capacity(status: status, body: body)
+}
+
+// PURE: whether an answer retires the record. Only a first send can, and only definitively.
+fn oci_answer_retires_record(first_send: Bool, status: Int, body: String) -> Bool {
+  first_send && oci_definitive_non_creation(status: status, body: body)
 }
 
 fn oci_clear_attempt(planned: OciPlannedInstance) -> String {
@@ -354,18 +401,48 @@ fn oci_clear_attempt(planned: OciPlannedInstance) -> String {
   if removed.success || removed.error_kind == "not_found" { "" } else { join([" (the launch record ", oci_launch_attempt_path(planned: planned), " could not be removed: ", removed.error, ")"], "") }
 }
 
-// Send the recorded body. The outcome decides whether the record stays.
-fn oci_send_attempt(planned: OciPlannedInstance, body: String, how: String) -> OciInstanceOutcome uses net: Network {
+fn oci_reconcile_line(planned: OciPlannedInstance, why: String) -> String {
+  join(["oci instance ", planned.name as String, " NOT LAUNCHED: ", why, ". RECONCILE: check the OCI console for an instance named ", planned.name as String, " in the compartment; if none exists, delete ", oci_launch_attempt_path(planned: planned), " and run again"], "")
+}
+
+fn oci_now() -> Int? {
+  match parse_int(s: trim(s: Clock.UnixSecs().unix_secs)) {
+    Present { value } => Present { value: value }
+    Absent => none
+  }
+}
+
+// Send the recorded body. first_send says whether this run created the record.
+fn oci_send_attempt(planned: OciPlannedInstance, body: String, first_send: Bool) -> OciInstanceOutcome uses net: Network {
   let name = planned.name as String
+  let how = if first_send { "launch" } else { "re-send of the recorded launch" }
   match oci_signed_exchange(shape: OciPostJson { text: body }, host: oci_iaas_host, path_and_query: "/20160918/instances") {
     OciExchangeRefused { cause } => OciInstanceOutcome { line: join(["oci instance ", name, " ", how, " got no answer (", cause as String, "); the launch record stays, and the next run re-sends the same request"], ""), held: false }
     OciAnswered { status, body: answer, next_page } =>
       if status == 200 {
         OciInstanceOutcome { line: join(["oci instance ", name, " ", how, " accepted; run again to read it back RUNNING"], ""), held: false }
-      } else if oci_definitive_non_creation(status: status, body: answer) {
+      } else if oci_answer_retires_record(first_send: first_send, status: status, body: answer) {
         OciInstanceOutcome { line: join(["oci instance ", name, " ", how, " refused (", to_string(status), "), nothing created: ", answer, oci_clear_attempt(planned: planned)], ""), held: false }
-      } else {
+      } else if first_send {
         OciInstanceOutcome { line: join(["oci instance ", name, " ", how, " answered ", to_string(status), "; the launch record stays, and the next run re-sends the same request: ", answer], ""), held: false }
+      } else {
+        OciInstanceOutcome { line: oci_reconcile_line(planned: planned, why: join(["the ", how, " answered ", to_string(status), ", which says nothing about what the original send did: ", answer], "")), held: false }
+      }
+  }
+}
+
+fn oci_replay_attempt(planned: OciPlannedInstance, content: String) -> OciInstanceOutcome uses net: Network {
+  match oci_parse_launch_record(content: content) {
+    OciLaunchRecordMalformed { cause } => OciInstanceOutcome { line: oci_reconcile_line(planned: planned, why: concat("the launch record is malformed: ", cause)), held: false }
+    OciLaunchRecorded { sent_at, body } =>
+      match oci_now() {
+        Absent => OciInstanceOutcome { line: join(["oci instance ", planned.name as String, " NOT LAUNCHED: the host clock did not print epoch seconds, so the record's replay window cannot be judged"], ""), held: false }
+        Present { value: now } =>
+          if oci_replay_window_open(sent_at: sent_at, now: now) {
+            oci_send_attempt(planned: planned, body: body, first_send: false)
+          } else {
+            OciInstanceOutcome { line: oci_reconcile_line(planned: planned, why: "the recorded launch is outside the retry-token window, so re-sending it is no longer a retry"), held: false }
+          }
       }
   }
 }
@@ -383,17 +460,21 @@ fn oci_start_attempt(planned: OciPlannedInstance, compartment: NonEmptyStr, subn
         Present { value: domain } =>
           match oci_newest_image(compartment: compartment, shape: shape) {
             OciImageRefused { line } => OciInstanceOutcome { line: join(["oci instance ", name, " NOT LAUNCHED: ", line], ""), held: false }
-            OciImageFound { id } => {
-              let body = oci_launch_body(planned: planned, compartment: compartment, subnet: subnet, domain: domain, image: id)
-              let recorded = Filesystem.WriteCreateNew(path: oci_launch_attempt_path(planned: planned), content: body)
-              if recorded.success {
-                oci_send_attempt(planned: planned, body: body, how: join(["launch in ", domain], ""))
-              } else if recorded.error_kind == "already_exists" {
-                OciInstanceOutcome { line: join(["oci instance ", name, " NOT LAUNCHED: another run created the launch record ", oci_launch_attempt_path(planned: planned), " first and owns this launch"], ""), held: false }
-              } else {
-                OciInstanceOutcome { line: join(["oci instance ", name, " NOT LAUNCHED: the launch record could not be created, so nothing was sent: ", recorded.error], ""), held: false }
+            OciImageFound { id } =>
+              match oci_now() {
+                Absent => OciInstanceOutcome { line: join(["oci instance ", name, " NOT LAUNCHED: the host clock did not print epoch seconds, so the launch cannot be recorded"], ""), held: false }
+                Present { value: now } => {
+                  let body = oci_launch_body(planned: planned, compartment: compartment, subnet: subnet, domain: domain, image: id)
+                  let recorded = Filesystem.WriteCreateNew(path: oci_launch_attempt_path(planned: planned), content: oci_launch_record_text(sent_at: now, body: body))
+                  if recorded.success {
+                    oci_send_attempt(planned: planned, body: body, first_send: true)
+                  } else if recorded.error_kind == "already_exists" {
+                    OciInstanceOutcome { line: join(["oci instance ", name, " NOT LAUNCHED: another run created the launch record ", oci_launch_attempt_path(planned: planned), " first and owns this launch"], ""), held: false }
+                  } else {
+                    OciInstanceOutcome { line: join(["oci instance ", name, " NOT LAUNCHED: the launch record could not be created, so nothing was sent: ", recorded.error], ""), held: false }
+                  }
+                }
               }
-            }
           }
       }
   }
@@ -508,7 +589,7 @@ fn oci_ensure_instance(planned: OciPlannedInstance, compartment: NonEmptyStr, su
         E2MicroSize => {
           let record = Filesystem.Read(path: oci_launch_attempt_path(planned: planned))
           match filesystem_exact_read(path: oci_launch_attempt_path(planned: planned), content: record.content, success: record.success, error: record.error, error_kind: record.error_kind) {
-            FilesystemExactPathRead { path, content } => oci_send_attempt(planned: planned, body: content, how: "re-sent outstanding launch")
+            FilesystemExactPathRead { path, content } => oci_replay_attempt(planned: planned, content: content)
             FilesystemExactPathAbsent { path } => oci_start_attempt(planned: planned, compartment: compartment, subnet: subnet, domains: domains)
             FilesystemExactPathUnreadable { path, kind, error } => OciInstanceOutcome { line: join(["oci instance ", name, " NOT LAUNCHED: the launch record ", path, " exists and cannot be read: ", error], ""), held: false }
             FilesystemExactPathKindUnrecognized { path, observed, error } => OciInstanceOutcome { line: join(["oci instance ", name, " NOT LAUNCHED: the launch record ", path, " read failed with an unrecognized kind ", observed, ": ", error], ""), held: false }

@@ -382,26 +382,49 @@ fn oci_rule_text(rule: JsonValue, key: String) -> String {
   oci_field_text(f: oci_required_text(row: rule, key: key))
 }
 
-// A TCP rule with no tcpOptions admits every port. One with a destinationPortRange admits 22 when
-// min <= 22 <= max, both read exactly.
+// A TCP rule with no tcpOptions admits every port. Otherwise both ranges matter, because Oracle models
+// source and destination ports separately and an SSH client connects FROM an ephemeral port: the
+// destination range must cover 22, and a source range, if present, must cover every port 1..65535.
+// A source-restricted rule is refused rather than evaluated further (side-chat review on gunbc#13351).
+// An omitted range is unrestricted; an unreadable one is a refusal.
 fn oci_tcp_rule_admits_ssh(rule: JsonValue) -> Bool {
   match json_member_presence(obj: rule, key: "tcpOptions") {
     JsonMemberMissing => true
     JsonMemberNull => true
     JsonMemberUnreadable { cause } => false
     JsonMemberValue { value: options } =>
-      match json_member_presence(obj: options, key: "destinationPortRange") {
-        JsonMemberMissing => true
-        JsonMemberNull => true
-        JsonMemberUnreadable { cause } => false
-        JsonMemberValue { value: range } =>
-          match oci_whole_member(obj: range, key: "min") {
-            OciWholeRefused { cause } => false
-            OciWholeValue { value: low } => match oci_whole_member(obj: range, key: "max") {
-              OciWholeRefused { cause } => false
-              OciWholeValue { value: high } => low <= 22 && 22 <= high
-            }
-          }
+      oci_source_ports_unrestricted(options: options) && oci_destination_admits_ssh(options: options)
+  }
+}
+
+fn oci_source_ports_unrestricted(options: JsonValue) -> Bool {
+  match json_member_presence(obj: options, key: "sourcePortRange") {
+    JsonMemberMissing => true
+    JsonMemberNull => true
+    JsonMemberUnreadable { cause } => false
+    JsonMemberValue { value: range } =>
+      match oci_whole_member(obj: range, key: "min") {
+        OciWholeRefused { cause } => false
+        OciWholeValue { value: low } => match oci_whole_member(obj: range, key: "max") {
+          OciWholeRefused { cause } => false
+          OciWholeValue { value: high } => low <= 1 && high >= 65535
+        }
+      }
+  }
+}
+
+fn oci_destination_admits_ssh(options: JsonValue) -> Bool {
+  match json_member_presence(obj: options, key: "destinationPortRange") {
+    JsonMemberMissing => true
+    JsonMemberNull => true
+    JsonMemberUnreadable { cause } => false
+    JsonMemberValue { value: range } =>
+      match oci_whole_member(obj: range, key: "min") {
+        OciWholeRefused { cause } => false
+        OciWholeValue { value: low } => match oci_whole_member(obj: range, key: "max") {
+          OciWholeRefused { cause } => false
+          OciWholeValue { value: high } => low <= 22 && 22 <= high
+        }
       }
   }
 }
