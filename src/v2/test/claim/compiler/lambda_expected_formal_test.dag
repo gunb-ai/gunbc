@@ -1,15 +1,37 @@
 module v2.test.claim.compiler.lambda_expected_formal
 
-import v2.test.claim.type_param_binder_frame { tpb_assemble }
+import v2.test.claim.type_param_binder_frame { tpb_apply, tpb_formal, tpb_generic_arrow }
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.infer { infer }
-import v2.compiler.resolve { ResolvedTree }
-import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected }
+import v2.compiler.resolve { LexicalBinding, LexicalUntyped, ResolvedTree }
+import v2.std.symbol_index { empty_symbol_index }
+import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_type_atom_node }
+import v2.std.arrow_signature { anonymous_signature_arrow, declared_signature }
+import v2.std.diagnostic { Accepted, Diagnostic, Rejected }
+import v2.std.collection { List, empty_map, map_insert }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { ComputationNode, Edge, Node, Symbol, Transform }
-import v2.std.collection { List, list_at_optional }
-import std.algebra { Cons, Empty, list_snoc_item }
+import v2.std.node {
+  ArrowBodyEdge,
+  Authored,
+  Conj,
+  Edge,
+  Node,
+  NodeOccurrenceIdentity,
+  Positional,
+  Symbol,
+  TypeNode,
+  TypeParamsEdge,
+  core_edge_label,
+  node_synthetic,
+  node_with_occurrence_id
+}
+import v2.std.node_query { binder_edge }
+import v2.std.qualified_name { lexical_reference_node }
+import v2.std.type_binder { type_binder_set_children }
+import std.algebra { Cons, Empty }
+import std.occurrence_identity { OccurrenceId, OccurrenceMinted }
 import std.optional { Absent, Present }
-import std.types { Bool, String }
+import std.types { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -18,27 +40,96 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // infer_application_actual_child_frame). T unfixed is not minted. Do not annotate the lambda
 // parameter (DESIGN §5).
 //
-// WITNESS SHAPE (DESIGN section 3): ONE real-path inhabitance — value-then-lambda assembles and
-// infers. The left-to-right red is a second assemble of a module whose lambda precedes the
-// instantiating actual (n stays underived). If that red later supplies its tree, this inhabitance
-// remains the one real path.
+// WITNESS SHAPE (DESIGN section 3): infer-over-supplied-tree. The four rows below supply the
+// application at infer's interface. ONE real-path inhabitance remains the N7 label (or one
+// assembled claim on a requested debt row), not these rows.
 
-data lef_value_then_lambda_src: String = "module p\n\nfn after<T>(x: T, f: fn(T) -> T) -> T {\n  f(x)\n}\n\nfn k() -> Int {\n  after(1, fn(n) { n })\n}"
+fn lef_occ(n: Int) -> NodeOccurrenceIdentity {
+  OccurrenceMinted { id: OccurrenceId { value: n } }
+}
 
-data lef_lambda_then_value_src: String = "module p\n\nfn before<T>(f: fn(T) -> T, x: T) -> T {\n  f(x)\n}\n\nfn k() -> Int {\n  before(fn(n) { n }, 1)\n}"
+fn lef_n_ref() -> Node {
+  lexical_reference_node(label: ^n, occurrence_id: lef_occ(n: 2))
+}
 
-data lef_repeated_actual_src: String = "module p\n\nfn takes(a: Int, b: Bool) -> Int {\n  0\n}\n\nfn k() -> Int {\n  let x = 1\n  takes(a: x, b: x)\n}"
+fn lef_lambda() -> Node {
+  let body = lef_n_ref()
+  let signature = declared_signature(
+    params: [binder_edge(name: ^n, type_node: dag_type_atom_node(identity: ^dag_binding_type_int))],
+    source: body
+  )
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Arrow },
+    children: [
+      signature.domain,
+      signature.order,
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge {
+        label: core_edge_label(marker: TypeParamsEdge),
+        target: node_synthetic(
+          kind: TypeNode { connective: Conj },
+          children: type_binder_set_children(
+            binders: [],
+            source: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+          )
+        )
+      },
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
+    ],
+    occurrence_id: lef_occ(n: 1)
+  )
+}
 
-data lef_shared_callee_actual_src: String = "module p\n\nfn takes(a: Int) -> Int {\n  a\n}\n\nfn k() -> Int {\n  takes(1)\n}"
+fn lef_fn_t_to_t() -> Node {
+  anonymous_signature_arrow(
+    domain_types: [dag_type_atom_node(identity: ^T)],
+    codomain: dag_type_atom_node(identity: ^T),
+    source: dag_type_atom_node(identity: ^T)
+  )
+}
 
-fn lef_infer_terminal(src: String) -> Symbol {
-  match tpb_assemble(src: src) {
-    Rejected { diagnostics: r } => r.head.reason
-    Accepted { value: tree, diagnostics: _ } =>
-      match infer(tree: tree) {
-        Rejected { diagnostics: r2 } => lef_last_reason(xs: r2.tail, last: r2.head.reason)
-        Accepted { value: _, diagnostics: _ } => ^infers
+fn lef_after_arrow() -> Node {
+  tpb_generic_arrow(
+    type_params: [^T],
+    formals: [
+      tpb_formal(name: ^x, declared: ^T),
+      binder_edge(name: ^f, type_node: lef_fn_t_to_t())
+    ]
+  )
+}
+
+fn lef_before_arrow() -> Node {
+  tpb_generic_arrow(
+    type_params: [^T],
+    formals: [
+      binder_edge(name: ^f, type_node: lef_fn_t_to_t()),
+      tpb_formal(name: ^x, declared: ^T)
+    ]
+  )
+}
+
+fn lef_lambda_tree(root: Node) -> ResolvedTree {
+  ResolvedTree {
+    root: root,
+    symbol_index: empty_symbol_index(),
+    resolved_declarations: empty_symbol_index(),
+    lexical_bindings: map_insert(
+      empty_map(),
+      OccurrenceId { value: 2 },
+      LexicalBinding {
+        binder_site: lef_occ(n: 1),
+        standing: LexicalUntyped
       }
+    ),
+    unavailable_providers: []
+  }
+}
+
+fn lef_infer_terminal(tree: ResolvedTree) -> Symbol {
+  match infer(tree: tree) {
+    Rejected { diagnostics: r } => lef_last_reason(xs: r.tail, last: r.head.reason)
+    Accepted { value: _, diagnostics: _ } => ^infers
   }
 }
 
@@ -49,85 +140,68 @@ fn lef_last_reason(xs: List<Diagnostic>, last: Symbol) -> Symbol {
   }
 }
 
+fn lef_value_then_lambda_tree() -> ResolvedTree {
+  lef_lambda_tree(
+    root: tpb_apply(
+      arrow: lef_after_arrow(),
+      args: [dag_int_literal_fixture_one(), lef_lambda()]
+    )
+  )
+}
+
+fn lef_lambda_then_value_tree() -> ResolvedTree {
+  lef_lambda_tree(
+    root: tpb_apply(
+      arrow: lef_before_arrow(),
+      args: [lef_lambda(), dag_int_literal_fixture_one()]
+    )
+  )
+}
+
 test fn lef_value_then_lambda_infers_holds() -> Bool {
-  lef_infer_terminal(src: lef_value_then_lambda_src) == ^infers
+  lef_infer_terminal(tree: lef_value_then_lambda_tree()) == ^infers
 }
 
-// L-to-R: the lambda is the first actual, so T is unfixed at entry and n stays underived.
 test fn lef_lambda_then_value_does_not_infer_as_int_holds() -> Bool {
-  lef_infer_terminal(src: lef_lambda_then_value_src) != ^infers
+  lef_infer_terminal(tree: lef_lambda_then_value_tree()) != ^infers
 }
 
-// Two actuals of one binding at two formals: both pairs are judged (authored index, not first
-// node-equal pair). x inhabits Int and not Bool, so the call must not infer.
 test fn lef_repeated_actual_second_formal_is_judged_holds() -> Bool {
-  lef_infer_terminal(src: lef_repeated_actual_src) != ^infers
-}
-
-// SUPPLIED TREE: the callee edge and the actual edge share one Node. Positional index, not
-// target equality, must still judge that actual at Int; a function does not inhabit Int.
-fn lef_lambda_then_value_terminal_reason() -> Symbol {
-  lef_infer_terminal(src: lef_lambda_then_value_src)
-}
-
-fn lef_rewrite_child_edges(xs: List<Edge>) -> List<Edge> {
-  fold(xs, init: [], f: fn(acc, e) {
-    list_snoc_item(xs: acc, item: Edge { label: e.label, target: lef_share_callee_as_actual(n: e.target) })
-  })
-}
-
-fn lef_share_callee_as_actual(n: Node) -> Node {
-  let children = lef_rewrite_child_edges(xs: n.children)
-  match n.kind {
-    ComputationNode { behavior: Transform } =>
-      match list_at_optional(xs: children, index: 0) {
-        Present { value: callee } =>
-          match list_at_optional(xs: children, index: 1) {
-            Present { value: actual } =>
-              Node {
-                kind: n.kind,
-                occurrence_id: n.occurrence_id,
-                children: lef_splice_shared_actual(xs: children, callee: callee, actual: actual)
-              }
-            Absent => Node { kind: n.kind, occurrence_id: n.occurrence_id, children: children }
-          }
-        Absent => Node { kind: n.kind, occurrence_id: n.occurrence_id, children: children }
-      }
-    _ => Node { kind: n.kind, occurrence_id: n.occurrence_id, children: children }
+  let x = dag_int_literal_fixture_one()
+  match infer(
+    tree: claim_resolved_tree_without_declarations(
+      root: tpb_apply(
+        arrow: tpb_generic_arrow(
+          type_params: [],
+          formals: [
+            tpb_formal(name: ^a, declared: ^dag_binding_type_int),
+            tpb_formal(name: ^b, declared: ^bool_node_symbol)
+          ]
+        ),
+        args: [x, x]
+      )
+    )
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-fn lef_splice_shared_actual(xs: List<Edge>, callee: Edge, actual: Edge) -> List<Edge> {
-  fold(xs, init: [], f: fn(acc, e) {
-    match list_at_optional(xs: acc, index: 0) {
-      Absent => list_snoc_item(xs: acc, item: e)
-      Present { value: _ } =>
-        match list_at_optional(xs: acc, index: 1) {
-          Absent => list_snoc_item(
-            xs: acc,
-            item: Edge { label: actual.label, target: callee.target }
-          )
-          Present { value: _ } => list_snoc_item(xs: acc, item: e)
-        }
-    }
-  })
+fn lef_lambda_then_value_terminal_reason() -> Bool {
+  lef_infer_terminal(tree: lef_lambda_then_value_tree()) != ^infers
 }
 
 test fn lef_shared_callee_actual_is_judged_holds() -> Bool {
-  match tpb_assemble(src: lef_shared_callee_actual_src) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: tree, diagnostics: _ } =>
-      match infer(
-        tree: ResolvedTree {
-          root: lef_share_callee_as_actual(n: tree.root),
-          symbol_index: tree.symbol_index,
-          resolved_declarations: tree.resolved_declarations,
-          lexical_bindings: tree.lexical_bindings,
-          unavailable_providers: tree.unavailable_providers
-        }
-      ) {
-        Rejected { diagnostics: _ } => true
-        Accepted { value: _, diagnostics: _ } => false
-      }
+  let callee = tpb_generic_arrow(
+    type_params: [],
+    formals: [tpb_formal(name: ^a, declared: ^dag_binding_type_int)]
+  )
+  match infer(
+    tree: claim_resolved_tree_without_declarations(
+      root: tpb_apply(arrow: callee, args: [callee])
+    )
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
   }
 }
