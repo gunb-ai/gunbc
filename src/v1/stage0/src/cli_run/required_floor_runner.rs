@@ -12697,6 +12697,7 @@ pub fn run_required_floor(
     // (`reach_base_standings`), and each verdict, and whether it blocks, is
     // `v2.workflow.required_floor` `reach_claim_verdict`, which delegates to `claim_differential`
     // and `claim_differential_blocks`. This function decides neither (review 72143).
+    floor_seam("reach-differential-begin");
     if !reach_head_standings.is_empty() {
         let diff_base: Option<String> = compile_subject.as_ref().and_then(|subject| match &subject
             .interface_consumers
@@ -12707,13 +12708,13 @@ pub fn run_required_floor(
         let blocking_budget_ms = reach_blocking_budget_ms;
         // A FRAME OVER THE DIFFERENTIAL'S OWN AUTHORITY, built only when there are reached
         // claims: the policy frame was released before the fold (see the drop above).
-        let verdict_frame = {
-            let entry = process_workspace_root().join("src/v2/workflow/required_floor.dag");
-            let (graph, indices) =
-                resolve_entry_graph_shared(source_roots, &entry.to_string_lossy())
-                    .map_err(|e| format!("reach differential authority resolve: {e}"))?;
-            make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic)
-        };
+        // CARRIED, NOT RE-DERIVED (DESIGN §2). `v2.workflow.required_floor` is a runtime authority
+        // seed of the prepared subject (`REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES`) and the
+        // floor's own `hermetic` frame was built from it, so the authority is already resolved
+        // and typed here. Resolving its entry graph again stacked a second graph on the full
+        // working set and, on the merge queue, crossed the slot's memory.high.
+        let verdict_frame = floor_authority_frame(&prepared, "v2.workflow.required_floor")
+            .map_err(|e| format!("reach differential authority frame: {e}"))?;
         // ONLY A CLAIM THAT CAN BLOCK NEEDS A BASE. `reach_head_cannot_block` is derived from
         // claim_differential_blocks over every base arm; a claim it exempts is never run at base
         // and never blocks. That is 60 of 1481 for a one-line v2.std.node edit (srv1, 2026-10-01).
@@ -12920,6 +12921,7 @@ pub fn run_required_floor(
     } else {
         eprintln!("[floor-phase] phase=reach-differential planned=0");
     }
+    floor_seam("reach-differential-end");
     outcome.route_gap_held = route_gap_held;
     outcome.known_red_now_passing = known_red_now_passing;
     outcome.known_red_budget_refused = known_red_budget_refused;
