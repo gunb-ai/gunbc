@@ -38,7 +38,7 @@ fn elif_parse_as(text: String, production: Symbol) -> Optional<Node> {
     Accepted { value: prepared, diagnostics: _ } =>
       match prepared {
         PreparedVoidGrammar => Absent
-        PreparedModeled { modeled: modeled, materialization: m } =>
+        PreparedModeled { modeled: modeled } =>
           match tokenize(text: text, file: ^elif_probe, rules: dag_lex()) {
             Rejected { diagnostics: _ } => Absent
             Accepted { value: token_stream, diagnostics: _ } =>
@@ -46,8 +46,7 @@ fn elif_parse_as(text: String, production: Symbol) -> Optional<Node> {
                 tokens: token_stream.all,
                 validated: modeled.validated,
                 analysis: modeled.analysis,
-                production_name: production,
-                materialization: m
+                production_name: production
               ) {
                 Rejected { diagnostics: _ } => Absent
                 Accepted { value: artifact, diagnostics: _ } => elif_some(node: artifact.tree)

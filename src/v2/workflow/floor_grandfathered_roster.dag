@@ -489,6 +489,23 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
     new_identity: "v2.test.claim.symbol_index.containment.symbol_index_module_variant_alias_requires_a_unique_count_holds" as NonEmptyStr,
     renamed_in: "the variant-field native binding repair (gunbc#13210): the alias-binding repair files a module variant alias whenever a tag's declaration count is unique, so the state the old red control pinned -- a unique variant whose alias is MISSING -- no longer occurs and the red is unwritable as stated; the successor establishes the two-sided rule the repair implements (alias present when the count is unique, absent when the tag is declared twice), and as a new identity it is judged against the new-witness tier rather than inheriting the cut row's grandfathered one" as NonEmptyStr,
   },
+  WitnessDeleted {
+    identity: "v2.test.claim.compiler_materialization_witness.parse_table_memo_provider_preserves_catalog_retention" as NonEmptyStr,
+    deleted_in: "the parse memo deletion (operator ruling R2 2026-10-08): the v2 packrat parse memo served captures whose occurrence ids were minted on abandoned backtrack paths, so its carrier (v2.compiler.parse ParseTableRealization entries, the extdeps.realization.parse_table_memo catalog row, and the parse-table demand of v2.compiler.materialization_carriers) is deleted; this claim pinned the retention of the deleted parse_table_memo provider, which no longer exists. Its compile-stage sibling compile_stage_memo_provider_preserves_catalog_retention stays" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.compiler_materialization_witness.parse_table_carrier_inhabits_realization" as NonEmptyStr,
+    deleted_in: "the parse memo deletion (operator ruling R2 2026-10-08): the v2 packrat parse memo served captures whose occurrence ids were minted on abandoned backtrack paths, so its carrier (v2.compiler.parse ParseTableRealization entries, the extdeps.realization.parse_table_memo catalog row, and the parse-table demand of v2.compiler.materialization_carriers) is deleted; this claim pinned the deleted ParseTableRealization carrier inhabiting the Realization model. Its compile-stage sibling compile_stage_carrier_inhabits_realization stays" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.compiler_materialization_witness.parse_table_empty_uses_catalog_identity" as NonEmptyStr,
+    deleted_in: "the parse memo deletion (operator ruling R2 2026-10-08): the v2 packrat parse memo served captures whose occurrence ids were minted on abandoned backtrack paths, so its carrier (v2.compiler.parse ParseTableRealization entries, the extdeps.realization.parse_table_memo catalog row, and the parse-table demand of v2.compiler.materialization_carriers) is deleted; this claim pinned the empty parse table's catalog identity (the deleted parse_table_memo_id)" as NonEmptyStr
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.claim.compiler_materialization_witness.parse_table_memo_plural_reds_without_provider" as NonEmptyStr,
+    new_identity: "v2.test.claim.compiler_materialization_witness.compile_stage_memo_plural_reds_without_provider" as NonEmptyStr,
+    renamed_in: "the parse memo deletion (operator ruling R2 2026-10-08): the v2 packrat parse memo served captures whose occurrence ids were minted on abandoned backtrack paths, so its carrier (v2.compiler.parse ParseTableRealization entries, the extdeps.realization.parse_table_memo catalog row, and the parse-table demand of v2.compiler.materialization_carriers) is deleted; the plural-demand red control was retargeted from the deleted parse-table demand to the compile-stage demand, and it is named for the demand it now exercises" as NonEmptyStr
+  },
 ]
 
 fn floor_grandfathered_chunk_000() -> List<String> {

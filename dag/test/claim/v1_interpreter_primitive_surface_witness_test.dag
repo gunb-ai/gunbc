@@ -60,7 +60,6 @@ test fn every_derived_site_contributes_rows() -> Bool {
     "eval_algebra_method_inner",
     "eval_call",
     "try_v2_std_collection_map_primitive_grounding",
-    "try_parse_table_memo_dispatch",
   ]
   symbols |> all(s => v1_interpreter_authored_roster_arms() |> any(r => r.dispatch_symbol == s))
 }
