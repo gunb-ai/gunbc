@@ -31,7 +31,7 @@ import v2.std.diagnostic { Accepted, Diagnostic, NonEmptyDiagnostics, None, Outc
 import v2.std.algebra { contains, list_map }
 import v2.compiler.inferred_tree { ObligatedInferredTree }
 import v2.std.arrow_signature { declared_signature_arrow }
-import v2.std.node_query { binder_node, construct_node, construct_tag_optional }
+import v2.std.node_query { binder_node, construct_node, construct_tag_optional, wildcard_pattern_identity }
 import v2.std.node {
   Atom,
   Authored,
@@ -41,6 +41,7 @@ import v2.std.node {
   CoreMarker,
   Disj,
   FieldProjectionBaseEdge,
+  Instantiation,
   Match,
   MatchArmBodyEdge,
   MatchArmPatternEdge,
@@ -59,7 +60,8 @@ import std.occurrence_identity { OccurrenceId, OccurrenceMinted, NodeOccurrenceI
 import v2.std.integer { Int }
 import v2.std.text { String }
 import v2.std.collection { List, empty_map, map_insert }
-import v2.std.symbol_index { empty_symbol_index, symbol_index_insert }
+import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_mark_declared_type_params }
+import v2.std.type_binder { type_binder_set_children }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import std.process { ExitSuccess }
 
@@ -818,6 +820,173 @@ fn vfp_supplied_arrow_resolved() -> Outcome<ResolvedTree> {
   Accepted { value: vfp_supplied_arrow_tree(), diagnostics: None }
 }
 
+fn vfp_out_path() -> List<Symbol> {
+  [^vfp_ub, ^Out]
+}
+
+fn vfp_t_atom_at(n: Int) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Atom { identity: ^T } },
+    children: [],
+    occurrence_id: vfp_occ(n: n)
+  )
+}
+
+fn vfp_out_declaration() -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Disj },
+    children: [
+      Edge {
+        label: Authored { name: ^Acc },
+        target: node_with_occurrence_id(
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge {
+              label: Authored { name: ^value },
+              target: binder_node(type_node: vfp_t_atom_at(n: 101), default: optional_absent())
+            }
+          ],
+          occurrence_id: vfp_occ(n: 102)
+        )
+      },
+      Edge {
+        label: Authored { name: ^Rej },
+        target: node_with_occurrence_id(kind: TypeNode { connective: Conj }, children: [], occurrence_id: vfp_occ(n: 103))
+      }
+    ],
+    occurrence_id: vfp_occ(n: 104)
+  )
+}
+
+fn vfp_out_params() -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: type_binder_set_children(
+      binders: [Edge { label: Authored { name: ^T }, target: vfp_t_atom_at(n: 105) }],
+      source: vfp_t_atom_at(n: 106)
+    ),
+    occurrence_id: vfp_occ(n: 107)
+  )
+}
+
+fn vfp_out_index() -> SymbolIndex {
+  symbol_index_mark_declared_type_params(
+    index: symbol_index_insert(index: empty_symbol_index(), qualified_path: vfp_out_path(), resolved: vfp_out_declaration()),
+    qualified_path: vfp_out_path(),
+    params: vfp_out_params()
+  )
+}
+
+fn vfp_out_of_t() -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge { label: Positional, target: declaration_reference_node(qn: vfp_out_path(), occurrence_id: vfp_occ(n: 108)) },
+      Edge { label: Positional, target: vfp_t_atom_at(n: 109) }
+    ],
+    occurrence_id: vfp_occ(n: 110)
+  )
+}
+
+fn vfp_ub_scrutinee() -> Node {
+  lexical_reference_node(label: ^x, occurrence_id: vfp_occ(n: 111))
+}
+
+fn vfp_ub_zero() -> Node {
+  dag_int_literal_fixture_one()
+}
+
+fn vfp_ub_acc_arm(field_target: Node) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: core_edge_label(marker: MatchArmPatternEdge),
+        target: construct_node(
+          reference: declaration_reference_node(qn: [^vfp_ub, ^Acc], occurrence_id: vfp_occ(n: 112)),
+          field_edges: [Edge { label: Authored { name: ^value }, target: field_target }],
+          source: vfp_t_atom_at(n: 113)
+        )
+      },
+      Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: vfp_ub_zero() }
+    ],
+    occurrence_id: vfp_occ(n: 114)
+  )
+}
+
+fn vfp_ub_rej_arm() -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: core_edge_label(marker: MatchArmPatternEdge),
+        target: construct_node(
+          reference: declaration_reference_node(qn: [^vfp_ub, ^Rej], occurrence_id: vfp_occ(n: 115)),
+          field_edges: [],
+          source: vfp_t_atom_at(n: 116)
+        )
+      },
+      Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: vfp_ub_zero() }
+    ],
+    occurrence_id: vfp_occ(n: 117)
+  )
+}
+
+fn vfp_ub_match(acc_arm: Node) -> Node {
+  node_with_occurrence_id(
+    kind: ComputationNode { behavior: Match },
+    children: [
+      Edge { label: Positional, target: vfp_ub_scrutinee() },
+      Edge { label: Positional, target: acc_arm },
+      Edge { label: Positional, target: vfp_ub_rej_arm() }
+    ],
+    occurrence_id: vfp_occ(n: 118)
+  )
+}
+
+fn vfp_ub_tree(acc_arm: Node) -> ResolvedTree {
+  ResolvedTree {
+    root: vfp_ub_match(acc_arm: acc_arm),
+    symbol_index: empty_symbol_index(),
+    resolved_declarations: vfp_out_index(),
+    lexical_bindings: map_insert(
+      empty_map(),
+      OccurrenceId { value: 111 },
+      LexicalBinding {
+        binder_site: vfp_occ(n: 119),
+        declared: optional_present(value: vfp_out_of_t()),
+        value: optional_absent(),
+        owed_formal: optional_absent()
+      }
+    ),
+    unavailable_providers: []
+  }
+}
+
+fn vfp_wildcard_field() -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Atom { identity: wildcard_pattern_identity() } },
+    children: [],
+    occurrence_id: vfp_occ(n: 120)
+  )
+}
+
+fn vfp_named_unused_field() -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Atom { identity: ^v } },
+    children: [],
+    occurrence_id: vfp_occ(n: 121)
+  )
+}
+
+fn vfp_supplied_wildcard_resolved() -> Outcome<ResolvedTree> {
+  Accepted { value: vfp_ub_tree(acc_arm: vfp_ub_acc_arm(field_target: vfp_wildcard_field())), diagnostics: None }
+}
+
+fn vfp_supplied_unbound_binder_resolved() -> Outcome<ResolvedTree> {
+  Accepted { value: vfp_ub_tree(acc_arm: vfp_ub_acc_arm(field_target: vfp_named_unused_field())), diagnostics: None }
+}
+
 test fn vfp_payload_binder_derived_type_misses_an_unlisted_site_holds() -> Bool {
   infer_payload_binder_derived_type(
     binder_types: vfp_supplied_binder_types(),
@@ -918,48 +1087,36 @@ data vfp_formal_gate_src: String = "module p\n\ntype Out<T> = Acc { value: T } |
 
 data vfp_formal_gate_concrete_src: String = "module p\n\ntype Out = Acc { value: Int } | Rej\n\nfn make() -> Out {\n  Acc { value: 5 }\n}\n\nfn id(n: Int) -> Int {\n  n\n}\n\nfn read() -> Int {\n  match make() {\n    Acc { value: v } => id(5)\n    Rej => 0\n  }\n}"
 
-data vfp_formal_unbound_src: String = "module p\n\ntype Out<T> = Acc { value: T } | Rej\n\nfn read<T>(x: Out<T>) -> Int {\n  match x {\n    Acc { value: v } => 0\n    Rej => 0\n  }\n}"
-
-data vfp_formal_wildcard_src: String = "module p\n\ntype Out<T> = Acc { value: T } | Rej\n\nfn read<T>(x: Out<T>) -> Int {\n  match x {\n    Acc { value: _ } => 0\n    Rej => 0\n  }\n}"
-
 fn vfp_formal_gate_reading() -> VfpReading { vfp_reading(src: vfp_formal_gate_src) }
 
 fn vfp_formal_gate_concrete_reading() -> VfpReading { vfp_reading(src: vfp_formal_gate_concrete_src) }
 
-fn vfp_formal_unbound_reading() -> VfpReading { vfp_reading(src: vfp_formal_unbound_src) }
-
-fn vfp_formal_wildcard_reading() -> VfpReading { vfp_reading(src: vfp_formal_wildcard_src) }
-
-type VfpFormalGateQuad {
+type VfpFormalGatePair {
   formal: VfpReading
   concrete: VfpReading
-  unbound: VfpReading
-  wildcard: VfpReading
 }
 
-fn vfp_formal_gate_quad() -> VfpFormalGateQuad {
-  VfpFormalGateQuad {
+fn vfp_formal_gate_pair() -> VfpFormalGatePair {
+  VfpFormalGatePair {
     formal: vfp_formal_gate_reading(),
-    concrete: vfp_formal_gate_concrete_reading(),
-    unbound: vfp_formal_unbound_reading(),
-    wildcard: vfp_formal_wildcard_reading()
+    concrete: vfp_formal_gate_concrete_reading()
   }
 }
 
 test fn vfp_the_formal_payload_binder_instantiates_from_the_scrutinee_holds() -> Bool {
-  vfp_infers(reading: vfp_formal_gate_quad().formal)
+  vfp_infers(reading: vfp_formal_gate_pair().formal)
 }
 
 test fn vfp_the_concrete_payload_sibling_still_prepares_holds() -> Bool {
-  vfp_infers(reading: vfp_formal_gate_quad().concrete)
+  vfp_infers(reading: vfp_formal_gate_pair().concrete)
 }
 
 test fn vfp_the_unbound_formal_payload_binder_refuses_at_infer_holds() -> Bool {
-  vfp_formal_gate_quad().unbound.match_fact == ^infer_reason_pattern_payload_formal_uninstantiated
+  vfp_supplied_infer_terminal(resolved: vfp_supplied_unbound_binder_resolved()) == ^infer_reason_pattern_payload_formal_uninstantiated
 }
 
 test fn vfp_the_unbound_formal_wildcard_field_still_infers_holds() -> Bool {
-  vfp_infers(reading: vfp_formal_gate_quad().wildcard)
+  vfp_supplied_infer_terminal(resolved: vfp_supplied_wildcard_resolved()) == ^infers
 }
 
 // THE N7 SHAPE: Outcome<T>-shaped reconstruct — a payload binder consumed as a construct field
@@ -981,5 +1138,16 @@ fn vfp_n7_last_reason(xs: List<Diagnostic>, last: Symbol) -> Symbol {
   match xs {
     Empty => last
     Cons { head: h, tail: t } => vfp_n7_last_reason(xs: t, last: h.reason)
+  }
+}
+
+fn vfp_supplied_infer_terminal(resolved: Outcome<ResolvedTree>) -> Symbol {
+  match resolved {
+    Rejected { diagnostics: r } => r.head.reason
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Rejected { diagnostics: r2 } => vfp_n7_last_reason(xs: r2.tail, last: r2.head.reason)
+        Accepted { value: _, diagnostics: _ } => ^infers
+      }
   }
 }
