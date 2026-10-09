@@ -5935,49 +5935,41 @@ fn infer_gather_extend_application_instances(
   if !acc.await_transform_row {
     infer_gather_extend_kept_outcome(acc: acc)
   } else {
-    match list_at_optional(xs: acc.node.children, index: 0) {
-      Absent => infer_gather_extend_kept_outcome(acc: acc)
-      Present { value: callee } =>
-        if callee.target == edge.target {
-          match infer_gather_compute_application_pairs(node: acc.node, entries: entries) {
-            Rejected { diagnostics: r } => Rejected { diagnostics: r }
-            Accepted { value: pairs, diagnostics: d } =>
-              Accepted {
-                value: InferGatherApplicationExtend { instances: acc.application_instances, pairs: pairs },
-                diagnostics: d
-              }
-          }
-        } else {
-          match acc.application_pairs {
-            Absent => infer_gather_extend_kept_outcome(acc: acc)
-            Present { value: pairs } =>
-              match infer_gather_authored_actual_index(acc: acc) {
-                Absent =>
-                  outcome_rejected(infer_application_actual_pair_missing_diagnostic(actual: edge.target))
-                Present { value: idx } =>
-                  match list_at_optional(xs: pairs, index: idx) {
-                    Absent =>
-                      outcome_rejected(infer_application_actual_pair_missing_diagnostic(actual: edge.target))
-                    Present { value: pair } =>
-                      match infer_judge_formal_args(
-                        position: position_direct_call_argument(),
-                        site: JudgedAtApplication { application: acc.node },
-                        entries: entries,
-                        declarations: resolved.resolved_declarations,
-                        pairs: [pair],
-                        type_params: infer_application_type_params(node: acc.node, entries: entries),
-                        instances: acc.application_instances
-                      ) {
-                        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                        Accepted { value: instances, diagnostics: d } =>
-                          Accepted {
-                            value: InferGatherApplicationExtend { instances: instances, pairs: acc.application_pairs },
-                            diagnostics: d
-                          }
-                      }
-                  }
-              }
-          }
+    match infer_gather_authored_actual_index(acc: acc) {
+      Absent =>
+        match infer_gather_compute_application_pairs(node: acc.node, entries: entries) {
+          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          Accepted { value: pairs, diagnostics: d } =>
+            Accepted {
+              value: InferGatherApplicationExtend { instances: acc.application_instances, pairs: pairs },
+              diagnostics: d
+            }
+        }
+      Present { value: idx } =>
+        match acc.application_pairs {
+          Absent => infer_gather_extend_kept_outcome(acc: acc)
+          Present { value: pairs } =>
+            match list_at_optional(xs: pairs, index: idx) {
+              Absent =>
+                outcome_rejected(infer_application_actual_pair_missing_diagnostic(actual: edge.target))
+              Present { value: pair } =>
+                match infer_judge_formal_args(
+                  position: position_direct_call_argument(),
+                  site: JudgedAtApplication { application: acc.node },
+                  entries: entries,
+                  declarations: resolved.resolved_declarations,
+                  pairs: [pair],
+                  type_params: infer_application_type_params(node: acc.node, entries: entries),
+                  instances: acc.application_instances
+                ) {
+                  Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                  Accepted { value: instances, diagnostics: d } =>
+                    Accepted {
+                      value: InferGatherApplicationExtend { instances: instances, pairs: acc.application_pairs },
+                      diagnostics: d
+                    }
+                }
+            }
         }
     }
   }
@@ -7175,26 +7167,22 @@ fn infer_gather_child_context(parent: Node, frame: InferFrame, acc: InferGatherF
 // the actual that instantiates T (f-before-o) sees no instance; T stays underived and is never
 // minted (infer_operand_declared_type_instantiated). Binder types share InferFrame.binder_types.
 fn infer_application_actual_child_frame(parent: Node, frame: InferFrame, acc: InferGatherFoldAcc, edge: Edge, resolved: ResolvedTree) -> InferFrame {
-  match list_at_optional(xs: parent.children, index: 0) {
+  match infer_gather_authored_actual_index(acc: acc) {
     Absent => infer_frame_inherited(frame: frame)
-    Present { value: callee } =>
-      if callee.target == edge.target {
-        infer_frame_inherited(frame: frame)
-      } else {
-        match infer_application_lambda_expected_binder_types(
-          actual: edge.target,
-          instances: acc.application_instances,
-          pairs: acc.application_pairs,
-          idx: infer_gather_authored_actual_index(acc: acc)
-        ) {
-          Absent => infer_frame_inherited(frame: frame)
-          Present { value: rows } =>
-            InferFrame {
-              instances: frame.instances,
-              binder_types: infer_append_binder_types(xs: frame.binder_types, ys: rows),
-              entering: InferFrameEnteredPlain
-            }
-        }
+    Present { value: idx } =>
+      match infer_application_lambda_expected_binder_types(
+        actual: edge.target,
+        instances: acc.application_instances,
+        pairs: acc.application_pairs,
+        idx: optional_present(value: idx)
+      ) {
+        Absent => infer_frame_inherited(frame: frame)
+        Present { value: rows } =>
+          InferFrame {
+            instances: frame.instances,
+            binder_types: infer_append_binder_types(xs: frame.binder_types, ys: rows),
+            entering: InferFrameEnteredPlain
+          }
       }
   }
 }

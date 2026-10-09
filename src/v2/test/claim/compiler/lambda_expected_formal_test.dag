@@ -2,9 +2,11 @@ module v2.test.claim.compiler.lambda_expected_formal
 
 import v2.test.claim.type_param_binder_frame { tpb_assemble }
 import v2.compiler.infer { infer }
+import v2.compiler.resolve { ResolvedTree }
 import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Symbol }
+import v2.std.node { ComputationNode, Edge, Node, Symbol, Transform }
+import v2.std.algebra { list_map }
 import v2.std.collection { List }
 import std.algebra { Cons, Empty }
 import std.types { Bool, String }
@@ -26,6 +28,8 @@ data lef_value_then_lambda_src: String = "module p\n\nfn after<T>(x: T, f: fn(T)
 data lef_lambda_then_value_src: String = "module p\n\nfn before<T>(f: fn(T) -> T, x: T) -> T {\n  f(x)\n}\n\nfn k() -> Int {\n  before(fn(n) { n }, 1)\n}"
 
 data lef_repeated_actual_src: String = "module p\n\nfn takes(a: Int, b: Bool) -> Int {\n  0\n}\n\nfn k() -> Int {\n  let x = 1\n  takes(a: x, b: x)\n}"
+
+data lef_shared_callee_actual_src: String = "module p\n\nfn takes(a: Int) -> Int {\n  a\n}\n\nfn k() -> Int {\n  takes(1)\n}"
 
 fn lef_infer_terminal(src: String) -> Symbol {
   match tpb_assemble(src: src) {
@@ -58,4 +62,50 @@ test fn lef_lambda_then_value_does_not_infer_as_int_holds() -> Bool {
 // node-equal pair). x inhabits Int and not Bool, so the call must not infer.
 test fn lef_repeated_actual_second_formal_is_judged_holds() -> Bool {
   lef_infer_terminal(src: lef_repeated_actual_src) != ^infers
+}
+
+// SUPPLIED TREE: the callee edge and the actual edge share one Node. Positional index, not
+// target equality, must still judge that actual at Int; a function does not inhabit Int.
+fn lef_share_callee_as_actual(n: Node) -> Node {
+  let children = list_map(xs: n.children, f: fn(e) {
+    Edge { label: e.label, target: lef_share_callee_as_actual(n: e.target) }
+  })
+  match n.kind {
+    ComputationNode { behavior: Transform } =>
+      match children {
+        Cons { head: callee, tail: Cons { head: actual, tail: rest } } =>
+          Node {
+            kind: n.kind,
+            occurrence_id: n.occurrence_id,
+            children: Cons {
+              head: callee,
+              tail: Cons {
+                head: Edge { label: actual.label, target: callee.target },
+                tail: rest
+              }
+            }
+          }
+        _ => Node { kind: n.kind, occurrence_id: n.occurrence_id, children: children }
+      }
+    _ => Node { kind: n.kind, occurrence_id: n.occurrence_id, children: children }
+  }
+}
+
+test fn lef_shared_callee_actual_is_judged_holds() -> Bool {
+  match tpb_assemble(src: lef_shared_callee_actual_src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(
+        tree: ResolvedTree {
+          root: lef_share_callee_as_actual(n: tree.root),
+          symbol_index: tree.symbol_index,
+          resolved_declarations: tree.resolved_declarations,
+          lexical_bindings: tree.lexical_bindings,
+          unavailable_providers: tree.unavailable_providers
+        }
+      ) {
+        Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => false
+      }
+  }
 }
