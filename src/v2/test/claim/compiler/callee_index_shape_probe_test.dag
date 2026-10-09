@@ -1,0 +1,307 @@
+module v2.test.claim.compiler.callee_index_shape_probe
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.compiler.infer { infer_declaration_callable_evidence }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { fold_list }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Authored,
+  Cardinality,
+  ComputationNode,
+  Conj,
+  Disj,
+  Instantiation,
+  Node,
+  Positional,
+  StructuralLabel,
+  Symbol,
+  TypeNode,
+  node_subtree_nodes
+}
+import v2.std.node_query { node_positional_child_targets }
+import v2.std.qualified_name {
+  QualifiedName,
+  declaration_reference_path_optional,
+  qualified_name_from_dotted_string,
+  qualified_name_last_segment
+}
+import v2.std.symbol_index { symbol_index_lookup }
+import v2.std.collection { list_at_optional }
+import v2.std.type_binder { type_param_names }
+import std.optional { Absent, Optional, Present }
+import std.types { Bool, String, List }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data cse_probe_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^callee_index_shape_probe_artifact,
+  file_path: "src/v2/pilot/callee_index_shape_probe_pilot.dag"
+}
+
+fn cse_probe_assemble_qn(src: String, qn: QualifiedName) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: src, fidelity: Lossless },
+        artifact: cse_probe_artifact,
+        compilation_unit: ^callee_index_shape_probe_cu,
+        source_root: V2Tree
+      },
+      tail: Empty
+    },
+    admission: Admission { subject: ResolutionSubject { name: qn }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn cse_kind_is_arrow(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Arrow } => true
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn cse_kind_is_conj(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Conj } => true
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn cse_is_instantiation(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Instantiation } => true
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Cardinality } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn cse_leaf_use_path(tree: ResolvedTree, leaf: Symbol) -> Optional<QualifiedName> {
+  fold_list(
+    xs: node_subtree_nodes(root: tree.root),
+    empty: Absent,
+    cons: fn(acc, n) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match declaration_reference_path_optional(node: n) {
+            Absent => Absent
+            Present { value: path } =>
+              match qualified_name_last_segment(qn: path) {
+                Absent => Absent
+                Present { value: last } =>
+                  if last == leaf {
+                    Present { value: path }
+                  } else {
+                    Absent
+                  }
+              }
+          }
+      }
+    }
+  )
+}
+
+fn cse_lookup(tree: ResolvedTree, path: QualifiedName) -> Optional<Node> {
+  symbol_index_lookup(index: tree.resolved_declarations, qualified_path: path)
+}
+
+fn cse_codomain_is_instantiation(arrow: Node) -> Bool {
+  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {
+    Absent => false
+    Present { value: ret } => cse_is_instantiation(n: ret)
+  }
+}
+
+fn cse_callable_return_instantiation(declared: Node) -> Bool {
+  match infer_declaration_callable_evidence(declared: declared) {
+    Absent => false
+    Present { value: arrow } => cse_codomain_is_instantiation(arrow: arrow)
+  }
+}
+
+fn cse_callable_present(declared: Node) -> Bool {
+  match infer_declaration_callable_evidence(declared: declared) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+fn cse_callable_type_params(declared: Node) -> List<Symbol> {
+  match infer_declaration_callable_evidence(declared: declared) {
+    Absent => []
+    Present { value: arrow } => type_param_names(n: arrow)
+  }
+}
+
+data cse_drr_route_source: String = "module p\n\ntype Box<T> {\n  item: T\n}\n\nfn boxed<T>(x: T) -> Box<T> {\n  Box { item: x }\n}\n\nfn wants_bool(b: Bool) -> Int {\n  0\n}\n\nfn k() -> Int {\n  wants_bool(boxed(1).item)\n}\n"
+
+data cse_local_outcome_bind_source: String = "module p\n\ntype Out<T> {\n  item: T\n}\n\nfn bind<T, U>(o: Out<T>, f: fn(T) -> Out<U>) -> Out<U> {\n  f(x: o.item)\n}\n"
+
+data cse_n7_source: String = "module v2.test.parse.expression_bodied_fn_decl_parse\n\nimport v2.compiler.normalize { normalize }\nimport v2.compiler.parse { parse_module_prepared }\nimport v2.compiler.program_assembly { dag_prepared_grammar }\nimport v2.compiler.tokenize { tokenize }\nimport v2.extdeps.languages.dag { dag_lex }\nimport v2.std.diagnostic {\n  Accepted,\n  ByteRange,\n  DeclarationLocus,\n  InvariantPortLocus,\n  NodeLocus,\n  Outcome,\n  Rejected,\n  SourcePortLocus,\n  Textual,\n  WholeFile,\n  bind_outcome,\n  diagnostics_fatal\n}\nimport v2.std.integer { Int }\nimport v2.std.parse_refusal_reason {\n  DataValueMissingAfterEq,\n  FnExpressionBodyMissingAfterEq,\n  ParseRefusalReason,\n  parse_refusal_reason_symbol\n}\nimport v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }\nimport v2.std.node { Node, Symbol }\nimport v2.std.node_query { find_arrow_body_child }\nimport v2.std.text { String }\n\ndata live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly\n\nfn g_tokenize_parse(text: String, file: Symbol) -> Outcome<Node> {\n  match dag_prepared_grammar() {\n    Rejected { diagnostics: d } => Rejected { diagnostics: d }\n    Accepted { value: prepared, diagnostics: residue } =>\n      bind_outcome(\n        o: tokenize(text: text, file: file, rules: dag_lex()),\n        f: fn(token_stream) {\n          match parse_module_prepared(\n            tokens: token_stream,\n            prepared: prepared,\n            validation_residue: residue\n          ) {\n            Rejected { diagnostics: r } => Rejected { diagnostics: r }\n            Accepted { value: artifact, diagnostics: d } =>\n              Accepted { value: artifact.tree, diagnostics: d }\n          }\n        }\n      )\n  }\n}\n\nfn g_tree_has_arrow_body(root: Node) -> Bool {\n  match find_arrow_body_child(root: root) {\n    Accepted { value: _, diagnostics: _ } => true\n    Rejected { diagnostics: _ } =>\n      fold(root.children, init: false, f: fn(found, e) {\n        found || g_tree_has_arrow_body(root: e.target)\n      })\n  }\n}\n\nfn g_normalize_has_arrow_body(parsed: Outcome<Node>) -> Bool {\n  match parsed {\n    Rejected { diagnostics: _ } => false\n    Accepted { value: tree, diagnostics: _ } =>\n      match normalize(parse_tree: tree) {\n        Rejected { diagnostics: _ } => false\n        Accepted { value: normalized, diagnostics: _ } =>\n          g_tree_has_arrow_body(root: normalized.root)\n      }\n  }\n}\n\ndata expression_bodied_fn_source: String = \"module probe.expr_fn\\n\\nfn f(a: Int) -> Int = a\\n\"\n\ndata expression_bodied_literal_fn_source: String = \"module probe.expr_fn_lit\\n\\nfn f() -> Int = 1\\n\"\n\ndata braced_fn_control_source: String = \"module probe.braced_fn\\n\\nfn f(a: Int) -> Int {\\n  a\\n}\\n\"\n\ndata empty_eq_fn_source: String = \"module probe.empty_eq\\n\\nfn f(a: Int) -> Int =\\n\"\n\n// THE SHARE POINTS. Each of the three accepted sources is parsed by two claims -- once to\n// assert the parse, once to normalize the tree -- and the required floor evaluates each claim\n// in its own frame, so every tokenize+parse was paid twice: the floor's own cost receipt (main\n// run 34556223550, required_floor_claim_cost.tsv) shows braced_fn_decl_survives_normalize_holds\n// INTERRUPTED at the 500ms per-claim CPU ceiling and its file-mates within one runner swing of\n// it. Each nullary producer below is enrolled WARM in v2.workflow.floor_pure_producer_share:\n// the floor forces it once during strict preparation, outside every per-claim budget, and both\n// claims are handed the parse tree; normalize stays per claim. The empty-`=` source is not\n// shared: one claim reads it, and a refusal is the cheap arm.\nfn expression_bodied_fn_parsed() -> Outcome<Node> {\n  g_tokenize_parse(text: expression_bodied_fn_source, file: ^probe_expr_fn)\n}\n\nfn expression_bodied_literal_fn_parsed() -> Outcome<Node> {\n  g_tokenize_parse(text: expression_bodied_literal_fn_source, file: ^probe_expr_fn_lit)\n}\n\nfn braced_fn_control_parsed() -> Outcome<Node> {\n  g_tokenize_parse(text: braced_fn_control_source, file: ^probe_braced_fn)\n}\n\nfn g_parsed_accepted(parsed: Outcome<Node>) -> Bool {\n  match parsed {\n    Accepted { value: _, diagnostics: _ } => true\n    Rejected { diagnostics: _ } => false\n  }\n}\n\ntest fn expression_bodied_fn_decl_parses_holds() -> Bool {\n  g_parsed_accepted(parsed: expression_bodied_fn_parsed())\n}\n\ntest fn expression_bodied_literal_fn_decl_parses_holds() -> Bool {\n  g_parsed_accepted(parsed: expression_bodied_literal_fn_parsed())\n}\n\ntest fn braced_fn_decl_still_parses_holds() -> Bool {\n  g_parsed_accepted(parsed: braced_fn_control_parsed())\n}\n\ntest fn braced_fn_decl_survives_normalize_holds() -> Bool {\n  g_normalize_has_arrow_body(parsed: braced_fn_control_parsed())\n}\n\n// THE REFUSAL IS THE GRAMMAR'S OWN EXPECTATION, NOT ANY REFUSAL. The fn_decl and data_decl rows\n// wrap the expression after `=` in `Expect` with a variant of the closed parse-stage vocabulary\n// (v2.std.parse_refusal_reason), so the fatal diagnostic must be exactly that reason's identity,\n// located at the `=` token on the parse stage's port. The overlap residue rides in front as an\n// advisory, and `parse_g0_tokens_remain` is what the parse said before the rows carried the label;\n// either one as the fatal reason reds these claims.\nfn g_fatal_at(parsed: Outcome<Node>, reason: ParseRefusalReason, file: Symbol, start: Int, end: Int) -> Bool {\n  match parsed {\n    Accepted { value: _, diagnostics: _ } => false\n    Rejected { diagnostics: d } =>\n      let fatal = diagnostics_fatal(d: d)\n      (fatal.reason == parse_refusal_reason_symbol(reason: reason))\n        && match fatal.at {\n          SourcePortLocus { anchor: anchor, file: f, extent: extent } =>\n            (anchor.at == ^parse_stage_locus_port)\n              && (f == file)\n              && match extent {\n                ByteRange { start: s, end: e } => (s == start) && (e == end)\n                WholeFile => false\n              }\n          Textual { file: _, extent: _ } => false\n          NodeLocus { anchor: _ } => false\n          InvariantPortLocus { anchor: _, invariant: _ } => false\n          DeclarationLocus { declaration: _ } => false\n        }\n  }\n}\n\n// `=` is bytes 43..44 of empty_eq_fn_source.\ntest fn empty_eq_fn_decl_refuses_holds() -> Bool {\n  g_fatal_at(\n    parsed: g_tokenize_parse(text: empty_eq_fn_source, file: ^probe_empty_eq),\n    reason: FnExpressionBodyMissingAfterEq,\n    file: ^probe_empty_eq,\n    start: 43,\n    end: 44\n  )\n}\n\ndata empty_eq_data_source: String = \"module probe.empty_data\\n\\ndata x: Int =\\n\"\n\n// `=` is bytes 37..38 of empty_eq_data_source.\ntest fn empty_eq_data_decl_refuses_holds() -> Bool {\n  g_fatal_at(\n    parsed: g_tokenize_parse(text: empty_eq_data_source, file: ^probe_empty_data),\n    reason: DataValueMissingAfterEq,\n    file: ^probe_empty_data,\n    start: 37,\n    end: 38\n  )\n}\n\ntest fn expression_bodied_fn_decl_survives_normalize_holds() -> Bool {\n  g_normalize_has_arrow_body(parsed: expression_bodied_fn_parsed())\n}\n\ntest fn expression_bodied_literal_fn_decl_survives_normalize_holds() -> Bool {\n  g_normalize_has_arrow_body(parsed: expression_bodied_literal_fn_parsed())\n}\n"
+
+fn cse_n7_qn() -> QualifiedName {
+  qualified_name_from_dotted_string(dotted: "v2.test.parse.expression_bodied_fn_decl_parse")
+}
+
+fn cse_n7_tree() -> Outcome<ResolvedTree> {
+  cse_probe_assemble_qn(src: cse_n7_source, qn: cse_n7_qn())
+}
+
+fn cse_n7_bind_outcome_declared() -> Optional<Node> {
+  match cse_n7_tree() {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: tree, diagnostics: _ } =>
+      match cse_leaf_use_path(tree: tree, leaf: ^bind_outcome) {
+        Absent => Absent
+        Present { value: path } => cse_lookup(tree: tree, path: path)
+      }
+  }
+}
+
+fn cse_local_bind_tree() -> Outcome<ResolvedTree> {
+  cse_probe_assemble_qn(src: cse_local_outcome_bind_source, qn: [^p])
+}
+
+fn cse_local_bind_declared() -> Optional<Node> {
+  match cse_local_bind_tree() {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: tree, diagnostics: _ } => cse_lookup(tree: tree, path: [^p, ^bind])
+  }
+}
+
+fn cse_drr_tree() -> Outcome<ResolvedTree> {
+  cse_probe_assemble_qn(src: cse_drr_route_source, qn: [^p])
+}
+
+test fn cse_local_boxed_is_bare_arrow_holds() -> Bool {
+  match cse_drr_tree() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match cse_lookup(tree: tree, path: [^p, ^boxed]) {
+        Absent => false
+        Present { value: declared } => cse_kind_is_arrow(n: declared)
+      }
+  }
+}
+
+test fn cse_local_wants_bool_is_bare_arrow_holds() -> Bool {
+  match cse_drr_tree() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match cse_lookup(tree: tree, path: [^p, ^wants_bool]) {
+        Absent => false
+        Present { value: declared } => cse_kind_is_arrow(n: declared)
+      }
+  }
+}
+
+test fn cse_n7_tree_assembles_holds() -> Bool {
+  match cse_n7_tree() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn cse_n7_bind_outcome_use_found_holds() -> Bool {
+  match cse_n7_bind_outcome_declared() {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+test fn cse_n7_bind_outcome_declared_is_arrow_holds() -> Bool {
+  match cse_n7_bind_outcome_declared() {
+    Absent => false
+    Present { value: declared } => cse_kind_is_arrow(n: declared)
+  }
+}
+
+test fn cse_n7_bind_outcome_declared_is_conj_holds() -> Bool {
+  match cse_n7_bind_outcome_declared() {
+    Absent => false
+    Present { value: declared } => cse_kind_is_conj(n: declared)
+  }
+}
+
+test fn cse_n7_bind_outcome_callable_present_holds() -> Bool {
+  match cse_n7_bind_outcome_declared() {
+    Absent => false
+    Present { value: declared } => cse_callable_present(declared: declared)
+  }
+}
+
+test fn cse_n7_bind_outcome_callable_type_params_are_t_u_holds() -> Bool {
+  match cse_n7_bind_outcome_declared() {
+    Absent => false
+    Present { value: declared } => cse_callable_type_params(declared: declared) == [^T, ^U]
+  }
+}
+
+test fn cse_n7_bind_outcome_callable_return_is_instantiation_holds() -> Bool {
+  match cse_n7_bind_outcome_declared() {
+    Absent => false
+    Present { value: declared } => cse_callable_return_instantiation(declared: declared)
+  }
+}
+
+test fn cse_local_outcome_bind_declared_is_arrow_holds() -> Bool {
+  match cse_local_bind_declared() {
+    Absent => false
+    Present { value: declared } => cse_kind_is_arrow(n: declared)
+  }
+}
+
+test fn cse_local_outcome_bind_declared_is_conj_holds() -> Bool {
+  match cse_local_bind_declared() {
+    Absent => false
+    Present { value: declared } => cse_kind_is_conj(n: declared)
+  }
+}
+
+test fn cse_local_outcome_bind_callable_present_holds() -> Bool {
+  match cse_local_bind_declared() {
+    Absent => false
+    Present { value: declared } => cse_callable_present(declared: declared)
+  }
+}
+
+test fn cse_local_outcome_bind_callable_type_params_are_t_u_holds() -> Bool {
+  match cse_local_bind_declared() {
+    Absent => false
+    Present { value: declared } => cse_callable_type_params(declared: declared) == [^T, ^U]
+  }
+}
+
+test fn cse_local_outcome_bind_callable_return_is_instantiation_holds() -> Bool {
+  match cse_local_bind_declared() {
+    Absent => false
+    Present { value: declared } => cse_callable_return_instantiation(declared: declared)
+  }
+}
