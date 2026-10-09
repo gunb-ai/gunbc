@@ -3553,6 +3553,13 @@ mod fixture_closure_union_tests {
 
     #[test]
     fn capture_channels_without_stderr_capture_input_refuse_the_union() {
+        // Real absent-policy route: rust emit refuses at
+        // `unmodeled_shell_transport_operation_diagnostics` /
+        // `ShellCapturePolicyInputAbsent` before any program is emitted.
+        // `emit_shell_stderr_policy_binding`'s else-arm is not reachable from
+        // this harness (the wall fires first; the generated bind fn is not on
+        // this mirror). The rustc-decoy that compiled a hand-built `return Err`
+        // before spawn was deleted (review 78366).
         let union = fixture_closure_union_control_union(STDERR_CAPTURE_WITHOUT_POLICY)
             .expect("member without policy input resolves");
         let refusal = fixture_closure_union_emit_receipt(&union)
@@ -3618,13 +3625,83 @@ mod fixture_closure_union_tests {
         );
     }
 
+    /// Drain fragments the rust shell handler concatenates (`v1.compiler.emit_rust`
+    /// `shell_capture_drain_start` / `shell_capture_join_project`). This closeout
+    /// mirror does not carry those as `pub fn`s, so the test reads the authority
+    /// rows rather than calling a missing symbol or forking the bytes.
+    fn emit_rust_dag_string_row(name: &str) -> String {
+        let src = include_str!("../../../../../src/v1/05_emit_rust.dag");
+        let needle = format!("data {name}: String = \"");
+        let start = src
+            .find(&needle)
+            .unwrap_or_else(|| panic!("{name} missing from v1.compiler.emit_rust"));
+        let rest = &src[start + needle.len()..];
+        let mut out = String::new();
+        let mut chars = rest.chars();
+        while let Some(c) = chars.next() {
+            if c == '\\' {
+                match chars.next() {
+                    Some('n') => out.push('\n'),
+                    Some('t') => out.push('\t'),
+                    Some('"') => out.push('"'),
+                    Some('\\') => out.push('\\'),
+                    Some(other) => {
+                        out.push('\\');
+                        out.push(other);
+                    }
+                    None => break,
+                }
+            } else if c == '"' {
+                break;
+            } else {
+                out.push(c);
+            }
+        }
+        out
+    }
+
+    fn shell_capture_drain_start() -> String {
+        emit_rust_dag_string_row("shell_capture_drain_start")
+    }
+
+    fn shell_capture_join_project() -> String {
+        emit_rust_dag_string_row("shell_capture_join_project")
+    }
+
+    /// How `__stderr_complete_limit` is bound in the rustc'd specimen.
+    ///
+    /// The production Complete arm (`emit_shell_stderr_policy_binding`) matches
+    /// `v1_rt::read_host_budget_bytes()`. That function is not on this stage0
+    /// `v1_rt` mirror, and a standalone rustc specimen cannot link the crate, so
+    /// this harness cannot compile that match. `FromHostJoin` still *reads* the
+    /// live join (`memory_governor::read_host_budget_bytes`, the same
+    /// `(bytes, label)` view) and plants the result; deleting the call from the
+    /// emit bind does **not** turn these tests red. That emit-bind route is
+    /// uncovered here.
+    enum CaptureBind {
+        BoundedTail { bytes: usize },
+        FromHostJoin,
+    }
+
     fn rustc_and_run_emitted_capture(
         stem: &str,
-        complete_limit: Option<usize>,
-        tail_bytes: usize,
+        bind: CaptureBind,
         stderr_payload: &str,
         stdin_payload: Option<&str>,
     ) -> std::process::Output {
+        let (complete_limit, complete_source, tail_bytes) = match bind {
+            CaptureBind::BoundedTail { bytes } => (None, String::new(), bytes),
+            CaptureBind::FromHostJoin => {
+                let (budget, source) = crate::memory_governor::read_host_budget_bytes();
+                let n = budget.unwrap_or_else(|| {
+                    panic!(
+                        "Complete capture requires a readable host budget ({source}); \
+                         export GUNBC_MEMORY_BUDGET_BYTES under the #12550 cgroup recipe"
+                    )
+                });
+                (Some(n as usize), source, 0)
+            }
+        };
         let limit = match complete_limit {
             Some(n) => format!("Some({n})"),
             None => "None".to_string(),
@@ -3661,10 +3738,11 @@ mod fixture_closure_union_tests {
         };
         let drain = format!(
             "{}{}{}",
-            crate::v1_compiler_emit_rust::shell_capture_drain_start(),
+            shell_capture_drain_start(),
             stdin_prelude,
-            crate::v1_compiler_emit_rust::shell_capture_join_project()
+            shell_capture_join_project()
         );
+        let source_lit = format!("{:?}.to_string()", complete_source);
         let program = format!(
             "fn main() -> Result<(), Box<dyn std::error::Error>> {{\n\
              let __stderr_complete_limit: Option<usize> = {limit};\n\
@@ -3682,11 +3760,7 @@ mod fixture_closure_union_tests {
              }}\n",
             script = script.replace("{payload}", stderr_payload),
             limit = limit,
-            source = if complete_limit.is_some() {
-                "\"host budget\".to_string()".to_string()
-            } else {
-                "String::new()".to_string()
-            },
+            source = source_lit,
             tail = tail_bytes,
             drain = drain,
         );
@@ -3725,8 +3799,7 @@ mod fixture_closure_union_tests {
     fn emitted_bounded_tail_truncates_and_keeps_the_tail() {
         let run = rustc_and_run_emitted_capture(
             "over-tail",
-            None,
-            16,
+            CaptureBind::BoundedTail { bytes: 16 },
             "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
             None,
         );
@@ -3743,7 +3816,12 @@ mod fixture_closure_union_tests {
 
     #[test]
     fn emitted_bounded_tail_under_cap_is_complete() {
-        let run = rustc_and_run_emitted_capture("under-cap", None, 16, "abcdefghij", None);
+        let run = rustc_and_run_emitted_capture(
+            "under-cap",
+            CaptureBind::BoundedTail { bytes: 16 },
+            "abcdefghij",
+            None,
+        );
         assert!(
             run.status.success(),
             "under-cap specimen failed: {}",
@@ -3755,10 +3833,36 @@ mod fixture_closure_union_tests {
         );
     }
 
+    static HOST_JOIN_ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn restore_budget_env(previous: Option<String>) {
+        match previous {
+            Some(v) => std::env::set_var("GUNBC_MEMORY_BUDGET_BYTES", v),
+            None => std::env::remove_var("GUNBC_MEMORY_BUDGET_BYTES"),
+        }
+    }
+
     #[test]
     fn emitted_complete_over_budget_refuses() {
-        let run =
-            rustc_and_run_emitted_capture("complete-over", Some(8), 0, "abcdefghijklmnop", None);
+        let _guard = HOST_JOIN_ENV.lock().expect("join env lock");
+        let previous = std::env::var("GUNBC_MEMORY_BUDGET_BYTES").ok();
+        std::env::set_var("GUNBC_MEMORY_BUDGET_BYTES", "8");
+        let (budget, source) = crate::memory_governor::read_host_budget_bytes();
+        let n = budget.unwrap_or_else(|| {
+            panic!("Complete overflow control needs a readable join ({source})")
+        });
+        assert!(
+            n < 16,
+            "host join {n} ({source}) is not below the 16-byte payload; \
+             GUNBC_MEMORY_BUDGET_BYTES=8 must be the planning minimum"
+        );
+        let run = rustc_and_run_emitted_capture(
+            "complete-over",
+            CaptureBind::FromHostJoin,
+            "abcdefghijklmnop",
+            None,
+        );
+        restore_budget_env(previous);
         assert!(
             !run.status.success(),
             "Complete overflow must refuse, got stdout {:?}",
@@ -3768,14 +3872,31 @@ mod fixture_closure_union_tests {
         assert!(
             err.contains("WitnessStderrCaptureCompleteBudgetExceeded")
                 && err.contains("16")
-                && err.contains("8"),
+                && err.contains(&n.to_string()),
             "{err}"
         );
     }
 
     #[test]
     fn emitted_complete_under_budget_retains_all() {
-        let run = rustc_and_run_emitted_capture("complete-under", Some(64), 0, "abcdefghij", None);
+        let _guard = HOST_JOIN_ENV.lock().expect("join env lock");
+        let previous = std::env::var("GUNBC_MEMORY_BUDGET_BYTES").ok();
+        std::env::set_var("GUNBC_MEMORY_BUDGET_BYTES", "64");
+        let (budget, source) = crate::memory_governor::read_host_budget_bytes();
+        let n = budget.unwrap_or_else(|| {
+            panic!("Complete under-budget control needs a readable join ({source})")
+        });
+        assert!(
+            n >= 10,
+            "host join {n} ({source}) is below the 10-byte payload"
+        );
+        let run = rustc_and_run_emitted_capture(
+            "complete-under",
+            CaptureBind::FromHostJoin,
+            "abcdefghij",
+            None,
+        );
+        restore_budget_env(previous);
         assert!(
             run.status.success(),
             "under-budget Complete failed: {}",
@@ -3791,8 +3912,12 @@ mod fixture_closure_union_tests {
     fn emitted_stdin_and_long_stderr_does_not_deadlock() {
         let stderr = "Y".repeat(80_000);
         let stdin = "X".repeat(80_000);
-        let run =
-            rustc_and_run_emitted_capture("stdin-long-stderr", None, 16, &stderr, Some(&stdin));
+        let run = rustc_and_run_emitted_capture(
+            "stdin-long-stderr",
+            CaptureBind::BoundedTail { bytes: 16 },
+            &stderr,
+            Some(&stdin),
+        );
         assert!(
             run.status.success(),
             "stdin+stderr specimen deadlocked or failed: {}",
@@ -3801,63 +3926,6 @@ mod fixture_closure_union_tests {
         assert_eq!(
             String::from_utf8_lossy(&run.stdout),
             format!("true|80000|16|{}", "Y".repeat(16))
-        );
-    }
-
-    #[test]
-    fn emitted_absent_policy_refuses_before_spawn() {
-        let refusal = crate::v1_compiler_emit::shell_emission_refusal_fact(std::rc::Rc::new(
-            crate::v1_compiler_emit::ShellEmissionRefusal::ShellCapturePolicyInputAbsent {
-                key: "stderr_truncated".to_string(),
-            },
-        ));
-        let marker = std::env::temp_dir().join(format!(
-            "gunbc-absent-policy-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        let program = format!(
-            "fn main() -> Result<(), Box<dyn std::error::Error>> {{\n\
-             return Err(\"{refusal}\".into());\n\
-             let _ = std::process::Command::new(\"sh\")\n\
-             .args([\"-c\", \"printf ran > {marker}\"])\n\
-             .status()?;\n\
-             Ok(())\n\
-             }}\n",
-            refusal = refusal.replace('\\', "\\\\").replace('"', "\\\""),
-            marker = marker.display(),
-        );
-        let root =
-            std::env::temp_dir().join(format!("gunbc-absent-policy-src-{}", std::process::id()));
-        std::fs::create_dir_all(&root).expect("scratch");
-        let src = root.join("main.rs");
-        let exe = root.join("specimen");
-        std::fs::write(&src, program).expect("write");
-        let compiled = std::process::Command::new("rustc")
-            .args(["--edition=2021", "-o"])
-            .arg(&exe)
-            .arg(&src)
-            .output()
-            .expect("rustc");
-        assert!(
-            compiled.status.success(),
-            "{}",
-            String::from_utf8_lossy(&compiled.stderr)
-        );
-        let run = std::process::Command::new(&exe).output().expect("run");
-        let _ = std::fs::remove_dir_all(&root);
-        assert!(!run.status.success(), "absent policy must refuse");
-        assert!(
-            String::from_utf8_lossy(&run.stderr).contains("stderr_capture"),
-            "{}",
-            String::from_utf8_lossy(&run.stderr)
-        );
-        assert!(
-            !marker.exists(),
-            "the child command ran; policy must refuse before spawn"
         );
     }
 
