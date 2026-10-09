@@ -46,6 +46,7 @@ import extdeps.tmux {
   AttemptPanesParsed,
   AttemptPanesParseRefused,
   parse_tmux_attempt_panes_output,
+  TmuxPipeCommand,
 }
 import extdeps.llm.cli {
   shape_claude_invoke_argv,
@@ -64,6 +65,9 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_supervisor_unit_command,
   dispatch_attempt_audit_events_path_for_instance,
   dispatch_attempt_supervisor_events_path_for_instance,
+  dispatch_attempt_events_path_for_instance,
+  dispatch_attempt_worker_log_path_for_instance,
+  dispatch_attempt_unit_name,
   attempt_state_prepare_argv_for_instance,
   dispatch_reviewer_attempt_identity,
   dispatch_attempt_publication_dir_for_instance,
@@ -110,6 +114,9 @@ import gunbc.roadmap_dispatch_actuator {
   HostExecArgv,
   SystemdUnitContainer,
   TmuxSessionContainer,
+  dispatch_session_container_for_provider,
+  DispatchSessionContainerReady,
+  DispatchSessionContainerUnavailable,
   DispatchSpawnReady,
   DispatchSpawnRefused,
   git_worktree_add_argv,
@@ -302,15 +309,13 @@ test fn witness_dispatch_effort_ignores_intricacy() -> Bool {
 
 test fn witness_claude_argv_uses_dangerous_skip_permissions() -> Bool {
   let argv = claude_spawn_argv(
-    effort: ReasoningHigh,
     model: ProviderAccountDefaultModel,
-    session_uuid: "uuid-1",
-    node_id: roadmap_dispatch_actuator_nid(s: "node-1"),
     brief: "brief body",
   )
   string_contains(s: join(argv, separator: "\0"), pattern: "--dangerously-skip-permissions")
-    && string_contains(s: join(argv, separator: "\0"), pattern: "skipDangerousModePermissionPrompt")
-    && string_contains(s: join(argv, separator: "\0"), pattern: "--session-id")
+    && string_contains(s: join(argv, separator: "\0"), pattern: "-p")
+    && string_contains(s: join(argv, separator: "\0"), pattern: "stream-json")
+    && !string_contains(s: join(argv, separator: "\0"), pattern: "--session-id")
     && !string_contains(s: join(argv, separator: "\0"), pattern: "--resume")
 }
 
@@ -326,10 +331,7 @@ test fn witness_git_worktree_argv_is_execfile_safe() -> Bool {
 
 test fn witness_tmux_spawn_argv_threads_claude_argv() -> Bool {
   let claude = claude_spawn_argv(
-    effort: ReasoningMedium,
     model: ProviderAccountDefaultModel,
-    session_uuid: "uuid-2",
-    node_id: roadmap_dispatch_actuator_nid(s: "node-2"),
     brief: "brief",
   )
   let cmd = tmux_spawn_argv(
@@ -923,10 +925,7 @@ test fn witness_host_exec_argv_shapes_bound_to_extdeps() -> Bool {
 
 test fn witness_claude_invoke_permission_args_are_gunbc_policy() -> Bool {
   let argv = claude_spawn_argv(
-    effort: ReasoningHigh,
     model: ProviderAccountDefaultModel,
-    session_uuid: "uuid-policy",
-    node_id: roadmap_dispatch_actuator_nid(s: "node-policy"),
     brief: "brief",
   )
   string_contains(s: join(argv, separator: "\0"), pattern: "--dangerously-skip-permissions")
@@ -1072,10 +1071,7 @@ data witness_pinned_dispatch_model: NonEmptyStr = "claude-opus-4-1-20250805" as 
 
 test fn witness_pinned_model_reaches_claude_argv() -> Bool {
   let argv = claude_spawn_argv(
-    effort: ReasoningHigh,
     model: ProviderModelPinned { model: witness_pinned_dispatch_model },
-    session_uuid: "uuid-pin",
-    node_id: roadmap_dispatch_actuator_nid(s: "node-pin"),
     brief: "brief",
   )
   string_contains(
@@ -1086,10 +1082,7 @@ test fn witness_pinned_model_reaches_claude_argv() -> Bool {
 
 test fn witness_claude_account_default_passes_no_model_flag() -> Bool {
   let argv = claude_spawn_argv(
-    effort: ReasoningHigh,
     model: ProviderAccountDefaultModel,
-    session_uuid: "uuid-default",
-    node_id: roadmap_dispatch_actuator_nid(s: "node-default"),
     brief: "brief",
   )
   !string_contains(s: join(argv, separator: "\0"), pattern: "--model")
@@ -1516,5 +1509,45 @@ test fn witness_supervisor_launch_writes_the_events_path_metering_reads() -> Boo
           "",
         ),
       )
+  }
+}
+
+test fn witness_headless_claude_uses_a_transient_unit_with_stream_json_on_the_events_path() -> Bool {
+  let instance = srv1_live_dashboard_instance()
+  let node_id = "claude-headless"
+  let attempt_key = "feedfacefeedface"
+  let events = dispatch_attempt_events_path_for_instance(
+    instance: instance,
+    node_id: roadmap_dispatch_actuator_nid(s: node_id),
+    attempt_key: attempt_key,
+  )
+  let log = dispatch_attempt_worker_log_path_for_instance(
+    instance: instance,
+    node_id: roadmap_dispatch_actuator_nid(s: node_id),
+    attempt_key: attempt_key,
+  )
+  match dispatch_session_container_for_provider(
+    provider: ClaudeCodeProvider,
+    instance: instance,
+    node_id: node_id,
+    attempt_key: attempt_key,
+    session_name: "unused",
+    events_path: events,
+    worker_log_path: log,
+    pane_working_directory: "/wt",
+    tmux_spawn: HostExecArgv { program: "tmux", args: [] },
+    pipe_command: TmuxPipeCommand { body: "true" as NonEmptyStr },
+    provider_inner: ["claude", "-p"],
+  ) {
+    DispatchSessionContainerUnavailable { step: _, detail: _ } => false
+    DispatchSessionContainerReady { container } =>
+      match container {
+        TmuxSessionContainer { spawn: _, default_shell: _, remain_on_exit: _, event_pipe: _, provider_start: _ } => false
+        SystemdUnitContainer { plan } =>
+          plan.unit == dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key)
+            && plan.working_directory == "/wt"
+            && plan.stdout_path == events
+            && plan.stderr_path == log
+      }
   }
 }

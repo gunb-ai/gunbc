@@ -94,7 +94,8 @@ import extdeps.tmux {
 import extdeps.llm.cli {
   ProviderModelSelection,
   ProviderModelPinned, ProviderAccountDefaultModel,
-  shape_claude_invoke_argv,
+  shape_claude_print_argv,
+  ClaudePrintUnboundedTurns,
   claude_cli_program,
   codex_cli_program,
   shape_codex_exec_argv,
@@ -475,10 +476,15 @@ fn dispatch_actuator_selection_for_provider_on(
 // per-window usage limits) does not admit the draw, refuses typed, and is never replaced by the
 // harness. Absence of a request is ExecutorDefault, never a vendor.
 //
-// DECLARED FRONTIER, NOT CODE: automatic selection between the harness and a vendor is a std.decision
-// select_realization over funded axes (cost, usage-window headroom, latency, quality). Its trigger is
-// a grounded funded-axis policy once limit, latency and quality readings exist for at least two
-// providers; until then nothing here chooses on the operator's behalf.
+// AUTOMATIC RANKING BETWEEN HARNESS AND VENDOR REMAINS A FRONTIER (std.decision select_realization
+// over funded axes: cost, usage-window headroom, latency, quality). That trigger is unchanged: a
+// grounded funded-axis policy once those readings exist for at least two providers.
+//
+// WHAT THIS FUNCTION DOES LIFT is not that ranking. ExecutorDefault still prefers a serving harness
+// route. When the harness has no enrolled serving route AND the Claude custody file is present on
+// this host, the default admits the same observed-Claude path an explicit `?executor=claude` already
+// takes. Absence of custody keeps the harness refusal. That is fail-closed admission of the only
+// remaining executing backend, not a Pareto choice among two live ones.
 type DispatchExecutorRequest
   = ExecutorDefault
   | ExecutorVendor { provider: DispatchCliProvider }
@@ -812,7 +818,25 @@ fn dispatch_actuator_selection_for_request(
   sizing_expectation: SizingProfileExpectation,
 ) -> DispatchActuatorSelection {
   match request {
-    ExecutorDefault => dispatch_actuator_selection(sizing_expectation: sizing_expectation)
+    ExecutorDefault =>
+      match dispatch_harness_selection() {
+        DispatchActuatorSelectionOk { provider, effort, model, process_fingerprint } =>
+          DispatchActuatorSelectionOk {
+            provider: provider,
+            effort: effort,
+            model: model,
+            process_fingerprint: process_fingerprint,
+          }
+        DispatchActuatorSelectionRefused { reason: harness_reason } =>
+          match claude_credential_custody_source() {
+            CredentialSnapshotTaken { path: _ } =>
+              dispatch_actuator_claude_selection_observed(
+                instance: instance, node_id: node_id, attempt_key: attempt_key, sizing_expectation: sizing_expectation,
+              )
+            CredentialSnapshotRefused { reason: _ } =>
+              DispatchActuatorSelectionRefused { reason: harness_reason }
+          }
+      }
     ExecutorVendor { provider } =>
       match provider {
         ClaudeCodeProvider =>
@@ -2353,21 +2377,15 @@ fn git_worktree_add_detached_argv_for_instance(
 }
 
 fn claude_spawn_argv(
-  effort: ReasoningEffort,
   model: ProviderModelSelection,
-  session_uuid: String,
-  node_id: RoadmapNodeId,
   brief: String,
 ) -> List<String> {
-  shape_claude_invoke_argv(
-    session_id: session_uuid,
-    node_id: node_id,
-    effort: effort,
-    model: model,
-    settings_json: claude_skip_permission_settings_json,
+  shape_claude_print_argv(
     append_system_prompt: brief,
     start_prompt: dispatch_claude_start_prompt,
     permission_args: dispatch_claude_permission_args,
+    model: model,
+    turn_bound: ClaudePrintUnboundedTurns,
   )
 }
 
@@ -2503,10 +2521,7 @@ fn dispatch_provider_inner_argv(
         argv: concat(
           [env_path_resolved_program().invocation as String, "CLAUDE_CODE_NO_FLICKER=1"],
           claude_spawn_argv(
-            effort: effort,
             model: model,
-            session_uuid: session_uuid,
-            node_id: node_id,
             brief: brief,
           ),
         ),
@@ -2586,10 +2601,7 @@ fn dispatch_provider_inner_argv_for_instance(
             "CLAUDE_CODE_NO_FLICKER=1",
           ],
           claude_spawn_argv(
-            effort: effort,
             model: model,
-            session_uuid: session_uuid,
-            node_id: node_id,
             brief: brief,
           ),
         ),
@@ -2856,11 +2868,29 @@ fn dispatch_worker_unit_properties(
   process_bounds: UnitProcessBounds,
   exit_hook: NonEmptyStr,
 ) -> List<SystemdRunProperty> {
+  dispatch_worker_unit_stream_properties(
+    instance: instance,
+    working_directory: working_directory,
+    stdout_path: worker_log_path,
+    stderr_path: worker_log_path,
+    granted: granted,
+    process_bounds: process_bounds,
+  )
+}
+
+fn dispatch_worker_unit_stream_properties(
+  instance: HostDashboardInstance,
+  working_directory: String,
+  stdout_path: String,
+  stderr_path: String,
+  granted: Kibibyte,
+  process_bounds: UnitProcessBounds,
+) -> List<SystemdRunProperty> {
   concat(
     compute_grant_unit_properties(granted: granted, working_directory: working_directory, process_bounds: Present { value: process_bounds }),
     [
-      SystemdRunProperty { property: StandardOutputProperty, value: join(["append:", worker_log_path], "") as NonEmptyStr },
-      SystemdRunProperty { property: StandardErrorProperty, value: join(["append:", worker_log_path], "") as NonEmptyStr },
+      SystemdRunProperty { property: StandardOutputProperty, value: join(["append:", stdout_path], "") as NonEmptyStr },
+      SystemdRunProperty { property: StandardErrorProperty, value: join(["append:", stderr_path], "") as NonEmptyStr },
       SystemdRunProperty { property: ProtectSystemProperty, value: "strict" as NonEmptyStr },
       SystemdRunProperty { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
       SystemdRunProperty { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
@@ -2909,16 +2939,18 @@ type DispatchWorkerUnitPlan {
   systemd_run_program: FilePath
   unit: NonEmptyStr
   working_directory: String
-  worker_log_path: String
+  stdout_path: String
+  stderr_path: String
   inner_argv: List<String>
   exit_hook: NonEmptyStr
 }
 
 fn dispatch_worker_unit_properties_for_plan(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, granted: Kibibyte, process_bounds: UnitProcessBounds) -> List<SystemdRunProperty> {
-  dispatch_worker_unit_properties(
+  dispatch_worker_unit_stream_properties(
     instance: instance,
     working_directory: plan.working_directory,
-    worker_log_path: plan.worker_log_path,
+    stdout_path: plan.stdout_path,
+    stderr_path: plan.stderr_path,
     granted: granted,
     process_bounds: process_bounds,
     exit_hook: plan.exit_hook,
@@ -2947,6 +2979,49 @@ type DispatchSessionContainerPlan
 // not be a degraded success, it would be a guaranteed HostBudgetUnreadable wearing the shape of a
 // spawn that worked. macbook_local_toolchain answers `none` here because macOS has no systemd at
 // all, which is why the field is optional rather than a path every toolchain must invent.
+fn dispatch_systemd_unit_container_plan(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+  pane_working_directory: String,
+  stdout_path: String,
+  stderr_path: String,
+  provider_inner: List<String>,
+  unavailable_step: NonEmptyStr,
+  unavailable_why: String,
+) -> DispatchSessionContainerPlan {
+  match instance.toolchain.systemd_run {
+    Absent =>
+      DispatchSessionContainerUnavailable {
+        step: unavailable_step,
+        detail: join([
+          unavailable_why,
+          ", and the toolchain for host ", instance.host_identity as String,
+          " declares no systemd-run",
+        ], ""),
+      }
+    Present { value: program } =>
+      match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptWorkerRole) {
+        AttemptExitHookRefused { reason } =>
+          DispatchSessionContainerUnavailable { step: "worker-exit-hook" as NonEmptyStr, detail: reason as String }
+        AttemptExitHookRendered { exec_line } =>
+          DispatchSessionContainerReady {
+            container: SystemdUnitContainer {
+              plan: DispatchWorkerUnitPlan {
+                systemd_run_program: program,
+                unit: dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key),
+                working_directory: pane_working_directory,
+                stdout_path: stdout_path,
+                stderr_path: stderr_path,
+                inner_argv: provider_inner,
+                exit_hook: exec_line,
+              },
+            },
+          }
+      }
+  }
+}
+
 fn dispatch_session_container_for_provider(
   provider: DispatchCliProvider,
   instance: HostDashboardInstance,
@@ -2962,45 +3037,29 @@ fn dispatch_session_container_for_provider(
 ) -> DispatchSessionContainerPlan {
   match provider {
     GunbcHarnessProvider =>
-      match instance.toolchain.systemd_run {
-        Absent =>
-          DispatchSessionContainerUnavailable {
-            step: "harness-transient-unit" as NonEmptyStr,
-            detail: join([
-              "the gunbc harness worker requires a transient unit for an enforceable memory bound, ",
-              "and the toolchain for host ", instance.host_identity as String,
-              " declares no systemd-run",
-            ], ""),
-          }
-        Present { value: program } =>
-          match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptWorkerRole) {
-            AttemptExitHookRefused { reason } =>
-              DispatchSessionContainerUnavailable { step: "worker-exit-hook" as NonEmptyStr, detail: reason as String }
-            AttemptExitHookRendered { exec_line } =>
-              DispatchSessionContainerReady {
-                container: SystemdUnitContainer {
-                  plan: DispatchWorkerUnitPlan {
-                    systemd_run_program: program,
-                    unit: dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key),
-                    working_directory: pane_working_directory,
-                    worker_log_path: worker_log_path,
-                    inner_argv: provider_inner,
-                    exit_hook: exec_line,
-                  },
-                },
-              }
-          }
-      }
+      dispatch_systemd_unit_container_plan(
+        instance: instance,
+        node_id: node_id,
+        attempt_key: attempt_key,
+        pane_working_directory: pane_working_directory,
+        stdout_path: worker_log_path,
+        stderr_path: worker_log_path,
+        provider_inner: provider_inner,
+        unavailable_step: "harness-transient-unit" as NonEmptyStr,
+        unavailable_why: "the gunbc harness worker requires a transient unit for an enforceable memory bound",
+      )
     ClaudeCodeProvider =>
-      DispatchSessionContainerReady {
-        container: dispatch_tmux_container(
-          instance: instance,
-          session_name: session_name,
-          tmux_spawn: tmux_spawn,
-          pipe_command: pipe_command,
-          provider_inner: provider_inner,
-        ),
-      }
+      dispatch_systemd_unit_container_plan(
+        instance: instance,
+        node_id: node_id,
+        attempt_key: attempt_key,
+        pane_working_directory: pane_working_directory,
+        stdout_path: events_path,
+        stderr_path: worker_log_path,
+        provider_inner: provider_inner,
+        unavailable_step: "claude-transient-unit" as NonEmptyStr,
+        unavailable_why: "headless Claude Code requires a transient unit so stream-json stdout is a unit property and the session placement grant is the cgroup bound",
+      )
     CodexDispatchProvider =>
       DispatchSessionContainerReady {
         container: dispatch_tmux_container(
