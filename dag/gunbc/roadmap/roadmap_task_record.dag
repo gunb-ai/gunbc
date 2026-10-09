@@ -93,7 +93,7 @@ fn task_ticket_decode(value: JsonValue) -> TicketFields? {
     if headline == "" { none } else {
       Present { value: TicketFields { headline: headline, brief: brief, displaced_cost: displaced_cost, current_state: current_state, first_slice: first_slice, red_control: red_control, out_of_scope: out_of_scope, handback: handback, updates: updates, authored_on: authored_on, last_verified_on: last_verified_on } }
     }
-  } } } } } } } } } }
+  } } } } } } } } } } }
 }
 
 fn task_dispatch_json(d: WorkItemDispatch) -> JsonValue {
