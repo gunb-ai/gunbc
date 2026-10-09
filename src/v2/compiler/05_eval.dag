@@ -2529,7 +2529,13 @@ fn eval_constant_member_value(
   } else {
     match form {
       DirectAtomBody => eval_type_node_atom(node: body, interpretation: interpretation, environment: environment)
-      _ => eval_runtime_node(node: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+      RecordConstructBody => eval_runtime_node(node: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+      DeclarationReferenceBody => eval_runtime_node(node: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+      ParameterReferenceBody => eval_runtime_node(node: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+      LexicalReferenceBody => eval_runtime_node(node: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+      FunctionValueBody => eval_runtime_node(node: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+      ComputationBody { behavior: _ } => eval_runtime_node(node: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+      UnsupportedArrowBody => eval_runtime_node(node: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
     }
   }
 }
