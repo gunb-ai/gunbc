@@ -40,6 +40,7 @@ import v2.extdeps.languages.dag {
   DagCanonicalStringLiteral,
   DagCanonicalLiteral,
   dag_binding_denotation,
+  dag_kernel_type_declaration_binding_optional,
   dag_canonical_literal_from_node,
   dag_declared_inhabitants_root,
   dag_declared_inhabitants_subject_field,
@@ -69,7 +70,7 @@ import std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional }
+import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_last_segment, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional }
 import v2.std.node_query { BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, declared_field_from_edge, find_labeled_child }
 import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
 import v2.std.grammar { node_atom_identity_optional }
@@ -146,6 +147,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   rejected_with_pending
 }
+import v2.std.integer { integer_int_type_node }
 import v2.std.logic { bool_node }
 import v2.std.node {
   StructuralLabel,
@@ -3525,22 +3527,29 @@ fn infer_type_alias_unfolded(t: Node, declarations: SymbolIndex) -> Optional<Nod
 // declared and the produced type, so every declared position -- argument, return, record field, let annotation,
 // binder default -- and both the plain and the generic routes see one type per alias family (review 75435;
 // calm-boar-904, option 1). v2.std.inhabitance holds no index, so the reading is supplied by the producer,
-// exactly as produced_declared_carrier is.
+// exactly as produced_declared_carrier is. KERNEL RECOGNITION IS PART OF EVERY STEP
+// (infer_kernel_value_type_optional): checked before each alias unfolding and inside every Instantiation argument,
+// so `type Alias = v2.std.integer.Int` stops at the kernel atom exactly as a direct reference does, and the generic
+// formal match and the declared-type obligation read ONE normalized type, not two.
 fn infer_type_alias_normalized(t: Node, declarations: SymbolIndex) -> Node {
-  match infer_type_alias_unfolded(t: t, declarations: declarations) {
-    Present { value: unfolded } => infer_type_alias_normalized(t: unfolded, declarations: declarations)
+  match infer_kernel_value_type_optional(t: t) {
+    Present { value: k } => k
     Absent =>
-      match t.kind {
-        TypeNode { connective: Instantiation } =>
-          Node {
-            kind: t.kind,
-            children: fold(t.children, init: Empty, f: fn(acc, e) {
-              list_snoc_item(xs: acc, item: Edge { label: e.label, target: infer_type_alias_normalized(t: e.target, declarations: declarations) })
-            }),
-            occurrence_id: t.occurrence_id
+      match infer_type_alias_unfolded(t: t, declarations: declarations) {
+        Present { value: unfolded } => infer_type_alias_normalized(t: unfolded, declarations: declarations)
+        Absent =>
+          match t.kind {
+            TypeNode { connective: Instantiation } =>
+              Node {
+                kind: t.kind,
+                children: fold(t.children, init: Empty, f: fn(acc, e) {
+                  list_snoc_item(xs: acc, item: Edge { label: e.label, target: infer_type_alias_normalized(t: e.target, declarations: declarations) })
+                }),
+                occurrence_id: t.occurrence_id
+              }
+            TypeNode { connective: _ } => t
+            ComputationNode { behavior: _ } => t
           }
-        TypeNode { connective: _ } => t
-        ComputationNode { behavior: _ } => t
       }
   }
 }
@@ -3560,6 +3569,36 @@ fn infer_match_generic_formal_or_carrier(formal: Node, produced: Node, type_para
         Present { value: carrier } => infer_match_generic_formal(formal: formal, produced: infer_type_alias_normalized(t: carrier, declarations: declarations), type_params: type_params, instances: instances, declarations: declarations)
         Absent => InferFormalShapeMismatch
       }
+  }
+}
+
+// THE KERNEL VALUE TYPE AND THE CORPUS DECLARATION ARE ONE TYPE. `v2.std.integer.Int`
+// (`type Int = GroupCompletion<Nat>`) and the kernel atom `dag_binding_type_int`
+// (integer_int_type_node) answer the same value-type question. Alias-normalizing first unfolds
+// that alias to GroupCompletion<Nat> and then the judge compares that product to the kernel atom.
+// Recognition is BY AUTHORITY, NOT BY SPELLING: a declaration reference joins only when
+// dag_kernel_type_declaration_binding_optional admits the FULL path (the same roster resolve
+// uses). A last-segment `Int` would recapture a module's own `type Int = | Mine` and admit
+// `let y: Int = 1` (gunbc.recurring_failure_mode kernel_type_spelling_captured_a_module_declaration;
+// review 77259). An atom joins only through dag_binding_denotation (binding -> value type).
+fn infer_kernel_value_type_optional(t: Node) -> Optional<Node> {
+  if infer_type_equal_ignoring_provenance(a: t, b: integer_int_type_node()) {
+    optional_present(value: integer_int_type_node())
+  } else if infer_type_equal_ignoring_provenance(a: t, b: bool_node()) {
+    optional_present(value: bool_node())
+  } else {
+    match declaration_reference_path_optional(node: t) {
+      Present { value: path } =>
+        match dag_kernel_type_declaration_binding_optional(path: path) {
+          Present { value: binding } => dag_binding_denotation(sym: binding)
+          Absent => optional_absent()
+        }
+      Absent =>
+        match node_atom_identity_optional(node: t) {
+          Present { value: id } => dag_binding_denotation(sym: id)
+          Absent => optional_absent()
+        }
+    }
   }
 }
 
