@@ -1,6 +1,6 @@
 module test.claim.live_deploy.desired_apply_selection_witness_test
 
-import std.types { Bool, String }
+import std.types { Bool, String, Int }
 import gunbc.live_deploy.apply {
   live_deploy_desired_apply_selection,
   srv1_production_instance_id,
@@ -8,7 +8,11 @@ import gunbc.live_deploy.apply {
   DesiredApplyRefused,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1, selected_deployment_spec, srv1_lab_desired_deployment }
-import gunbc.live_deploy.spec { DeploymentSpec }
+import gunbc.live_deploy.spec {
+  DeploymentSpec, DeploymentStep, Dependency, ArtifactStep,
+  FabricStorageStoreDirectory, TailscalePackage, TmuxPackage, DevbootArtifactStoreDirectory,
+  CodexRuntimeReleaseDirectory, ProviderStateRootDirectory,
+}
 import gunbc.ci_deploy_access { ci_deploy_srv1_operator_local_access }
 import gunbc.roadmap_dashboard_instance { srv1_dashboard_lab_id, srv2_deploy_dashboard_id }
 
@@ -74,4 +78,30 @@ test fn a_row_on_another_host_refuses_under_srv1_access() -> Bool {
     DesiredApplySelected { spec: _ } => false
     DesiredApplyRefused { reason } => string_contains(s: reason, pattern: "DesiredApplyHostMismatch")
   }
+}
+
+// THE FABRIC STORE IS THE PLACED INSTANCE'S (gunbc.live_deploy.spec fabric_storage_ensured_steps).
+// The lab row's step list carries no FabricStorageStoreDirectory member; production's does.
+fn is_fabric_store_step(st: DeploymentStep) -> Bool {
+  match st {
+    Dependency { step } =>
+      match step.kind {
+        FabricStorageStoreDirectory => true
+        TailscalePackage => false
+        TmuxPackage => false
+        DevbootArtifactStoreDirectory => false
+        CodexRuntimeReleaseDirectory => false
+        ProviderStateRootDirectory => false
+      }
+    ArtifactStep { step: _ } => false
+  }
+}
+
+fn fabric_store_step_count(spec: DeploymentSpec) -> Int {
+  count(filter(xs: spec.steps, predicate: st => is_fabric_store_step(st: st)))
+}
+
+test fn the_lab_row_does_not_converge_the_fabric_store_and_production_does() -> Bool {
+  fabric_store_step_count(spec: selected_deployment_spec(row: srv1_lab_desired_deployment())) == 0
+    && fabric_store_step_count(spec: deployment_spec_srv1()) > 0
 }

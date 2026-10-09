@@ -1185,10 +1185,7 @@ fn deployment_ensured_srv1_host_directories() -> List<DeploymentDependencyStep> 
         owner: gunbc_service_user,
       },
     },
-  ], concat(map(fabric_storage_store_directories(), a => DeploymentDependencyStep {
-      kind: FabricStorageStoreDirectory,
-      subject: EnsuredManagedHostDirectory { admission: a },
-    }), [
+  ], [
     DeploymentDependencyStep {
       kind: CodexRuntimeReleaseDirectory,
       subject: EnsuredHostDirectory {
@@ -1196,11 +1193,28 @@ fn deployment_ensured_srv1_host_directories() -> List<DeploymentDependencyStep> 
         owner: gunbc_service_user,
       },
     },
-  ]))
+  ])
 }
 
-fn deployment_ensured_steps(target: DeploymentHostTarget) -> List<DeploymentDependencyStep> {
-  concat(deployment_ensured_packages(), target.ensured_directories)
+// THE FABRIC STORE IS THE PLACED INSTANCE'S, NOT THE HOST'S (gunbc.fabric_storage_placement
+// fabric_storage_placed_instance). While its directories rode on the host target, every deployment
+// on srv1 converged them -- a lab twin's apply ran `install -d -m` over production's store. Only the
+// placed instance ensures them; any other instance on the host reaches the store through its door
+// at most and writes nothing here. Same rule PR #13583 states as
+// fabric_storage_directory_demands(instance).
+fn fabric_storage_ensured_steps(instance: HostDashboardInstance) -> List<DeploymentDependencyStep> {
+  if fabric_storage_placed_on(instance: instance) {
+    map(fabric_storage_store_directories(), a => DeploymentDependencyStep {
+      kind: FabricStorageStoreDirectory,
+      subject: EnsuredManagedHostDirectory { admission: a },
+    })
+  } else {
+    []
+  }
+}
+
+fn deployment_ensured_steps(instance: HostDashboardInstance, target: DeploymentHostTarget) -> List<DeploymentDependencyStep> {
+  concat(deployment_ensured_packages(), concat(target.ensured_directories, fabric_storage_ensured_steps(instance: instance)))
 }
 
 // THE PROVIDER-STATE ROOT IS AN ENSURED MEMBER OF THE INSTANCE, NOT OF THE HOST (CONVERGENCE-ONE
@@ -1287,7 +1301,7 @@ fn deployment_steps_apply_order(
   names: DeploymentNames,
 ) -> List<DeploymentStep> {
   concat(
-    map(deployment_ensured_steps(target: target), s => Dependency { step: s }),
+    map(deployment_ensured_steps(instance: instance, target: target), s => Dependency { step: s }),
     map(
       deployment_owned_steps(instance: instance, names: names),
       s => ArtifactStep { step: s },
