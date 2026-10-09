@@ -91,9 +91,13 @@ The combined workflow witness process needed a 24 GiB memory cap; its earlier
 at revision `521085ab254290029f8dfbaa312a218f84a6be7b` built its compiler successfully,
 but packaging refused `BuildDiagnosticsMissing`: the compiler-pair build had not
 produced the log required by its pack. The build dispatch now uses the existing
-floor log-capture wrapper, preserving the compiler's exit status. A new image run
-is required. The current rootfs pin remains the measured local build and must be
-updated to the archived build's digest before controller installation.
+floor log-capture wrapper, preserving the compiler's exit status. [Retry 37882239644](https://github.com/gunb-ai/gunbc/actions/runs/37882239644)
+at revision `5504b52cd0001115afcfb47a98e98b16c44e199c` succeeded. The downloaded
+artifact's rootfs SHA-256 matches its receipt:
+`d15a55780a707ec832a09e3599306254b8d7c428ff25ff621b427b826eeb0b27`.
+That archived digest is now the reviewed image pin. The kernel matches
+`cb1291c66bca75bc11cb9c8357fcef9965bb1786dffcb42a60923c3e0e49f319`;
+independent ext4 inspection confirms `/root` and `/usr/sbin/sshd` belong to UID/GID 0.
 
 The operator identified `fabric-cell-zp444.slice` as a disposable test slice and
 authorized retirement. Immediately before stopping it, readback confirmed no unit
@@ -130,3 +134,31 @@ Printer callers now supply `printer` and `printer_request`, for example
 `{"operation":"observe"}` or
 `{"operation":"print","project_path":"/absolute/project.3mf","project_sha256":"<reviewed digest>","credential_version":"<observed numeric version>","bed_clear":"true"}`.
 No printer action is performed by VM bringup.
+
+The approved deployment's tree sync and independent repository readback completed
+at revision `19b12d88d6c0206c3f259cf85b0b664e65000b26`. Dashboard, approval broker,
+tailnet door and fabric storage restarted between 04:11:48 and 04:12:04 UTC;
+dashboard readiness is still being checked. At 04:21 UTC the authenticated operator read returned `WorkspaceOperatorObserveRefused: request absent for operator`, proving the protected owner ledger is readable without creating an allocation. The preceding probe finished 19 seconds before the new storage listener opened and is not counted as acceptance.
+The nested deployment/readback interpreters peaked above the original 24 GiB
+scope bound, so that operation's cap was raised to 36 GiB with swap disabled.
+
+The enrolled operator key is the MacBook key, fingerprint
+`SHA256:KEMuhG7TCEjoaF2Q8Xn/4jJd+5uZUggzycUYnLXQojI`. It is already authorized
+on srv1. The local srv1/srv2 keys differ and no agent was selected. Gateway and
+guest SSH acceptance therefore require the operator's forwarded agent; its socket
+has been requested. No enrollment or authorized-key policy is being widened.
+
+The deployment installed its members but returned a cutover refusal: the existing
+`ghrunner` deployment entry cannot read the protected-state credential. Its final
+cutover gate therefore could not read the journal and performed no route effect.
+The dashboard's loopback `/healthz` independently reports revision `19b12d88d6c`;
+the existing tailnet root route still targets that loopback backend. The new
+parallel tailnet-door unit also failed binding `/opt/gunbc/tailnet-door.sock`:
+its service user cannot create entries in root-owned `/opt/gunbc`. These are
+shared-deployment gaps, not permission to distribute the state key or re-own the
+installation root. Full shared-deployment convergence is not claimed.
+
+During cold startup, the shared dashboard slice exceeded its 49 GiB memory-high
+threshold (53 GiB hard cap) and spent about 60% of wall time stalled. Publication
+and belt timers/helpers were temporarily stopped within the approved interruption
+window to let the services finish startup. Their restoration remains required.
