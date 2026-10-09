@@ -4,6 +4,12 @@ Scope: the operator-owned workspace on `srv1-13`, using the existing commissioni
 allocation, controller and cleanup protocols. No customer create API, additional
 hosts, CI-runner migration, or automatic expiry scheduling is part of this change.
 
+Current status: the pinned image/controller, network receipt and slot resource
+boundary have passed live readback. Commissioning refuses because srv1's running
+kernel cannot report attached TUN queues. A concrete kernel maintenance proposal
+is recorded below and has not been applied. No VM boot or authenticated guest SSH
+is yet proven. Guest access uses the dedicated key already on srv1.
+
 ## Observed gaps
 
 The October 9, 2026 inspection found no successful workspace VM lifecycle receipt.
@@ -420,7 +426,7 @@ and HWE image/header meta-packages. This leaves the existing 6.8 kernels install
 The downloaded Ubuntu image/modules packages were inspected without installation.
 The modules package's `System.map-7.0.0-38-generic` contains `tun_get_channels`,
 `tun_fill_info` and `tun_ethtool_ops`; this checks the proposed binary's symbols,
-not merely its version. The simulated install is:
+not merely its version. The install command whose simulation was reviewed is:
 
 ```sh
 sudo apt-get --no-install-recommends install linux-generic-hwe-24.04=7.0.0-38.38~24.04.4
@@ -439,3 +445,23 @@ remote console access and boot recovery have not been established. The current
 GitHub credential cannot list organization runners (403), so a runner drain must
 be established separately rather than inferred from the repository runner list.
 No kernel package has been installed and no reboot has been initiated.
+
+The diagnostics repair at `0fd9f91c7b1` passes all 29 focused commissioning,
+network-producer, TUN-census and initial-sanitation witnesses in
+`target/srv1-commissioning-diagnostics-tests.log` (exit 0). All 8,281 source files
+parse; formatting and whitespace checks pass. The new controls require the actual
+queue-query cause and unobservable sanitation fact to survive refusal reporting.
+
+A read-only manual invocation of the production `workspace_dispatch_plan_cli`
+from clean source `0fd9f91c7b1`, using the installed root-owned interpreter and
+observing release `4fa60f71342`, exits 1 with the complete live cause:
+
+```text
+privileged commissioning observation refused: initial cell sanitation is incomplete; no initial readiness may be published: srv1-13: quarantined — slot-network-quiescent: unobservable — tap-unheld: TUN attached-queue count is unavailable: ethtool --show-channels exited nonzero
+```
+
+The captured log is `target/srv1-bringup-evidence/commissioning-readback-0fd9f91.log`.
+This validates refusal reporting against the installed release; it is not a new
+controller installation, commissioning apply or ongoing CI claim. Independent
+post-readback checks find no allocation, commissioning or readiness files, and
+the historical controller remains stopped with `MainPID=0` and no queued job.
