@@ -32,7 +32,10 @@ test fn w_modified_single_entry() -> Bool {
   let raw = join_name_status_tokens(["M", "file.txt"])
   let entries = well_formed_entries(raw: raw)
   entries.length() == 1
-    && entries.first().path == "file.txt"
+    && match entries.first() {
+         Present { value: e } => e.path == "file.txt"
+         Absent => false
+       }
     && match entries.first().old_path {
       Absent => true
       Present { value: _ } => false
@@ -57,7 +60,10 @@ test fn w_deleted_entry() -> Bool {
   let raw = join_name_status_tokens(["D", "gone.txt"])
   let entries = well_formed_entries(raw: raw)
   entries.length() == 1
-    && entries.first().path == "gone.txt"
+    && match entries.first() {
+         Present { value: e } => e.path == "gone.txt"
+         Absent => false
+       }
     && match entries.first().status {
       DiffDeletedStatus => true
       _ => false
@@ -68,7 +74,10 @@ test fn w_renamed_entry_carries_similarity_and_old_path() -> Bool {
   let raw = join_name_status_tokens(["R100", "old_name.txt", "new_name.txt"])
   let entries = well_formed_entries(raw: raw)
   entries.length() == 1
-    && entries.first().path == "new_name.txt"
+    && match entries.first() {
+         Present { value: e } => e.path == "new_name.txt"
+         Absent => false
+       }
     && match entries.first().old_path {
       Present { value: old } => old == "old_name.txt"
       Absent => false
@@ -83,7 +92,10 @@ test fn w_copied_entry_carries_similarity_and_old_path() -> Bool {
   let raw = join_name_status_tokens(["C87", "source.txt", "copy.txt"])
   let entries = well_formed_entries(raw: raw)
   entries.length() == 1
-    && entries.first().path == "copy.txt"
+    && match entries.first() {
+         Present { value: e } => e.path == "copy.txt"
+         Absent => false
+       }
     && match entries.first().old_path {
       Present { value: old } => old == "source.txt"
       Absent => false
@@ -103,10 +115,22 @@ test fn w_mixed_multi_entry_blob_preserves_order_and_arity() -> Bool {
   ])
   let entries = well_formed_entries(raw: raw)
   entries.length() == 4
-    && entries.first().path == "a.txt"
-    && entries.skip(n: 1).first().path == "b.txt"
-    && entries.skip(n: 2).first().path == "c.txt"
-    && entries.skip(n: 3).first().path == "new_d.txt"
+    && match entries.first() {
+         Present { value: e } => e.path == "a.txt"
+         Absent => false
+       }
+    && match entries.skip(n: 1).first() {
+         Present { value: e } => e.path == "b.txt"
+         Absent => false
+       }
+    && match entries.skip(n: 2).first() {
+         Present { value: e } => e.path == "c.txt"
+         Absent => false
+       }
+    && match entries.skip(n: 3).first() {
+         Present { value: e } => e.path == "new_d.txt"
+         Absent => false
+       }
     && match entries.skip(n: 3).first().old_path {
       Present { value: old } => old == "old_d.txt"
       Absent => false
