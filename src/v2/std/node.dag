@@ -309,6 +309,16 @@ fn node_with_occurrence_id(
   Node { kind: kind, children: children, occurrence_id: occurrence_id }
 }
 
+// Whether the node is an Arrow type node -- the one connective question every reader of a lowered callable or
+// nullary-member shape asks. Single accessor: readers import this rather than re-matching the coproduct.
+fn node_is_arrow(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Arrow } => true
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
 fn node_rebuild(n: Node, children: List<Edge>) -> Node {
   node_with_occurrence_id(
     kind: n.kind,

@@ -1,5 +1,6 @@
 module v2.compiler.self_host.closure_emission
 
+import v2.std.member_declaration_kind { no_member_declaration_kinds }
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules }
 import std.algebra { Cons, Empty, FreeMonoid }
 import std.occurrence_identity { OccurrenceIdAllocator, occurrence_id_allocator_initial, scoped_occurrence_allocator }
@@ -349,7 +350,7 @@ fn closure_resolve_member(
           policy: default_name_resolution_policy()
         )),
         admission: Admission { subject: ResolutionSubject { name: member_module }, imports: Empty }
-      ).walk, symbol_index: symbol_index, closure_declarations: empty_symbol_index(), unavailable_providers: [])
+      ).walk, symbol_index: symbol_index, closure_declarations: empty_symbol_index(), unavailable_providers: [], member_kinds: no_member_declaration_kinds())
     }
   )
 }

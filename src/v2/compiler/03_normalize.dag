@@ -75,15 +75,23 @@ import v2.compiler.normalized_tree {
   NormalizedTree,
   admit_census_tree,
   admit_normalized_tree,
-  admit_retention_free
+  admit_retention_free,
+  normalized_tree_with_member_declarations
 }
+import v2.std.member_declaration_kind { DeclaredDataMember, DeclaredFnMember, DeclaredMember }
 import v2.compiler.test_marker_capture { test_marker_capture }
 import v2.compiler.namespace_graft {
   module_header_containment_graft,
-  namespace_graft_is_graft_candidate
+  namespace_graft_collect_unit_nodes_against,
+  namespace_graft_is_graft_candidate,
+  namespace_graft_top_level_item_alternative_emitted_ids
 }
 import v2.extdeps.languages.dag {
+  dag_grammar_root,
+  dag_surface_kw_then_ident_from_captured,
   import_binding_rows_from_decl_node,
+  namespace_graft_unwrap_module_working_root,
+  parse_production_captured_child_optional,
   parse_production_emitted_identity_optional
 }
 import std.types { List }
@@ -408,6 +416,47 @@ fn type_declaration_kind_capture(nodes: List<Node>) -> FreeMonoid<DeclaredTypeKi
   )
 }
 
+// THE AUTHORED KIND OF EACH TOP-LEVEL MEMBER, read from the parse for the reason type_declaration_kind_capture
+// is: lowering turns `data x: T = v` and `fn x() -> T { v }` into one shape (a named nullary Arrow), so
+// after normalize nothing in the Node says which was authored. The population is the graft's own unit
+// census (namespace_graft_collect_unit_nodes_against over the module's working root, the same units the
+// graft partitions into members), NOT every node of the parse: a declaration nested in another unit is
+// not a member of the module. A data or fn unit whose name cannot be read contributes no row, so a
+// consumer asking for it finds it not declared and refuses, never a fabricated kind.
+// v2.std.member_declaration_kind MemberKindChannel is what carries these to a later grain.
+fn member_declaration_capture(tree: ParseTree) -> FreeMonoid<DeclaredMember> {
+  let unit_ids = namespace_graft_top_level_item_alternative_emitted_ids(productions: dag_grammar_root().productions)
+  fold_list(
+    xs: namespace_graft_collect_unit_nodes_against(node: namespace_graft_unwrap_module_working_root(root: tree), unit_ids: unit_ids),
+    empty: Empty,
+    cons: fn(acc, unit) {
+      match parse_production_emitted_identity_optional(node: unit) {
+        Absent => acc
+        Present { value: id } =>
+          if (id == ^dag_surface_data_decl) || (id == ^dag_surface_fn_decl) {
+            match parse_production_captured_child_optional(node: unit) {
+              Absent => acc
+              Present { value: captured } =>
+                match dag_surface_kw_then_ident_from_captured(captured: captured) {
+                  Absent => acc
+                  Present { value: name } =>
+                    list_snoc_item(
+                      xs: acc,
+                      item: DeclaredMember {
+                        name: name,
+                        kind: if id == ^dag_surface_data_decl { DeclaredDataMember } else { DeclaredFnMember }
+                      }
+                    )
+                }
+            }
+          } else {
+            acc
+          }
+      }
+    }
+  )
+}
+
 // WHICH MODIFIERS EACH TYPE DECLARATION'S SLOT CARRIES, read from the parse tree for the reason
 // type_declaration_kind_capture is: lowering leaves no trace of the slot in the node. The question is
 // answered by the lowering's own reader (v2.compiler.body_lowering_fold
@@ -507,7 +556,13 @@ fn normalize_with(parse_tree: ParseTree, source: NormalizeAllocatorSource) -> Ou
                         ) {
                           Rejected { diagnostics: r } => Rejected { diagnostics: r }
                           Accepted { value: tree, diagnostics: d2 } =>
-                            Accepted { value: ScopedNormalizedTree { tree: tree, allocator: allocated.allocator }, diagnostics: d2 }
+                            Accepted {
+                              value: ScopedNormalizedTree {
+                                tree: normalized_tree_with_member_declarations(tree: tree, members: member_declaration_capture(tree: parse_tree)),
+                                allocator: allocated.allocator
+                              },
+                              diagnostics: d2
+                            }
                         }
                     }
                 }
