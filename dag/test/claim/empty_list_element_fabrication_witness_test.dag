@@ -168,6 +168,24 @@ test fn concat_concrete_type_named_a_refuses() -> Bool {
     && !compiles_with_no_blocking_diagnostic(source: concat_concrete_type_named_a_source)
 }
 
+// A CONCRETE FreeMonoid<Int> ACTUAL MUST BIND T. Over-broad skip treated a Coproduct(FreeMonoid)
+// head or FreeMonoid application as uninformative, so list_append's T never bound and the call
+// read back as the same-display FreeMonoid<T> vs FreeMonoid<T>. Red on that head.
+data list_append_concrete_element_binds_t_source: String = "module probe_list_append_binds_t\nimport std.algebra { Empty, Cons, list_append }\nfn xs() -> FreeMonoid<Int> {\n  list_append(left: Cons { head: 1, tail: Empty }, right: Empty)\n}\n"
+
+test fn list_append_concrete_element_binds_t() -> Bool {
+  compiles_with_no_blocking_diagnostic(source: list_append_concrete_element_binds_t_source)
+}
+
+// bind_outcome's continuation is typed as its RETURN. Skip of that return (or of Outcome whose
+// args are still variables) left U unbound so the call read back as Int/String. A lambda that
+// returns Outcome<String> must bind U. Red on that head.
+data bind_outcome_continuation_solves_u_source: String = "module probe_bind_outcome_u\nimport v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted }\nfn go(o: Outcome<Int>) -> Outcome<String> {\n  bind_outcome(o: o, f: fn(n) { outcome_accepted(value: \"x\") })\n}\n"
+
+test fn bind_outcome_continuation_solves_u() -> Bool {
+  compiles_with_no_blocking_diagnostic(source: bind_outcome_continuation_solves_u_source)
+}
+
 // EVAL CONTROL for gunbc.recurring_failure_mode empty_list_evaluates_to_unit.
 // fold(init: [] as List<T>, concat(acc, [x])) must inhabit T at runtime, not Unit.
 // The empty init must stay ExprListLit so eval_expr_inner takes that arm ([]).

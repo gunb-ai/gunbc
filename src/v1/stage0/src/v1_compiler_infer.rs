@@ -12334,40 +12334,38 @@ pub fn type_is_bare_collection_carrier(
         {
             break false;
         } else {
-            if ((n.connective.clone() == Connective::Disj)
-                && formal_type_is_container_name(n.clone(), source_indices.clone()))
+            if (crate::v1_std_core::qualified_last_segment(type_node_label(
+                n.clone(),
+                source_indices.clone(),
+            )) == "Empty".to_string())
             {
                 break true;
             } else {
-                if (crate::v1_std_core::qualified_last_segment(type_node_label(
-                    n.clone(),
-                    source_indices.clone(),
-                )) == "Empty".to_string())
+                if (formal_type_is_unary_container(n.clone(), source_indices.clone())
+                    && ((n.children.clone().len() as i64) != 1))
                 {
                     break true;
                 } else {
-                    if (formal_type_is_unary_container(n.clone(), source_indices.clone())
-                        && ((n.children.clone().len() as i64) != 1))
+                    if (crate::v1_compiler_infer_types::node_is_element_collection(
+                        n.clone(),
+                        source_indices.clone(),
+                    ) && ((n.children.clone().len() as i64) == 1))
                     {
-                        break true;
-                    } else {
-                        if ((n.children.clone().len() as i64) == 1) {
-                            match n.children.clone().first().cloned() {
-                                Some(c) => {
-                                    let __tco_0 =
-                                        crate::v1_compiler_infer_types::child_type_node(c.clone());
-                                    let __tco_1 = source_indices;
-                                    __tco_loop_n = __tco_0;
-                                    __tco_loop_source_indices = __tco_1;
-                                    continue;
-                                }
-                                std::option::Option::None => {
-                                    break false;
-                                }
+                        match n.children.clone().first().cloned() {
+                            Some(c) => {
+                                let __tco_0 =
+                                    crate::v1_compiler_infer_types::child_type_node(c.clone());
+                                let __tco_1 = source_indices;
+                                __tco_loop_n = __tco_0;
+                                __tco_loop_source_indices = __tco_1;
+                                continue;
                             }
-                        } else {
-                            break false;
+                            std::option::Option::None => {
+                                break false;
+                            }
                         }
+                    } else {
+                        break false;
                     }
                 }
             }
@@ -24741,7 +24739,7 @@ pub fn unify_generics(
                 __found
             })
         {
-            if type_is_bare_collection_carrier(actual.clone(), source_indices.clone()) {
+            if unify_binding_is_uninformative(actual.clone()) {
                 acc.clone()
             } else {
                 match v1_rt::map_get(&acc, bind_name.clone()) {
@@ -24749,8 +24747,10 @@ pub fn unify_generics(
                         v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone())
                     }
                     Some(prev) => {
-                        if (unify_binding_is_uninformative(prev.clone())
-                            && !unify_binding_is_uninformative(actual.clone()))
+                        if ((unify_binding_is_uninformative(prev.clone())
+                            || type_carries_empty_list_placeholder(prev.clone()))
+                            && !unify_binding_is_uninformative(actual.clone())
+                            && !type_carries_empty_list_placeholder(actual.clone()))
                         {
                             v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone())
                         } else {
@@ -24950,7 +24950,9 @@ pub fn unify_lambda_solves(
                             v1_rt::rc_map_insert(st.clone(), g.clone(), candidate.clone())
                         }
                         Some(prev) => {
-                            if unify_binding_is_uninformative(prev.clone()) {
+                            if (unify_binding_is_uninformative(prev.clone())
+                                || type_carries_empty_list_placeholder(prev.clone()))
+                            {
                                 v1_rt::rc_map_insert(st.clone(), g.clone(), candidate.clone())
                             } else {
                                 st.clone()
@@ -24964,16 +24966,32 @@ pub fn unify_lambda_solves(
     )
 }
 
-pub fn unify_binding_is_uninformative(mut __tco_loop_n: Rc<Node>) -> bool {
+pub fn unify_binding_is_uninformative(n: Rc<Node>) -> bool {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::TypeVariable { id: _, .. }) => true,
+        _ => false,
+    }
+}
+
+pub fn type_carries_empty_list_placeholder(mut __tco_loop_n: Rc<Node>) -> bool {
     loop {
         #[allow(unused_mut)]
         let mut n = __tco_loop_n;
         match n.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::TypeVariable { id: _, .. }) => {
-                break true;
+            Some(InferredNode::TypeVariable { id, .. }) => {
+                break (id.clone() == empty_list_element_placeholder_id());
+            }
+            Some(InferredNode::Resolved { node: inner, .. }) => {
+                __tco_loop_n = inner;
+                continue;
             }
             _ => {
-                if ((n.children.clone().len() as i64) == 1) {
+                let leaf = crate::v1_std_core::qualified_last_segment(n.name.clone());
+                if ((n.connective.clone() == Connective::NoConnective)
+                    && ((n.children.clone().len() as i64) == 1)
+                    && (leaf.clone() == "List".to_string()
+                        || leaf.clone() == "FreeMonoid".to_string()))
+                {
                     match n.children.clone().first().cloned() {
                         Some(c) => {
                             let __tco_0 =
@@ -24997,7 +25015,8 @@ pub fn type_node_is_uninformed_accumulator(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    ((unify_binding_is_uninformative(n.clone())
+    (((unify_binding_is_uninformative(n.clone())
+        || type_carries_empty_list_placeholder(n.clone()))
         || produced_is_unsolved_generic_at_conformance(n.clone(), source_indices.clone()))
         || is_type_variable_name(type_node_label(n.clone(), source_indices.clone())))
 }
@@ -25020,8 +25039,9 @@ pub fn concat_operand_is_informed_list(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (node_is_list_concat_operand(n.clone(), source_indices.clone())
+    ((node_is_list_concat_operand(n.clone(), source_indices.clone())
         && !unify_binding_is_uninformative(n.clone()))
+        && !type_carries_empty_list_placeholder(n.clone()))
 }
 
 pub fn list_branch_meets_expected_list(
@@ -25195,6 +25215,21 @@ pub fn concat_unify_operands(
     open_generic_names: Rc<Vec<String>>,
 ) -> Rc<ConcatUnify> {
     {
+        if (list_concat_list_or_free_monoid(left.clone(), source_indices.clone())
+            && list_concat_list_or_free_monoid(right.clone(), source_indices.clone())
+            && (crate::v1_compiler_infer_types::node_type_shape(
+                left.clone(),
+                source_indices.clone(),
+            ) == crate::v1_compiler_infer_types::node_type_shape(
+                right.clone(),
+                source_indices.clone(),
+            )))
+        {
+            return Rc::new(ConcatUnify {
+                result: left.clone(),
+                refuse: std::option::Option::None,
+            });
+        }
         let left_unsolved =
             (concat_operand_is_bare_unsolved(
                 left.clone(),
