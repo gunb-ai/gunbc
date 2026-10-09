@@ -190,19 +190,35 @@ fn cgroup_child_names(cgroup_path: NonEmptyStr) -> List<String>
   }
 }
 
+// The walk is preorder over a pending list so the self-call is a tail call: the effectful reads
+// (procs, child listing) happen once per node and the accumulator is carried, not concatenated
+// from a non-tail recursive result.
+type CgroupWalkPending { path: NonEmptyStr, depth: Int }
+
 fn walk_cgroup(cgroup_path: NonEmptyStr, depth: Int) -> CgroupWalk
 {
-  let here = CgroupWalkNode { path: cgroup_path, pids: cgroup_procs_pids(cgroup_path: cgroup_path) }
-  if depth <= 0 {
-    CgroupWalk { nodes: [here] }
+  walk_cgroup_pending(pending: [CgroupWalkPending { path: cgroup_path, depth: depth }], nodes: [])
+}
+
+fn walk_cgroup_pending(pending: List<CgroupWalkPending>, nodes: List<CgroupWalkNode>) -> CgroupWalk
+{
+  match pending {
+    Empty => CgroupWalk { nodes: nodes }
+    Cons { head: item, tail: rest } =>
+      walk_cgroup_pending(
+        pending: concat(cgroup_walk_children(item: item), rest),
+        nodes: nodes |> list_push(CgroupWalkNode { path: item.path, pids: cgroup_procs_pids(cgroup_path: item.path) }),
+      )
+  }
+}
+
+fn cgroup_walk_children(item: CgroupWalkPending) -> List<CgroupWalkPending>
+{
+  if item.depth <= 0 {
+    []
   } else {
-    fold(cgroup_child_names(cgroup_path: cgroup_path), init: CgroupWalk { nodes: [here] }, f: (acc, name) =>
-      CgroupWalk {
-        nodes: concat(
-          acc.nodes,
-          walk_cgroup(cgroup_path: cgroup_v2_child_path(parent: cgroup_path, child: trim(s: name) as NonEmptyStr), depth: depth - 1).nodes,
-        ),
-      })
+    map(cgroup_child_names(cgroup_path: item.path), name =>
+      CgroupWalkPending { path: cgroup_v2_child_path(parent: item.path, child: trim(s: name) as NonEmptyStr), depth: item.depth - 1 })
   }
 }
 

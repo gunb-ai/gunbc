@@ -158,21 +158,31 @@ fn entry_presence_in_parent(arm: ObservationArm, parent: String, name: String) -
   }
 }
 
+type PresenceVia
+  = NoViaCause
+  | ViaCause { cause: String }
+
 fn entry_presence(arm: ObservationArm, path: String) -> EntryPresence {
+  entry_presence_above(arm: arm, path: path, via: NoViaCause)
+}
+
+// Tail-recursive: `via` carries the cause of the nearest descendant whose parent could not be
+// listed, which is the only cause a present ancestor can surface (absent and indeterminate
+// ancestors pass through unchanged).
+fn entry_presence_above(arm: ObservationArm, path: String, via: PresenceVia) -> EntryPresence {
   let parent = path_parent(path: path)
   let name = path_basename(path: path)
   match entry_presence_in_parent(arm: arm, parent: parent, name: name) {
-    EntryPresent => EntryPresent
+    EntryPresent => match via {
+      NoViaCause => EntryPresent
+      ViaCause { cause: c } => EntryPresenceIndeterminate { cause: c }
+    }
     EntryAbsent => EntryAbsent
     EntryPresenceIndeterminate { cause } =>
       if parent == "/" {
         EntryPresenceIndeterminate { cause: cause }
       } else {
-        match entry_presence(arm: arm, path: parent) {
-          EntryAbsent => EntryAbsent
-          EntryPresent => EntryPresenceIndeterminate { cause: cause }
-          EntryPresenceIndeterminate { cause: ancestor_cause } => EntryPresenceIndeterminate { cause: ancestor_cause }
-        }
+        entry_presence_above(arm: arm, path: parent, via: ViaCause { cause: cause })
       }
   }
 }
