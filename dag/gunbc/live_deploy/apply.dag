@@ -557,12 +557,16 @@ fn live_deploy_apply_via_transport(
     transport: transport,
     access: access,
   )
-  let readiness = live_deploy_poll_until_service_ready_for_deploy(
-    spec: spec,
-    candidate: candidate,
-    transport: transport,
-    access: access,
-  )
+  // A refused mutation cannot produce this candidate. Skip startup polling, but keep the
+  // cutover gate below: it must still recover an interrupted route transaction.
+  let readiness = if reconciliation_converged(r: mutation) {
+    live_deploy_poll_until_service_ready_for_deploy(
+      spec: spec,
+      candidate: candidate,
+      transport: transport,
+      access: access,
+    )
+  } else { tailnet_door_cutover_unpermitted_standing() }
   let cutover = live_deploy_tailnet_door_cutover_gate(
     spec: spec, candidate: candidate, transport: transport, access: access,
     readiness: tailnet_door_cutover_door_standing(mutation: mutation, readiness: readiness),

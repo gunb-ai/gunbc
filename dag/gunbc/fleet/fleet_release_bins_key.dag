@@ -45,7 +45,7 @@ import extdeps.git.object_store { git_object_type_wire_name }
 import gunbc.ci_release_bins { ci_floor_required_artifact_names, ci_floor_invoked_bins }
 import gunbc.repo_self_build { repo_self_build_command }
 import gunbc.ci_spec { ci_release_build_line, ci_release_bins_archive_name }
-import gunbc.ci_failure_class { floor_attempt_command_log_filename }
+import gunbc.ci_failure_class { floor_attempt_command_log_filename, wrap_command_with_floor_attempt_receipt }
 
 // THE RELEASE-BINS PACK IS A CONTENT-ADDRESSED MATERIALIZATION, KEYED BEFORE IT IS BUILT (operator
 // ruling 2026-09-27, route B chosen by eager-owl-205: the fleet-converge build job is the keyed
@@ -1381,7 +1381,11 @@ fn release_bins_consumer_script_dispatch(pair_modes: List<String>) -> String {
 }
 
 fn release_bins_build_script_dispatch(pair_modes: List<String>, fleet_build: String) -> String {
-  release_bins_mode_dispatch(pair_modes: pair_modes, pair_text: compiler_pair_release_product().build_line, fleet_text: fleet_build)
+  // The pair's pack includes the build diagnostics. Use the floor's existing capture wrapper,
+  // which writes that log and preserves a failed compiler exit through tee.
+  release_bins_mode_dispatch(pair_modes: pair_modes,
+    pair_text: wrap_command_with_floor_attempt_receipt(command: compiler_pair_release_product().build_line),
+    fleet_text: fleet_build)
 }
 
 // THE EMITTED SCRIPTS, and the one admission the workflow generation consumes: if the fold refuses any

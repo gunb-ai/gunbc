@@ -79,20 +79,32 @@ same-slot reuse with a new incarnation, expiry cleanup, and final released/ready
 state. Record run IDs, revisions, allocation IDs and generations here as they are
 observed. Never record private keys, tokens or signed state-request envelopes.
 
-Local validation: 39 focused witnesses passed across allocation dispatch, lifecycle,
+Local validation: 44 focused witnesses passed across allocation dispatch, lifecycle,
 launch directives, host offers, owner policy, gateway refresh, workflow dispatch and
-deployment candidate admission. The image builder produced an ext4 image whose
+deployment candidate admission, including three deployment-readiness refusal controls and two cutover recovery/refusal controls. The generated compiler-pair build step was also executed with controlled compiler outcomes: both output streams were retained, and exit codes 0 and 37 were preserved. The image builder produced an ext4 image whose
 `/root` and `/usr/sbin/sshd` are owned by UID/GID 0. The fresh compiler parsed the
 full source tree, and full generated-artifact regeneration completed successfully.
 The combined workflow witness process needed a 24 GiB memory cap; its earlier
 16 GiB run was killed by the cgroup limit, then passed with the larger cap.
 
 [Image build 37878358778](https://github.com/gunb-ai/gunbc/actions/runs/37878358778)
-was accepted at revision `521085ab254290029f8dfbaa312a218f84a6be7b` and is waiting
-for runner capacity. The current rootfs pin is the measured local build and must
-be updated to that archived build's digest before controller installation. No
-service deployment, commissioning, allocation or VM mutation has been performed
-for this acceptance run yet.
+at revision `521085ab254290029f8dfbaa312a218f84a6be7b` built its compiler successfully,
+but packaging refused `BuildDiagnosticsMissing`: the compiler-pair build had not
+produced the log required by its pack. The build dispatch now uses the existing
+floor log-capture wrapper, preserving the compiler's exit status. A new image run
+is required. The current rootfs pin remains the measured local build and must be
+updated to the archived build's digest before controller installation.
+
+The operator identified `fabric-cell-zp444.slice` as a disposable test slice and
+authorized retirement. Immediately before stopping it, readback confirmed no unit
+file, drop-ins, child units or processes. Its unit and cgroup are now absent.
+Execution-cell plan `local-2026-10-09T03:37:32Z`, hash `76783579d393ed3d`,
+advanced generation 18 to 19. Apply `local-2026-10-09T03:47:17Z` completed
+`fully_applied`, receipt `34c5252f521bf5b3`. Independent systemd readback confirms
+active `fabric-cell-srv1-13.slice`, persistent limits of 28 GiB for MemoryMax and
+MemoryHigh, no swap, TasksMax 16384, and the modeled CPU settings. The cell and
+attempt directories have the modeled custody. Commissioning, allocation and VM
+boot remain unproven.
 
 The read-only deployment probe admitted clean candidate
 `19b12d88d6c0206c3f259cf85b0b664e65000b26` after the derived-roster repair. Its
@@ -103,7 +115,15 @@ restart the roadmap service. The existing deployment additionally reinstalls its
 fabric-storage, approval-broker, tailnet-door and timer members, which do not yet
 have differential member identities. Consequently this prerequisite is a shared
 production deployment with service interruption, not a slot-only mutation.
-Operator approval is pending before applying that broader deployment.
+The operator approved this shared deployment, including temporary interruption.
+The first operator-local attempt installed the generated `ghrunner` sudoers but
+refused its exact `tailscale` grant probe under the operator account before other
+mutations. The operator's broad sudo grant does not satisfy this exact grant-list
+probe; the same probe admits the existing `ghrunner` grant. The retry uses the
+existing `live_deploy_apply_srv1_wet` entry as `ghrunner`, without expanding the
+operator grant roster. The failed attempt also exposed 720 unnecessary readiness
+waits after refusal. Readiness polling now requires a converged mutation; cutover
+recovery still runs so interrupted route changes can be rolled back.
 
 The dispatch transport repair preserves the printer's existing domain validation.
 Printer callers now supply `printer` and `printer_request`, for example
