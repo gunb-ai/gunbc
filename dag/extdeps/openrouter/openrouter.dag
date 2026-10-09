@@ -3,6 +3,7 @@ module extdeps.openrouter.openrouter
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.algebra { trim }
 import std.nat { Nat, nat_range_inclusive }
+import std.measure { Second, second, second_count }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -411,7 +412,7 @@ fn openrouter_limit_source_meaning(s: OpenRouterLimitSource) -> String {
 // computes its wait from Retry-After alone; the reset is evidence for the operator, with a live reading
 // the thing that would ground its unit.
 type OpenRouterRetryAfter
-  = RetryAfterSeconds { seconds: Nat }
+  = RetryAfterSeconds { seconds: Second }
   | RetryAfterUnparsed { text: String }
   | RetryAfterAbsent
   | RetryAfterUnread { cause: String }
@@ -499,7 +500,7 @@ fn openrouter_retry_after_from_digits(text: String) -> OpenRouterRetryAfter {
     Present { value: n } =>
       match checked_int_to_nat(n: n) {
         Absent => RetryAfterUnparsed { text: text }
-        Present { value: sec } => RetryAfterSeconds { seconds: sec }
+        Present { value: sec } => RetryAfterSeconds { seconds: second(count: sec) }
       }
   }
 }
@@ -545,7 +546,7 @@ fn openrouter_decode_rate_limited(body: String, header_dump: OpenRouterHeaderDum
 
 fn openrouter_retry_after_wire(r: OpenRouterRetryAfter) -> String {
   match r {
-    RetryAfterSeconds { seconds: n } => join(["Retry-After ", to_string(n), " s"], "")
+    RetryAfterSeconds { seconds: n } => join(["Retry-After ", to_string(second_count(s: n)), " s"], "")
     RetryAfterUnparsed { text: t } => join(["Retry-After '", t, "' (not delta-seconds; not interpreted)"], "")
     RetryAfterAbsent => "no Retry-After"
     RetryAfterUnread { cause: c } => join(["Retry-After unknown: the response headers could not be read (", c, ")"], "")

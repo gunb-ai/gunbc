@@ -68,6 +68,7 @@ import v2.extdeps.languages.dag {
   dag_string_literal_value_symbol_optional,
   dag_symbol_literal_name_optional,
   dag_symbol_literal_node,
+  parse_repeat_capture_items_with,
   dag_match_arm_node,
   dag_resolve_preserve_module_metadata_subtree,
   parse_production_captured_child_optional,
@@ -109,7 +110,13 @@ import v2.std.compilers.body_lowering {
   lower_bind_annotated,
   lower_loop,
   lower_match,
-  lower_unary_prefix
+  lower_unary_prefix,
+  application_head_read,
+  ApplicationHeadFound,
+  ApplicationHeadRefused,
+  ArrowHead,
+  AtomHead,
+  NotApplicationHead
 }
 import v2.std.compilers.lowered_shape {
   LoweredBranch,
@@ -134,7 +141,7 @@ import v2.std.compilers.lowered_shape {
 }
 import v2.std.list_introduction { lower_list_introduction }
 import v2.std.arrow_signature { anonymous_signature_arrow, declared_signature, signature_order_edge }
-import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional }
+import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional, sugar_named_child_optional, sugar_type_node }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr }
 import v2.std.diagnostic {
   Accepted,
@@ -172,6 +179,7 @@ import v2.std.node {
   BodyTermLoweredSeal,
   CoreMarker,
   body_term_lowered_seal,
+  AdmitCallersEdge,
   MapLiteralEntryEdge,
   MapLiteralEntriesEdge,
   MatchArmScopeExitEdge,
@@ -225,6 +233,7 @@ import v2.std.arrow_contract { effect_claim_label, hermetic_claim_label }
 import std.effects { EffectClaim, ReadonlyClaim, IdempotentClaim }
 import v2.std.node_query {
   binder_edge,
+  construct_field_edges,
   member_edge_type_node,
   node_positional_child_targets,
   construct_node,
@@ -4660,7 +4669,6 @@ fn body_lower_data_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
 // Atoms, in declared order: arity 0 is the empty introduction, arity 1 a singleton. It is the ONE
 // place positional binding reads parameter order (v2.std.node arrow_declared_parameter_order).
 // Resolve does not walk it (v2.compiler.resolve resolve_arrow_node): its atoms are labels, not
-// references, so a parameter spelled like a name in scope cannot bind through it.
 //
 // THE ONE CALLABLE ARROW. A lambda is surface sugar over the same Arrow a named `fn` declares, so the
 // child LAYOUT of a callable Arrow -- which children exist, in which order, under which labels -- is
@@ -4716,15 +4724,15 @@ fn body_lower_callable_arrow(
     )
   ))
 }
-
 fn body_lower_fn_decl_arrow(shell: Node, sig: BodyLowerFnSignature, body: Optional<Node>) -> Node {
+
   body_lower_fn_decl_named_member_wrap(
     arrow: body_lower_callable_arrow(
       source: shell,
       domain: Edge { label: Positional, target: sig.domain },
       codomain: sig.return_type,
       order_edge: signature_order_edge(order: sig.order, source: shell),
-      type_param_edges: body_lower_fn_decl_type_params_edges(sig: sig),
+      type_param_edges: list_append(left: body_lower_fn_decl_type_params_edges(sig: sig), right: body_lower_fn_admit_clause_edges(shell: shell)),
       body: match body {
         Absent => optional_absent()
         Present { value: b } =>
@@ -4734,6 +4742,317 @@ fn body_lower_fn_decl_arrow(shell: Node, sig: BodyLowerFnSignature, body: Option
     fn_name: sig.fn_name,
     source: shell
   )
+}
+
+// THE ADMIT_CALLERS CARRIER, ONE BUILD PER CLAUSE. The generic dispatch (body_lower_after_children)
+// reaches the clause shell BOTTOM-UP, so the clause's OWN production case is where the authored
+// encoding is consumed: body_lower_admit_clause_image reads the roster off the raw spine (the reader
+// needs the parse encoding) and the image REPLACES the shell, so the raw token subtree never enters
+// the tree. The fn declaration's Arrow then finds the image by the shell's own identity (kept in
+// body_lower_admit_clause_image) and hangs it under the core marker AdmitCallersEdge — one build,
+// one fact, one place (DESIGN section 3).
+//
+// WHY THE ROSTER IS RE-HUNG AT ALL: a raw grammar-sequence encoding is token atoms, and token atoms
+// do not ground, so a raw roster in a subject's own module would refuse the whole fixture at
+// infer_grounding_not_derived before any wall could judge it (pinned by probe 2026-10-04) — the same
+// reason the where-clause lowering does not carry predicates raw.
+//
+// FALLBACK, FAIL-CLOSED: if the authored spine does not read, the carrier hangs a MARKER atom at
+// the clause's own occurrence instead of a roster. The reader demands a roster conj and REFUSES
+// (^infer_reason_admit_callers_entries_unreadable at the clause) — a malformed clause is never a
+// shorter roster (DESIGN section 5: a failure arm must refuse, never widen).
+// THE CARRIER (v2 body lowering): a fn's authored `admit_callers` clause becomes one AdmitCallersEdge
+// on the fn's Arrow, whose target is the clause's lowered roster. The clause is an OPTIONAL ELEMENT of
+// the fn-decl production, so it is read off the fn shell's optional-element projection — identified by
+// its own production identity (^dag_surface_admit_callers_clause), which distinguishes it from the
+// fn header's other optional (the return type). The outer Absent (no such optional) is the only
+// silence: a fn without the clause has nothing to judge. Once a clause IS present, every failure to
+// read it hangs the clause-fallback marker instead -- the reader refuses it as
+// ^infer_reason_admit_callers_entries_unreadable at the clause (DESIGN §5: a failure arm must refuse,
+// never widen). A grammar or graft change that reshapes the clause shell switches the wall to
+// REFUSING, never off.
+fn body_lower_fn_admit_clause_edges(shell: Node) -> List<Edge> {
+  match body_lower_admit_clause_shell_optional(shell: shell) {
+    Absent => []
+    Present { value: clause } =>
+      match body_lower_admit_clause_roster_optional(clause: clause) {
+        Absent =>
+          [core_edge(
+            marker: AdmitCallersEdge,
+            target: sugar_type_node(connective: Atom { identity: ^infer_reason_admit_callers_entries_unreadable }, children: [], n: clause)
+          )]
+        Present { value: roster } => [core_edge(marker: AdmitCallersEdge, target: roster)]
+      }
+  }
+}
+
+// THE FN SHELL'S ADMIT CLAUSE, among its optionals: the optional-element projection whose target's
+// production identity is ^dag_surface_admit_callers_clause.
+fn body_lower_admit_clause_shell_optional(shell: Node) -> Optional<Node> {
+  match parse_production_captured_child_optional(node: shell) {
+    Absent => optional_absent()
+    Present { value: captured } =>
+      match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_admit_callers_clause) {
+        Absent => optional_absent()
+        Present { value: clause } => optional_present(value: clause)
+      }
+  }
+}
+
+// THE CLAUSE'S ROSTER: the clause shell's named body value (the bracketed entry list), else its
+// captured child.
+fn body_lower_admit_clause_roster_optional(clause: Node) -> Optional<Node> {
+  match sugar_named_child_optional(root: clause, name: ^admit_callers_clause_body) {
+    Present { value: roster } => optional_present(value: roster)
+    Absent => parse_production_captured_child_optional(node: clause)
+  }
+}
+
+// THE CLAUSE'S LOWERED IMAGE: the shell's own kind and occurrence (so the Arrow finds it), carrying
+// the roster as one named value edge. The reused occurrence is legal BECAUSE the shell it came from
+// leaves the tree with this replacement, together with the whole raw spine (occurrence wall: a
+// minted id on two nodes with different content refuses). The production-identity projection is
+// KEPT verbatim, so body_lower_find_production_shell_optional and every graft that recognizes the
+// shell still do; only the value encoding is swapped.
+fn body_lower_admit_clause_image(clause: Node) -> Node {
+  let roster = match body_lower_admit_roster_node(clause: clause) {
+    Absent => sugar_type_node(connective: Atom { identity: ^infer_reason_admit_callers_entries_unreadable }, children: [], n: clause)
+    Present { value: r } => r
+  }
+  node_lowered_from(
+    source: clause,
+    kind: clause.kind,
+    children: list_append(
+      left: keep_production_projections(children: clause.children),
+      right: [Edge { label: Authored { name: ^admit_callers_clause_body }, target: roster }]
+    )
+  )
+}
+
+// The projection edges that are part of the shell's identity (the production-identity projection and
+// its peers), kept so the image remains a recognized production shell.
+fn keep_production_projections(children: List<Edge>) -> List<Edge> {
+  fold(
+    xs: children,
+    init: Empty,
+    f: fn(acc, e) {
+      if label_is_projection(e: e) { list_append(left: acc, right: [e]) } else { acc }
+    }
+  )
+}
+
+fn label_is_projection(e: Edge) -> Bool {
+  match e.label {
+    Authored { name: name } =>
+      (name == ^grammar_production_identity_node_projection)
+        || (name == ^grammar_optional_element_node_projection)
+    Positional => false
+    StructuralLabel { label: _ } => true
+  }
+}
+
+fn body_lower_admit_roster_node(clause: Node) -> Optional<Node> {
+  match parse_production_captured_child_optional(node: clause) {
+    Absent => optional_absent()
+    Present { value: captured } =>
+      match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: captured)) {
+        Absent => optional_absent()
+        Present { value: head_pair } =>
+          match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: head_pair.right)) {
+            Absent => optional_absent()
+            Present { value: colon_pair } =>
+              match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: colon_pair.right)) {
+                Absent => optional_absent()
+                Present { value: bracket_pair } =>
+                  match body_lower_comma_list_items_optional(list_capture: bracket_pair.right) {
+                    Absent => optional_absent()
+                    Present { value: entries } =>
+                      body_lower_admit_roster_from_entries(entries: entries, template: bracket_pair.right)
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_admit_roster_from_entries(entries: List<Node>, template: Node) -> Optional<Node> {
+  match body_lower_admit_record_spine(entries: entries, template: template) {
+    Absent => optional_absent()
+    Present { value: spine } =>
+      optional_present(value: close_lowered_image(root: spine))
+  }
+}
+
+// THE CONFORMING ROSTER: the declared sequence-pair spine — one record per entry, under the
+// grammar's sequence-projection edges (@grammar_sequence_left_node_projection carries the record,
+// @grammar_sequence_right_node_projection carries the rest, the empty conj root ends the spine).
+// This is the substrate's standing linked-list-in-a-tree shape, read by the shared
+// sugar_sequence_pair_optional; the carrier mints it and adds no second name for it (DESIGN §2).
+// Every edge is authored and distinct within its node, so connective_edges_conform accepts it, and
+// an empty authored list lowers to the empty conj root without refusing. All built nodes share the
+// template's minted occurrence (the template left the tree with the swap); close_lowered_image marks
+// every member below the root OccurrencePending so allocation gives each a real id after
+// normalization.
+fn body_lower_admit_record_spine(entries: List<Node>, template: Node) -> Optional<Node> {
+  fold(
+    xs: entries,
+    init: optional_present(value: sugar_type_node(connective: Conj, children: [], n: template)),
+    f: fn(acc, entry) {
+      match acc {
+        Absent => optional_absent()
+        Present { value: rest } =>
+          match body_lower_admit_entry_edge(entry: entry, template: template) {
+            Absent => optional_absent()
+            Present { value: record_edge } =>
+              optional_present(
+                value: sugar_type_node(
+                  connective: Conj,
+                  children: [
+                    Edge {
+                      label: Authored { name: ^grammar_sequence_left_node_projection },
+                      target: record_edge.target
+                    },
+                    Edge {
+                      label: Authored { name: ^grammar_sequence_right_node_projection },
+                      target: rest
+                    }
+                  ],
+                  n: template
+                )
+              )
+          }
+      }
+    }
+  )
+}
+
+// ONE ENTRY -> ONE RECORD CONJ IN THE SPINE, ALWAYS GROUNDABLE. The entry's call is read through the
+// shared readers -- application_head_read for the callee (the canonical Transform-head surface, the
+// same accessor every other callee consumer uses) and the authored field edges for the two
+// coordinates, whose string literals are read by the language's own
+// dag_string_literal_value_symbol_optional. The record carries
+// the operator spelling (^decl_ref) and the two lexemes as plain atoms. An entry that READS but is not
+// such a call lowers to a marker record the reader refuses at the entry
+// (^infer_reason_admit_callers_entry_not_decl_ref) — never dropped, never a raw token subtree. Only a
+// spine the reader cannot walk returns Absent, failing the whole roster into the clause fallback's
+// refusal. EVERY built node is minted with the roster template's id: close_lowered_image marks them
+// all OccurrencePending below the spine root, so allocation gives each a real id and no two built
+// nodes ever share one minted identity.
+fn body_lower_admit_entry_edge(entry: Node, template: Node) -> Optional<Edge> {
+  match body_lower_admit_entry_call_optional(item: entry) {
+    Absent => optional_absent()
+    Present { value: call } =>
+      match call.kind {
+        TypeNode { connective: Conj } =>
+          optional_present(value: body_lower_admit_entry_marker(template: template))
+        TypeNode { connective: Atom { identity: _ } } =>
+          optional_present(value: body_lower_admit_entry_marker(template: template))
+        TypeNode { connective: Arrow } =>
+          optional_present(value: body_lower_admit_entry_marker(template: template))
+        TypeNode { connective: Cardinality } =>
+          optional_present(value: body_lower_admit_entry_marker(template: template))
+        TypeNode { connective: Instantiation } =>
+          optional_present(value: body_lower_admit_entry_marker(template: template))
+        TypeNode { connective: Disj } =>
+          optional_present(value: body_lower_admit_entry_marker(template: template))
+        ComputationNode { behavior: Transform } =>
+          match application_head_read(site: call) {
+            ApplicationHeadFound { head: _, head_identity: AtomHead { identity: id }, operands: _ } =>
+              if symbol_eq(a: id, b: ^decl_ref) {
+                    match body_lower_admit_string_field_edge(call: call, field: ^module_path, template: template) {
+                      Absent => optional_present(value: body_lower_admit_entry_marker(template: template))
+                      Present { value: mp_edge } =>
+                        match body_lower_admit_string_field_edge(call: call, field: ^decl_name, template: template) {
+                          Absent => optional_present(value: body_lower_admit_entry_marker(template: template))
+                          Present { value: dn_edge } =>
+                            optional_present(
+                              value: Edge {
+                                label: Authored { name: ^admit_callers_clause_body },
+                                target: sugar_type_node(
+                                  connective: Conj,
+                                  children: [
+                                    Edge {
+                                      label: Authored { name: ^decl_ref },
+                                      target: sugar_type_node(connective: Atom { identity: ^decl_ref }, children: [], n: template)
+                                    },
+                                    mp_edge,
+                                    dn_edge
+                                  ],
+                                  n: template
+                                )
+                              }
+                            )
+                        }
+                    }
+                  } else {
+                    optional_present(value: body_lower_admit_entry_marker(template: template))
+                  }
+            ApplicationHeadFound { head: _, head_identity: ArrowHead, operands: _ } =>
+              optional_present(value: body_lower_admit_entry_marker(template: template))
+            ApplicationHeadRefused { diagnostics: _ } =>
+              optional_present(value: body_lower_admit_entry_marker(template: template))
+            NotApplicationHead =>
+              optional_present(value: body_lower_admit_entry_marker(template: template))
+          }
+        ComputationNode { behavior: Loop } =>
+          optional_present(value: body_lower_admit_entry_marker(template: template))
+        ComputationNode { behavior: Branch } =>
+          optional_present(value: body_lower_admit_entry_marker(template: template))
+        ComputationNode { behavior: Bind } =>
+          optional_present(value: body_lower_admit_entry_marker(template: template))
+        ComputationNode { behavior: Match } =>
+          optional_present(value: body_lower_admit_entry_marker(template: template))
+        ComputationNode { behavior: Value } =>
+          optional_present(value: body_lower_admit_entry_marker(template: template))
+      }
+  }
+}
+
+// @field -> string literal -> the value lexeme as an interned symbol, read by the language's own
+// string-literal reader, hung as the record's authored field edge. Absent when the edge is missing or
+// its target is not a string literal.
+fn body_lower_admit_string_field_edge(call: Node, field: Symbol, template: Node) -> Optional<Edge> {
+  match sugar_named_child_optional(root: call, name: field) {
+    Absent => optional_absent()
+    Present { value: literal } =>
+      match dag_string_literal_value_symbol_optional(node: literal) {
+        Absent => optional_absent()
+        Present { value: lexeme } =>
+          optional_present(
+            value: Edge {
+              label: Authored { name: field },
+              target: sugar_type_node(connective: Atom { identity: lexeme }, children: [], n: template)
+            }
+          )
+      }
+  }
+}
+
+// THE UNINTERPRETABLE-ENTRY MARKER: a record conj whose single edge names the refusal the reader
+// raises at the entry. Minted with the template's id like every other built node; close_lowered_image
+// marks it pending and allocation gives it a real id.
+fn body_lower_admit_entry_marker(template: Node) -> Edge {
+  Edge {
+    label: Authored { name: ^uninterpretable },
+    target: sugar_type_node(
+      connective: Conj,
+      children: [Edge {
+        label: Authored { name: ^infer_reason_admit_callers_entry_not_decl_ref },
+        target: sugar_type_node(connective: Atom { identity: ^infer_reason_admit_callers_entry_not_decl_ref }, children: [], n: template)
+      }],
+      n: template
+    )
+  }
+}
+
+// The entry item is the parse spine of the call expression: nested sequence pairs whose every right
+// component is empty (a call has no operator tail), bottoming at the lowered comp:transform. Descend
+// the left spine to the leaf; a non-empty tail is not an entry shape this reader admits.
+fn body_lower_admit_entry_call_optional(item: Node) -> Optional<Node> {
+  match body_lower_body_subtree_lower_from_binary(captured: item) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: found, diagnostics: _ } => found
+  }
 }
 
 // CENSUS GRADE: THE SIGNATURE, NEVER THE BODY. A module outside the compiled closure is read only for
@@ -11893,6 +12212,8 @@ fn body_lower_production_emitted(shell: Node, emitted: Symbol, fn_body_pass_thro
     body_lowering_lowered(o: outcome_accepted(value: shell))
   } else if emitted == ^dag_surface_type_variant {
     body_lowering_lowered(o: body_lower_type_variant(shell: shell))
+  } else if emitted == ^dag_surface_admit_callers_clause {
+    body_lowering_lowered(o: outcome_accepted(value: body_lower_admit_clause_image(clause: shell)))
   } else if body_lower_is_structure_preserved_emitted(emitted: emitted) {
     body_lowering_lowered(o: outcome_accepted(value: shell))
   } else if emitted == ^dag_surface_fn_body && fn_body_pass_through {
@@ -12338,4 +12659,5 @@ fn body_lower_finish_for_normalize(
     o: body_lower_after_children(folded: folded, fn_body_pass_through: fn_body_pass_through)
   )
 }
+
 

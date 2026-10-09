@@ -1398,7 +1398,7 @@ data resolved_graph_disk_format_unqualified_frontier: DissolutionCondition = unb
 )
 
 data in_process_fnv_producer_observation_frontier: DissolutionCondition = unbound_dissolution(
-  description: "A production producer must mint InProcessMaterialization at the seam that holds both the executed ArtifactRequest and the constructed artifact. Until that seam exists, in-process FNV sharing is not an admitted production route: only inhabitance claims and floor-preparation witnesses may call in_process_materialization, and a consumer must not derive the observed identity from the lookup request."
+  description: "A production producer must mint InProcessMaterialization at the seam that holds both the executed ArtifactRequest and the constructed artifact. Until that seam exists, in-process FNV sharing is not an admitted production route: only inhabitance claims may call in_process_materialization, and a consumer must not derive the observed identity from the lookup request."
 )
 
 fn in_process_materialization(
@@ -1406,9 +1406,7 @@ fn in_process_materialization(
   artifact: MaterializedArtifact,
   observed_digest: ContentHash
 ) -> ProviderProbe admit_callers: [
-  decl_ref(module_path: "test.claim.materialization_provider_witness", decl_name: "minted_in_process"),
-  decl_ref(module_path: "test.claim.floor_preparation_witness", decl_name: "probe_for"),
-  decl_ref(module_path: "test.claim.floor_preparation_witness", decl_name: "wrong_artifact_key_refuses")
+  decl_ref(module_path: "test.claim.materialization_provider_witness", decl_name: "minted_in_process")
 ] {
   InProcessProbe {
     observation: InProcessMaterialization {

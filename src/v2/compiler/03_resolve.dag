@@ -171,8 +171,9 @@ import v2.std.node {
   symbol_lexeme,
   arrow_domain_binds_a_name,
   arrow_first_positional_target,
-  arrow_named_edge_is_contract,
+  arrow_named_edge_is_metadata,
   ArrowResourceRequirementsEdge,
+  AdmitCallersEdge,
   FirstPositionalAbsent,
   FirstPositionalFound,
   edge_label_of,
@@ -4413,6 +4414,12 @@ fn resolve_node_consumes_expectation(n: Node) -> Bool {
 // parameters under -- so its value frame is a ParameterFrame over that path. Nothing below an Arrow
 // is containment: its body, codomain and domain walk NotDeclaring, so an Arrow met there (a lambda)
 // opens a LexicalFrame.
+// THE DECLARED PERMITTED-CALLERS CLAUSE IS CARRIED UNWALKED, like the declared order below it:
+// its target is the clause's preserved spelling, evidence about the source rather than value
+// content, and walking it would resolve the list's decl_ref constructor as a reference. Its
+// reader is the caller-admission consumer (v2.compiler.infer infer_caller_admission_diags) and
+// its structural check is the Arrow wall's at-most-once guard
+// (v2.std.node arrow_signature_edges_conform).
 fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
   match gate_value_binders(names: arrow_domain_binder_name_list(n: n), outer: ctx.scope, at: n) {
     BinderGateRefused { diagnostic: d } => resolve_walk_refused_one(chain: diagnostics_singleton(d: d))
@@ -4440,7 +4447,7 @@ fn resolve_arrow_node_admitted(outer_ctx: ResolveContext, ctx: ResolveContext, n
           child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] })
         } else if edge_is_core(e: e, marker: ArrowResourceRequirementsEdge) {
           child_walk_step(w: acc, e: e, r: resolve_arrow_resource_requirements(ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: scope_type), requirements: e.target))
-        } else if arrow_named_edge_is_contract(e: e) {
+        } else if arrow_named_edge_is_metadata(e: e) {
           child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] })
         } else {
           child_walk_step(

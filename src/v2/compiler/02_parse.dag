@@ -43,24 +43,18 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Hash,
   Authored,
   Node,
   Symbol,
   TypeNode,
-  combine_hash,
-  content_hash,
   node_synthetic,
   node_with_occurrence_id,
-  symbol_identity_digest,
   well_formed,
   symbol_intern_lexeme,
   symbol_lexeme,
 }
 import v2.std.occurrence_id {
   alloc_occurrence_id,
-  authored_token_ordinal_space_from_allocator,
-  occurrence_id_allocator_advance_to,
   occurrence_id_allocator_initial
 }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceIdAllocator, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic, node_occurrence_identity_minted }
@@ -77,7 +71,6 @@ import v2.std.provenance {
   SpanIndex,
   origin_event_from_source,
   span_index_empty,
-  span_index_adopt,
   span_index_record
 }
 import v2.std.collection {
@@ -96,16 +89,6 @@ import std.optional {
 import std.algebra { Cons, Empty, FreeSemigroup, list_append, list_snoc_item }
 import v2.std.algebra { HeadAbsent, HeadFound, TailAbsent, TailFound, any, contains, filter, fold_list, fold_list_right, is_empty, length, list_head, list_reverse, list_tail, unique, zip_eq }
 import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
-import std.cache_identity { ArtifactKindId, CacheInterfaceId }
-import std.realization { Materialization }
-import v2.std.integer { integer_int_content_digest }
-import v2.compiler.materialization_carriers {
-  parse_table_memo_artifact_kind,
-  parse_table_memo_provider_id,
-  ParseMemoRecurrence,
-  parse_table_memo_materialization_for,
-  materialization_allows_memo_store,
-}
 import v2.extdeps.languages.dag {
   dag_float_literal_node_from_lexeme,
   dag_int_literal_node_from_lexeme,
@@ -156,22 +139,14 @@ import v2.std.grammar {
   grammar_to_node
 }
 
-// THE MEMO FRAME. `frame` names every occurrence id recorded since the innermost memoized
-// production started: a mint is one FrameMinted, and a memo hit or miss inside the frame is one
-// FrameNested sharing the inner frame's list (a snoc, never a copy). A memo hit replays exactly
-// its stored frame into the current index instead of merging the stored index whole. That is
-// exact for every consumer: a node the hit returns carries only ids minted or replayed inside
-// the memoized frame, so every id it can look up is in the replayed frame; entries the stored
-// index held from before the frame belong to a different parse path, no node on this path
-// references them, and the span index is read only by lookup(id).
-type ParseProvFrameItem
-  = FrameMinted { id: OccurrenceId }
-  | FrameNested { frame: List<ParseProvFrameItem> }
-
+// THE PARSE'S PROVENANCE IS ONE PATH'S STATE. Every backtracking construct restores the whole
+// value on a failed attempt, so the allocator and the span index describe exactly the surviving
+// path: an id minted on an abandoned attempt is minted again by the next one and recorded once.
+// Nothing is served across paths -- the packrat memo that did so was deleted (operator ruling R2,
+// 2026-10-08; gunbc.recurring_failure_mode parse_memo_hit_serves_occurrences_minted_on_an_abandoned_path).
 type ParseProvenanceState {
   alloc: OccurrenceIdAllocator
   index: v2.std.provenance.SpanIndex
-  frame: List<ParseProvFrameItem>
 }
 
 // THE ALLOCATOR RIDES BESIDE THE INDEX BECAUSE THEY ARE ONE FACT. `span_index` says where each
@@ -267,12 +242,6 @@ type ParseStampResult {
   prov: ParseProvenanceState
 }
 
-type ParseMemoStats {
-  hits: Int
-  misses: Int
-  lookup_calls: Int
-}
-
 // THE FURTHEST POSITION A REJECTED ALTERNATIVE REACHED, which is where a refusal is located.
 // `parse_g0_tokens_remain` used to report the FIRST LEFTOVER token: the start of the module item
 // whose production failed as a whole, after `repeat` stopped. That names the symptom item, not
@@ -290,17 +259,6 @@ type ParseFurthestFailure
   = FurthestNone
   | FurthestAtToken { token: Token, expectation: Optional<ParseRefusalReason> }
   | FurthestAtEnd { expectation: Optional<ParseRefusalReason> }
-
-type ParseMemoEntry
-  = ParseMemoAccepted {
-      remaining: List<Token>,
-      captured: Node,
-      diagnostics: List<Diagnostic>,
-      prov: ParseProvenanceState,
-      furthest: ParseFurthestFailure,
-      refusal: Optional<Diagnostic>
-    }
-  | ParseMemoRejected { diagnostics: List<Diagnostic>, furthest: ParseFurthestFailure, refusal: Optional<Diagnostic> }
 
 type ParseExprResult
   = ParseExprAccepted {
@@ -331,21 +289,7 @@ type GrammarExprCornerFold {
   nullable: Bool
 }
 
-type ParsePositionKey {
-  position: Int
-  production: Symbol
-}
-
 type ParseTableRealization {
-  artifact_kind: std.cache_identity.ArtifactKindId
-  provider_id: std.cache_identity.CacheInterfaceId
-  materialization: Materialization
-  grammar_digest: Hash
-  token_stream_digest: Hash
-  entries: Map<ParsePositionKey, ParseMemoEntry>
-  memo_hits: Int
-  memo_misses: Int
-  memo_lookup_calls: Int
   furthest: ParseFurthestFailure
   nullable_set: List<Symbol>
   first_rows: Map<Symbol, List<FirstKey>>
@@ -365,9 +309,9 @@ type PreparedModeledGrammar {
 
 type PreparedGrammar
   = PreparedVoidGrammar
-  | PreparedModeled { modeled: PreparedModeledGrammar, materialization: Materialization }
+  | PreparedModeled { modeled: PreparedModeledGrammar }
 
-data prepared_grammar_carrier_note: String = "PreparedGrammar is the once-per-grammar carrier: well-formedness, the five grammar_validate_for_parse checks, and the FIRST/nullable analysis (GrammarFirstAnalysis) are pure functions of the grammar, so prepare_grammar runs them ONCE and parse_module_prepared reuses the result per module. Previously parse_module re-ran the whole 5-check validation AND compute_grammar_first_analysis was computed twice (once in the ambiguity check, once in parse_table_for_production) on EVERY parse. Hoisting prepare_grammar above the assemble fold makes a door call over a K-module closure validate once, not K times — correctness-by-construction (the prepare sits above fold_list), no timing gate. The cache-interface fields on ParseTableRealization (grammar_digest/provider_id/materialization) stay for the cross-call content-addressed memo, which is gated on wiring the currently Miss-stubbed cache backend."
+data prepared_grammar_carrier_note: String = "PreparedGrammar is the once-per-grammar carrier: well-formedness, the five grammar_validate_for_parse checks, and the FIRST/nullable analysis (GrammarFirstAnalysis) are pure functions of the grammar, so prepare_grammar runs them ONCE and parse_module_prepared reuses the result per module. Previously parse_module re-ran the whole 5-check validation AND compute_grammar_first_analysis was computed twice (once in the ambiguity check, once in parse_table_for_production) on EVERY parse. Hoisting prepare_grammar above the assemble fold makes a door call over a K-module closure validate once, not K times — correctness-by-construction (the prepare sits above fold_list), no timing gate."
 
 fn parse_grammar_not_well_formed_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
@@ -542,16 +486,15 @@ fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> Witness<Grammar
 // well-formedness/analysis authority, run once per grammar at prepare_grammar time (§6
 // already-hoisted cost) and is correct to keep as the single-authority derivation of the index
 // below. grammar_lookup_production_indexed is the per-dispatch consumer: every nonterminal
-// reference during recursive-descent parsing calls it, memoized or not
-// (parse_nonterminal_memoized looks the production up before consulting the memo table), so
+// reference during recursive-descent parsing calls it (parse_nonterminal), so
 // the P=204-production dag grammar turned this into the dominant cost of parsing even a trivial
 // source under the tree-walking v1 interpreter (measured: ~12s to parse a 3-line source, PR #8478).
 // productions_by_name is that lookup's index, built once by grammar_production_index and carried on
 // ParseTable exactly like nullable_set/first_rows already are (parse_table_carry_analysis threads
 // all three through every table mutation) — one Map<Symbol,GrammarProduction>, not a second
 // production roster (§3). Every ParseTableRealization construction site
-// (parse_table_for_production_analyzed, the real-parse path; parse_table_empty;
-// parse_table_carry_analysis, the pass-through on every table mutation) populates this field, so
+// (parse_table_for_stream_analyzed, the real-parse path; parse_table_empty; the furthest and
+// refusal updates, which pass it through) populates this field, so
 // the O(P)->O(1) change is not opt-in per call site. Measured effect (this host,
 // dag/test/claim/long/dag_arrow_lambda_witness_test.dag witness_single_param_lambda_parses via
 // `gunbc run --claim-run`, fix stashed vs applied around the identical whole-process invocation):
@@ -559,8 +502,8 @@ fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> Witness<Grammar
 // because the invocation's wall time is dominated by up-front module-load/typecheck of the full v2
 // closure — a cost this change does not touch — rather than by the repeated per-dispatch grammar
 // lookup inside the parse itself; the O(204)->O(1) asymptotic claim is the primary evidence
-// (grammar_lookup_production is an unmemoized linear filter reached before every memo-table check,
-// so even a memo HIT paid the full scan), not the crude wall-clock ratio. This is the class
+// (grammar_lookup_production is a linear filter, so every nonterminal dispatch paid the full scan),
+// not the crude wall-clock ratio. This is the class
 // docs/plans/measurements/floor-slow-rows-2026-08-18.md records dag_arrow_lambda_witness_test's
 // rows landing 1-4ms over its 1552ms ceiling for.
 
@@ -581,85 +524,6 @@ fn grammar_lookup_production_indexed(table: ParseTable, name: Symbol) -> Witness
   )
 }
 
-fn parse_table_memo_miss_diagnostic(at: Locus) -> Diagnostic {
-  Diagnostic {
-    reason: ^parse_table_memo_miss,
-    at: port_refusal_locus(at: at, port: ^parse_stage_locus_port, invariant: ^parse_table_memo_miss),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-fn parse_table_entries_lookup(table: ParseTable, key: ParsePositionKey) -> Witness<ParseMemoEntry> {
-  witness_from_optional(
-    opt: table.entries.lookup(key),
-    absent: parse_table_memo_miss_diagnostic(at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^parse_table_memo_miss))
-  )
-}
-
-fn parse_table_lookup(table: ParseTable, key: ParsePositionKey) -> Witness<ParseMemoEntry> {
-  match v2.compiler.materialization_carriers.materialization_allows_memo_store(m: table.materialization) {
-    true => { parse_table_entries_lookup(table: table, key: key) }
-    false => {
-      Violates {
-        diagnostic: parse_table_memo_store_refused_diagnostic(
-          at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^parse_table_memo_store_refused)
-        )
-      }
-    }
-  }
-}
-
-fn parse_table_memo_store_refused_diagnostic(at: Locus) -> Diagnostic {
-  Diagnostic {
-    reason: ^parse_table_memo_store_refused,
-    at: port_refusal_locus(at: at, port: ^parse_stage_locus_port, invariant: ^parse_table_memo_store_refused),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-fn parse_table_memo_store_refused_reason(d: Diagnostic) -> Bool {
-  match d {
-    Diagnostic { reason: r, at: _, correction: _ } =>
-      r == ^parse_table_memo_store_refused
-  }
-}
-
-fn parse_table_memo_lookup_refuses_store(table: ParseTable, key: ParsePositionKey) -> Bool {
-  match parse_table_lookup(table: table, key: key) {
-    Violates { diagnostic: d } => parse_table_memo_store_refused_reason(d: d)
-    Holds { value: _ } => false
-  }
-}
-
-fn parse_table_memo_insert_refused(
-  table: ParseTable,
-  key: ParsePositionKey,
-  value: ParseMemoEntry
-) -> Bool {
-  let after = parse_table_insert(table: table, key: key, value: value)
-  match v2.std.collection.map_get_checked(m: after.entries, key: key) {
-    Accepted { value: Absent } => true
-    Accepted { value: Present { value: _ } } => false
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn parse_memo_entry_from_expr(result: ParseExprResult) -> ParseMemoEntry {
-  match result {
-    ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diagnostics, prov: prov, table: _ } =>
-      ParseMemoAccepted {
-        remaining: remaining,
-        captured: captured,
-        diagnostics: diagnostics,
-        prov: prov,
-        furthest: parse_expr_result_table(result: result).furthest,
-        refusal: parse_expr_result_table(result: result).refusal
-      }
-    ParseExprRejected { diagnostics: diagnostics, table: table } =>
-      ParseMemoRejected { diagnostics: diagnostics, furthest: table.furthest, refusal: table.refusal }
-  }
-}
-
 fn parse_expr_result_table(result: ParseExprResult) -> ParseTable {
   match result {
     ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _, table: table } => table
@@ -667,67 +531,6 @@ fn parse_expr_result_table(result: ParseExprResult) -> ParseTable {
   }
 }
 
-fn parse_table_memo_stats(table: ParseTable) -> ParseMemoStats {
-  ParseMemoStats {
-    hits: table.memo_hits,
-    misses: table.memo_misses,
-    lookup_calls: table.memo_lookup_calls
-  }
-}
-
-fn parse_memo_stats_empty() -> ParseMemoStats {
-  ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
-}
-
-// THE PARSE'S OWN MEMO ACCOUNTING, CARRIED BESIDE ITS RESULT AND NOT INSIDE IT.
-//
-// WHY NOT A FIELD ON ParseArtifact, which is the shorter change. ParseArtifact answers WHAT was
-// parsed; the memo counters answer HOW the parse was executed, which is a realization fact about
-// one run and not a property of the tree. DESIGN section 3 keeps interface and realization as two
-// facts, so putting a counter on the semantic artifact would make every consumer of a parse result
-// carry a measurement it has no use for, and would make the artifact's identity depend on how many
-// times a memo happened to be consulted.
-//
-// AND THE COUNTERS MUST SURVIVE A REFUSAL, which a field on the accepted value cannot do. The
-// expensive case this instrument exists to read is a file that spends seconds in parse and THEN
-// rejects; an Outcome's Rejected arm carries no ParseArtifact, so the stats would be lost exactly
-// where they are most wanted. This carrier holds the outcome and the accounting side by side, so
-// both arms report.
-//
-// THE UNMEASURED ENTRY POINT IS A PROJECTION OF THIS ONE, never a second parse: parse_module_prepared
-// is `.outcome` of the measured fold, so there is one implementation and no caller pays a second
-// parse to be measured.
-type ParseProductionMeasured {
-  outcome: Outcome<ParseArtifact>
-  memo: ParseMemoStats
-}
-
-fn parse_table_carry_analysis(table: ParseTable, entries: Map<ParsePositionKey, ParseMemoEntry>, hits: Int, misses: Int, lookups: Int) -> ParseTable {
-  ParseTableRealization {
-    artifact_kind: table.artifact_kind,
-    provider_id: table.provider_id,
-    materialization: table.materialization,
-    grammar_digest: table.grammar_digest,
-    token_stream_digest: table.token_stream_digest,
-    entries: entries,
-    memo_hits: hits,
-    memo_misses: misses,
-    memo_lookup_calls: lookups,
-    furthest: table.furthest,
-    nullable_set: table.nullable_set,
-    first_rows: table.first_rows,
-    productions_by_name: table.productions_by_name,
-    prepared_exprs: table.prepared_exprs,
-    layout: table.layout,
-    refusal: table.refusal
-  }
-}
-
-// A MEMO ENTRY CARRIES ITS OWN SUBPARSE'S FURTHEST FAILURE, and a hit joins it back in. The
-// seed serves entries across parses of one token stream (v1_interpreter
-// parse_table_memo_scope_and_key), so a table-only record would lose the deep rejection inside a
-// served subparse and the refusal's locus would depend on cache warmth. The miss path runs the
-// subparse from the unit, stores what that subparse alone reached, then joins it with the caller's.
 fn parse_expectation_first(left: Optional<ParseRefusalReason>, right: Optional<ParseRefusalReason>) -> Optional<ParseRefusalReason> {
   match left {
     Present { value: _ } => left
@@ -778,15 +581,6 @@ fn parse_furthest_expected_at(tokens: List<Token>, reason: ParseRefusalReason) -
 
 fn parse_table_with_furthest(table: ParseTable, furthest: ParseFurthestFailure) -> ParseTable {
   ParseTableRealization {
-    artifact_kind: table.artifact_kind,
-    provider_id: table.provider_id,
-    materialization: table.materialization,
-    grammar_digest: table.grammar_digest,
-    token_stream_digest: table.token_stream_digest,
-    entries: table.entries,
-    memo_hits: table.memo_hits,
-    memo_misses: table.memo_misses,
-    memo_lookup_calls: table.memo_lookup_calls,
     furthest: furthest,
     nullable_set: table.nullable_set,
     first_rows: table.first_rows,
@@ -802,7 +596,7 @@ fn parse_table_join_furthest(table: ParseTable, furthest: ParseFurthestFailure) 
 }
 
 // THE FIRST REFUSAL STANDS. A table that already refused keeps its refusal; one that has not takes
-// the incoming one (a memo hit replaying the refusal its subparse recorded).
+// the incoming one.
 fn parse_table_join_refusal(table: ParseTable, refusal: Optional<Diagnostic>) -> ParseTable {
   match table.refusal {
     Present { value: _ } => table
@@ -816,15 +610,6 @@ fn parse_table_join_refusal(table: ParseTable, refusal: Optional<Diagnostic>) ->
 
 fn parse_table_with_refusal(table: ParseTable, refusal: Diagnostic) -> ParseTable {
   ParseTableRealization {
-    artifact_kind: table.artifact_kind,
-    provider_id: table.provider_id,
-    materialization: table.materialization,
-    grammar_digest: table.grammar_digest,
-    token_stream_digest: table.token_stream_digest,
-    entries: table.entries,
-    memo_hits: table.memo_hits,
-    memo_misses: table.memo_misses,
-    memo_lookup_calls: table.memo_lookup_calls,
     furthest: table.furthest,
     nullable_set: table.nullable_set,
     first_rows: table.first_rows,
@@ -835,141 +620,28 @@ fn parse_table_with_refusal(table: ParseTable, refusal: Diagnostic) -> ParseTabl
   }
 }
 
-fn parse_table_record_lookup_call(table: ParseTable) -> ParseTable {
-  parse_table_carry_analysis(
-    table: table,
-    entries: table.entries,
-    hits: table.memo_hits,
-    misses: table.memo_misses,
-    lookups: table.memo_lookup_calls + 1
-  )
-}
-
-fn parse_table_record_hit(table: ParseTable) -> ParseTable {
-  parse_table_carry_analysis(
-    table: table,
-    entries: table.entries,
-    hits: table.memo_hits + 1,
-    misses: table.memo_misses,
-    lookups: table.memo_lookup_calls
-  )
-}
-
-fn parse_table_record_miss(table: ParseTable) -> ParseTable {
-  parse_table_carry_analysis(
-    table: table,
-    entries: table.entries,
-    hits: table.memo_hits,
-    misses: table.memo_misses + 1,
-    lookups: table.memo_lookup_calls
-  )
-}
-
-fn parse_table_insert(table: ParseTable, key: ParsePositionKey, value: ParseMemoEntry) -> ParseTable {
-  match v2.compiler.materialization_carriers.materialization_allows_memo_store(m: table.materialization) {
-    true =>
-      parse_table_carry_analysis(
-        table: table,
-        entries: map_insert(m: table.entries, key: key, value: value),
-        hits: table.memo_hits,
-        misses: table.memo_misses,
-        lookups: table.memo_lookup_calls
-      )
-    false => table
-  }
-}
-
-fn parse_grammar_digest(validated: ValidatedGrammarRoot) -> Hash {
-  content_hash(
-    n: grammar_to_node(grammar: ModeledGrammar { root: validated.root })
-  )
-}
-
-// ONE DIGEST PER TOKEN FIELD, NOT ONE HASH STEP PER UNIT OF MAGNITUDE. The stream digest used to
-// send both offsets and every lexeme codepoint through the single-byte-limb digest: unary in the
-// value (a codepoint near 100 cost ~100 combine_hash calls), and one shared tag for every value
-// above 255. On the native route that made the eager fill in parse_table_for_production_analyzed
-// 28% of the process (perf --children, bounded K=16 root, 2026-09-14), and it made offsets past
-// byte 255 and every non-Latin-1 codepoint collide in the seed interpreter's cross-parse memo key
-// (v1_interpreter parse_table_memo_scope_and_key reads this field). Offsets and positions now go
-// through the Int content authority and the lexeme through its interned symbol.
-// The token digest, combined with the stream layout's own digest (folded once, in the layout walk,
-// over the line-break-preceded tokens' starts and lines). Only a sourceless stream keys by the token
-// digest alone.
-fn parse_token_stream_layout_digest(all_tokens: List<Token>, layout: Optional<StreamLayout>) -> Hash {
-  match layout {
-    Absent => parse_token_stream_digest(all_tokens: all_tokens)
-    Present { value: l } => combine_hash(a: parse_token_stream_digest(all_tokens: all_tokens), b: l.digest)
-  }
-}
-
-fn parse_token_stream_digest(all_tokens: List<Token>) -> Hash {
-  fold_list(
-    xs: all_tokens,
-    empty: symbol_identity_digest(sym: ^parse_token_stream_digest_nil),
-    cons: fn(acc, tok) {
-      combine_hash(
-        a: acc,
-        b: combine_hash(
-          a: combine_hash(
-            a: symbol_identity_digest(sym: tok.class),
-            b: symbol_identity_digest(sym: tok.file)
-          ),
-          b: combine_hash(
-            a: combine_hash(
-              a: integer_int_content_digest(value: tok.start),
-              b: integer_int_content_digest(value: tok.end)
-            ),
-            b: symbol_identity_digest(sym: symbol_intern_lexeme(lexeme: tok.lexeme))
-          )
-        )
-      )
-    }
-  )
-}
-
-// THE MATERIALIZATION ARRIVES ADMITTED, it is not read here. This constructor runs once per
-// production parse; the admission is a function of the ladder verdicts alone, so reading the
-// door here would ask one question per table and give every caller its own place to mishandle
-// a refusal. prepare_grammar asks once per grammar and refuses there, and what reaches here is
-// a value that has already been admitted -- so this signature cannot express an unadmitted one.
 fn parse_table_for_production_analyzed(
   validated: ValidatedGrammarRoot,
   analysis: GrammarFirstAnalysis,
-  all_tokens: List<Token>,
-  materialization: Materialization
+  all_tokens: List<Token>
 ) -> ParseTable {
   parse_table_for_stream_analyzed(
     validated: validated,
     analysis: analysis,
     all_tokens: all_tokens,
-    layout: optional_absent(),
-    materialization: materialization
+    layout: optional_absent()
   )
 }
 
 // The stream's layout rides on the table so a layout-conditioned production can ask its question at
-// the point of use (v2.std.compilers.lexing token_stream_line_break_before), and its layout (the starts of
-// the line-break-preceded tokens) is part of the
-// stream's digest: two sources can lex to byte-identical tokens and differ only in layout, and a memo
-// entry must never serve one's answer to the other.
+// the point of use (v2.std.compilers.lexing token_stream_line_break_before).
 fn parse_table_for_stream_analyzed(
   validated: ValidatedGrammarRoot,
   analysis: GrammarFirstAnalysis,
   all_tokens: List<Token>,
-  layout: Optional<StreamLayout>,
-  materialization: Materialization
+  layout: Optional<StreamLayout>
 ) -> ParseTable {
   ParseTableRealization {
-    artifact_kind: v2.compiler.materialization_carriers.parse_table_memo_artifact_kind(),
-    provider_id: v2.compiler.materialization_carriers.parse_table_memo_provider_id(),
-    materialization: materialization,
-    grammar_digest: analysis.grammar_digest,
-    token_stream_digest: parse_token_stream_layout_digest(all_tokens: all_tokens, layout: layout),
-    entries: empty_map(),
-    memo_hits: 0,
-    memo_misses: 0,
-    memo_lookup_calls: 0,
     furthest: FurthestNone,
     nullable_set: analysis.nullable_set,
     first_rows: analysis.first_rows,
@@ -982,32 +654,18 @@ fn parse_table_for_stream_analyzed(
 
 fn parse_table_for_production(
   validated: ValidatedGrammarRoot,
-  all_tokens: List<Token>,
-  materialization: Materialization
+  all_tokens: List<Token>
 ) -> ParseTable {
   parse_table_for_production_analyzed(
     validated: validated,
     analysis: compute_grammar_first_analysis(root: validated.root),
-    all_tokens: all_tokens,
-    materialization: materialization
+    all_tokens: all_tokens
   )
 }
 
-// The empty grammar has no productions, so its recurrence census would be zero on both counts
-// and its demand case the ladder's single-demand arm. It is a test-only constructor with no
-// analysis to carry, so the materialization is SUPPLIED at the boundary rather than derived here
-// (DESIGN section 3's witness rule); the derived route is parse_table_for_production_analyzed.
-fn parse_table_empty(materialization: Materialization) -> ParseTable {
+// A test-only constructor with no analysis to carry: no productions, no FIRST rows, no layout.
+fn parse_table_empty() -> ParseTable {
   ParseTableRealization {
-    artifact_kind: v2.compiler.materialization_carriers.parse_table_memo_artifact_kind(),
-    provider_id: v2.compiler.materialization_carriers.parse_table_memo_provider_id(),
-    materialization: materialization,
-    grammar_digest: content_hash(n: grammar_empty_node()),
-    token_stream_digest: symbol_identity_digest(sym: ^parse_table_empty_token_stream),
-    entries: empty_map(),
-    memo_hits: 0,
-    memo_misses: 0,
-    memo_lookup_calls: 0,
     furthest: FurthestNone,
     nullable_set: std.algebra.Empty,
     first_rows: empty_map(),
@@ -1016,16 +674,6 @@ fn parse_table_empty(materialization: Materialization) -> ParseTable {
     layout: optional_absent(),
     refusal: optional_absent()
   }
-}
-
-fn parse_table_subject(table: ParseTable, key: ParsePositionKey) -> Hash {
-  combine_hash(
-    a: combine_hash(a: table.grammar_digest, b: table.token_stream_digest),
-    b: combine_hash(
-      a: integer_int_content_digest(value: key.position),
-      b: symbol_identity_digest(sym: key.production)
-    )
-  )
 }
 
 fn parse_current_position(tokens: List<Token>) -> Int {
@@ -1056,62 +704,12 @@ fn parse_non_empty_diagnostics_to_list(ned: NonEmptyDiagnostics) -> List<Diagnos
 fn parse_prov_seeded(seed: OccurrenceIdAllocator) -> ParseProvenanceState {
   ParseProvenanceState {
     alloc: seed,
-    index: span_index_empty(),
-    frame: Empty
+    index: span_index_empty()
   }
 }
 
 fn parse_prov_initial() -> ParseProvenanceState {
   parse_prov_seeded(seed: occurrence_id_allocator_initial())
-}
-
-fn parse_prov_replay_frame(
-  base: v2.std.provenance.SpanIndex,
-  incoming: v2.std.provenance.SpanIndex,
-  frame: List<ParseProvFrameItem>
-) -> v2.std.provenance.SpanIndex {
-  fold_list(
-    xs: frame,
-    empty: base,
-    cons: fn(acc, item) {
-      match item {
-        FrameMinted { id: id } => span_index_adopt(base: acc, incoming: incoming, id: id)
-        FrameNested { frame: inner } => parse_prov_replay_frame(base: acc, incoming: incoming, frame: inner)
-      }
-    }
-  )
-}
-
-// A memo hit: `incoming` is the stored result of the memoized frame, whose `frame` is that
-// frame's own record (the miss started it empty).
-fn parse_prov_merge(
-  base: ParseProvenanceState,
-  incoming: ParseProvenanceState
-) -> ParseProvenanceState {
-  ParseProvenanceState {
-    alloc: occurrence_id_allocator_advance_to(
-      alloc: base.alloc,
-      min_next: authored_token_ordinal_space_from_allocator(
-        alloc: incoming.alloc
-      )
-    ),
-    index: parse_prov_replay_frame(base: base.index, incoming: incoming.index, frame: incoming.frame),
-    frame: list_snoc_item(xs: base.frame, item: FrameNested { frame: incoming.frame })
-  }
-}
-
-// A memo miss: the production parses in a fresh frame so its memo entry records only its own ids.
-fn parse_prov_enter_frame(prov: ParseProvenanceState) -> ParseProvenanceState {
-  ParseProvenanceState { alloc: prov.alloc, index: prov.index, frame: Empty }
-}
-
-// Returning from a miss: the caller's frame gains the inner frame as one nested item.
-fn parse_prov_leave_frame(outer: ParseProvenanceState, inner: ParseProvenanceState) -> ParseProvenanceState {
-  ParseProvenanceState {
-    alloc: inner.alloc,
-    index: inner.index,
-    frame: list_snoc_item(xs: outer.frame, item: FrameNested { frame: inner.frame })
-  }
 }
 
 fn parse_mint_from_source(
@@ -1131,8 +729,7 @@ fn parse_mint_from_source(
     id: minted.id,
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: index,
-      frame: list_snoc_item(xs: prov.frame, item: FrameMinted { id: minted.id })
+      index: index
     }
   }
 }
@@ -1235,8 +832,7 @@ fn parse_stamp_derived_conj(
     ),
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: index,
-      frame: list_snoc_item(xs: prov.frame, item: FrameMinted { id: minted.id })
+      index: index
     }
   }
 }
@@ -1256,8 +852,7 @@ fn parse_stamp_derived_repeat(
     ),
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: index,
-      frame: list_snoc_item(xs: prov.frame, item: FrameMinted { id: minted.id })
+      index: index
     }
   }
 }
@@ -1300,8 +895,7 @@ fn parse_wrap_production_captured(
     ),
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: index,
-      frame: list_snoc_item(xs: prov.frame, item: FrameMinted { id: minted.id })
+      index: index
     }
   }
 }
@@ -1335,9 +929,12 @@ fn parse_tokens_drop(tokens: List<Token>, count: Int) -> List<Token> {
   }
 }
 
-// A MEMO MISS JOINS CALLER FIRST: the caller's furthest record was made before the subparse ran, so
-// it is the left operand of parse_furthest_join -- the order an expectation tie is broken by.
-fn parse_nonterminal_memoized(
+// A NONTERMINAL IS PARSED WHERE IT IS DEMANDED, every time it is demanded. The table and the
+// provenance thread straight through the production's prepared expression: the furthest-failure
+// record is a join (parse_furthest_join is associative), so accumulating it across the subparse is
+// the same value the deleted memo's reset-then-join computed, and the provenance is the surviving
+// path's own -- nothing minted on another path is served here.
+fn parse_nonterminal(
   all_tokens: List<Token>,
   tokens: List<Token>,
   root: GrammarRoot,
@@ -1345,74 +942,32 @@ fn parse_nonterminal_memoized(
   prod_name: Symbol,
   prov: ParseProvenanceState
 ) -> ParseExprResult {
-  let key = ParsePositionKey {
-    position: parse_current_position(tokens: tokens),
-    production: prod_name
-  }
   match grammar_lookup_production_indexed(table: table, name: prod_name) {
     Violates { diagnostic: d } =>
       ParseExprRejected { diagnostics: [d], table: table }
     Holds { value: production } =>
-      let table_at_lookup = parse_table_record_lookup_call(table: table)
-      match parse_table_lookup(table: table_at_lookup, key: key) {
-        Holds { value: inner } =>
-          let table_hit = parse_table_record_hit(table: table_at_lookup)
-          match inner {
-            ParseMemoRejected { diagnostics: diags, furthest: served, refusal: served_refusal } =>
-              ParseExprRejected {
-                diagnostics: diags,
-                table: parse_table_join_refusal(table: parse_table_join_furthest(table: table_hit, furthest: served), refusal: served_refusal)
-              }
-            ParseMemoAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov, furthest: served, refusal: served_refusal } =>
-              let merged_prov = parse_prov_merge(base: prov, incoming: inner_prov)
-              let stamped = parse_wrap_production_captured(
-                production: production,
-                captured: captured,
-                prov: merged_prov
-              )
-              ParseExprAccepted {
-                remaining: remaining,
-                captured: stamped.node,
-                diagnostics: diags,
-                prov: stamped.prov,
-                table: parse_table_join_refusal(table: parse_table_join_furthest(table: table_hit, furthest: served), refusal: served_refusal)
-              }
-          }
-        Violates { diagnostic: _ } =>
-          let table_miss = parse_table_record_miss(table: table_at_lookup)
-          let inner = parse_expr_with_first(
-            expr: parse_table_prepared_expr(table: table_miss, production: production),
-            tokens: tokens,
-            all_tokens: all_tokens,
-            root: root,
-            table: parse_table_with_furthest(table: table_miss, furthest: FurthestNone),
-            prov: parse_prov_enter_frame(prov: prov)
+      match parse_expr_with_first(
+        expr: parse_table_prepared_expr(table: table, production: production),
+        tokens: tokens,
+        all_tokens: all_tokens,
+        root: root,
+        table: table,
+        prov: prov
+      ) {
+        ParseExprRejected { diagnostics: diags, table: table1 } =>
+          ParseExprRejected { diagnostics: diags, table: table1 }
+        ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov, table: table1 } =>
+          let stamped = parse_wrap_production_captured(
+            production: production,
+            captured: captured,
+            prov: inner_prov
           )
-          let table_inserted = parse_table_insert(
-            table: parse_expr_result_table(result: inner),
-            key: key,
-            value: parse_memo_entry_from_expr(result: inner)
-          )
-          let table_after_memo = parse_table_with_furthest(
-            table: table_inserted,
-            furthest: parse_furthest_join(left: table_miss.furthest, right: table_inserted.furthest)
-          )
-          match inner {
-            ParseExprRejected { diagnostics: diags, table: _ } =>
-              ParseExprRejected { diagnostics: diags, table: table_after_memo }
-            ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov, table: _ } =>
-              let stamped = parse_wrap_production_captured(
-                production: production,
-                captured: captured,
-                prov: parse_prov_leave_frame(outer: prov, inner: inner_prov)
-              )
-              ParseExprAccepted {
-                remaining: remaining,
-                captured: stamped.node,
-                diagnostics: diags,
-                prov: stamped.prov,
-                table: table_after_memo
-              }
+          ParseExprAccepted {
+            remaining: remaining,
+            captured: stamped.node,
+            diagnostics: diags,
+            prov: stamped.prov,
+            table: table1
           }
       }
   }
@@ -1594,18 +1149,12 @@ type GrammarExprFirstFold {
 // every parse of `.dag` source demands could never store, and every demanding claim recomputed
 // it until its own CPU budget stopped the fill mid-flight. The field is the enumeration it
 // always was; `first_rows` beside it was already enumeration-shaped.
-// THE GRAMMAR DIGEST AND THE PRODUCTION INDEX ARE ONCE-PER-GRAMMAR FACTS AND LIVE HERE, beside
-// the FIRST analysis they were already computed next to. Until this carrier held them,
-// parse_table_for_production_analyzed re-derived both on EVERY parse call -- a content hash of
-// the whole grammar node tree (grammar_to_node over the 200-production dag grammar, then
-// content_hash) plus an O(P) map build -- for a value that prepare_grammar had fixed before the
-// first token was read. The required floor's own cross-claim demand census (main run
-// 34556223550, required_floor_cross_claim_demand.tsv) named it: parse_grammar_digest at
-// claims=19 evals=19, ~128ms per claim on the lane's runner, every one of them a claim that
-// parses `.dag` text against the warm-shared dag_prepared_grammar -- so the preparation was
-// shared and the invariant derived FROM it was not, which is the DESIGN §6 per-call rebuild
-// #10992's write-up flagged. prepared_exprs is the precedent: a per-grammar derivation carried
-// once and read per parse. Nothing about the digest's value changes; only where it is paid.
+// THE PRODUCTION INDEX IS A ONCE-PER-GRAMMAR FACT AND LIVES HERE, beside the FIRST analysis it was
+// already computed next to. Before this carrier held it, parse_table_for_production_analyzed
+// re-derived it (and the grammar digest the deleted parse memo keyed on) on EVERY parse call --
+// an O(P) map build for a value prepare_grammar had fixed before the first token was read; the
+// required floor's cross-claim demand census (main run 34556223550) named the per-call rebuild.
+// prepared_exprs is the precedent: a per-grammar derivation carried once and read per parse.
 // The same per-parse rebuild had a second site: parse_production_prepared derived the grammar's
 // own locus eagerly (node_locus over grammar_to_node of the whole grammar) although only the
 // rejection arm that carried no diagnostic of its own ever read it; it is now derived on that
@@ -1614,10 +1163,8 @@ type GrammarFirstAnalysis {
   nullable_set: List<Symbol>
   first_rows: Map<Symbol, List<FirstKey>>
   prepared_exprs: Map<Symbol, PreparedGrammarExpr>
-  grammar_digest: Hash
   productions_by_name: Map<Symbol, GrammarProduction>
   choice_residue: List<GrammarChoiceAmbiguityRow>
-  memo_recurrence: ParseMemoRecurrence
 }
 
 fn grammar_empty_terminal_list() -> List<FirstKey> {
@@ -3621,84 +3168,8 @@ fn compute_grammar_first_analysis_given(
     nullable_set: nullable_set,
     first_rows: first_rows,
     prepared_exprs: prep.prepared_exprs,
-    grammar_digest: parse_grammar_digest(validated: ValidatedGrammarRoot { root: root }),
     productions_by_name: productions,
-    choice_residue: prep.residue,
-    memo_recurrence: parse_memo_recurrence_census(root: root, nullable_set: nullable_set)
-  }
-}
-
-// THE PARSE MEMO'S DEMAND CASE, READ OFF THE GRAMMAR ONCE PER PREPARATION. The meaning of both
-// counts, and why they are the whole of within-parse recurrence, is stated on
-// v2.compiler.materialization_carriers ParseMemoRecurrence. This fold only reads the structure:
-// a site is DISCARDING when the branch it may abandon -- a Choice's left, an Optional's or a
-// Repeat's element -- demands a nonterminal, since only an abandoned nonterminal demand can be
-// asked again at the position the parse resumes from.
-type ParseDemandFold {
-  demands_nonterminal: Bool
-  discarding_sites: Int
-}
-
-fn parse_demand_fold_site(attempted: ParseDemandFold) -> Int {
-  if attempted.demands_nonterminal { 1 } else { 0 }
-}
-
-fn parse_demand_fold_leaf() -> ParseDemandFold {
-  ParseDemandFold { demands_nonterminal: false, discarding_sites: 0 }
-}
-
-fn expr_parse_demand_fold(expr: GrammarExpr) -> ParseDemandFold {
-  fold_grammar_expr(
-    expr: expr,
-    algebra: GrammarExprFold {
-      terminal: fn(_, _) { parse_demand_fold_leaf() },
-      literal_terminal: fn(_, _) { parse_demand_fold_leaf() },
-      nonterminal: fn(_) { ParseDemandFold { demands_nonterminal: true, discarding_sites: 0 } },
-      sequence: fn(l, r) {
-        ParseDemandFold {
-          demands_nonterminal: l.demands_nonterminal || r.demands_nonterminal,
-          discarding_sites: l.discarding_sites + r.discarding_sites
-        }
-      },
-      choice: fn(l, r) {
-        ParseDemandFold {
-          demands_nonterminal: l.demands_nonterminal || r.demands_nonterminal,
-          discarding_sites: l.discarding_sites + r.discarding_sites + parse_demand_fold_site(attempted: l)
-        }
-      },
-      optional: fn(e) {
-        ParseDemandFold {
-          demands_nonterminal: e.demands_nonterminal,
-          discarding_sites: e.discarding_sites + parse_demand_fold_site(attempted: e)
-        }
-      },
-      repeat: fn(e) {
-        ParseDemandFold {
-          demands_nonterminal: e.demands_nonterminal,
-          discarding_sites: e.discarding_sites + parse_demand_fold_site(attempted: e)
-        }
-      },
-      expect: fn(e, _reason) { e },
-      refuse_on_match: fn(e, _reason) { e },
-      after_line_break: fn(e) { e },
-      not_predicate: fn(e) {
-        ParseDemandFold {
-          demands_nonterminal: e.demands_nonterminal,
-          discarding_sites: e.discarding_sites + parse_demand_fold_site(attempted: e)
-        }
-      }
-    }
-  )
-}
-
-fn parse_memo_recurrence_census(root: GrammarRoot, nullable_set: List<Symbol>) -> ParseMemoRecurrence {
-  ParseMemoRecurrence {
-    discarding_backtrack_sites: fold_list(
-      xs: root.productions,
-      empty: 0,
-      cons: fn(acc, p) { acc + expr_parse_demand_fold(expr: p.expression).discarding_sites }
-    ),
-    nullable_nonterminals: length(xs: nullable_set)
+    choice_residue: prep.residue
   }
 }
 
@@ -4605,10 +4076,9 @@ fn parse_expr_optional(
   }
 }
 
-// PROGRESS IS READ OFF THE MEMO KEY'S POSITION, not off two list lengths. `rest` is a suffix of
+// PROGRESS IS READ OFF THE STREAM POSITION, not off two list lengths. `rest` is a suffix of
 // `acc.remaining`, so the element consumed a token exactly when the position changed, and
-// parse_current_position is already the authority that identifies a stream position (it keys the
-// memo, ParsePositionKey). Comparing lengths walked both lists on every accepted iteration -- O(n)
+// parse_current_position is the authority that identifies a stream position. Comparing lengths walked both lists on every accepted iteration -- O(n)
 // per iteration, O(n^2) over a long repeat -- to answer a question the head token answers. A
 // position identifies one token because the parse admits only strictly increasing starts
 // (parse_token_start_order_violation).
@@ -4751,8 +4221,8 @@ fn parse_expr_refuse_on_match(
 // attempted at this position; where it fails the predicate accepts with the input, provenance and
 // capture it was given (the empty capture), and where it matches the predicate rejects. Either way
 // the attempt was speculative, so the furthest-failure record is returned to what it was before the
-// attempt: a probe reaching past this position is not the place the parse stopped. The memo the
-// attempt filled is kept, and a refusal it raised is kept, since a refusal stops the parse.
+// attempt: a probe reaching past this position is not the place the parse stopped. A refusal it
+// raised is kept, since a refusal stops the parse.
 fn parse_expr_not_predicate(
   element: PreparedGrammarExpr,
   first: GrammarExprFirstFold,
@@ -4929,7 +4399,7 @@ fn parse_expr_dispatch(
           }
       }
     PreparedNonterminal { production: prod_name } =>
-      parse_nonterminal_memoized(
+      parse_nonterminal(
         all_tokens: all_tokens,
         tokens: tokens,
         root: root,
@@ -5044,91 +4514,36 @@ fn parse_expr(
   )
 }
 
-fn parse_production_memo_stats(
-  tokens: List<Token>,
-  validated: ValidatedGrammarRoot,
-  production_name: Symbol,
-  materialization: Materialization
-) -> ParseMemoStats {
-  let root = validated.root
-  match grammar_lookup_production(root: root, name: production_name) {
-    Violates { diagnostic: _ } =>
-      ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
-    Holds { value: production } =>
-      let prov = parse_prov_initial()
-      let table = parse_table_for_production(
-        validated: validated,
-        all_tokens: tokens,
-        materialization: materialization
-      )
-      match parse_expr(
-        expr: production.expression,
-        tokens: tokens,
-        all_tokens: tokens,
-        root: root,
-        table: table,
-        prov: prov
-      ) {
-        ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _, table: final_table } =>
-          parse_table_memo_stats(table: final_table)
-        ParseExprRejected { diagnostics: _, table: final_table } =>
-          parse_table_memo_stats(table: final_table)
-      }
-  }
-}
-
 fn parse_production_prepared(
   tokens: List<Token>,
   validated: ValidatedGrammarRoot,
   analysis: GrammarFirstAnalysis,
-  production_name: Symbol,
-  materialization: Materialization
+  production_name: Symbol
 ) -> Outcome<ParseArtifact> {
-  parse_production_prepared_measured(
-    tokens: tokens,
-    validated: validated,
-    analysis: analysis,
-    production_name: production_name,
-    materialization: materialization
-  ).outcome
-}
-
-fn parse_production_prepared_measured(
-  tokens: List<Token>,
-  validated: ValidatedGrammarRoot,
-  analysis: GrammarFirstAnalysis,
-  production_name: Symbol,
-  materialization: Materialization
-) -> ParseProductionMeasured {
-  parse_production_prepared_measured_seeded(
+  parse_production_prepared_seeded(
     tokens: tokens,
     validated: validated,
     analysis: analysis,
     production_name: production_name,
     seed: occurrence_id_allocator_initial(),
-    layout: optional_absent(),
-    materialization: materialization
+    layout: optional_absent()
   )
 }
 
-fn parse_production_prepared_measured_seeded(
+fn parse_production_prepared_seeded(
   tokens: List<Token>,
   validated: ValidatedGrammarRoot,
   analysis: GrammarFirstAnalysis,
   production_name: Symbol,
   seed: OccurrenceIdAllocator,
-  layout: Optional<StreamLayout>,
-  materialization: Materialization
-) -> ParseProductionMeasured {
+  layout: Optional<StreamLayout>
+) -> Outcome<ParseArtifact> {
   match parse_token_start_order_violation(tokens: tokens) {
     Present { value: tok } =>
-      ParseProductionMeasured {
-        outcome: Rejected {
-          diagnostics: diagnostics_singleton(
-            d: parse_refusal_reason_diagnostic(reason: TokenStartsNotIncreasing, file: tok.file, start: tok.start, end: tok.end)
-          )
-        },
-        memo: parse_memo_stats_empty()
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: parse_refusal_reason_diagnostic(reason: TokenStartsNotIncreasing, file: tok.file, start: tok.start, end: tok.end)
+        )
       }
     Absent =>
       parse_production_prepared_ordered(
@@ -5137,17 +4552,16 @@ fn parse_production_prepared_measured_seeded(
         analysis: analysis,
         production_name: production_name,
         seed: seed,
-        layout: layout,
-        materialization: materialization
+        layout: layout
       )
   }
 }
 
 // A STREAM POSITION IS ITS TOKEN'S START, so the parse admits only a stream whose starts strictly
-// increase (v2.std.compilers.lexing Token). parse_current_position keys the memo by that start and
-// decides repeat progress by it; two tokens at one start would be one position, and the memo would
-// serve one's answer for the other with no diagnostic. The order is checked once here, at the
-// parse's entry, and a stream that violates it refuses located at the first offending token.
+// increase (v2.std.compilers.lexing Token). parse_current_position decides repeat progress by that
+// start; two tokens at one start would be one position, and a repeat could stop or continue on the
+// wrong one with no diagnostic. The order is checked once here, at the parse's entry, and a stream
+// that violates it refuses located at the first offending token.
 fn parse_token_start_order_violation(tokens: List<Token>) -> Optional<Token> {
   fold_list(
     xs: tokens,
@@ -5178,7 +4592,7 @@ type ParseStartOrderAcc {
 // THE ENTRY PRODUCTION IS READ OFF THE PREPARED GRAMMAR, never re-derived per parse: its lookup is
 // the analysis's productions_by_name index and its prepared tree (choice plans, FIRST unions) is the
 // analysis's prepared_exprs row, exactly as every nested nonterminal already reads it
-// (parse_nonterminal_memoized). Routing the entry through parse_expr re-ran prepare_grammar_expr --
+// (parse_nonterminal). Routing the entry through parse_expr re-ran prepare_grammar_expr --
 // choice-plan compilation plus the authored-choice overlap residue, which the parse then discarded --
 // and an O(P) non-short-circuiting fold over every production, on EVERY parse, re-deriving a
 // property of the grammar that prepare_grammar already computed once.
@@ -5188,16 +4602,14 @@ fn parse_production_prepared_ordered(
   analysis: GrammarFirstAnalysis,
   production_name: Symbol,
   seed: OccurrenceIdAllocator,
-  layout: Optional<StreamLayout>,
-  materialization: Materialization
-) -> ParseProductionMeasured {
+  layout: Optional<StreamLayout>
+) -> Outcome<ParseArtifact> {
   let root = validated.root
   let table = parse_table_for_stream_analyzed(
     validated: validated,
     analysis: analysis,
     layout: layout,
-    all_tokens: tokens,
-    materialization: materialization
+    all_tokens: tokens
   )
   match grammar_lookup_production_indexed(table: table, name: production_name) {
     Holds { value: production } =>
@@ -5212,17 +4624,11 @@ fn parse_production_prepared_ordered(
       )
       match parse_expr_result_table(result: parsed).refusal {
         Present { value: refusal } =>
-          ParseProductionMeasured {
-            outcome: Rejected { diagnostics: diagnostics_singleton(d: refusal) },
-            memo: parse_table_memo_stats(table: parse_expr_result_table(result: parsed))
-          }
-        Absent => parse_production_measured_unrefused(parsed: parsed, production: production, root: root)
+          Rejected { diagnostics: diagnostics_singleton(d: refusal) }
+        Absent => parse_production_unrefused(parsed: parsed, production: production, root: root)
       }
     Violates { diagnostic: d } =>
-      ParseProductionMeasured {
-        outcome: Rejected { diagnostics: diagnostics_singleton(d: d) },
-        memo: parse_memo_stats_empty()
-      }
+      Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 
@@ -5230,11 +4636,11 @@ fn parse_production_prepared_ordered(
 // happened to parse around it: RefuseOnMatch names source the seed refuses although another reading
 // succeeds, so an Accepted here would be exactly the success it exists to deny. Only an unrefused
 // parse reaches the ordinary accept / leftover-token / no-match reading below.
-fn parse_production_measured_unrefused(
+fn parse_production_unrefused(
   parsed: ParseExprResult,
   production: GrammarProduction,
   root: GrammarRoot
-) -> ParseProductionMeasured {
+) -> Outcome<ParseArtifact> {
   match parsed {
     ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov, table: final_table } =>
       if is_empty(xs: remaining) {
@@ -5243,34 +4649,25 @@ fn parse_production_measured_unrefused(
           captured: captured,
           prov: inner_prov
         )
-        ParseProductionMeasured {
-          outcome: Accepted {
-            value: ParseArtifact { tree: stamped.node, span_index: stamped.prov.index, alloc: stamped.prov.alloc },
-            diagnostics: parse_diags_to_diagnostics(diags: diags)
-          },
-          memo: parse_table_memo_stats(table: final_table)
+        Accepted {
+          value: ParseArtifact { tree: stamped.node, span_index: stamped.prov.index, alloc: stamped.prov.alloc },
+          diagnostics: parse_diags_to_diagnostics(diags: diags)
         }
       } else {
-        ParseProductionMeasured {
-          outcome: Rejected {
-            diagnostics: diagnostics_singleton(
-              d: parse_g0_tokens_remain_diagnostic_at(tokens: remaining, furthest: final_table.furthest)
-            )
-          },
-          memo: parse_table_memo_stats(table: final_table)
+        Rejected {
+          diagnostics: diagnostics_singleton(
+            d: parse_g0_tokens_remain_diagnostic_at(tokens: remaining, furthest: final_table.furthest)
+          )
         }
       }
-    ParseExprRejected { diagnostics: diags, table: final_table } =>
-      ParseProductionMeasured {
-        outcome: Rejected {
-          diagnostics: parse_diags_to_non_empty(
-            diags: diags,
-            default: parse_e1_syntax_error_diagnostic(
-              at: node_locus(node: grammar_to_node(grammar: ModeledGrammar { root: root }))
-            )
+    ParseExprRejected { diagnostics: diags, table: _ } =>
+      Rejected {
+        diagnostics: parse_diags_to_non_empty(
+          diags: diags,
+          default: parse_e1_syntax_error_diagnostic(
+            at: node_locus(node: grammar_to_node(grammar: ModeledGrammar { root: root }))
           )
-        },
-        memo: parse_table_memo_stats(table: final_table)
+        )
       }
   }
 }
@@ -5280,18 +4677,12 @@ fn parse_production(
   validated: ValidatedGrammarRoot,
   production_name: Symbol
 ) -> Outcome<ParseArtifact> {
-  let analysis = compute_grammar_first_analysis(root: validated.root)
-  match parse_table_memo_materialization_for(r: analysis.memo_recurrence) {
-    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-    Accepted { value: materialization, diagnostics: _ } =>
-      parse_production_prepared(
-        tokens: tokens,
-        validated: validated,
-        analysis: analysis,
-        production_name: production_name,
-        materialization: materialization
-      )
-  }
+  parse_production_prepared(
+    tokens: tokens,
+    validated: validated,
+    analysis: compute_grammar_first_analysis(root: validated.root),
+    production_name: production_name
+  )
 }
 
 fn parse_production_tree(
@@ -5310,33 +4701,10 @@ fn parse_production_tree(
       Rejected { diagnostics: r }
   }
 }
-// WHERE THE PARSE-TABLE MATERIALIZATION IS ADMITTED, and the only place it is. PreparedGrammar
-// is already the once-per-grammar carrier and the admission is a once-per-grammar fact, so the
-// join belongs here: a refused admission REFUSES THE PREPARE, which is how the unmet obligation
-// reaches the caller as a located diagnostic instead of as a quiet recompute.
-//
-// THE PARAMETER IS THE DOOR, NOT ITS ANSWER, and that is forced by the derivation rather than
-// chosen. The parse demand's site is read off the grammar's own recurrence census, so the
-// admission is a FUNCTION of the analysis and cannot be evaluated before the analysis exists --
-// an already-computed Outcome passed in here would have to come from some other grammar. Passing
-// the door keeps the control's grip: a control supplies a door built on a refusing verdict list
-// and drives THIS body, the one parse_module runs, rather than a copy of it.
-fn prepare_grammar(grammar: ParseGrammar) -> Outcome<PreparedGrammar> {
-  prepare_grammar_with_admission(
-    admit: fn(r) { parse_table_memo_materialization_for(r: r) },
-    grammar: grammar
-  )
-}
 
-// A VOID GRAMMAR CONSULTS NO MEMO, so it does not consult the admission either. Refusing a void
-// parse because the parse-table obligation is unmet would forbid more than the obligation covers
-// (DESIGN section 4d): no table is built on that arm, so there is nothing for a provider to
-// discharge. The admission is demanded exactly where the table is, on the modeled arm -- and
-// there, only once the analysis has produced the census the door is asked about.
-fn prepare_grammar_with_admission(
-  admit: fn(ParseMemoRecurrence) -> Outcome<Materialization>,
-  grammar: ParseGrammar
-) -> Outcome<PreparedGrammar> {
+// PreparedGrammar is the once-per-grammar carrier: well-formedness, validation and the FIRST
+// analysis run here once, and every parse of every module reads the result.
+fn prepare_grammar(grammar: ParseGrammar) -> Outcome<PreparedGrammar> {
   let grammar_node = grammar_to_node(grammar: grammar)
   let at = node_locus(node: grammar_node)
   if well_formed(n: grammar_node) {
@@ -5347,13 +4715,9 @@ fn prepare_grammar_with_admission(
         match grammar_validate_and_analyze(root: root, at: at) {
           Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
           Accepted { value: modeled, diagnostics: validation_residue } =>
-            match admit(modeled.analysis.memo_recurrence) {
-              Rejected { diagnostics: refusal } => Rejected { diagnostics: refusal }
-              Accepted { value: materialization, diagnostics: _ } =>
-                Accepted {
-                  value: PreparedModeled { modeled: modeled, materialization: materialization },
-                  diagnostics: validation_residue
-                }
+            Accepted {
+              value: PreparedModeled { modeled: modeled },
+              diagnostics: validation_residue
             }
         }
     }
@@ -5365,7 +4729,7 @@ fn prepare_grammar_with_admission(
 fn overlap_residue_stage_from_prepared(prepared: PreparedGrammar) -> Optional<NonEmptyParseStageDiagnostics> {
   match prepared {
     PreparedVoidGrammar => optional_absent()
-    PreparedModeled { modeled: modeled, materialization: _ } => modeled.overlap_residue_stage
+    PreparedModeled { modeled: modeled } => modeled.overlap_residue_stage
   }
 }
 
@@ -5377,43 +4741,13 @@ fn overlap_residue_stage_from_parse_grammar(grammar: ParseGrammar) -> Optional<N
   }
 }
 
-// The unmeasured door, retained for every caller that does not own a clock or a relay, and defined
-// as the projection of the measured fold rather than restated beside it.
+// The unseeded door: one file, its own isolated occurrence scope.
 fn parse_module_prepared(
   tokens: TokenStream,
   prepared: PreparedGrammar,
   validation_residue: Diagnostics
 ) -> Outcome<ParseArtifact> {
-  parse_module_prepared_measured(
-    tokens: tokens,
-    prepared: prepared,
-    validation_residue: validation_residue
-  ).outcome
-}
-
-fn parse_module_prepared_seeded(
-  tokens: TokenStream,
-  prepared: PreparedGrammar,
-  validation_residue: Diagnostics,
-  seed: OccurrenceIdAllocator
-) -> Outcome<ParseArtifact> {
-  parse_module_prepared_measured_seeded(
-    tokens: tokens,
-    prepared: prepared,
-    validation_residue: validation_residue,
-    seed: seed
-  ).outcome
-}
-
-// A VOID GRAMMAR CONSULTS NO MEMO, so its accounting is empty rather than absent: the counters are
-// zero because nothing was looked up, which is an answer. Reporting no stats at all would make a
-// void parse indistinguishable from a parse whose stats were dropped.
-fn parse_module_prepared_measured(
-  tokens: TokenStream,
-  prepared: PreparedGrammar,
-  validation_residue: Diagnostics
-) -> ParseProductionMeasured {
-  parse_module_prepared_measured_seeded(
+  parse_module_prepared_seeded(
     tokens: tokens,
     prepared: prepared,
     validation_residue: validation_residue,
@@ -5425,60 +4759,45 @@ fn parse_module_prepared_measured(
 // the same source graph left behind, so this file's occurrence ids continue where that one stopped
 // and no two files in one ingest mint the same id. The returned artifact carries the mark this
 // parse reached, which is what lets the assembly fold thread it to the next read. The unseeded
-// projection above is every other caller: one file, its own isolated scope, byte-identical to the
-// fold it was before this parameter existed.
-fn parse_module_prepared_measured_seeded(
+// projection above is every other caller: one file, its own isolated scope.
+fn parse_module_prepared_seeded(
   tokens: TokenStream,
   prepared: PreparedGrammar,
   validation_residue: Diagnostics,
   seed: OccurrenceIdAllocator
-) -> ParseProductionMeasured {
+) -> Outcome<ParseArtifact> {
   let ntok = token_stream_remaining_count(stream: tokens)
   match prepared {
     PreparedVoidGrammar =>
       if ntok == 0 {
-        ParseProductionMeasured {
-          outcome: Accepted {
-            value: ParseArtifact { tree: grammar_to_node(grammar: VoidGrammar), span_index: span_index_empty(), alloc: seed },
-            diagnostics: validation_residue
-          },
-          memo: parse_memo_stats_empty()
+        Accepted {
+          value: ParseArtifact { tree: grammar_to_node(grammar: VoidGrammar), span_index: span_index_empty(), alloc: seed },
+          diagnostics: validation_residue
         }
       } else {
-        ParseProductionMeasured {
-          outcome: Rejected {
-            diagnostics: diagnostics_singleton(
-              d: parse_g0_tokens_remain_diagnostic(tokens: token_stream_remaining(stream: tokens))
-            )
-          },
-          memo: parse_memo_stats_empty()
+        Rejected {
+          diagnostics: diagnostics_singleton(
+            d: parse_g0_tokens_remain_diagnostic(tokens: token_stream_remaining(stream: tokens))
+          )
         }
       }
-    PreparedModeled { modeled: modeled, materialization: materialization } =>
-      let measured = parse_production_prepared_measured_seeded(
+    PreparedModeled { modeled: modeled } =>
+      match parse_production_prepared_seeded(
         tokens: token_stream_remaining(stream: tokens),
         validated: modeled.validated,
         analysis: modeled.analysis,
         production_name: modeled.validated.root.start,
         seed: seed,
-        layout: token_stream_layout(stream: tokens),
-        materialization: materialization
-      )
-      match measured.outcome {
+        layout: token_stream_layout(stream: tokens)
+      ) {
         Accepted { value: artifact, diagnostics: parse_diags } =>
-          ParseProductionMeasured {
-            outcome: Accepted {
-              value: artifact,
-              diagnostics: diagnostics_merge(outer: validation_residue, inner: parse_diags)
-            },
-            memo: measured.memo
+          Accepted {
+            value: artifact,
+            diagnostics: diagnostics_merge(outer: validation_residue, inner: parse_diags)
           }
         Rejected { diagnostics: parse_rejected } =>
-          ParseProductionMeasured {
-            outcome: Rejected {
-              diagnostics: rejected_with_pending(pending: validation_residue, rejected: parse_rejected)
-            },
-            memo: measured.memo
+          Rejected {
+            diagnostics: rejected_with_pending(pending: validation_residue, rejected: parse_rejected)
           }
       }
   }

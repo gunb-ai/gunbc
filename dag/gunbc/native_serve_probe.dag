@@ -53,6 +53,7 @@ type NativeServeExpect
   | ExpectHeader { status: Int, line: String }
   | ExpectBodyPrefix { status: Int, prefix: String }
   | ExpectLiveness
+  | ExpectClockReadings
 
 type NativeServeProbeCase {
   identity: String
@@ -60,7 +61,43 @@ type NativeServeProbeCase {
   expect: NativeServeExpect
 }
 
-fn native_serve_probe_cases() -> List<NativeServeProbeCase> {
+// THE BOUND-EFFECT CASES (native broker 2N, v1.compiler.emit NativeEffectRealizationAdmission). The
+// fixture's /effects routes make it demand extdeps.clock Clock and a REST service, so these cases
+// execute the handlers its rendered main bound. The host starts a SECOND instance of the fixture as
+// the local test server and passes its bound port here, so every byte -- the Content-Length too --
+// is still written by this module. Port 1 is the refused port: nothing listens on it.
+data native_serve_probe_refused_port: Int = 1
+
+fn native_serve_probe_rest_request(port: Int) -> String {
+  let body = to_string(value: port)
+  concat("POST /effects/rest HTTP/1.1\r\nContent-Length: ", concat(to_string(value: string_length(s: body)), concat("\r\n\r\n", body)))
+}
+
+fn native_serve_probe_effect_cases(peer_port: Int) -> List<NativeServeProbeCase> {
+  [
+    NativeServeProbeCase {
+      identity: "effect_clock_now_is_plausible_and_monotone",
+      request: "GET /effects/clock HTTP/1.1\r\n\r\n",
+      expect: ExpectClockReadings,
+    },
+    NativeServeProbeCase {
+      identity: "effect_rest_against_a_local_server_is_answered",
+      request: native_serve_probe_rest_request(port: peer_port),
+      expect: ExpectBody { status: 200, body: "answered live\n" },
+    },
+    NativeServeProbeCase {
+      identity: "effect_rest_against_a_refused_port_is_rest_transport_refused",
+      request: native_serve_probe_rest_request(port: native_serve_probe_refused_port),
+      expect: ExpectBody { status: 200, body: "refused transport\n" },
+    },
+  ]
+}
+
+fn native_serve_probe_cases(peer_port: Int) -> List<NativeServeProbeCase> {
+  concat(native_serve_probe_door_cases(), concat(native_serve_probe_effect_cases(peer_port: peer_port), native_serve_probe_budget_cases()))
+}
+
+fn native_serve_probe_door_cases() -> List<NativeServeProbeCase> {
   [
     NativeServeProbeCase {
       identity: "handler_route_reads_framed_identity",
@@ -117,6 +154,13 @@ fn native_serve_probe_cases() -> List<NativeServeProbeCase> {
       request: "GET /livez HTTP/1.1\r\n\r\n",
       expect: ExpectLiveness,
     },
+  ]
+}
+
+// THE BUDGET CASES, LAST (see the head of this module): the final one ends the served process, so no
+// case may follow it -- the bound-effect cases run before them.
+fn native_serve_probe_budget_cases() -> List<NativeServeProbeCase> {
+  [
     NativeServeProbeCase {
       identity: "budget_worker_panic_one_is_a_handler_failure_not_a_stuck_worker",
       request: "GET /panic HTTP/1.1\r\n\r\n",
@@ -181,8 +225,39 @@ fn native_serve_probe_cases() -> List<NativeServeProbeCase> {
 }
 
 // What the host writes, in case order. The host joins responses to cases by this order.
-fn native_serve_probe_requests() -> List<String> {
-  native_serve_probe_cases() |> map(c => c.request)
+fn native_serve_probe_requests(peer_port: Int) -> List<String> {
+  native_serve_probe_cases(peer_port: peer_port) |> map(c => c.request)
+}
+
+// A Clock.Now reading as the fixture returns it: an RFC 3339 UTC second, `YYYY-MM-DDTHH:MM:SSZ`
+// (extdeps.clock Clock.Now's `date -u +%Y-%m-%dT%H:%M:%SZ`), read as the integer YYYYMMDDHHMMSS so
+// two readings order. A reading in any other shape, or before 2026, is not plausible.
+fn native_serve_clock_reading_order(reading: String) -> Int? {
+  if string_length(s: reading) != 20 || substring(s: reading, start: 10, end: 11) != "T" || substring(s: reading, start: 19, end: 20) != "Z" {
+    none
+  } else {
+    let digits = concat(substring(s: reading, start: 0, end: 4), concat(substring(s: reading, start: 5, end: 7), concat(substring(s: reading, start: 8, end: 10),
+      concat(substring(s: reading, start: 11, end: 13), concat(substring(s: reading, start: 14, end: 16), substring(s: reading, start: 17, end: 19))))))
+    match parse_int(s: digits) {
+      Present { value: n } => if n >= 20260000000000 { Present { value: n } } else { none }
+      Absent => none
+    }
+  }
+}
+
+fn native_serve_clock_failure(identity: String, body: String) -> String {
+  let lines = split(s: body, delimiter: "\n") |> filter(l => l != "")
+  if (lines |> count) != 2 { concat(identity, concat(": expected two readings, got [", concat(body, "]"))) } else {
+    let first = match lines |> first { Present { value: l } => native_serve_clock_reading_order(reading: l)  Absent => none }
+    let second = match lines |> skip(1) |> first { Present { value: l } => native_serve_clock_reading_order(reading: l)  Absent => none }
+    match first {
+      Absent => concat(identity, concat(": first reading is not a plausible UTC second: [", concat(body, "]")))
+      Present { value: a } => match second {
+        Absent => concat(identity, concat(": second reading is not a plausible UTC second: [", concat(body, "]")))
+        Present { value: b } => if b >= a { "" } else { concat(identity, concat(": readings went backwards: [", concat(body, "]"))) }
+      }
+    }
+  }
 }
 
 type NativeServeWire {
@@ -205,7 +280,7 @@ fn native_serve_wire_parse(response: String) -> NativeServeWire? {
         ""
       }
       match parse_int(s: status_text) {
-        Present { value: status } => NativeServeWire { status: status, head_lines: head_lines, body: join(rest, "\r\n\r\n") }
+        Present { value: status } => Present { value: NativeServeWire { status: status, head_lines: head_lines, body: join(rest, "\r\n\r\n") } }
         Absent => none
       }
     Empty => none
@@ -255,6 +330,10 @@ fn native_serve_case_failure(c: NativeServeProbeCase, response: String) -> Strin
           if w.status != 200 { concat(c.identity, concat(": status ", to_string(value: w.status))) } else {
             native_serve_liveness_failure(identity: c.identity, read: observe_serve_liveness(body: w.body))
           }
+        ExpectClockReadings =>
+          if w.status != 200 { concat(c.identity, concat(": status ", concat(to_string(value: w.status), concat(" [", concat(w.body, "]"))))) } else {
+            native_serve_clock_failure(identity: c.identity, body: w.body)
+          }
       }
   }
 }
@@ -263,7 +342,7 @@ fn native_serve_case_failures(cases: List<NativeServeProbeCase>, responses: List
   match cases {
     Empty =>
       match responses {
-        Empty => acc
+        Empty => Present { value: acc }
         Cons { head: _, tail: _ } => none
       }
     Cons { head: c, tail: more } =>
@@ -282,17 +361,22 @@ fn no_observation(reason: String) -> ProcessExit {
 
 // announcement: the line the served process printed once bound. responses: one per request, in
 // order. refused_status / refused_stderr: the run launched with native_serve_probe_refused_revision.
-// served_exit_status: how the served process ended after the last case, as the host observed it
+// peer_announcement / peer_port: the second fixture instance the REST effect cases call, and the port
+// those requests named. served_exit_status: how the served process ended after the last case, as the host observed it
 // within a bounded wait (negative when it was still running and had to be killed). The last budget
 // case drives it past the stuck-worker ceiling, so it must have exited by itself with the code
 // gunbc.native_serve declares -- not merely answered the 503.
-fn native_serve_probe_standing(announcement: String, responses: List<String>, refused_status: Int, refused_stderr: String, served_exit_status: Int) -> ProcessExit {
+fn native_serve_probe_standing(announcement: String, peer_announcement: String, peer_port: Int, responses: List<String>, refused_status: Int, refused_stderr: String, served_exit_status: Int) -> ProcessExit {
   if !starts_with(s: announcement, prefix: "native-serve listening on ") {
     no_observation(reason: concat("the service did not announce a bound address: ", announcement))
+  } else if !starts_with(s: peer_announcement, prefix: "native-serve listening on ") {
+    no_observation(reason: concat("the peer service did not announce a bound address: ", peer_announcement))
+  } else if (split(s: peer_announcement, delimiter: concat(":", concat(to_string(value: peer_port), " "))) |> count) != 2 {
+    no_observation(reason: concat("the peer port the requests named is not the port the peer announced: ", peer_announcement))
   } else if refused_status != 2 || !starts_with(s: refused_stderr, prefix: "REFUSED: ") {
     ExitFailure { code: native_serve_probe_not_held_code, reason: concat("a launch with a non-revision release was not refused before binding (status ", concat(to_string(value: refused_status), ")")) }
   } else {
-    match native_serve_case_failures(cases: native_serve_probe_cases(), responses: responses, acc: []) {
+    match native_serve_case_failures(cases: native_serve_probe_cases(peer_port: peer_port), responses: responses, acc: []) {
       Absent => no_observation(reason: "the responses do not join the cases one for one")
       Present { value: failures } =>
         if (failures |> count) > 0 {
@@ -303,3 +387,4 @@ fn native_serve_probe_standing(announcement: String, responses: List<String>, re
     }
   }
 }
+

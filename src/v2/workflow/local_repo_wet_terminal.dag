@@ -85,6 +85,12 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 // this population and false for BinWitnessWet, whose members also download ISOs, fetch over the
 // network, build with real cargo and provision remote hosts.
 //
+// The repository-convergence legacy-roster retirement member (a mktemp scratch repository and bare
+// remote, git plumbing over them, one planted file deleted through extdeps.filesystem and read back
+// absent, then RecursiveForce) has the same local-repo-only property: no network, no cargo, no
+// remote host. It is scheduled so the retirement route reaches a terminal verdict on the candidate
+// rather than standing as a held hermetic route gap.
+//
 // THE ROSTER DOES NOT LAND EMPTY, and that is deliberate rather than incidental. An empty roster
 // would make the lane's coverage claim vacuously true and leave nothing proving the executor runs
 // anything at all -- a gate permanently green by construction, which DESIGN section 4b calls a
@@ -3133,6 +3139,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.workspace_source_pack_archive_real_execution", function: "one_ordinary_file_and_zero_placeholders_packs_clean_by_real_execution" },
       entry: "dag/test/claim/workspace_source_pack_archive_real_execution_witness_test.dag",
       function: "one_ordinary_file_and_zero_placeholders_packs_clean_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.repository_convergence_wet_witness_test", function: "a_legacy_derived_roster_file_is_retired_and_read_back_absent" },
+      entry: "dag/test/claim/repository_convergence_wet_witness_test.dag",
+      function: "a_legacy_derived_roster_file_is_retired_and_read_back_absent",
       expectation: ExpectedToHold {}
     }
   ]
