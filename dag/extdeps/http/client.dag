@@ -205,13 +205,13 @@ service http.Client {
     requires Network
     input { url: NonEmptyStr, request_body: String, connect_seconds: NonEmptyStr, max_seconds: NonEmptyStr }
     output {
-      exit_code: Int
-      success: Bool
-      body: String
-      stderr: String
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+      body: String from "stdout"
+      stderr: String from "stderr"
     }
     transport shell {
-      argv: ["curl", "-fsS", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "-X", "POST", "-H", "Content-Type: application/json", "-d", "@-", "{url}"]
+      argv: ["curl", "-fsS", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "-X", "POST", "-H", "Content-Type: application/json", "-d", "@-", "-w", "\n%\{http_code}", "{url}"]
     }
     stdin: request_body
     exit {
@@ -227,13 +227,13 @@ service http.Client {
     requires Network
     input { socket: NonEmptyStr, url: NonEmptyStr, request_body: String, connect_seconds: NonEmptyStr, max_seconds: NonEmptyStr }
     output {
-      exit_code: Int
-      success: Bool
-      body: String
-      stderr: String
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+      body: String from "stdout"
+      stderr: String from "stderr"
     }
     transport shell {
-      argv: ["curl", "-fsS", "--unix-socket", "{socket}", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "-X", "POST", "-H", "Content-Type: application/json", "-d", "@-", "{url}"]
+      argv: ["curl", "-fsS", "--unix-socket", "{socket}", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "-X", "POST", "-H", "Content-Type: application/json", "-d", "@-", "-w", "\n%\{http_code}", "{url}"]
     }
     stdin: request_body
     exit {
@@ -247,7 +247,7 @@ service http.Client {
 
   operation PostJsonFromFile {
     requires Network
-    input { url: NonEmptyStr, request_body_file: NonEmptyStr }
+    input { url: NonEmptyStr, request_body_file: NonEmptyStr, max_seconds: NonEmptyStr }
     output { body: String }
     readonly
     transport rest {
@@ -262,7 +262,7 @@ service http.Client {
   }
 
   operation PostFormFromFile {
-    input { url: NonEmptyStr, request_body_file: NonEmptyStr }
+    input { url: NonEmptyStr, request_body_file: NonEmptyStr, max_seconds: NonEmptyStr }
     output { body: String }
     readonly
     transport rest {
@@ -314,19 +314,19 @@ service http.Client {
     input { url: NonEmptyStr, connect_time: Second, max_time: Second }
     output {
       status: String from "stdout",
-      success: Bool from "exit_success",
+      answered: Bool from "exit_success",
       exit_code: Int from "exit_code"
     }
     readonly
     transport shell {
-      argv: ["curl", "-fsS", "--connect-timeout", http_client_max_time_flag(max_time: connect_time), "--max-time", http_client_max_time_flag(max_time: max_time), "-o", "/dev/null", "-w", "%\{http_code}", "{url}"]
+      argv: ["curl", "-sS", "--connect-timeout", http_client_max_time_flag(max_time: connect_time), "--max-time", http_client_max_time_flag(max_time: max_time), "-o", "/dev/null", "-w", "%\{http_code}", "{url}"]
     }
     exit {
       0 => Unit
-      nonzero => String "http client probe within deadlines received no response"
+      nonzero => Unit
     }
     mock_response {
-      0 => { status: "000", success: false, exit_code: 7 } "hermetic: no live endpoint; a probe replay records that nothing answered"
+      0 => { status: "000", answered: false, exit_code: 7 } "hermetic: no live endpoint; a probe replay records that nothing answered"
     }
   }
 }
