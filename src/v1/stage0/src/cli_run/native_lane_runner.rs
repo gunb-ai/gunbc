@@ -361,10 +361,29 @@ fn prepare_emitted_compiler_for_entry(
     // executable exactly as they would against a fresh one.
     let store = super::native_product_cache::store_root();
     let product_key = match &store {
-        Some(_) => Some(
-            super::native_product_cache::derive_key(source_roots, entry, &workspace)
-                .map_err(|cause| format!("V2-NATIVE REFUSAL cause={cause}"))?,
-        ),
+        Some(root) => {
+            match super::native_product_cache::derive_key(source_roots, entry, &workspace) {
+                Ok(key) => Some(key),
+                Err(super::native_product_cache::DeriveKeyError::ProducerInputsUnobserved {
+                    cause,
+                }) => {
+                    eprintln!(
+                        "v2-native-route: native product NativeProductProducerUnobserved \
+                     cause=producer_dep_info — {cause}; counted as a MISS, building cold"
+                    );
+                    super::native_product_cache::record_unkeyed_outcome(
+                        root,
+                        entry,
+                        "miss",
+                        "producer_dep_info",
+                    );
+                    None
+                }
+                Err(super::native_product_cache::DeriveKeyError::Unreadable { cause }) => {
+                    return Err(format!("V2-NATIVE REFUSAL cause={cause}"));
+                }
+            }
+        }
         None => None,
     };
     if let (Some(root), Some(key)) = (&store, &product_key) {

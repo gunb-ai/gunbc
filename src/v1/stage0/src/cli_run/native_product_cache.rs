@@ -23,9 +23,11 @@
 //!
 //! EVERY AXIS ERRS TOWARD A MISS. A miss costs one build; a stale hit serves a compiler that does
 //! not correspond to the tree. So the axes are over-approximations of relevance, never under:
-//! the producer is the seed's own source tree, the closure and the census-only declaration universe
-//! are hashed at content grain (a span-insensitive heads hash would narrow the latter and is a
-//! declared next step, not assumed here).
+//! the producer is the files cargo compiled into THIS running seed (its dep-info, the same reader
+//! the floor uses), never a walk of the whole `src/v1` tree; a missing or unreadable record
+//! REFUSES to key (counted MISS, named cause) rather than hashing a superset. The closure and the
+//! census-only declaration universe are hashed at content grain (a span-insensitive heads hash
+//! would narrow the latter and is a declared next step, not assumed here).
 //!
 //! WRITES ARE ATOMIC AND READS ARE VERIFIED. An entry is committed only after the discriminating
 //! red held on the artifact, by writing a private sibling directory and renaming it into place; a
@@ -57,53 +59,61 @@ fn hex(bytes: &[u8]) -> String {
     format!("{:x}", sha2::Sha256::digest(bytes))
 }
 
-fn walk_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
-    let entries = std::fs::read_dir(dir).map_err(|e| {
-        format!(
-            "NativeProductKeyUnreadable — listing {}: {e}",
-            dir.display()
-        )
-    })?;
-    for entry in entries {
-        let path = entry
-            .map_err(|e| format!("NativeProductKeyUnreadable — {}: {e}", dir.display()))?
-            .path();
-        let name = path.file_name().map(|n| n.to_string_lossy().into_owned());
-        if path.is_dir() {
-            if name.as_deref() == Some("target") {
-                continue;
-            }
-            walk_files(&path, out)?;
-        } else {
-            out.push(path);
-        }
-    }
-    Ok(())
+/// Why a product key was not derived. A missing producer record is a counted MISS (build cold);
+/// any other unreadable input is a lane refusal — it is not a miss, because we cannot say what
+/// the key would have been.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum DeriveKeyError {
+    /// Cargo's dep-info (or the restored-pair sidecar the same reader admits) was missing,
+    /// unreadable, or not the cargo form. Named cause `producer_dep_info`.
+    ProducerInputsUnobserved {
+        cause: String,
+    },
+    Unreadable {
+        cause: String,
+    },
 }
 
-/// Producer axis: the seed's own source. Its binary is not stable across runner slots (build paths
-/// differ), but what it is built FROM is, and the seed's behaviour is a function of that source.
-fn producer_axis(workspace: &Path) -> Result<String, String> {
-    let mut files = Vec::new();
-    walk_files(&workspace.join("src").join("v1"), &mut files)?;
-    for name in ["Cargo.toml", "Cargo.lock"] {
-        let path = workspace.join(name);
-        if path.is_file() {
-            files.push(path);
-        }
+/// Hash the listed workspace-relative files' contents, in the order the observer already sorted
+/// them. A listed path that cannot be read is a refusal, never a skipped member.
+fn hash_workspace_paths(workspace: &Path, relative_paths: &[String]) -> Result<String, String> {
+    if relative_paths.is_empty() {
+        return Err(
+            "NativeProductProducerEmpty — the compiled-input observer returned no paths".into(),
+        );
     }
-    files.sort();
     let mut h = sha2::Sha256::new();
-    for path in &files {
-        let rel = path.strip_prefix(workspace).unwrap_or(path);
-        let bytes = std::fs::read(path)
-            .map_err(|e| format!("NativeProductKeyUnreadable — {}: {e}", path.display()))?;
-        h.update((rel.to_string_lossy().len() as u64).to_le_bytes());
-        h.update(rel.to_string_lossy().as_bytes());
+    for rel in relative_paths {
+        let path = workspace.join(rel);
+        let bytes =
+            std::fs::read(&path).map_err(|e| format!("NativeProductKeyUnreadable — {rel}: {e}"))?;
+        h.update((rel.len() as u64).to_le_bytes());
+        h.update(rel.as_bytes());
         h.update((bytes.len() as u64).to_le_bytes());
         h.update(&bytes);
     }
     Ok(format!("{:x}", h.finalize()))
+}
+
+/// Producer axis: the files cargo compiled into the running seed. THE READER IS
+/// `observe_checker_input_paths` — the same dep-info / restored-pair sidecar the floor uses. There
+/// is no second file list. An unobserved set is `ProducerInputsUnobserved`, never a walk of `src/v1`.
+fn producer_axis(workspace: &Path) -> Result<String, DeriveKeyError> {
+    producer_axis_from_observation(
+        workspace,
+        super::checker_dependency::observe_checker_input_paths(workspace),
+    )
+}
+
+fn producer_axis_from_observation(
+    workspace: &Path,
+    observation: Result<Vec<String>, String>,
+) -> Result<String, DeriveKeyError> {
+    match observation {
+        Ok(paths) => hash_workspace_paths(workspace, &paths)
+            .map_err(|cause| DeriveKeyError::Unreadable { cause }),
+        Err(cause) => Err(DeriveKeyError::ProducerInputsUnobserved { cause }),
+    }
 }
 
 fn sources_axis(sources: &[std::rc::Rc<crate::v1_compiler_compile::SourceFile>]) -> String {
@@ -158,11 +168,15 @@ pub(super) fn derive_key(
     source_roots: &[String],
     entry: &str,
     workspace: &Path,
-) -> Result<ProductKey, String> {
-    let index = super::try_process_shared_index_for_pool(source_roots, true)
-        .map_err(|c| format!("NativeProductKeyUnreadable — source discovery: {c}"))?;
+) -> Result<ProductKey, DeriveKeyError> {
+    let unreadable = |c: String| DeriveKeyError::Unreadable { cause: c };
+    let index = super::try_process_shared_index_for_pool(source_roots, true).map_err(|c| {
+        unreadable(format!(
+            "NativeProductKeyUnreadable — source discovery: {c}"
+        ))
+    })?;
     let closure = super::load_sources_for_entry_with_pool(&index, entry)
-        .map_err(|c| format!("NativeProductKeyUnreadable — closure load: {c}"))?;
+        .map_err(|c| unreadable(format!("NativeProductKeyUnreadable — closure load: {c}")))?;
     let universe =
         super::compile_clean::compile_clean_census_only_sources_for_compiled(&index, &closure);
     let source_closure = hex(format!(
@@ -171,7 +185,8 @@ pub(super) fn derive_key(
         sources_axis(&universe)
     )
     .as_bytes());
-    let toolchain = super::emitted_closure_compile_host::probe_toolchain_identity_for_key()?;
+    let toolchain = super::emitted_closure_compile_host::probe_toolchain_identity_for_key()
+        .map_err(unreadable)?;
     let build_configuration =
         hex(super::emitted_closure_compile_host::probe_build_configuration_for_key().as_bytes());
     Ok(assemble_key(AxisInputs {
@@ -369,6 +384,24 @@ pub(super) fn record_outcome(
     })
     .to_string();
     eprintln!("v2-native-route: native product RECEIPT {line}");
+    write_receipt_line(store, &line);
+}
+
+/// A MISS with no key: the producer inputs were unobserved, so minting a digest would be a
+/// fabricated address. The receipt still counts the miss under a named cause.
+pub(super) fn record_unkeyed_outcome(store: &Path, entry: &str, outcome: &str, cause: &str) {
+    let line = serde_json::json!({
+        "entry": entry,
+        "key": serde_json::Value::Null,
+        "outcome": outcome,
+        "cause": cause,
+    })
+    .to_string();
+    eprintln!("v2-native-route: native product RECEIPT {line}");
+    write_receipt_line(store, &line);
+}
+
+fn write_receipt_line(store: &Path, line: &str) {
     let Some(root) = store.parent() else { return };
     use std::io::Write;
     if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -674,5 +707,67 @@ mod tests {
         let text = std::fs::read_to_string(root.join(RECEIPT)).unwrap();
         assert_eq!(text.lines().count(), 1);
         assert!(text.contains("\"cause\":\"auth\"") && text.contains("\"outcome\":\"miss\""));
+    }
+
+    // Control (1)+(2): the producer digest is the compiled set's contents. A file cargo did not
+    // compile into the seed cannot move the key; a compiled file must.
+    #[test]
+    fn a_seed_file_outside_the_compiled_set_leaves_the_producer_key_unchanged() {
+        let root = scratch("producer-set");
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(root.join("src/compiled.rs"), b"seed").unwrap();
+        std::fs::write(root.join("src/uncompiled.rs"), b"noise").unwrap();
+        let compiled = vec!["src/compiled.rs".to_string()];
+        let h0 = hash_workspace_paths(&root, &compiled).unwrap();
+        std::fs::write(root.join("src/uncompiled.rs"), b"noise-changed").unwrap();
+        assert_eq!(h0, hash_workspace_paths(&root, &compiled).unwrap());
+        std::fs::write(root.join("src/compiled.rs"), b"seed-changed").unwrap();
+        assert_ne!(h0, hash_workspace_paths(&root, &compiled).unwrap());
+    }
+
+    // Control (3): missing dep-info is a refusal to key, never a digest over a fallback tree.
+    #[test]
+    fn missing_dep_info_refuses_to_key() {
+        let err = producer_axis_from_observation(
+            Path::new("/unused"),
+            Err("the checker's dependency record is unreadable".into()),
+        )
+        .expect_err("an unobserved producer set must not mint a key");
+        assert!(
+            matches!(err, DeriveKeyError::ProducerInputsUnobserved { .. }),
+            "{err:?}"
+        );
+    }
+
+    #[test]
+    fn an_empty_compiled_set_is_unreadable_not_a_key() {
+        let root = scratch("producer-empty");
+        let err = producer_axis_from_observation(&root, Ok(vec![]))
+            .expect_err("an empty compiled set must not mint a producer digest");
+        assert!(matches!(err, DeriveKeyError::Unreadable { .. }), "{err:?}");
+    }
+
+    // Inhabitance: this unit-test binary carries rustc's per-crate `.d`, which the shared reader
+    // refuses. producer_axis must surface that as ProducerInputsUnobserved, not walk src/v1.
+    #[test]
+    fn this_test_binary_does_not_mint_a_producer_key() {
+        let err = producer_axis(&super::super::process_workspace_root())
+            .expect_err("a test binary has no cargo dep-info for the seed");
+        assert!(
+            matches!(err, DeriveKeyError::ProducerInputsUnobserved { .. }),
+            "{err:?}"
+        );
+    }
+
+    #[test]
+    fn an_unkeyed_miss_is_counted_with_the_named_cause_and_no_digest() {
+        let root = scratch("unkeyed");
+        let store = root.join(STORE_DIR);
+        std::fs::create_dir_all(&store).unwrap();
+        record_unkeyed_outcome(&store, "e", "miss", "producer_dep_info");
+        let text = std::fs::read_to_string(root.join(RECEIPT)).unwrap();
+        assert!(text.contains("\"key\":null"));
+        assert!(text.contains("\"cause\":\"producer_dep_info\""));
+        assert!(text.contains("\"outcome\":\"miss\""));
     }
 }
