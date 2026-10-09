@@ -124,7 +124,7 @@ fn resolves_to(anchors: List<DimmPlacementAnchor>, banks: List<MtCollinsDimmFigu
 // socket), and the firmware trained SK0 MC0 S0 and SK0 MC4 S0.
 test fn w_unmirrored_figure_order_contradicts_firmware() -> Bool {
   match anchor_verdict(anchor: mtcollins1_three_stick_anchor, hypothesis: FigureOrder, banks: dimm_figure_banks, pairs: mt_collins_channel_connector_pairs) {
-    AnchorContradicted { predicted: p } => list_length(items: p) == 1 && p.first().socket == 0 && p.first().controller == 0
+    AnchorContradicted { predicted: p } => list_length(items: p) == 1 && (match p.first() { Present { value: b } => b.socket == 0 && b.controller == 0  Absent => false })
     AnchorConsistent => false
     AnchorUnevaluable { unresolved_key: _ } => false
     AnchorFrameUnreported => false
