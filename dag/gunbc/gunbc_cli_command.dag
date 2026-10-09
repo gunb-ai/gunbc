@@ -7,6 +7,7 @@ import extdeps.exec.command { ArgvCommand, argv_command }
 import gunbc.cli_invoke {
   InvocationWord, LiteralWord,
   invocation_words_bare,
+  gunbc_run_invocation_words_with_functions,
   gunbc_bin_name,
   release_bin_rel_path
 }
@@ -67,5 +68,21 @@ fn gunbc_test_command(label: String) -> ArgvCommand {
   argv_command(
     program: uncataloged_program(invocation: release_bin_rel_path(bin_name: gunbc_bin_name) as NonEmptyStr),
     arguments: invocation_words_bare(words: gunbc_test_invocation_words(label: label)),
+  )
+}
+
+// THE `gunbc run` ARGV REALIZATION over the repository's two source roots: one entry and the
+// functions to run, never a claim run. The shape is gunbc.cli_invoke's; this only binds it to the
+// release binary, as gunbc_test_command does for `test`.
+fn gunbc_run_command(entry: String, functions: List<String>) -> ArgvCommand {
+  argv_command(
+    program: uncataloged_program(invocation: release_bin_rel_path(bin_name: gunbc_bin_name) as NonEmptyStr),
+    arguments: invocation_words_bare(words: gunbc_run_invocation_words_with_functions(
+      source_roots: ["dag", "src/v2"],
+      entry: entry,
+      functions: functions,
+      claim_run: false,
+      arguments: [],
+    )),
   )
 }

@@ -26,6 +26,8 @@ import gunbc.auth.heal_publisher_provision {
   rest_refusal_text, outcome_is_not_found,
 }
 import gunbc.namecheap.federation_provision { namecheap_dedicated_federation }
+import gunbc.native_product_federation { native_product_federations }
+import gunbc.auth.fleet_convergence_federation { fleet_convergence_federation }
 import gunbc.auth.managed_host_boot_federation_provision { boot_dedicated_federation }
 import gunbc.auth.managed_host_boot_federation { pinned_version_accessor_grant_for, provisioned_boot_federations }
 import gunbc.auth.approval_request_submission { approval_submission_mac_key_secret_ref }
@@ -216,7 +218,7 @@ data gcp_iam_converge_targets: List<DedicatedFederation> = concat(
     [heal_publisher_dedicated_federation(), private_heal_publisher_dedicated_federation()],
     map(provisioned_boot_federations(), f => boot_dedicated_federation(f: f)),
   ),
-  [namecheap_dedicated_federation()],
+  concat([namecheap_dedicated_federation(), fleet_convergence_federation()], native_product_federations()),
 )
 
 fn service_account_resource(email: ServiceAccountEmail) -> String {
