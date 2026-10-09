@@ -8291,8 +8291,18 @@ fn dag_emit_token_glues_next(terminal: GrammarEmitTerminal) -> Bool {
   }
 }
 
-fn dag_emit_separator(acc: DagEmitText) -> String {
-  if acc.text == "" { "" } else if acc.glue_next { "" } else if acc.break_pending { "\n" } else { " " }
+// A middle or tail token opens with the hole's closing brace, so it attaches to the hole's expression.
+fn dag_emit_token_glues_prev(terminal: GrammarEmitTerminal) -> Bool {
+  match terminal {
+    GrammarEmitClassTerminal { token_class: c, captured: _ } =>
+      (c == ^dag_token_string_template_middle) || (c == ^dag_token_string_template_tail)
+    GrammarEmitLexemeTerminal { token_class: _, lexeme: _ } => false
+    GrammarEmitLineBreak => false
+  }
+}
+
+fn dag_emit_separator(acc: DagEmitText, t: GrammarEmitTerminal) -> String {
+  if acc.text == "" { "" } else if acc.glue_next { "" } else if dag_emit_token_glues_prev(terminal: t) { "" } else if acc.break_pending { "\n" } else { " " }
 }
 
 // Whitespace is trivia in dag_lex_rules, so one space between tokens cannot change the tree that is
@@ -8307,7 +8317,7 @@ fn dag_emit_text_step(lex: LexRules, acc: DagEmitText, t: GrammarEmitTerminal) -
         o: dag_emit_token_spelling(lex: lex, terminal: t),
         f: fn(spelled) {
           outcome_accepted(value: DagEmitText {
-            text: concat(acc.text, concat(dag_emit_separator(acc: acc), spelled)),
+            text: concat(acc.text, concat(dag_emit_separator(acc: acc, t: t), spelled)),
             break_pending: false,
             glue_next: dag_emit_token_glues_next(terminal: t)
           })
@@ -8318,7 +8328,7 @@ fn dag_emit_text_step(lex: LexRules, acc: DagEmitText, t: GrammarEmitTerminal) -
         o: dag_emit_token_spelling(lex: lex, terminal: t),
         f: fn(spelled) {
           outcome_accepted(value: DagEmitText {
-            text: concat(acc.text, concat(dag_emit_separator(acc: acc), spelled)),
+            text: concat(acc.text, concat(dag_emit_separator(acc: acc, t: t), spelled)),
             break_pending: false,
             glue_next: false
           })

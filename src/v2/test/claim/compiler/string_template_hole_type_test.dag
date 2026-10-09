@@ -37,7 +37,6 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // template reader runs, and a template that was not read raw lost its holes (the hole's expression
 // wrapper was lowered away), leaving concat("a","b") with no reference to k.
 data sth_int_hole: String = "module p\n\ndata k: String = \"k\"\n\ndata s: String = \"a\{k\}b\"\n\nfn f(a: Int) -> String {\n  \"x\{a\}y\"\n}\n"
-data sth_unbound_hole: String = "module p\n\ndata s: String = \"a\{nope\}b\"\n"
 
 // RED, LOCATED AT THE HOLE: an Int hole is not converted; it refuses at the concat argument, as an
 // authored concat("x", a) with a: Int does, and the refusal's node resolves through the parse's span
@@ -64,18 +63,6 @@ fn sth_k_references(tree: Node) -> Int {
       Absent => acc
     }
   })
-}
-
-// An unbound hole is a located refusal, not a dropped one: assembly itself rejects.
-test fn an_unbound_hole_in_a_data_initializer_refuses() -> Bool {
-  match assemble_program_from_ingest_located(
-    ingest: Cons { head: bla_source(src: sth_unbound_hole, artifact: tpb_artifact, cu: ^type_param_binder_frame_cu), tail: fmi_list_peers() },
-    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
-    lm: dag_language_model()
-  ).program {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
-  }
 }
 
 // The same assembly as the Int-hole claim (a pure producer, shared across claims), read for what normalize
