@@ -430,6 +430,26 @@ fn prepare_emitted_compiler_for_entry(
                         manifest.binary_sha256
                     ));
                 }
+                // THE ORACLE COMPILER IS THIS HOST'S, NOT THE PRODUCER'S. `manifest.compiler_path`
+                // names the executable on the host that built the product; a shared-store restore
+                // carries it to a host where it does not exist. Resolve this host's compiler and
+                // require it to be the toolchain the manifest records -- a different identity is a
+                // refusal, never a silent substitution of another compiler as the oracle.
+                let (local_compiler, local_identity) =
+                    super::emitted_closure_compile_host::resolve_local_compiler(
+                        &super::process_workspace_root(),
+                    )
+                    .map_err(|cause| {
+                        format!("V2-NATIVE REFUSAL cause=NativeProductCompilerUnresolved — {cause}")
+                    })?;
+                if local_identity != manifest.rustc_identity {
+                    return Err(format!(
+                        "V2-NATIVE REFUSAL cause=NativeProductToolchainDiffers — this host's \
+                         compiler {local_compiler} is `{local_identity}`, the product was built \
+                         by `{}`",
+                        manifest.rustc_identity
+                    ));
+                }
                 let seed_identity = sha256_file(&std::env::current_exe().map_err(|e| {
                     format!("V2-NATIVE REFUSAL cause=SeedIdentityUnreadable — current_exe: {e}")
                 })?)?;
@@ -446,7 +466,7 @@ fn prepare_emitted_compiler_for_entry(
                     build: EmittedBuildObserved {
                         cargo_argv: manifest.cargo_argv,
                         rustflags: manifest.rustflags,
-                        compiler_path: manifest.compiler_path,
+                        compiler_path: local_compiler,
                         rustc_identity: manifest.rustc_identity,
                         exit_status: manifest.exit_status,
                         warning_count: manifest.warning_count,
