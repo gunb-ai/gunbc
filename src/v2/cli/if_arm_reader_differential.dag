@@ -23,6 +23,7 @@ import v2.extdeps.languages.dag {
   ParseSubtreeAbsent,
   ParseSubtreeFound,
   dag_lex,
+  dag_surface_identity_is_top_level_item,
   dag_surface_kw_then_ident_from_captured,
   parse_production_captured_child_optional,
   parse_production_emitted_identity_optional
@@ -280,13 +281,7 @@ fn iard_declaration_name(shell: Node, emitted: Symbol) -> String {
 }
 
 fn iard_is_declaration(id: Symbol) -> Bool {
-  (id == ^dag_surface_fn_decl)
-    || (id == ^dag_surface_test_fn_decl)
-    || (id == ^dag_surface_data_decl)
-    || (id == ^dag_surface_type_decl)
-    || (id == ^dag_surface_alias_decl)
-    || (id == ^dag_surface_service_decl)
-    || (id == ^dag_surface_resource_decl)
+  dag_surface_identity_is_top_level_item(id: id)
 }
 
 // EVERY if_expr IN THE TREE, IN PRE-ORDER, WITH ITS ENCLOSING DECLARATION. Nested ifs are visited:
