@@ -1,0 +1,87 @@
+module extdeps.printing.bambu_lab_filament
+
+import std.types { List, NonEmptyStr, Bool }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure {
+  Celsius, celsius, celsius_count,
+  Megapascal, megapascal, megapascal_count,
+  KilogramPerCubicMetre, kilogram_per_cubic_metre,
+}
+import extdeps.printing.fdm { FilamentTechnicalDataSheetRow, FilamentMaterial, Pla, Petg, filament_material_eq }
+import extdeps.vendor.bambu_lab { bambu_lab }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import extdeps.uri { Uri, Https }
+
+// ONE VENDOR'S FILAMENT PRODUCTS, each with the figures its technical data sheet publishes.
+//
+// extdeps.printing.fdm deliberately carries no thermal or mechanical property on a material CLASS:
+// a heat-deflection temperature is a fact about one formulation from one supplier, cited to that
+// supplier's sheet. This module is where such sheets live for Bambu Lab's own filaments, which are
+// what the two A1 minis in the fleet run. A row here is the thing the exhaust-thermal and
+// stack-mechanics models consult; a class-level nominal would be the fabricated figure fdm refuses.
+//
+// Vendor PDFs read directly on 2026-10-04. Neither row supplies a printed-joint
+// compressive allowable or creep qualification; bending strength cannot replace it.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "store.bblcdn.com/3a230e260a3a47c2b0db0156e07eef91.pdf"
+  }
+}
+
+data bambu_filament_guide_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cdn1.bambulab.com/filament/a5e185aed14e6/filament-guide-en-4.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.printing.bambu_lab_filament",
+      decl_name: "bambu_filament_sheets",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [bambu_filament_guide_authority]
+}
+
+// The sheet's own fields, at the sheet's own grain. HDT is the ISO 75 figure at 0.45 MPa, which is
+// the low-stress condition the sheets state; a load-bearing part at higher stress deflects at a
+// LOWER temperature than this, so a consumer must not read it as a service ceiling under load.
+// Shared property shape lives in the vendor-neutral FDM module.
+
+data bambu_pla_basic_authority: ExternalAuthority = ExternalAuthority {uri:Uri {scheme:Https,locator:"store.bblcdn.com/s7/default/b189de92249a4b9ebed28b8ea1f080f0/Bambu_PLA_Basic_Technical_Data_Sheet.pdf"}}
+
+data bambu_pla_basic_tds: FilamentTechnicalDataSheetRow = FilamentTechnicalDataSheetRow {
+  product_label: "Bambu PLA Basic",
+  material: Pla,
+  density: kilogram_per_cubic_metre(count: 1240),
+  heat_deflection_at_0_45_mpa: celsius(count: 57),
+  tensile_strength: megapascal(count: 35),
+  bending_strength: megapascal(count: 76),
+  bending_modulus: megapascal(count: 2750),
+  standing: CitedToAuthority {authority:bambu_pla_basic_authority},
+}
+
+data bambu_petg_hf_tds: FilamentTechnicalDataSheetRow = FilamentTechnicalDataSheetRow {
+  product_label: "Bambu PETG HF",
+  material: Petg,
+  density: kilogram_per_cubic_metre(count: 1280),
+  heat_deflection_at_0_45_mpa: celsius(count: 69),
+  tensile_strength: megapascal(count: 34),
+  bending_strength: megapascal(count: 64),
+  bending_modulus: megapascal(count: 2050),
+  standing: CitedToAuthority {authority:extdeps_external_authority_anchor},
+}
+
+data bambu_filament_sheets: List<FilamentTechnicalDataSheetRow> = [bambu_pla_basic_tds, bambu_petg_hf_tds]
+
+// The sheet uncertainty the rows above drop: the tensile and bending figures carry +/- bands on the
+// sheet. A consumer that wants a conservative limit subtracts the band it declares; the rows carry
+// the central value the sheet prints, and this note says the band exists.
+data bambu_tds_tolerance_band_note: NonEmptyStr = "Sheet values carry +/- bands (PLA Basic bending 76 +/- 5 MPa, modulus 2750 +/- 160 MPa; PETG HF bending 64 +/- 3 MPa, modulus 2050 +/- 120 MPa). Rows carry the central value; a consumer declares its own margin."

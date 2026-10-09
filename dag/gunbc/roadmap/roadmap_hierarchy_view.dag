@@ -1,0 +1,318 @@
+module gunbc.roadmap.roadmap_hierarchy_view
+
+import std.types { String, Int, Bool, List }
+import v2.std.collection { Map }
+import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, RoadmapNodeId, roadmap_parent_ids }
+import gunbc.roadmap_nesting { roadmap_memberships_of }
+import gunbc.roadmap.roadmap_lineage {
+  LineageWalk, LineageRooted, LineageNoParent, LineageUndeclared, LineageCyclic,
+  lineage_walk_in, lineage_index, lineage_lookup, lineage_refusal_detail,
+}
+import gunbc.roadmap.roadmap_project {
+  RoadmapMembershipIndex, membership_index, node_project_membership_in, project_member_ids_in,
+  MembershipStandalone, MembershipMember, MembershipAmbiguous,
+}
+import gunbc.roadmap_priority { DerivedPriority, issue_priority_of }
+import gunbc.roadmap_presentation { row_headline, dependency_cycle_touches }
+import gunbc.roadmap_issue_status { IssueDisplayStatus, issue_display_status_is_closed }
+import gunbc.roadmap_issue_location { issue_page_path }
+
+// WHERE A NODE SITS AND WHAT RELATES TO IT, ANSWERED ONCE. The issue page's chain, its relation
+// sections and its rail all read this one projection, so no two of them can name a different
+// parent, a different status or a different address for the same node.
+//
+// The vocabulary is fixed by the authority each relation is read from. PARENT and SUB-ISSUE are
+// membership: the parent each row declares (gunbc.roadmap_model NodeParent, projected by
+// gunbc.roadmap_nesting). BLOCKED BY and BLOCKING are dependency: the edges
+// (gunbc.roadmap_model RoadmapEdge). Neither stands in for the other, and a node that is both a
+// sub-issue and a blocker appears under both relations as the same NodePresentation -- the relation
+// carries the meaning, the presentation does not change with it.
+
+// A STATUS IS DERIVED OR IT IS UNAVAILABLE, never guessed. The derived arm carries two facts the
+// producer establishes separately: the status the node is shown with
+// (gunbc.roadmap_presentation issue_display_status over its decided row, or
+// omitted_node_display_status for a declared node the plan omits), and whether the node is
+// CLOSED, which is its lifecycle's answer (gunbc.roadmap_presentation work_lifecycle_is_closed)
+// and not a reading of the status word. They can differ: a done node whose standing cannot be
+// observed is shown as Unknown and is still closed. Unavailable is reserved for a node whose
+// state the producer cannot establish at all, and says why.
+//
+// A node the plan omits is shown by the authority that establishes it, never by its absence:
+// Accepted when the acceptance authority lists it (closed), Withheld when the plan's withheld set
+// names it (not closed: it is set aside, not finished). Unavailable is left for a node no
+// authority establishes.
+type NodeStatus
+  = NodeStatusDerived { status: IssueDisplayStatus, closed: Bool }
+  | NodeStatusAccepted
+  | NodeStatusWithheld
+  | NodeStatusUnavailable { reason: String }
+
+// A derived status with no lifecycle beside it: closed is what the status vocabulary says of that
+// status (gunbc.roadmap_issue_status issue_display_status_is_closed). The specimen's planted nodes
+// are built this way; a producer that holds a lifecycle states `closed` from it instead.
+fn node_status_derived(status: IssueDisplayStatus) -> NodeStatus {
+  NodeStatusDerived { status: status, closed: issue_display_status_is_closed(status: status) }
+}
+
+// A node whose state is unavailable is not known to be closed, so it is not shown as closed.
+fn node_status_is_closed(status: NodeStatus) -> Bool {
+  match status {
+    NodeStatusDerived { status: _, closed } => closed
+    NodeStatusAccepted => true
+    NodeStatusWithheld => false
+    NodeStatusUnavailable { reason: _ } => false
+  }
+}
+
+// ONE NODE AS SHOWN, wherever it is shown. `route` is the node's canonical address
+// (gunbc.roadmap_issue_location issue_page_path); `slug` is its id.
+type NodePresentation {
+  slug: String
+  title: String
+  status: NodeStatus
+  priority: DerivedPriority
+  route: String
+}
+
+// THE MEMBERSHIP LINEAGE, root first. `ancestors` holds EVERY level from the admitted root down to
+// the parent -- eliding the middle of a long chain is a rendering decision, so nothing is dropped
+// here. A walk that does not reach the root keeps the lineage walk's own refusal
+// (gunbc.roadmap.roadmap_lineage LineageNoParent, LineageUndeclared, LineageCyclic): a prefix of a
+// chain is not a chain.
+type NodeChain
+  = NodeChainRooted { ancestors: List<NodePresentation>, self_node: NodePresentation }
+  | NodeChainRefused { refusal: LineageWalk }
+
+// What a surface says in place of a refused chain: the lineage walk's own located reason.
+fn node_chain_refusal_text(refusal: LineageWalk) -> String {
+  join(["project path unavailable: ", lineage_refusal_detail(w: refusal)], "")
+}
+
+// A SUB-ISSUE ROW REFERS TO ITS OWN SUB-ISSUES BY COUNT; IT DOES NOT LOAD THEM. Loading them would
+// put a status derivation for the whole subtree on every issue page -- at the root that is the
+// whole tracker -- for rows the reader has not asked to see, and each sub-issue's own page already
+// lists its sub-issues with their statuses. A row of a relation that is not Sub-issues carries no
+// such reference at all.
+type RelationRowChildren
+  = RowChildrenNotCarried
+  | RowChildrenExpandable { count: Int }
+
+type RelationKind
+  = RelationParent
+  | RelationSubIssues
+  | RelationBlockedBy
+  | RelationBlocking
+
+type RelationRow { node: NodePresentation, children: RelationRowChildren }
+
+// `undeclared` names the related ids no declared node answers to. They are not rows, because a row
+// is a node as shown and there is no node to show; they are kept so the gap is stated.
+type NodeRelation { kind: RelationKind, rows: List<RelationRow>, undeclared: List<String> }
+
+// Each view is built from its own authority alone: membership_view reads no edge, dependency_view
+// reads no membership.
+type MembershipView { parent: NodeRelation, sub_issues: NodeRelation }
+type DependencyView { blocked_by: NodeRelation, blocking: NodeRelation, cycle: Bool }
+
+type IssueHierarchyView { chain: NodeChain, membership: MembershipView, dependency: DependencyView }
+
+// THE UNIVERSE a hierarchy is read over, indexed once: every node by id (first declaration wins,
+// gunbc.roadmap.roadmap_lineage lineage_index) and the membership relation those nodes declare.
+type HierarchyUniverse {
+  index: Map<String, RoadmapNode>
+  memberships: RoadmapMembershipIndex
+  fuel: Int
+}
+
+// A page shows plan rows and reads lineage over the declared rows; a row present in both is one
+// node, so the declared rows join only where the plan has none. Without this a node declared in
+// both lists would be its parent's sub-issue twice.
+fn hierarchy_nodes(plan: List<RoadmapNode>, declared: List<RoadmapNode>) -> List<RoadmapNode> {
+  let planned = lineage_index(nodes: plan)
+  concat(plan, filter(declared, n => match lineage_lookup(index: planned, id: n.node as String) {
+    Present { value: _ } => false
+    Absent => true
+  }))
+}
+
+fn hierarchy_universe(nodes: List<RoadmapNode>) -> HierarchyUniverse {
+  HierarchyUniverse {
+    index: lineage_index(nodes: nodes),
+    memberships: membership_index(memberships: roadmap_memberships_of(nodes: nodes)),
+    fuel: count(nodes) + 1,
+  }
+}
+
+fn node_presentation(rn: RoadmapNode, universe: HierarchyUniverse, status_of: fn(RoadmapNode) -> NodeStatus) -> NodePresentation {
+  NodePresentation {
+    slug: rn.node as String,
+    title: row_headline(line: rn.line),
+    status: status_of(rn),
+    priority: issue_priority_of(node_id: rn.node as String, index: universe.memberships),
+    route: issue_page_path(node_id: rn.node as String),
+  }
+}
+
+type RelationRowsBuild { rows: List<RelationRow>, undeclared: List<String> }
+
+fn relation_of(kind: RelationKind, ids: List<String>, universe: HierarchyUniverse, status_of: fn(RoadmapNode) -> NodeStatus) -> NodeRelation {
+  let built = fold(ids, init: RelationRowsBuild { rows: [], undeclared: [] }, f: fn(acc, id) {
+    match lineage_lookup(index: universe.index, id: id) {
+      Absent => RelationRowsBuild { rows: acc.rows, undeclared: concat(acc.undeclared, [id]) }
+      Present { value: rn } => RelationRowsBuild {
+        rows: concat(acc.rows, [RelationRow {
+          node: node_presentation(rn: rn, universe: universe, status_of: status_of),
+          children: match kind {
+            RelationSubIssues => RowChildrenExpandable { count: count(project_member_ids_in(arc: id, index: universe.memberships)) }
+            RelationParent => RowChildrenNotCarried
+            RelationBlockedBy => RowChildrenNotCarried
+            RelationBlocking => RowChildrenNotCarried
+          },
+        }]),
+        undeclared: acc.undeclared,
+      }
+    }
+  })
+  NodeRelation { kind: kind, rows: built.rows, undeclared: built.undeclared }
+}
+
+fn membership_view(node_id: String, universe: HierarchyUniverse, status_of: fn(RoadmapNode) -> NodeStatus) -> MembershipView {
+  MembershipView {
+    parent: relation_of(kind: RelationParent, ids: match node_project_membership_in(node_id: node_id, index: universe.memberships) {
+      MembershipStandalone => []
+      MembershipMember { arc } => [arc]
+      MembershipAmbiguous { arcs } => arcs
+    }, universe: universe, status_of: status_of),
+    sub_issues: relation_of(kind: RelationSubIssues, ids: project_member_ids_in(arc: node_id, index: universe.memberships), universe: universe, status_of: status_of),
+  }
+}
+
+// THE NODES THIS ONE BLOCKS: every edge naming it as the prerequisite, in edge order -- the
+// converse read of gunbc.roadmap_model roadmap_parent_ids over the same edges. (RoadmapEdge spells
+// its ends `child` and `parent`; they are the dependent and its prerequisite, not membership.)
+fn dependency_blocking_ids(edges: List<RoadmapEdge>, node_id: String) -> List<String> {
+  edges |> filter(e => (e.parent as String) == node_id) |> map(e => e.child as String)
+}
+
+fn dependency_view(node: RoadmapNodeId, edges: List<RoadmapEdge>, universe: HierarchyUniverse, status_of: fn(RoadmapNode) -> NodeStatus) -> DependencyView {
+  DependencyView {
+    blocked_by: relation_of(kind: RelationBlockedBy, ids: roadmap_parent_ids(edges: edges, node: node) |> map(p => p as String), universe: universe, status_of: status_of),
+    blocking: relation_of(kind: RelationBlocking, ids: dependency_blocking_ids(edges: edges, node_id: node as String), universe: universe, status_of: status_of),
+    cycle: dependency_cycle_touches(node_id: node as String, edges: edges),
+  }
+}
+
+type ChainBuild { nodes: List<NodePresentation>, missing: List<String> }
+
+// The walk answers leaf to root; the chain reads root to leaf, so each id is prepended.
+fn node_chain(node_id: String, universe: HierarchyUniverse, status_of: fn(RoadmapNode) -> NodeStatus) -> NodeChain {
+  let walk = lineage_walk_in(node_id: node_id, index: universe.index, fuel: universe.fuel)
+  match walk {
+    LineageNoParent { walked: _, at: _ } => NodeChainRefused { refusal: walk }
+    LineageUndeclared { walked: _, node_id: _ } => NodeChainRefused { refusal: walk }
+    LineageCyclic { node_id: _ } => NodeChainRefused { refusal: walk }
+    LineageRooted { ids } => {
+      let built = fold(ids, init: ChainBuild { nodes: [], missing: [] }, f: fn(acc, id) {
+        if id == node_id {
+          acc
+        } else {
+          match lineage_lookup(index: universe.index, id: id) {
+            Absent => ChainBuild { nodes: acc.nodes, missing: concat(acc.missing, [id]) }
+            Present { value: rn } => ChainBuild { nodes: concat([node_presentation(rn: rn, universe: universe, status_of: status_of)], acc.nodes), missing: acc.missing }
+          }
+        }
+      })
+      match lineage_lookup(index: universe.index, id: node_id) {
+        Absent => NodeChainRefused { refusal: LineageUndeclared { walked: ids, node_id: node_id } }
+        Present { value: rn } => match built.missing.first() {
+          Present { value: gone } => NodeChainRefused { refusal: LineageUndeclared { walked: ids, node_id: gone } }
+          Absent => NodeChainRooted { ancestors: built.nodes, self_node: node_presentation(rn: rn, universe: universe, status_of: status_of) }
+        }
+      }
+    }
+  }
+}
+
+fn issue_hierarchy_view(node: RoadmapNodeId, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, status_of: fn(RoadmapNode) -> NodeStatus) -> IssueHierarchyView {
+  let universe = hierarchy_universe(nodes: nodes)
+  IssueHierarchyView {
+    chain: node_chain(node_id: node as String, universe: universe, status_of: status_of),
+    membership: membership_view(node_id: node as String, universe: universe, status_of: status_of),
+    dependency: dependency_view(node: node, edges: edges, universe: universe, status_of: status_of),
+  }
+}
+
+// A RELATION'S COUNTS ARE A FUNCTION OF ITS ROWS, so a label and the table under it cannot
+// disagree. `closed` counts the rows the producer established as closed, whatever status word they
+// are shown with; `status_unavailable` counts the rows whose state the producer could not
+// establish, which are neither closed nor open here.
+type RelationSummary { total: Int, closed: Int, status_unavailable: Int }
+
+fn relation_summary(relation: NodeRelation) -> RelationSummary {
+  fold(relation.rows, init: RelationSummary { total: 0, closed: 0, status_unavailable: 0 }, f: fn(acc, row) {
+    match row.node.status {
+      NodeStatusUnavailable { reason: _ } => RelationSummary { total: acc.total + 1, closed: acc.closed, status_unavailable: acc.status_unavailable + 1 }
+      NodeStatusAccepted => RelationSummary { total: acc.total + 1, closed: acc.closed + 1, status_unavailable: acc.status_unavailable }
+      NodeStatusWithheld => RelationSummary { total: acc.total + 1, closed: acc.closed, status_unavailable: acc.status_unavailable }
+      NodeStatusDerived { status: _, closed } => RelationSummary {
+        total: acc.total + 1,
+        closed: if closed { acc.closed + 1 } else { acc.closed },
+        status_unavailable: acc.status_unavailable,
+      }
+    }
+  })
+}
+
+// THE COUNT A LABEL SHOWS. Sub-issues read closed over total; every other relation reads its
+// total. Closed-over-total is stated only when every row's state was established -- a count of closed
+// rows beside rows of unknown state would understate it. The count is a value, so a heading that
+// formats it and a label that prints it read the same decision.
+type RelationCount
+  = RelationCountTotal { total: Int }
+  | RelationCountClosedOfTotal { closed: Int, total: Int }
+
+fn relation_count(relation: NodeRelation) -> RelationCount {
+  let summary = relation_summary(relation: relation)
+  match relation.kind {
+    RelationSubIssues =>
+      if summary.status_unavailable == 0 {
+        RelationCountClosedOfTotal { closed: summary.closed, total: summary.total }
+      } else {
+        RelationCountTotal { total: summary.total }
+      }
+    RelationParent => RelationCountTotal { total: summary.total }
+    RelationBlockedBy => RelationCountTotal { total: summary.total }
+    RelationBlocking => RelationCountTotal { total: summary.total }
+  }
+}
+
+fn relation_count_text(relation: NodeRelation) -> String {
+  match relation_count(relation: relation) {
+    RelationCountTotal { total } => to_string(value: total)
+    RelationCountClosedOfTotal { closed, total } => join([to_string(value: closed), "/", to_string(value: total)], "")
+  }
+}
+
+fn relation_kind_label(kind: RelationKind) -> String {
+  match kind {
+    RelationParent => "Parent"
+    RelationSubIssues => "Sub-issues"
+    RelationBlockedBy => "Blocked by"
+    RelationBlocking => "Blocking"
+  }
+}
+
+// What a relation with no rows says in place of its table.
+fn relation_empty_text(kind: RelationKind) -> String {
+  match kind {
+    RelationParent => "No parent"
+    RelationSubIssues => "No sub-issues"
+    RelationBlockedBy => "Not blocked by any issue"
+    RelationBlocking => "Not blocking any issue"
+  }
+}
+
+// What a relation says about an id it names that no declared node answers to.
+fn relation_undeclared_text(kind: RelationKind) -> String {
+  join([relation_kind_label(kind: kind), " names no declared node"], "")
+}

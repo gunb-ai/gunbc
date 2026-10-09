@@ -1674,6 +1674,24 @@ fn required_floor_claim_cost_upload_bound_step() -> WitnessFloorBoundStep {
   }
 }
 
+// THE ADMISSION ROSTER (required_floor_disposition.tsv) IS BOUND THE SAME WAY, for the same reason:
+// it was one of the four uploads instrument_artifact_stopped_existing_while_cited named as lost with
+// the job move, and it is the only per-identity record of which witnesses the floor declined
+// (declined_outside_gate_closure among them). Its reader is gunbc.instruments
+// gate_closure_decline_census, the census of witness_outside_gate_closure_falsified_by_other_file.
+fn required_floor_disposition_upload_bound_step() -> WitnessFloorBoundStep {
+  WitnessFloorBoundStep {
+    step: witness_floor_tsv_upload_step(
+      step_name: "Upload the floor's admission roster",
+      artifact_name: required_floor_disposition_artifact_name,
+      path: required_floor_disposition_path,
+      condition: witness_floor_precondition()
+    ),
+    role: capability_neutral,
+    step_name: "Upload the floor's admission roster",
+  }
+}
+
 fn required_ci_measurement_bound_steps() -> List<WitnessFloorBoundStep> {
   [
     WitnessFloorBoundStep {
@@ -1712,16 +1730,7 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         step_name: "All witnesses (one prepared subject, one fold)",
       },
     ], concat(required_ci_measurement_bound_steps(), concat([
-      WitnessFloorBoundStep {
-        step: witness_floor_tsv_upload_step(
-          step_name: "Upload the floor's admission roster",
-          artifact_name: required_floor_disposition_artifact_name,
-          path: required_floor_disposition_path,
-          condition: witness_floor_precondition()
-        ),
-        role: capability_neutral,
-        step_name: "Upload the floor's admission roster",
-      },
+      required_floor_disposition_upload_bound_step(),
       WitnessFloorBoundStep {
         step: witness_floor_tsv_upload_step(
           step_name: "Upload the expected-red roster join",

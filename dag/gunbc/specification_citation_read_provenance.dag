@@ -380,3 +380,20 @@ data bonterms_cloud_terms_v1_0_citation_read_receipt: SpecificationCitationReadR
     detail: "Fetched without credentials on 2026-09-12 as HTML; the tag-stripped visible text (40865 characters) carries the complete Bonterms Cloud Terms (Version 1.0), sections 1 through 22 (General Terms) plus Definitions, including Section 21 (Trials and Betas), and the footer '(c) 2022 Bonterms. Free to use under CC BY 4.0.' The page states no release date and no statement about whether the posted text stays fixed at its locator. An earlier attempt by this session at bonterms.com/forms/cloud-terms/ answered 404: that was a constructed path, and it is evidence about the path, not about the publisher.",
   },
 }
+
+// Direct publisher-locator read, 2026-10-04. Portwell is the datasheet publisher;
+// its dimensions remain reseller evidence about the FII/Ampere motherboard.
+data portwell_collins_citation_read_receipt:SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
+ subject:DeclarationRef {module_path:"extdeps.portwell.aptsa_627211_b4",decl_name:"collins_datasheet_mechanicals",field:WholeDeclaration},
+ provenance:DocumentLocatorFetchedAndTextIngested {
+  http_status:200,byte_count:byte_size(count:4916642),
+  content_digest:"3914b6dfb871b9eb4b317d658175de9346c8b2bfbcdfb1d541c6e74b05f9a285",
+  detail:"2026-10-04: downloaded the live Portwell PDF with TLS verification using the missing Let's Encrypt YR2 intermediate plus the system CA bundle; decoded all three pages. March 2022 p1 gives board 512 mm x 424.2 mm and 20.13 in x 16.7 in, and chassis 847.5 x 448 x 87.5 mm (L x W x H). Metric and inch dimensions are inconsistent; axis assignment is a downstream inference, not a labelled upstream dimension."
+ }
+}
+
+// Publisher PDF downloaded and text read 2026-10-05; see the subject's authority URL.
+data arctic_p14_wiring_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
+ subject: DeclarationRef {module_path:"extdeps.fans.arctic",decl_name:"arctic_p14_cable_length",field:WholeDeclaration},
+ provenance:DocumentLocatorFetchedAndTextIngested {http_status:200,byte_count:byte_size(count:680386),content_digest:"sha256:aba0ac25c2063b7607702a04cf47bd7c2f8bf71e933d64858316fbf8b4c81bcf",detail:"Publisher P14 PWM PST specification page 1 read 2026-10-05: 400 mm cable, four-pin connector plus socket, 0.12 A at 12 V. Chain count and board-header capacity are not established by this sheet."},
+}

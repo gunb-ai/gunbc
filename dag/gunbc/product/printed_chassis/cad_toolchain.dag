@@ -52,9 +52,9 @@ data ocp_requirement: PythonDistributionRequirement = PythonDistributionRequirem
   version: ocp_distribution_version,
 }
 
-// ORDERED, AND THE ORDER IS LOAD-BEARING: the kernel is pinned BEFORE cadquery, so cadquery's own
-// dependency resolution cannot pull the with-VTK build in behind our backs and leave two OCP
-// distributions fighting over the same import name.
+// Pin the selected kernel distribution before CadQuery. The dependency selection
+// is shared with runtime readback, so an installed with-VTK distribution cannot
+// silently satisfy a declaration asking for the no-VTK package.
 data cad_toolchain_python_requirements: List<PythonDistributionRequirement> = [
   ocp_requirement,
   cadquery_requirement,
