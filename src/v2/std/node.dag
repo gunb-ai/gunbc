@@ -165,7 +165,11 @@ type StructuralEdgeLabel
 // to a marked Arrow USES ITS VALUE, so it is typed at the Arrow's declared codomain T
 // (v2.compiler.infer infer_declaration_reference_facts_indexed) and evaluates to the value of the
 // nullary application (v2.compiler.eval), while a reference to an unmarked Arrow denotes the function.
-// It adds no behavior kind; a marker on anything but a nullary Arrow is a malformed tree.
+// It adds no behavior kind. WHAT HOLDS IT, stated at its rung: its one producer marks only the Arrow
+// of a `data` declaration (nullary by construction), and the reader answers Absent for the marker on a
+// non-Arrow (v2.test.claim.compiler.data_reference_value drv_a_marked_non_arrow_is_not_a_constant). No
+// wall refuses the marker on a NON-nullary Arrow: that holds only by the single producer, so a second
+// producer must add that wall rather than rely on this note.
 type CoreEdgeLabel
   = ArrowBodyEdge
   | ArrowSignatureOrderEdge
