@@ -75,7 +75,7 @@ fn normalized_grain_tree(source: String) -> GrainProbe {
     GrainTree { root: parse_root } =>
       match normalize(parse_tree: parse_root) {
         Rejected { diagnostics: _ } => GrainStageRejected
-        Accepted { value: normalized, diagnostics: _ } => GrainTree { root: normalized }
+        Accepted { value: normalized, diagnostics: _ } => GrainTree { root: normalized.root }
       }
   }
 }

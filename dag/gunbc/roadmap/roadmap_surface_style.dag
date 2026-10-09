@@ -7,6 +7,9 @@ import extdeps.languages.css.selectors { RawSelector }
 import extdeps.languages.css.properties { CustomProperty, AlignItems, Background, Border, BorderBottom, BorderLeft, BorderRadius, BoxShadow, Color, Cursor, Display, Fill, Flex, FlexDirection, FlexWrap, FontFamily, FontSize, FontWeight, Gap, GridColumn, GridTemplateColumns, Height, Inset, JustifyContent, LetterSpacing, LineHeight, ListStyle, Margin, MarginBottom, MarginLeft, MarginRight, MarginTop, MaxWidth, MinHeight, MinWidth, Opacity, Outline, Overflow, Padding, PaddingLeft, Position, Stroke, TextDecoration, TextTransform, Transform, WhiteSpace, Width, RawProperty }
 import gunbc.design.scale { scale_var, scale_pair, scale_triple, scale_border, height_control, control_geometry, CompactChoice, RichIdentity, space_0, space_1, space_2, space_4, space_6, space_8, space_12, space_16, space_24, text_11, text_12, text_13, text_14, text_15, text_18, font_sans, font_mono, radius_surface, radius_999, border_1, border_2, width_status, height_compact_face }
 import gunbc.design.theme { role_decl, TextRole, TextDimRole, SurfaceRole, CanvasRole, FocusRole }
+import gunbc.site.element.tokens { field_rail_width, field_rail_inset, field_rail_divider }
+import gunbc.site.element.palette { palette_var, SlotBorder, SlotSurface }
+import gunbc.site.element.priority_mark { priority_mark_label_inset }
 
 // Local control geometry needs wider priority badges and an intrinsic modified heading.
 // App ordering is distinct from the observed upstream roster. Header, rows and tracks share it.
@@ -110,26 +113,10 @@ fn roadmap_surface_rules() -> List<BuildRule> {
     StaticRule { selector: RawSelector { text: ".issue-cell-priority" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "center"),
-      decl(prop: JustifyContent, value: "center")
+      decl(prop: JustifyContent, value: "flex-start")
     ] },
-    StaticRule { selector: RawSelector { text: ".issue-priority" }, decls: [
-      decl(prop: Display, value: "inline-flex"),
-      decl(prop: AlignItems, value: "center"),
-      decl(prop: JustifyContent, value: "center"),
-      decl(prop: MinWidth, value: scale_var(t: height_compact_face)),
-      decl(prop: Height, value: scale_var(t: height_compact_face)),
-      decl(prop: LineHeight, value: "1"),
-      decl(prop: FontSize, value: scale_var(t: text_12)),
-      decl(prop: FontWeight, value: "500"),
-      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
-      role_decl(prop: Color, r: TextDimRole)
-    ] },
-    StaticRule { selector: RawSelector { text: ".issue-priority[data-priority=\"0\"]" }, decls: [
-      decl(prop: Color, value: "var(--surface)"),
-      decl(prop: Background, value: "var(--issue-error)")
-    ] },
-    StaticRule { selector: RawSelector { text: ".issue-priority[data-priority=\"1\"]" }, decls: [
-      decl(prop: Color, value: "var(--issue-error)")
+    StaticRule { selector: RawSelector { text: ".issue-col.issue-col-priority" }, decls: [
+      decl(prop: RawProperty { name: "padding-left" }, value: join(["calc(", scale_var(t: space_8), " + ", priority_mark_label_inset(), ")"], ""))
     ] },
     StaticRule { selector: RawSelector { text: ".issue-empty" }, decls: [
       decl(prop: Display, value: "none"),
@@ -149,22 +136,18 @@ fn roadmap_surface_rules() -> List<BuildRule> {
       decl(prop: Display, value: "flex"),
       decl(prop: FlexDirection, value: "column"),
       decl(prop: Gap, value: "var(--space-8)"),
-      decl(prop: Flex, value: "3 1 50ch"),
+      decl(prop: Flex, value: "999 1 50ch"),
       decl(prop: MinWidth, value: "0"),
       decl(prop: MaxWidth, value: "100%")
     ] },
     StaticRule { selector: RawSelector { text: ".issue-rail" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: FlexDirection, value: "column"),
-      decl(prop: Width, value: "auto"),
+      decl(prop: Flex, value: join(["1 0 ", scale_var(t: field_rail_width)], "")),
+      decl(prop: MinWidth, value: "0"),
       decl(prop: MaxWidth, value: "100%"),
-      decl(prop: BorderRadius, value: "var(--radius-surface)"),
-      decl(prop: Border, value: "var(--border-1) solid var(--issue-border)"),
-      decl(prop: Flex, value: "0 1 34ch"),
-      decl(prop: MinWidth, value: "min(100%, 28ch)"),
-      decl(prop: Padding, value: "var(--space-16)"),
-      decl(prop: Gap, value: "var(--space-6)"),
-      decl(prop: Background, value: "var(--surface)")
+      decl(prop: Padding, value: scale_pair(a: space_8, b: field_rail_inset)),
+      decl(prop: BorderLeft, value: scale_border(w: field_rail_divider, color_var: palette_var(slot: SlotBorder))),
+      decl(prop: Background, value: palette_var(slot: SlotSurface)),
+      decl(prop: RawProperty { name: "align-self" }, value: "stretch")
     ] },
     StaticRule { selector: RawSelector { text: ".issue-deps-section" }, decls: [
       decl(prop: Display, value: "flex"),
@@ -212,27 +195,6 @@ fn roadmap_surface_rules() -> List<BuildRule> {
       decl(prop: Gap, value: "var(--space-8)"),
       decl(prop: MarginBottom, value: "var(--space-12)"),
       decl(prop: RawProperty { name: "padding-bottom" }, value: "var(--space-12)")
-    ] },
-    StaticRule { selector: RawSelector { text: ".issue-field" }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: Gap, value: scale_var(t: space_8)),
-      decl(prop: FontSize, value: scale_var(t: text_13)),
-      decl(prop: MinWidth, value: "0")
-    ] },
-    StaticRule { selector: RawSelector { text: ".issue-field-label" }, decls: [
-      decl(prop: MinWidth, value: scale_var(t: width_status)),
-      decl(prop: Flex, value: "none"),
-      decl(prop: Color, value: "var(--issue-text-dim)"),
-      decl(prop: FontSize, value: scale_var(t: text_11)),
-      decl(prop: FontFamily, value: "var(--issue-font, system-ui), sans-serif"),
-      decl(prop: LetterSpacing, value: "normal")
-    ] },
-    StaticRule { selector: RawSelector { text: ".issue-field-value" }, decls: [
-      decl(prop: Flex, value: "1"),
-      decl(prop: MinWidth, value: "0"),
-      decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere"),
-      decl(prop: FontFamily, value: "var(--issue-font, system-ui), sans-serif"),
-      decl(prop: LetterSpacing, value: "normal")
     ] },
     StaticRule { selector: RawSelector { text: ".issue-action" }, decls: [
       decl(prop: FontFamily, value: "var(--issue-font)"),
@@ -859,10 +821,6 @@ fn roadmap_surface_rules() -> List<BuildRule> {
       decl(prop: MaxWidth, value: "var(--measure-prose)"),
       decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere"),
     ], interface_text_decls(role: InterfaceProse)) },
-    StaticRule { selector: RawSelector { text: ".issue-field-row" }, decls: [
-      decl(prop: MarginBottom, value: "var(--space-8)"),
-      decl(prop: MinWidth, value: "0")
-    ] },
     StaticRule { selector: RawSelector { text: ".fleet-hardware-panel" }, decls: [
       decl(prop: MaxWidth, value: "100%"),
       decl(prop: MinWidth, value: "0"),
@@ -876,14 +834,6 @@ fn roadmap_surface_rules() -> List<BuildRule> {
     StaticRule { selector: RawSelector { text: ".issue-panel-empty" }, decls: [
       decl(prop: Color, value: "var(--issue-text-dim)"),
       decl(prop: Padding, value: "var(--space-20)")
-    ] },
-    StaticRule { selector: RawSelector { text: ".issue-status-detail summary" }, decls: [
-      decl(prop: Cursor, value: "pointer"),
-      decl(prop: FontWeight, value: "600"),
-      decl(prop: Width, value: "fit-content"),
-      decl(prop: Padding, value: "var(--space-4) var(--space-8)"),
-      decl(prop: BorderRadius, value: "var(--radius-surface)"),
-      decl(prop: Background, value: "transparent")
     ] },
     StaticRule { selector: RawSelector { text: ".issue-status-facts" }, decls: [
       decl(prop: Padding, value: "var(--space-12) 0"),
@@ -1116,33 +1066,6 @@ fn roadmap_surface_rules() -> List<BuildRule> {
     StaticRule { selector: RawSelector { text: ".issue-membership-children[open] > summary::after" }, decls: [
       decl(prop: Transform, value: "rotate(225deg)")
     ] },
-    StaticRule { selector: RawSelector { text: ".issue-assignee-disclosure" }, decls: [
-      decl(prop: Width, value: "100%"),
-      decl(prop: MinWidth, value: "0")
-    ] },
-    StaticRule { selector: RawSelector { text: ".issue-assignee-disclosure > summary" }, decls: [
-      decl(prop: Padding, value: "var(--space-4)"),
-      decl(prop: Gap, value: "var(--space-12)"),
-      decl(prop: Background, value: "transparent"),
-      decl(prop: MinWidth, value: "0")
-    ] },
-    ResponseRule { subject: RawSelector { text: ".issue-assignee-disclosure > summary" }, shape: SelfResponse, trigger: OnHover, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
-      decl(prop: Background, value: "var(--issue-bg-hover)")
-    ] },
-    StaticRule { selector: RawSelector { text: ".issue-assignee-disclosure > summary .site-avatar" }, decls: [
-      decl(prop: Width, value: "var(--h-compact-face)"),
-      decl(prop: Height, value: "var(--h-compact-face)"),
-      decl(prop: BorderRadius, value: "var(--radius-surface)"),
-      decl(prop: RawProperty { name: "flex-shrink" }, value: "0")
-    ] },
-    StaticRule { selector: RawSelector { text: ".issue-assignee-identity" }, decls: [
-      decl(prop: MinWidth, value: "0"),
-      decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere"),
-      decl(prop: FontSize, value: "var(--text-13)")
-    ] },
-    StaticRule { selector: RawSelector { text: ".issue-assignee-disclosure[open] > summary" }, decls: [
-      decl(prop: Display, value: "none")
-    ] },
     StaticRule { selector: RawSelector { text: ".issue-membership-children > summary.issue-membership-current" }, decls: [
       decl(prop: GridTemplateColumns, value: "var(--space-16) minmax(0, 1fr) auto var(--space-12)"),
       decl(prop: Width, value: "100%")
@@ -1155,34 +1078,26 @@ fn roadmap_surface_rules() -> List<BuildRule> {
       decl(prop: Color, value: "var(--issue-text-dim)"),
       decl(prop: FontSize, value: "var(--text-12)")
     ] },
-    StaticRule { selector: RawSelector { text: ".issue-rail .issue-field" }, decls: [
-      decl(prop: Display, value: "grid"),
-      decl(prop: GridTemplateColumns, value: "10ch minmax(0, 1fr)"),
-      decl(prop: Gap, value: "var(--space-8)"),
-      decl(prop: AlignItems, value: "baseline"),
-      decl(prop: FontSize, value: "var(--text-13)")
-    ] },
-    StaticRule { selector: RawSelector { text: ".issue-rail .issue-field:has(details)" }, decls: [
-      decl(prop: AlignItems, value: "center")
-    ] },
-    StaticRule { selector: RawSelector { text: ".issue-rail .issue-field-label" }, decls: [
-      decl(prop: MinWidth, value: "0"),
-      decl(prop: FontFamily, value: "var(--font-sans)"),
+    StaticRule { selector: RawSelector { text: ".work-attempt-failures" }, decls: [
+      decl(prop: Margin, value: "var(--space-4) 0 0"),
+      decl(prop: Padding, value: "0"),
+      decl(prop: ListStyle, value: "none"),
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: "var(--space-2)"),
       decl(prop: FontSize, value: "var(--text-12)"),
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+      decl(prop: Width, value: "100%")
     ] },
-    StaticRule { selector: RawSelector { text: ".issue-rail .issue-assignee-disclosure > summary" }, decls: [
-      decl(prop: Padding, value: "var(--space-4) 0"),
-      decl(prop: Gap, value: "var(--space-8)")
+    StaticRule { selector: RawSelector { text: ".work-attempt-failure" }, decls: [
+      decl(prop: BorderLeft, value: "var(--border-2) solid var(--issue-error)"),
+      decl(prop: PaddingLeft, value: "var(--space-6)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".work-attempt-failure:target" }, decls: [
+      decl(prop: Background, value: "var(--issue-highlight)"),
+      decl(prop: Color, value: "var(--issue-text)")
     ] },
 
-    StaticRule { selector: RawSelector { text: ".issue-rail .issue-status-detail > summary" }, decls: [
-      decl(prop: Position, value: "relative"),
-      decl(prop: RawProperty { name: "isolation" }, value: "isolate"),
-      decl(prop: Background, value: "transparent"),
-      decl(prop: Padding, value: "var(--space-4) 0"),
-      decl(prop: FontSize, value: "var(--text-13)"),
-      decl(prop: MinHeight, value: "var(--h-control)"),
-    ] },
 
     StaticRule { selector: RawSelector { text: ".issue-reading-surface" }, decls: [
       decl(prop: Border, value: "var(--border-1) solid var(--issue-border)"),

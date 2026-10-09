@@ -46,6 +46,12 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// THE FAULT-EXPERIMENT INPUT, joined to `gunbc.emitted_subject_build_gate`
+/// `native_fault_experiment_env_name` / `native_fault_experiment_skip_value` by
+/// `test.claim.compiler_gate_emit_build_lane_witness_test` `the_seed_fault_experiment_input_is_the_dag_rows`.
+const FAULT_EXPERIMENT_ENV: &str = "GUNBC_NATIVE_FAULT_EXPERIMENT";
+const FAULT_EXPERIMENT_SKIP_VALUE: &str = "skip_pull_request";
+
 /// The compiler entry whose closure becomes the lane's emitted-native compiler. Its
 /// `compiler_pipeline_entry` is `SourceRootEvalDriver`, so the emitted crate's `main.rs` is the
 /// whole-source-root Eval driver this lane exists to route through — and, since the admission
@@ -349,6 +355,117 @@ fn prepare_emitted_compiler_for_entry(
         "v2-native-route: private probe root {} for emit+build+fault+restore+spawn",
         probe_root.display()
     );
+    // PRODUCT REUSE (`native_product_cache`): the key is derived from the effective inputs before
+    // anything is emitted. A verified hit stands in for reconcile + emit + build + the red that
+    // admitted the entry; the caller's door and refusal controls then run against the reused
+    // executable exactly as they would against a fresh one.
+    let store = super::native_product_cache::store_root();
+    let product_key = match &store {
+        Some(_) => Some(
+            super::native_product_cache::derive_key(source_roots, entry, &workspace)
+                .map_err(|cause| format!("V2-NATIVE REFUSAL cause={cause}"))?,
+        ),
+        None => None,
+    };
+    if let (Some(root), Some(key)) = (&store, &product_key) {
+        let mut looked = super::native_product_cache::lookup(root, key);
+        let mut restore_miss: Option<&'static str> = None;
+        if matches!(looked, super::native_product_cache::Lookup::Miss) {
+            match super::native_product_cache::restore_from_shared_store(
+                source_roots,
+                root,
+                key,
+                &workspace,
+            ) {
+                super::native_product_cache::RestoreOutcome::Restored => eprintln!(
+                    "v2-native-route: native product SHARED-RESTORED key={}",
+                    key.digest
+                ),
+                super::native_product_cache::RestoreOutcome::Unavailable { cause, detail } => {
+                    eprintln!(
+                        "v2-native-route: native product NativeProductRestoreUnavailable cause={cause} key={} — {detail}; counted as a MISS, building cold",
+                        key.digest
+                    );
+                    restore_miss = Some(cause);
+                }
+            }
+            looked = super::native_product_cache::lookup(root, key);
+        }
+        // ONE structured record per preparation: the final outcome and, for a miss, the restore cause.
+        match &looked {
+            super::native_product_cache::Lookup::Hit { .. } => {
+                super::native_product_cache::record_outcome(root, entry, key, "hit", None)
+            }
+            super::native_product_cache::Lookup::Miss => {
+                super::native_product_cache::record_outcome(root, entry, key, "miss", restore_miss)
+            }
+            super::native_product_cache::Lookup::Refused { cause } => {
+                super::native_product_cache::record_outcome(
+                    root,
+                    entry,
+                    key,
+                    "refused",
+                    Some(cause),
+                )
+            }
+        }
+        match looked {
+            super::native_product_cache::Lookup::Hit {
+                executable,
+                manifest,
+            } => {
+                let binary_path = probe_root.target_dir().join("release").join(
+                    super::emitted_closure_compile_host::probe_package_name(entry),
+                );
+                std::fs::create_dir_all(binary_path.parent().unwrap_or(Path::new(".")))
+                    .and_then(|_| std::fs::copy(&executable, &binary_path).map(|_| ()))
+                    .map_err(|e| {
+                        format!("V2-NATIVE REFUSAL cause=NativeProductNotRestored — {e}")
+                    })?;
+                let binary_identity = sha256_file(&binary_path)?;
+                if binary_identity != manifest.binary_sha256 {
+                    return Err(format!(
+                        "V2-NATIVE REFUSAL cause=NativeProductRestoredDifferently — restored \
+                         {binary_identity}, manifest records {}",
+                        manifest.binary_sha256
+                    ));
+                }
+                let seed_identity = sha256_file(&std::env::current_exe().map_err(|e| {
+                    format!("V2-NATIVE REFUSAL cause=SeedIdentityUnreadable — current_exe: {e}")
+                })?)?;
+                eprintln!(
+                    "v2-native-route: native product HIT entry={entry} key={} axes={:?} \
+                     binary_sha256={binary_identity} — reconcile, emit, build and red skipped",
+                    key.digest, key.axes
+                );
+                return Ok(EmittedPreparation {
+                    binary_path,
+                    binary_identity,
+                    closure_identity: manifest.closure_identity,
+                    seed_identity,
+                    build: EmittedBuildObserved {
+                        cargo_argv: manifest.cargo_argv,
+                        rustflags: manifest.rustflags,
+                        compiler_path: manifest.compiler_path,
+                        rustc_identity: manifest.rustc_identity,
+                        exit_status: manifest.exit_status,
+                        warning_count: manifest.warning_count,
+                        warning_headers: manifest.warning_headers,
+                    },
+                    _probe_root: probe_root,
+                });
+            }
+            super::native_product_cache::Lookup::Refused { cause } => eprintln!(
+                "v2-native-route: native product REFUSED entry={entry} key={} cause={cause} — \
+                 entry left in place, rebuilding",
+                key.digest
+            ),
+            super::native_product_cache::Lookup::Miss => eprintln!(
+                "v2-native-route: native product MISS entry={entry} key={} axes={:?}",
+                key.digest, key.axes
+            ),
+        }
+    }
     eprintln!("v2-native-route: emitting {entry} (seed, in-process)");
     let run = super::compile_entry_emission(
         source_roots,
@@ -517,30 +634,79 @@ fn prepare_emitted_compiler_for_entry(
     // to the entrypoint step as though it were the baseline's.
     let entry_module = super::emitted_closure_compile_host::entry_rust_module(entry, &workspace)
         .map_err(|cause| format!("V2-NATIVE REFUSAL cause=EntryModuleUnreadable — {cause}"))?;
-    eprintln!("v2-native-route: establishing the discriminating red on {entry_module}");
-    let mutation = super::emitted_closure_compile_host::establish_discriminating_red(
-        &crate_dir,
-        &probe_root.target_dir(),
-        &entry_module,
-    );
-    if !super::emitted_closure_compile_host::mutation_verdict_discriminated(&mutation) {
-        return Err(format!(
-            "V2-NATIVE REFUSAL cause=EmittedBuildNotDiscriminating — {}",
+    // THE FAULT EXPERIMENT IS SKIPPED ONLY WHEN THE WORKFLOW SAYS SO, and says so in the log. The
+    // input is `gunbc.emitted_subject_build_gate` `native_fault_experiment_env_name`, set by
+    // `gunbc.compiler_gate_workflow` from the event: pull_request passes `skip_pull_request`,
+    // merge_group and workflow_dispatch pass `run`. Absent or any other value RUNS it. The skip is
+    // the declared drop `gunbc.rung_drop` `native_fault_experiment_off_pull_requests`.
+    let mut red_completed = false;
+    if std::env::var(FAULT_EXPERIMENT_ENV).ok().as_deref() == Some(FAULT_EXPERIMENT_SKIP_VALUE) {
+        eprintln!(
+            "v2-native-route: DISCRIMINATING RED SKIPPED — GUNBC_NATIVE_FAULT_EXPERIMENT=skip_pull_request \
+             (pull_request run; declared drop native_fault_experiment_off_pull_requests). The emit, \
+             build, census pair, door, refusal and filesystem controls still run; the fault-and-\
+             restoration rebuild runs on merge_group and workflow_dispatch."
+        );
+    } else {
+        eprintln!("v2-native-route: establishing the discriminating red on {entry_module}");
+        let mutation = super::emitted_closure_compile_host::establish_discriminating_red(
+            &crate_dir,
+            &probe_root.target_dir(),
+            &entry_module,
+        );
+        if !super::emitted_closure_compile_host::mutation_verdict_discriminated(&mutation) {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=EmittedBuildNotDiscriminating — {}",
+                super::emitted_closure_compile_host::mutation_verdict_summary(&mutation)
+            ));
+        }
+        eprintln!(
+            "v2-native-route: discriminating red established — {}",
             super::emitted_closure_compile_host::mutation_verdict_summary(&mutation)
-        ));
+        );
+        red_completed = true;
+        let identity_after_mutation = sha256_file(&binary_path)?;
+        if identity_after_mutation != binary_identity {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=EmittedCompilerReplacedByFaultedArm — {} was {binary_identity} \
+                 when the clean baseline built it and is {identity_after_mutation} after the fault was \
+                 injected and removed; the executable handed on is not the one the green build produced",
+                binary_path.display()
+            ));
+        }
     }
-    eprintln!(
-        "v2-native-route: discriminating red established — {}",
-        super::emitted_closure_compile_host::mutation_verdict_summary(&mutation)
+
+    // Publication needs a protected writer AND a completed red+restore: a skipped experiment or a
+    // pull-request miss builds and runs its controls but never publishes evidence it did not earn.
+    let publish = super::native_product_cache::publication_admitted(
+        red_completed,
+        std::env::var("GITHUB_EVENT_NAME").ok().as_deref(),
     );
-    let identity_after_mutation = sha256_file(&binary_path)?;
-    if identity_after_mutation != binary_identity {
-        return Err(format!(
-            "V2-NATIVE REFUSAL cause=EmittedCompilerReplacedByFaultedArm — {} was {binary_identity} \
-             when the clean baseline built it and is {identity_after_mutation} after the fault was \
-             injected and removed; the executable handed on is not the one the green build produced",
-            binary_path.display()
-        ));
+    if let (true, Some(root), Some(key)) = (publish, &store, &product_key) {
+        let manifest = super::native_product_cache::Manifest {
+            key: key.digest.clone(),
+            binary_sha256: binary_identity.clone(),
+            closure_identity: closure_identity.clone(),
+            cargo_argv: build.cargo_argv.clone(),
+            rustflags: build.rustflags.clone(),
+            compiler_path: build.compiler_path.clone(),
+            rustc_identity: build.rustc_identity.clone(),
+            exit_status: build.exit_status,
+            warning_count: build.warning_count,
+            warning_headers: build.warning_headers.clone(),
+            discriminating_red_held: red_completed,
+        };
+        match super::native_product_cache::commit(root, key, &binary_path, &manifest) {
+            Ok(()) => eprintln!(
+                "v2-native-route: native product committed entry={entry} key={}",
+                key.digest
+            ),
+            // A store that cannot be written costs the next run its hit, never this run its result.
+            Err(cause) => eprintln!(
+                "v2-native-route: native product NOT committed entry={entry} key={} — {cause}",
+                key.digest
+            ),
+        }
     }
 
     Ok(EmittedPreparation {
@@ -2540,6 +2706,7 @@ pub struct NativeServeProgramRun {
     pub responses: Vec<String>,
     pub refused_status: Option<i32>,
     pub refused_stderr: String,
+    pub served_exit_status: Option<i32>,
     pub stderr: String,
 }
 
@@ -2547,8 +2714,10 @@ pub struct NativeServeProgramRun {
 /// deadline here is the instrument refusing to hang, not a budget the service is judged by.
 const NATIVE_SERVE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
 
-fn native_serve_launch_args(release_revision: &str) -> Vec<String> {
+fn native_serve_launch_args(release_revision: &str, request_deadline_ms: &str) -> Vec<String> {
     vec![
+        "--request-deadline-ms".to_string(),
+        request_deadline_ms.to_string(),
         "--host".to_string(),
         "127.0.0.1".to_string(),
         "--port".to_string(),
@@ -2562,10 +2731,14 @@ fn native_serve_launch_args(release_revision: &str) -> Vec<String> {
 fn native_serve_refused_launch(
     binary: &Path,
     refused_revision: &str,
+    request_deadline_ms: &str,
 ) -> Result<(Option<i32>, String), String> {
     use std::io::Read;
     let mut child = Command::new(binary)
-        .args(native_serve_launch_args(refused_revision))
+        .args(native_serve_launch_args(
+            refused_revision,
+            request_deadline_ms,
+        ))
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -2621,6 +2794,7 @@ pub fn run_native_serve_program(
     entry: &str,
     release_revision: &str,
     refused_revision: &str,
+    request_deadline_ms: &str,
     requests: &[String],
 ) -> Result<NativeServeProgramRun, String> {
     use std::io::{BufRead, Read};
@@ -2631,9 +2805,12 @@ pub fn run_native_serve_program(
         prepared.binary_path.display()
     );
     let (refused_status, refused_stderr) =
-        native_serve_refused_launch(&prepared.binary_path, refused_revision)?;
+        native_serve_refused_launch(&prepared.binary_path, refused_revision, request_deadline_ms)?;
     let mut child = Command::new(&prepared.binary_path)
-        .args(native_serve_launch_args(release_revision))
+        .args(native_serve_launch_args(
+            release_revision,
+            request_deadline_ms,
+        ))
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -2668,8 +2845,23 @@ pub fn run_native_serve_program(
             .collect(),
         None => Vec::new(),
     };
-    let _ = child.kill();
-    let _ = child.wait();
+    // The last case drives the service past its stuck-worker ceiling, after which it exits by
+    // itself; wait for that (bounded) and carry the status to the reader unjudged. Only a process
+    // still running at the deadline is killed, and it reports no status.
+    let started = std::time::Instant::now();
+    let served_exit_status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status.code(),
+            Ok(None) if started.elapsed() < NATIVE_SERVE_DEADLINE => {
+                std::thread::sleep(std::time::Duration::from_millis(20))
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break None;
+            }
+        }
+    };
     let stderr = reader.join().unwrap_or_default();
     Ok(NativeServeProgramRun {
         closure_identity: prepared.closure_identity,
@@ -2680,6 +2872,7 @@ pub fn run_native_serve_program(
         responses,
         refused_status,
         refused_stderr,
+        served_exit_status,
         stderr,
     })
 }

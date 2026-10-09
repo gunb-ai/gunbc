@@ -6,7 +6,12 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.resources { Network }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import extdeps.sudo.elevation { sudo_elevate }
-import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_system_scope_argv }
+import extdeps.systemd.systemd_run {
+  SystemdRunProperty, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
+  systemd_run_system_scope_command,
+  systemd_run_option_words_refused_cause_detail,
+}
+import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.tools.util_linux_setpriv { setpriv_reuid_regid_argv }
 import extdeps.systemd { MemoryMax, MemoryHigh }
 import std.measure { byte_size_count }
@@ -79,7 +84,7 @@ fn enrolment_code_issue_ssh_target() -> SshTarget {
 // typed-module cache cap is derived from the cgroup's memory.high/memory.max, and with neither bound
 // it refuses HostBudgetUnreadable rather than guessing (fleet-converge run 36556990543). An SSH
 // session binds no such limit. The scope is a system-manager transient scope (extdeps.systemd.systemd_run
-// systemd_run_system_scope_argv) around the account drop below. A user
+// systemd_run_system_scope_command) around the account drop below. A user
 // scope would need that account's session bus, which the elevated command lacks. The bounds are the
 // broker's own slice rows (gunbc.live_deploy.slice_bounds approval_broker_slice_memory_max and _high).
 // The verb resolves the broker's routes closure, the same program the broker boots, so the same
@@ -97,7 +102,7 @@ fn enrolment_code_issue_scope_properties() -> List<SystemdRunProperty> {
 // supplementary groups; systemd-run's own --uid/--gid did not, and every code was minted and then
 // refused delivery (fleet-converge run 37098981121). The drop sits inside the scope so the bound
 // still covers the whole verb.
-fn enrolment_code_issue_remote_argv(revision: ReleaseRevisionBinding) -> List<String> {
+fn enrolment_code_issue_remote_command(revision: ReleaseRevisionBinding) -> SystemdRunCommandReading {
   let root = srv1_gunbc_approval_broker_root as String
   let release_dir = approval_broker_release_dir(root: root, revision: revision)
   let account = fleet_posix_operator_user.name
@@ -113,8 +118,7 @@ fn enrolment_code_issue_remote_argv(revision: ReleaseRevisionBinding) -> List<St
     "--arg", "revision=" + release_revision_execstart_text(binding: revision),
   ])
   let as_account = setpriv_reuid_regid_argv(user: account, group: account, init_groups: true, command_argv: verb)
-  let inv = sudo_elevate(command: systemd_run_system_scope_argv(properties: enrolment_code_issue_scope_properties(), command_argv: as_account))
-  concat([inv.bin_path], inv.args)
+  systemd_run_system_scope_command(properties: enrolment_code_issue_scope_properties(), command_argv: as_account)
 }
 
 fn enrolment_code_issue_refuses_off_srv1(host: String) -> ProcessExit {
@@ -122,19 +126,36 @@ fn enrolment_code_issue_refuses_off_srv1(host: String) -> ProcessExit {
   else { exit_failure(reason: "approval device enrolment code: refuses host '" + host + "': the store lives on the machine that serves /approve, which is " + (operator_host_srv1 as String)) }
 }
 
+// The projection refuses a word the wire cannot carry, and the invocation the transport would have
+// run is never minted: the caller sees the refusal's reason, not a command that failed to run --
+// because it IS one.
 fn enrolment_code_issue_remote(revision: ReleaseRevisionBinding) -> CliWireResponse
   uses net: Network
 {
   match prepare_fleet_ssh_agent_context(attempt_raw: approval_device_enrolment_code_issue_attempt_raw) {
     FleetSshContextRefused { cause: c } => CliWireUnprintable { cause: ("approval device enrolment code: " + c) as NonEmptyStr }
     FleetSshContextReady { context: context, receipt: _ } =>
-      match typed_argv_exec_over_fleet_ssh(target: enrolment_code_issue_ssh_target(), context: context, argv: enrolment_code_issue_remote_argv(revision: revision)) {
-        TypedArgvExecRefused { reason: why } => CliWireUnprintable { cause: ("approval device enrolment code: remote invocation refused: " + why) as NonEmptyStr }
-        TypedArgvExecConverged { result: r } =>
-          if r.success { CliWirePrintable { bytes: r.stdout, exit: ExitSuccess } }
-          else { CliWireUnprintable { cause: ("approval device enrolment code: remote exit=" + to_string(r.exit_code) + " " + trim(s: r.stderr)) as NonEmptyStr } }
+      match enrolment_code_issue_remote_command(revision: revision) {
+        SystemdRunCommandRefused { cause: why } =>
+          CliWireUnprintable { cause: ("approval device enrolment code: remote invocation refused: " + systemd_run_option_words_refused_cause_detail(cause: why)) as NonEmptyStr }
+        SystemdRunCommandReady { command: command } =>
+          match typed_argv_exec_over_fleet_ssh(
+            target: enrolment_code_issue_ssh_target(),
+            context: context,
+            argv: sudo_elevate_words(command: command),
+          ) {
+            TypedArgvExecRefused { reason: why } => CliWireUnprintable { cause: ("approval device enrolment code: remote invocation refused: " + why) as NonEmptyStr }
+            TypedArgvExecConverged { result: r } =>
+              if r.success { CliWirePrintable { bytes: r.stdout, exit: ExitSuccess } }
+              else { CliWireUnprintable { cause: ("approval device enrolment code: remote exit=" + to_string(r.exit_code) + " " + trim(s: r.stderr)) as NonEmptyStr } }
+          }
       }
   }
+}
+
+fn sudo_elevate_words(command: ArgvCommand) -> List<String> {
+  let inv = sudo_elevate(command: argv_words(command: command))
+  concat([inv.bin_path], inv.args)
 }
 
 // THE STEP ENTRY: one host per run, named by the dispatch and required to be srv1; one release,

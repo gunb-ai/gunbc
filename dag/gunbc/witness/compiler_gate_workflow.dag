@@ -2,8 +2,8 @@ module gunbc.compiler_gate_workflow
 
 
 // NO LANE THE REQUIRED CONTEXT READS RUNS ON A HOSTED RUNNER (operator ruling 2026-09-28). The
-// lanes the `witnesses` aggregate reads -- `emit-build`, `floor` and `generated` -- run on the fleet,
-// and so does the aggregate.
+// lanes the `witnesses` aggregate reads -- `seed`, `rust-unit-tests`, `emit-build`, `floor` and `generated` --
+// run on the fleet, and so does the aggregate.
 //
 // THE HOSTED UNIT-TEST LANE WAS DELETED (operator ruling 2026-09-29). `rust-unit-tests` ran
 // `cargo test --release -p v1-compiler --lib` on every pull request and merge_group as a
@@ -21,8 +21,8 @@ module gunbc.compiler_gate_workflow
 // jobs API's created_at and started_at rather than trusted here: merge-queue runs 36478070174 and
 // 36464765845, where every hosted job waited minutes for a slot -- the aggregate, whose one step
 // runs in seconds, waited 9 and 21 -- while the fleet lanes of the same runs started within
-// seconds. So `compiler` is deleted: its one step built `gunbc`, which the fleet prelude of both
-// `floor` and `generated` already builds from the same tree (DESIGN section 2). The lint became a
+// seconds. So `compiler` is deleted: its one step built `gunbc`, which the `seed` job now builds or restores once
+// for `floor` and `generated` (`emit-build` still builds its own, see the seed section) (DESIGN section 2). The lint became a
 // step on `generated` (compiler_gate_lint_step), and the aggregate moved to the fleet.
 // compiler_gate_merge_path_runs_on_the_fleet refuses emission of a workflow in which a blocking
 // lane or the aggregate runs hosted.
@@ -80,7 +80,7 @@ import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, ya
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
   Workflow, Job, Step, UsesStep, RunStep,
-  WorkflowPermissions, PermRead,
+  WorkflowPermissions, PermRead, PermWrite,
   RunnerSpec, HostedRunner, SelfHosted, RunsOnExpression,
   github_event_name_pull_request,
   github_event_name_merge_group
@@ -99,6 +99,7 @@ import gunbc.toolchain_home_standing {
   admit_workflow_toolchain_homes, WorkflowToolchainHomesAdmitted, WorkflowToolchainHomeRefused, toolchain_home_refusal_reason
 }
 import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain_pin_rustup_default_step }
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 import gunbc.witness_floor_workflow {
   witness_floor_workflow_name,
   witness_floor_triggers,
@@ -122,6 +123,7 @@ import gunbc.witness_floor_workflow {
   required_floor_cross_claim_demand_path,
   required_ci_measurement_bound_steps,
   required_floor_claim_cost_upload_bound_step,
+  required_floor_disposition_upload_bound_step,
   required_ci_measurement_scripts_are_renderable,
   WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused
 }
@@ -144,7 +146,22 @@ import gunbc.heal_candidate {
 import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
 // The fork clauses are heal's authorship; the fleet lane inherited the work they guarded.
 import gunbc.heal_workflow { heal_same_repository_clause, heal_not_dependabot_clause }
+import gunbc.fleet_workflow_steps {
+  ci_cache_cargo_step, ci_release_bins_lookup_step, ci_release_bins_cache_step,
+  ci_release_bins_upload_step, ci_release_bins_download_step, gunbc_ci_aux_step_timeout_minutes,
+  ci_wif_auth_step_with_id,
+}
+import gunbc.native_product_federation {
+  native_product_read_service_account, native_product_write_service_account, native_product_write_provider_resource,
+}
+import gunbc.auth.github_gcp_federation { github_wif_provider_resource }
+import gunbc.gunbc_cli_command { gunbc_run_command }
+import extdeps.exec.command { shell_command_render }
 import gunbc.fleet_release_bins_key {
+  release_bins_outcome_script_for, release_bins_consumer_key_check_script_for,
+  release_bins_key_expression, release_bins_key_step_id, release_bins_outcome_step_id,
+  release_bins_lookup_standing_expression, release_bins_lookup_entry_expression, release_bins_cache_hit_expression,
+  release_bins_key_job_output, release_bins_build_condition,
   compiler_pair_release_product, release_bins_key_script_for, release_bins_pack_manifest_script_for,
   release_bins_pack_object_script, release_bins_pack_object_path_expression,
   compiler_pair_candidate_artifact_name, compiler_pair_candidate_retention_whole_days,
@@ -158,7 +175,10 @@ import gunbc.emitted_subject_build_gate {
   emit_build_standing, emit_build_standing_notice_for,
   emitted_subject_build_rows,
   emitted_subject_build_command,
-  emitted_subject_build_step_name
+  emitted_subject_build_step_name,
+  native_fault_experiment_env_name,
+  native_fault_experiment_skip_value,
+  native_fault_experiment_run_value
 }
 // THE EPOCH TRAVELS IN THESE BYTES. gunbc.required_ci_epoch_observation parses
 // GUNBC_REQUIRED_CI_CONTRACT_EPOCH structurally out of .github/workflows/witnesses.yml AT THE
@@ -264,16 +284,19 @@ fn compiler_gate_lint_step() -> Step {
   }
 }
 
-// THE v1 UNIT TESTS ARE A BLOCKING FLEET LANE (2026-09-30, restoring the lane the 2026-09-29 ruling
-// deleted, in the shape that ruling named). The history: a non-required step on the hosted `clippy`
-// job (2026-09-27), its own non-blocking hosted lane (2026-09-28), deleted because continue_on_error
-// made its red unreadable (2026-09-29). It returns without continue_on_error, on the fleet, with the
-// aggregate reading it, so a unit-test red refuses the required context; the restoration retires
-// gunbc.rung_drop rust_unit_tests_off_the_merge_path in the same change.
+// THE v1 UNIT TESTS ARE A BLOCKING FLEET LANE. The history: a non-required step on the hosted
+// `clippy` job (2026-09-27), its own non-blocking hosted lane (2026-09-28), deleted because
+// continue_on_error made its red unreadable (2026-09-29), returned on the fleet without
+// continue_on_error and read by the aggregate (2026-09-30, retiring gunbc.rung_drop
+// rust_unit_tests_off_the_merge_path). After gunbc#12951 its step overran its cap on every head, so
+// it was reported but not read under gunbc.rung_drop rust_unit_tests_over_their_cap (2026-10-05)
+// until gunbc#13452 brought the suite under its cap by deleting tests. The aggregate reads the
+// lane again, so a unit-test red refuses the required context; the drop is superseded by the
+// #13452 deletion ruling (not retired by its trigger), and the deleted tests' loss is gunbc.rung_drop v1_integration_tests_deleted_from_the_unit_lane.
 //
 // THE FLEET COST IS THE PRICE THE OLDER REASONING DECLINED, AND IT IS NOW PAID DELIBERATELY. The
 // 2026-09-28 reasoning kept the step off the fleet because a fleet slot would pay its wall on every
-// push for a verdict nothing required. The verdict is now required, so the wall buys a gate; and the
+// push for a verdict nothing required. The verdict is required, so the wall buys a gate; and the
 // lane runs BESIDE `floor` and `generated` (needs: []), so it adds slot-minutes but no critical-path
 // minutes unless it is the longest lane.
 //
@@ -295,12 +318,15 @@ data compiler_gate_unit_test_step_id: String = "rust_unit_tests"
 // cap is the largest observed step wall on the fleet runner class, times 1.5, rounded up to the next
 // 5 minutes. Headroom is multiplicative because the wall scales with the test population and with
 // slot contention, and a required lane whose cap is hit reads as a red that says nothing about the
-// diff. The observed walls are those of the rust_unit_tests step in this lane's own fleet runs (the
-// first, witnesses run 36676083674 on srv4, is the current maximum), plus the hosted population
-// silent-koi-310 tabulated, which sits below it; re-read them there and re-derive when a fleet wall
-// exceeds two thirds of the cap.
+// diff. The observed walls are those of the rust_unit_tests step in this lane's own fleet runs after
+// gunbc#13452 (merged 2026-10-06T01:02Z), which deleted the v1 tests that each took over 100ms and
+// so changed the population; walls from before it measure a different suite. The current maximum is
+// witnesses run 37459768899 (457s), over every completed step of the witnesses runs created after
+// that merge (gh run list --workflow witnesses.yml, then each run's rust-unit-tests job step times):
+// 457s x 1.5 rounds up to 15. Re-read them there and re-derive when a fleet wall exceeds two thirds
+// of the cap.
 fn compiler_gate_unit_test_timeout() -> Minute {
-  minute(count: 40)
+  minute(count: 15)
 }
 
 // Checkout, toolchain-home isolation and the toolchain install run before the unit step; the step
@@ -374,6 +400,15 @@ fn compiler_gate_unit_test_capability_closure_holds() -> Bool {
   )
 }
 
+// THE UNIT LANE RUNS ON merge_group AND workflow_dispatch ONLY (operator 2026-10-06, CI short-term
+// relief), declared as gunbc.rung_drop rust_unit_tests_off_pull_requests: a failing unit test is
+// caught at the queue's composed revision, not on the pull request. The aggregate excuses the skip
+// only on a pull_request event (GateArmSkippedOnPullRequest). Fork pull requests are excluded by the
+// same clause.
+fn compiler_gate_unit_test_job_condition() -> String {
+  join(["github.event_name != '", github_event_name_pull_request, "'"], "")
+}
+
 fn compiler_gate_unit_test_job() -> Job {
   Job {
     id: compiler_gate_unit_test_job_id,
@@ -384,7 +419,7 @@ fn compiler_gate_unit_test_job() -> Job {
     needs: [],
     env: none,
     outputs: none,
-    if_condition: Present { value: compiler_gate_floor_job_condition() },
+    if_condition: Present { value: compiler_gate_unit_test_job_condition() },
     timeout_minutes: Present { value: minute_count(compiler_gate_unit_test_job_timeout()) },
     continue_on_error: none,
     concurrency: none,
@@ -398,6 +433,17 @@ data compiler_gate_permissions: WorkflowPermissions = WorkflowPermissions {
   issues: none,
   actions: none,
   id_token: none
+}
+
+// THE EMIT-BUILD JOB ALONE MAY MINT AN OIDC TOKEN: the shared native product store's credentialed
+// restore (pull requests) and save (merge queue) federate through it. Every other job keeps
+// id_token unset, so the grant is the narrowest that serves the store.
+data compiler_gate_native_permissions: WorkflowPermissions = WorkflowPermissions {
+  contents: Present { value: PermRead },
+  pull_requests: none,
+  issues: none,
+  actions: none,
+  id_token: Present { value: PermWrite }
 }
 
 // THE REQUIRED STATUS MUST READ EVERY LANE, OR A LANE IS MERELY WAITED ON.
@@ -739,12 +785,7 @@ fn compiler_gate_candidate_upload_step() -> Step {
 }
 
 fn compiler_gate_floor_bound_steps() -> List<CompilerGateBoundStep> {
-  concat(compiler_gate_fleet_prelude_bound_steps_around_build(
-    bins: witness_floor_required_bins,
-    build_step_name: compiler_gate_floor_build_step_name,
-    before_build: compiler_gate_candidate_key_bound_steps(),
-    after_build: compiler_gate_candidate_pack_bound_steps(),
-  ), concat([
+  concat(compiler_gate_fleet_prelude_bound_steps(), concat([
     CompilerGateBoundStep {
       step: compiler_gate_floor_run_step(),
       role: consumes_only(capabilities: [RustfmtCapability]),
@@ -753,24 +794,9 @@ fn compiler_gate_floor_bound_steps() -> List<CompilerGateBoundStep> {
   ], compiler_gate_floor_measurement_bound_steps()))
 }
 
-// THE PRELUDE BOTH FLEET JOBS NEED, ONE LIST RATHER THAN TWO COPIES: the head checkout, isolated
-// toolchain homes, a pinned default, and claim_executor plus gunbc built from the judged tree. The
-// build step keeps its id, build_witness_fold, in both jobs because every downstream condition in
-// each job reads that id; step ids are per job, so the two never collide.
-fn compiler_gate_fleet_prelude_bound_steps() -> List<CompilerGateBoundStep> {
-  compiler_gate_fleet_prelude_bound_steps_around_build(
-    bins: witness_floor_required_bins,
-    build_step_name: compiler_gate_floor_build_step_name,
-    before_build: [],
-    after_build: [],
-  )
-}
-
-// emit-build needs only `gunbc` (its instruments run through `gunbc test`), so it takes the same
-// prelude over its own binaries rather than a copy of it; the floor adds its candidate-key and
-// candidate-pack steps around the same build.
-fn compiler_gate_fleet_prelude_bound_steps_around_build(bins: List<String>, build_step_name: String, before_build: List<CompilerGateBoundStep>, after_build: List<CompilerGateBoundStep>) -> List<CompilerGateBoundStep> {
-  concat([
+// THE HEAD OF EVERY FLEET JOB: the judged checkout, an isolated toolchain home and a pinned default.
+fn compiler_gate_fleet_head_bound_steps() -> List<CompilerGateBoundStep> {
+  [
     CompilerGateBoundStep {
       step: compiler_gate_floor_checkout_step(),
       role: capability_neutral,
@@ -791,22 +817,33 @@ fn compiler_gate_fleet_prelude_bound_steps_around_build(bins: List<String>, buil
       role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
       step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
     },
-  ], concat(before_build, concat([
+  ]
+}
+
+// THE PRELUDE EVERY CONSUMER LANE NEEDS: the head, then the compiler pair the `seed` job built or
+// restored ONCE for the run, verified against the seed's key and promoted into this job's OWN
+// checkout (target/release is private to the job, so a native probe still runs against a writable
+// directory nobody else shares). The restore step keeps the id build_witness_fold because every
+// downstream condition in each job reads that id: `success` there now means "the pair was verified
+// and promoted", which is the precondition those conditions always stood for.
+fn compiler_gate_fleet_prelude_bound_steps() -> List<CompilerGateBoundStep> {
+  concat(compiler_gate_fleet_head_bound_steps(), [
     CompilerGateBoundStep {
-      step: witness_floor_build_step(
-        step_name: build_step_name,
-        build_script: repo_self_build_command(bins: bins),
-      ),
-      role: consumes_only(capabilities: [CargoCapability]),
-      step_name: build_step_name,
+      step: ci_release_bins_download_step(),
+      role: capability_neutral,
+      step_name: "Download release-bins artifact",
     },
-  ], concat(after_build, [
+    CompilerGateBoundStep {
+      step: compiler_gate_pair_restore_step(),
+      role: consumes_only(capabilities: [CargoCapability]),
+      step_name: compiler_gate_pair_restore_step_name,
+    },
     CompilerGateBoundStep {
       step: witness_toolchain_homes_isolated_guard_step(),
       role: capability_neutral,
       step_name: "Require isolated toolchain homes",
     },
-  ]))))
+  ])
 }
 
 // ORDER: the lint first (the cheapest verdict, over the Rust the prelude just built), then the build
@@ -866,7 +903,7 @@ fn compiler_gate_generated_bound_steps() -> List<CompilerGateBoundStep> {
 // the cost of what it executed.
 fn compiler_gate_floor_measurement_bound_steps() -> List<CompilerGateBoundStep> {
   list_map(
-    xs: concat(required_ci_measurement_bound_steps(), [required_floor_claim_cost_upload_bound_step()]),
+    xs: concat(required_ci_measurement_bound_steps(), [required_floor_claim_cost_upload_bound_step(), required_floor_disposition_upload_bound_step()]),
     f: fn(b) { CompilerGateBoundStep { step: b.step, role: b.role, step_name: b.step_name } },
   )
 }
@@ -892,85 +929,17 @@ fn compiler_gate_floor_scripts_are_renderable() -> Bool {
 
 // ── THE MERGE QUEUE PRODUCES THE COMPILER PAIR CANDIDATE ────────────────────────────────────────
 //
-// The floor already builds claim_executor and gunbc from the tree that will land. On a merge group
-// (the composed revision that becomes main), it also keys that build as gunbc.fleet_release_bins_key
-// compiler_pair_release_product BEFORE building -- so the build is stamped with the materialized tree,
-// as the preimage says -- then packs the two binaries with the build log the build step just wrote,
-// wraps the pack as one object and uploads it as a short-lived workflow artifact. The floor holds no
-// cache credential: it produces a CANDIDATE, and fleet-desired, after the revision lands, verifies it
-// and is the only canonical publisher. A pull-request run produces nothing (nothing would consume it).
-// A refusal here is the floor's: an environment the product's preimage cannot honestly describe
-// stops the line rather than yielding an unprovenanced candidate.
+// The `seed` job builds or restores claim_executor and gunbc for the tree that will land. On a
+// merge group (the composed revision that becomes main) it also packs the two binaries with the build
+// log into one object and uploads it as a short-lived workflow artifact; the key was derived by
+// gunbc.fleet_release_bins_key compiler_pair_release_product BEFORE any build, so the pack is stamped
+// with the materialized tree, as the preimage says. The seed holds no cache credential: it produces
+// a CANDIDATE, and fleet-desired, after the revision lands, verifies it and is the only canonical
+// publisher. A pull-request run produces no candidate (nothing would consume it). A refusal here is
+// the seed's: an environment the product's preimage cannot honestly describe stops the line rather
+// than yielding an unprovenanced candidate.
 fn compiler_gate_candidate_condition() -> String {
   "github.event_name == 'merge_group'"
-}
-
-fn compiler_gate_candidate_built_condition() -> String {
-  "github.event_name == 'merge_group' && steps.build_witness_fold.outcome == 'success'"
-}
-
-fn compiler_gate_candidate_run_step(name: String, script: String, condition: String) -> Step {
-  RunStep {
-    name: Present { value: name },
-    id: none,
-    run: script,
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: Present { value: condition },
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
-
-fn compiler_gate_candidate_key_bound_steps() -> List<CompilerGateBoundStep> {
-  [
-    CompilerGateBoundStep {
-      step: compiler_gate_candidate_run_step(
-        name: "Key the compiler pair candidate (merge group; stamps the build with the materialized tree)",
-        script: release_bins_key_script_for(product: compiler_pair_release_product()),
-        condition: compiler_gate_candidate_condition(),
-      ),
-      role: consumes_only(capabilities: [CargoCapability, RustcCapability]),
-      step_name: "Key the compiler pair candidate (merge group; stamps the build with the materialized tree)",
-    },
-  ]
-}
-
-fn compiler_gate_candidate_pack_bound_steps() -> List<CompilerGateBoundStep> {
-  [
-    CompilerGateBoundStep {
-      step: compiler_gate_candidate_run_step(
-        name: "Pack the compiler pair candidate with its build log",
-        script: join([release_bins_pack_manifest_script_for(product: compiler_pair_release_product()), release_bins_pack_object_script()], "\n"),
-        condition: compiler_gate_candidate_built_condition(),
-      ),
-      role: capability_neutral,
-      step_name: "Pack the compiler pair candidate with its build log",
-    },
-    CompilerGateBoundStep {
-      step: UsesStep {
-        name: Present { value: "Upload the compiler pair candidate" },
-        id: none,
-        uses: upload_artifact_action,
-        with: Present {
-          value: [
-            kv(key: "name", value: yaml_string(s: compiler_pair_candidate_artifact_name)),
-            kv(key: "path", value: yaml_string(s: release_bins_pack_object_path_expression())),
-            kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-            kv(key: "retention-days", value: yaml_int(n: compiler_pair_candidate_retention_whole_days())),
-            kv(key: "compression-level", value: yaml_int(n: 0))
-          ]
-        },
-        env: none,
-        if_condition: Present { value: compiler_gate_candidate_built_condition() },
-        continue_on_error: none,
-        timeout_minutes: none
-      },
-      role: capability_neutral,
-      step_name: "Upload the compiler pair candidate",
-    },
-  ]
 }
 
 fn compiler_gate_floor_job() -> Job {
@@ -980,7 +949,7 @@ fn compiler_gate_floor_job() -> Job {
     runner: gunbc_ci_selected_runner_spec(),
     environment: none,
     steps: list_map(xs: compiler_gate_floor_bound_steps(), f: fn(b) { b.step }),
-    needs: [],
+    needs: [compiler_gate_seed_job_id],
     env: Present {
       value: [
         kv(key: malloc_arena_max_env_key, value: yaml_string(s: malloc_arena_max_value)),
@@ -1040,7 +1009,7 @@ fn compiler_gate_generated_job() -> Job {
     runner: gunbc_ci_selected_runner_spec(),
     environment: none,
     steps: list_map(xs: compiler_gate_generated_bound_steps(), f: fn(b) { b.step }),
-    needs: [],
+    needs: [compiler_gate_seed_job_id],
     env: Present {
       value: [
         kv(key: malloc_arena_max_env_key, value: yaml_string(s: malloc_arena_max_value))
@@ -1100,7 +1069,16 @@ fn compiler_gate_emit_build_step(row: EmittedSubjectBuildRow) -> Step {
       "\n"
     ),
     shell: none,
-    env: none,
+    env: Present {
+      value: [
+        kv(
+          key: native_fault_experiment_env_name,
+          value: yaml_string(s: join(["${{ github.event_name == 'pull_request' && '", native_fault_experiment_skip_value, "' || '", native_fault_experiment_run_value, "' }}"], ""))
+        ),
+        kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: join(["${{ steps.", compiler_gate_native_read_wif_id, ".outputs.access_token }}"], ""))),
+        kv(key: "GUNBC_PULL_REQUEST_HEAD_REPOSITORY", value: yaml_string(s: "${{ github.event.pull_request.head.repo.full_name }}"))
+      ]
+    },
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
@@ -1163,9 +1141,155 @@ fn compiler_gate_emit_build_subject_bound_steps() -> List<CompilerGateBoundStep>
 // THE PRELUDE IS THE FLEET PRELUDE over `gunbc` alone, because the subject steps need exactly what it
 // provides on the fleet: the judged checkout, an isolated toolchain home (and the guard requiring
 // it), a pinned default, and the `gunbc` binary the instruments are invoked through.
+// THE NATIVE PRODUCT STORE'S ROOT IS JOB-PRIVATE (`$RUNNER_TEMP/gunbc-native-products`), NEVER A SHARED
+// HOST DIRECTORY. `$RUNNER_TOOL_CACHE` is shared by every job on a self-hosted host, so a pull
+// request's job could plant a self-consistent entry (verify-on-read checks an entry against its own
+// manifest, which its writer controls) that a later job would serve as a HIT. A private directory is
+// empty at job start, so the only filler is the credentialed shared-store restore, whose writer is the
+// merge_group-only federation (`gunbc.native_product_shared_store`); until the federations are provisioned the
+// store is empty and every run builds cold. The product key carries the toolchain axis, so the root
+// needs no toolchain segment.
+// THE ROOT IS BOUND ON PULL REQUESTS AND ON THE MERGE QUEUE: both restore into it through the read
+// federation, the queue's seed publishes into it after a completed red on a miss, and the save step
+// uploads that. A restore that cannot run is a typed, counted MISS in the seed's log
+// (NativeProductRestoreUnavailable, with its cause), never a silent slow build.
+fn compiler_gate_native_cache_condition() -> String {
+  join(["github.event_name == '", github_event_name_pull_request, "' || github.event_name == '", github_event_name_merge_group, "'"], "")
+}
+
+// THE READ CREDENTIAL IS GIVEN TO SAME-REPOSITORY PULL REQUESTS AND TO THE MERGE QUEUE. The queue runs
+// reviewed, composed code and the store is writable only by the queue's own write federation, so a
+// restored product there is one a queue run published; the key still names every input of the product.
+// A fork pull request is issued no id-token, so it has no credential and builds cold.
+fn compiler_gate_native_read_condition() -> String {
+  join(["(github.event_name == '", github_event_name_pull_request, "' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == '", github_event_name_merge_group, "'"], "")
+}
+
+fn compiler_gate_native_write_condition() -> String {
+  join(["github.event_name == '", github_event_name_merge_group, "'"], "")
+}
+
+data compiler_gate_native_read_wif_id: String = "native_read_wif"
+
+data compiler_gate_native_write_wif_id: String = "native_write_wif"
+
+data compiler_gate_native_read_auth_step_name: String = "WIF auth (OIDC -> native-product-read, pull requests)"
+
+data compiler_gate_native_write_auth_step_name: String = "WIF auth (OIDC -> native-product-write, merge queue)"
+
+data compiler_gate_native_save_step_name: String = "Save admitted native products to the shared store"
+
+fn compiler_gate_native_wif_step(name: String, id: String, provider_resource: String, service_account: String, condition: String) -> Step {
+  match ci_wif_auth_step_with_id(name: name, id: id, provider_resource: provider_resource, service_account: service_account) {
+    UsesStep { name: n, id: i, uses: u, with: w, env: e, if_condition: _, continue_on_error: _, timeout_minutes: t } =>
+      UsesStep { name: n, id: i, uses: u, with: w, env: e, if_condition: Present { value: condition }, continue_on_error: Present { value: true }, timeout_minutes: t }
+    other => other
+  }
+}
+
+fn compiler_gate_native_read_auth_step() -> Step {
+  compiler_gate_native_wif_step(
+    name: compiler_gate_native_read_auth_step_name,
+    id: compiler_gate_native_read_wif_id,
+    provider_resource: github_wif_provider_resource(),
+    service_account: native_product_read_service_account as String,
+    condition: compiler_gate_native_read_condition(),
+  )
+}
+
+fn compiler_gate_native_write_auth_step() -> Step {
+  compiler_gate_native_wif_step(
+    name: compiler_gate_native_write_auth_step_name,
+    id: compiler_gate_native_write_wif_id,
+    provider_resource: native_product_write_provider_resource(),
+    service_account: native_product_write_service_account as String,
+    condition: compiler_gate_native_write_condition(),
+  )
+}
+
+// THE SAVE IS THE ENTRY'S OWN `gunbc run`, DERIVED AS ARGV rather than spelled: it uploads every
+// admitted entry of the job-private store (only a merge_group run with a completed red publishes one)
+// create-only, and runs only on the queue, after the instruments, with the write federation's token.
+fn compiler_gate_native_save_command() -> String {
+  shell_command_render(command: gunbc_run_command(
+    entry: "dag/gunbc/native_product_shared_transfer.dag",
+    functions: ["native_product_save_wet"],
+  ))
+}
+
+fn compiler_gate_native_save_step() -> Step {
+  RunStep {
+    name: Present { value: compiler_gate_native_save_step_name },
+    id: none,
+    run: concat(compiler_gate_native_save_command(), "\n"),
+    shell: none,
+    env: Present { value: [kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: join(["${{ steps.", compiler_gate_native_write_wif_id, ".outputs.access_token }}"], "")))] },
+    working_directory: none,
+    if_condition: Present { value: join(["success() && ", compiler_gate_native_write_condition()], "") },
+    continue_on_error: Present { value: true },
+    timeout_minutes: Present { value: 10 }
+  }
+}
+
+data compiler_gate_native_cache_root_step_name: String = "Bind job-private native product store root"
+
+data compiler_gate_native_cache_root_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: compiler_gate_native_cache_root_script — hand-authored two-line shell binding the job-private native product store root under RUNNER_TEMP. DISSOLVES WHEN the restore of the shared native product store is an emitted intent that names its job-private directory (a typed host-effect realization through v2.workflow.bash_emit bash_emit_program), so the mkdir and the GITHUB_ENV append are derived from that intent rather than spelled here.")
+
+data compiler_gate_native_cache_root_script: String = concat("# ", concat(dissolution_description(condition: compiler_gate_native_cache_root_shell_emit_dissolution_trigger), concat("\n", "mkdir -p \"$RUNNER_TEMP/gunbc-native-products\"\necho \"GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TEMP/gunbc-native-products\" >> \"$GITHUB_ENV\"")))
+
+fn compiler_gate_native_cache_root_step_for_pull_requests() -> Step {
+  RunStep {
+    name: Present { value: compiler_gate_native_cache_root_step_name },
+    id: none,
+    run: compiler_gate_native_cache_root_script,
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: compiler_gate_native_cache_condition() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn compiler_gate_emit_build_native_cache_root_bound_step() -> CompilerGateBoundStep {
+  CompilerGateBoundStep {
+    step: compiler_gate_native_cache_root_step_for_pull_requests(),
+    role: consumes_only(capabilities: [RustcCapability]),
+    step_name: compiler_gate_native_cache_root_step_name,
+  }
+}
+
+// EMIT-BUILD BUILDS ITS OWN `gunbc` AND DOES NOT RESTORE THE SEED PAIR. `gunbc test` refuses a binary
+// whose cargo dep-info it cannot read inside this checkout (BinaryFreshnessUndecided, #13007): a
+// restored pair carries no dep-info for this worktree, so the freshness guard rightly cannot judge
+// it. Until that guard can judge a restored binary, this lane keeps the one build it always paid.
+fn compiler_gate_emit_build_prelude_bound_steps() -> List<CompilerGateBoundStep> {
+  concat(compiler_gate_fleet_head_bound_steps(), [
+    compiler_gate_emit_build_native_cache_root_bound_step(),
+    CompilerGateBoundStep { step: compiler_gate_native_read_auth_step(), role: capability_neutral, step_name: compiler_gate_native_read_auth_step_name },
+    CompilerGateBoundStep { step: compiler_gate_native_write_auth_step(), role: capability_neutral, step_name: compiler_gate_native_write_auth_step_name },
+    CompilerGateBoundStep {
+      step: witness_floor_build_step(
+        step_name: compiler_gate_build_step_name,
+        build_script: repo_self_build_command(bins: compiler_gate_required_bins),
+      ),
+      role: consumes_only(capabilities: [CargoCapability]),
+      step_name: compiler_gate_build_step_name,
+    },
+    CompilerGateBoundStep {
+      step: witness_toolchain_homes_isolated_guard_step(),
+      role: capability_neutral,
+      step_name: "Require isolated toolchain homes",
+    },
+  ])
+}
+
 fn compiler_gate_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
   concat(
-    concat(compiler_gate_fleet_prelude_bound_steps_around_build(bins: compiler_gate_required_bins, build_step_name: compiler_gate_build_step_name, before_build: [], after_build: []), compiler_gate_emit_build_subject_bound_steps()),
+    concat(
+      concat(compiler_gate_emit_build_prelude_bound_steps(), compiler_gate_emit_build_subject_bound_steps()),
+      [CompilerGateBoundStep { step: compiler_gate_native_save_step(), role: consumes_only(capabilities: [CargoCapability]), step_name: compiler_gate_native_save_step_name }],
+    ),
     [CompilerGateBoundStep {
       step: compiler_gate_emit_build_notice_step(),
       role: capability_neutral,
@@ -1203,7 +1327,220 @@ fn compiler_gate_emit_build_job() -> Job {
     timeout_minutes: Present { value: compiler_gate_emit_build_timeout_minutes },
     continue_on_error: none,
     concurrency: none,
-    permissions: Present { value: compiler_gate_permissions }
+    permissions: Present { value: compiler_gate_native_permissions }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THE SEED LANE: THE COMPILER PAIR IS BUILT OR RESTORED ONCE PER RUN.
+//
+// OPERATOR DIRECTION 2026-10-06 (CI programme item 1, rows R1/R2; operator authorized changing the required job roster for this programme):
+// the three fleet lanes each built the same two binaries from the same tree, so a run paid the
+// release build three times on three runners. The pair is one product keyed by
+// gunbc.fleet_release_bins_key compiler_pair_release_product -- the same keyed materialization
+// fleet-converge's build job uses, so the cache lookup, the restore into staging, the complete
+// verification before any restored binary runs and the build-log member are that module's, not
+// re-derived here. This job derives the key, looks it up (admitted refs only), builds ONLY on a miss
+// (release_bins_build_condition), packs on a build and hands the pack to the three consumers as a
+// workflow artifact. A consumer verifies the pack against this job's key and promotes it into its
+// OWN checkout's target/release, so every consumer still runs the binaries from a private writable
+// directory; nothing is shared by path.
+//
+// A MISS IS THE FULL BUILD, NOT A LOSS OF COVERAGE: the build line is the product's own build_line,
+// the very text the key names. A lookup that cannot answer is not absence (the lookup step says so),
+// and a pack that does not verify refuses. The job is a roster growth the operator authorized for
+// this programme; it replaces two of three builds per run.
+data compiler_gate_seed_job_id: String = "seed"
+
+data compiler_gate_seed_build_step_name: String = "Build the compiler pair (keyed miss only)"
+data compiler_gate_pair_restore_step_name: String = "Verify the seed's compiler pair against its key and promote it into this checkout"
+
+fn compiler_gate_seed_run_step(name: String, id: String?, script: String, env: List<YamlKeyValue>, condition: String?, timeout: Int?) -> Step {
+  RunStep {
+    name: Present { value: name },
+    id: id,
+    run: script,
+    shell: none,
+    env: if length(xs: env) == 0 { none } else { Present { value: env } },
+    working_directory: none,
+    if_condition: condition,
+    continue_on_error: none,
+    timeout_minutes: timeout
+  }
+}
+
+fn compiler_gate_seed_key_expression() -> String {
+  join(["$", "{{ needs.", compiler_gate_seed_job_id, ".outputs.", release_bins_key_job_output, " }}"], "")
+}
+
+fn compiler_gate_pair_restore_step() -> Step {
+  compiler_gate_seed_run_step(
+    name: compiler_gate_pair_restore_step_name,
+    id: Present { value: "build_witness_fold" },
+    script: release_bins_consumer_key_check_script_for(product: compiler_pair_release_product()),
+    env: [kv(key: "RELEASE_BINS_KEY", value: yaml_string(s: compiler_gate_seed_key_expression()))],
+    condition: none,
+    timeout: Present { value: gunbc_ci_aux_step_timeout_minutes },
+  )
+}
+
+fn compiler_gate_seed_bound_steps() -> List<CompilerGateBoundStep> {
+  concat(compiler_gate_fleet_head_bound_steps(), [
+    CompilerGateBoundStep {
+      step: compiler_gate_seed_run_step(
+        name: "Key the compiler pair (stamps the build with the materialized tree)",
+        id: Present { value: release_bins_key_step_id },
+        script: release_bins_key_script_for(product: compiler_pair_release_product()),
+        env: [],
+        condition: none,
+        timeout: Present { value: gunbc_ci_aux_step_timeout_minutes },
+      ),
+      role: consumes_only(capabilities: [CargoCapability, RustcCapability]),
+      step_name: "Key the compiler pair (stamps the build with the materialized tree)",
+    },
+    CompilerGateBoundStep {
+      step: ci_release_bins_lookup_step(),
+      role: capability_neutral,
+      step_name: "Look up the compiler pair by exact key",
+    },
+    CompilerGateBoundStep {
+      step: ci_release_bins_cache_step(),
+      role: capability_neutral,
+      step_name: "Restore the compiler pair into isolated staging",
+    },
+    CompilerGateBoundStep {
+      step: compiler_gate_seed_run_step(
+        name: "Decide the compiler pair outcome; verify a stored pack completely before any restored binary runs",
+        id: Present { value: release_bins_outcome_step_id },
+        script: release_bins_outcome_script_for(product: compiler_pair_release_product()),
+        env: [
+          kv(key: "RELEASE_BINS_KEY", value: yaml_string(s: release_bins_key_expression())),
+          kv(key: "LOOKUP_STANDING", value: yaml_string(s: release_bins_lookup_standing_expression())),
+          kv(key: "LOOKUP_ENTRY", value: yaml_string(s: release_bins_lookup_entry_expression())),
+          kv(key: "CACHE_HIT", value: yaml_string(s: release_bins_cache_hit_expression())),
+        ],
+        condition: none,
+        timeout: Present { value: gunbc_ci_aux_step_timeout_minutes },
+      ),
+      role: consumes_only(capabilities: [CargoCapability]),
+      step_name: "Decide the compiler pair outcome",
+    },
+    CompilerGateBoundStep {
+      step: ci_cache_cargo_step(),
+      role: capability_neutral,
+      step_name: "Cache Cargo",
+    },
+    CompilerGateBoundStep {
+      step: compiler_gate_seed_run_step(
+        name: compiler_gate_seed_build_step_name,
+        id: Present { value: "build_witness_fold" },
+        script: concat(wrap_command_with_floor_attempt_receipt(command: compiler_pair_release_product().build_line), "\n"),
+        env: [],
+        condition: Present { value: release_bins_build_condition() },
+        timeout: none,
+      ),
+      role: consumes_only(capabilities: [CargoCapability]),
+      step_name: compiler_gate_seed_build_step_name,
+    },
+    CompilerGateBoundStep {
+      step: compiler_gate_seed_run_step(
+        name: "Pack the compiler pair with its build log (build outcomes only)",
+        id: none,
+        script: release_bins_pack_manifest_script_for(product: compiler_pair_release_product()),
+        env: [kv(key: "RELEASE_BINS_KEY", value: yaml_string(s: release_bins_key_expression()))],
+        condition: Present { value: release_bins_build_condition() },
+        timeout: Present { value: gunbc_ci_aux_step_timeout_minutes },
+      ),
+      role: capability_neutral,
+      step_name: "Pack the compiler pair with its build log (build outcomes only)",
+    },
+    CompilerGateBoundStep {
+      step: ci_release_bins_upload_step(),
+      role: capability_neutral,
+      step_name: "Upload release-bins artifact",
+    },
+    CompilerGateBoundStep {
+      step: compiler_gate_seed_run_step(
+        name: "Wrap the compiler pair as the merge-group candidate object",
+        id: none,
+        script: release_bins_pack_object_script(),
+        env: [],
+        condition: Present { value: compiler_gate_candidate_condition() },
+        timeout: Present { value: gunbc_ci_aux_step_timeout_minutes },
+      ),
+      role: capability_neutral,
+      step_name: "Wrap the compiler pair as the merge-group candidate object",
+    },
+    CompilerGateBoundStep {
+      step: UsesStep {
+        name: Present { value: "Upload the compiler pair candidate" },
+        id: none,
+        uses: upload_artifact_action,
+        with: Present {
+          value: [
+            kv(key: "name", value: yaml_string(s: compiler_pair_candidate_artifact_name)),
+            kv(key: "path", value: yaml_string(s: release_bins_pack_object_path_expression())),
+            kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+            kv(key: "retention-days", value: yaml_int(n: compiler_pair_candidate_retention_whole_days())),
+            kv(key: "compression-level", value: yaml_int(n: 0))
+          ]
+        },
+        env: none,
+        if_condition: Present { value: compiler_gate_candidate_condition() },
+        continue_on_error: none,
+        timeout_minutes: none
+      },
+      role: capability_neutral,
+      step_name: "Upload the compiler pair candidate",
+    },
+    CompilerGateBoundStep {
+      step: witness_toolchain_homes_isolated_guard_step(),
+      role: capability_neutral,
+      step_name: "Require isolated toolchain homes",
+    },
+  ])
+}
+
+fn compiler_gate_seed_capability_closure_holds() -> Bool {
+  capability_closure_is_closed(
+    v: workflow_job_capability_closure(
+      steps: list_map(
+        xs: compiler_gate_seed_bound_steps(),
+        f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+      )
+    ),
+  )
+}
+
+fn compiler_gate_seed_job() -> Job {
+  Job {
+    id: compiler_gate_seed_job_id,
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    environment: none,
+    steps: list_map(xs: compiler_gate_seed_bound_steps(), f: fn(b) { b.step }),
+    needs: [],
+    env: Present {
+      value: [
+        kv(key: malloc_arena_max_env_key, value: yaml_string(s: malloc_arena_max_value))
+      ]
+    },
+    outputs: Present {
+      value: [kv(key: release_bins_key_job_output, value: yaml_string(s: release_bins_key_expression()))]
+    },
+    if_condition: Present { value: compiler_gate_floor_job_condition() },
+    timeout_minutes: Present { value: compiler_gate_floor_timeout_minutes },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present {
+      value: WorkflowPermissions {
+        contents: Present { value: PermRead },
+        pull_requests: none,
+        issues: none,
+        actions: Present { value: PermRead },
+        id_token: none,
+      }
+    }
   }
 }
 
@@ -1282,6 +1619,7 @@ fn compiler_gate_strict_rows_of(rows: List<CompilerGateLaneRow>) -> List<Compile
     match row.arm {
       GateArmStrict => true
       GateArmSkippableOnFork { notice: _, unobserved_error: _ } => false
+      GateArmSkippedOnPullRequest { notice: _, unobserved_error: _ } => false
     }
   })
 }
@@ -1291,6 +1629,7 @@ fn compiler_gate_fork_rows_of(rows: List<CompilerGateLaneRow>) -> List<CompilerG
     match row.arm {
       GateArmStrict => false
       GateArmSkippableOnFork { notice: _, unobserved_error: _ } => true
+      GateArmSkippedOnPullRequest { notice: _, unobserved_error: _ } => true
     }
   })
 }
@@ -1348,6 +1687,14 @@ fn compiler_gate_unobserved_line(rows: List<CompilerGateLaneRow>) -> String {
 fn compiler_gate_fork_line(row: CompilerGateLaneRow) -> String {
   match row.arm {
     GateArmStrict => ""
+    GateArmSkippedOnPullRequest { notice: n, unobserved_error: e } =>
+      join([
+        "if ", compiler_gate_not_success_clause(row: row),
+        "; then if [ \"$GITHUB_EVENT_NAME\" = pull_request ] && [ ", compiler_gate_var_read(row: row), " = skipped ]",
+        "; then echo \"::notice::", n, "\"",
+        "; else echo \"::error::", e, " (", compiler_gate_var_report(row: row),
+        "), so this head carries no verdict from that lane\"; exit 1; fi; fi"
+      ], "")
     GateArmSkippableOnFork { notice: n, unobserved_error: e } =>
       join([
         "if ", compiler_gate_not_success_clause(row: row),
@@ -1496,9 +1843,13 @@ type CompilerGateLaneStanding
 // hand-written fourth line is what let the script drift from the roster. Since the 2026-09-28 ruling
 // every blocking lane is a fleet lane, so today no live row carries GateArmStrict (emit-build left it when it moved),
 // and a hosted lane cannot turn blocking without moving (compiler_gate_merge_path_runs_on_the_fleet).
+// GateArmSkippedOnPullRequest is a lane that does not run on pull_request at all (operator 2026-10-06,
+// gunbc.rung_drop rust_unit_tests_off_pull_requests): a skip is excused only when the event IS
+// pull_request, and it blocks on merge_group and workflow_dispatch like any blocking lane.
 type CompilerGateArm
   = GateArmStrict
   | GateArmSkippableOnFork { notice: String, unobserved_error: String }
+  | GateArmSkippedOnPullRequest { notice: String, unobserved_error: String }
 
 type CompilerGateLaneRow {
   job_id: String
@@ -1507,22 +1858,29 @@ type CompilerGateLaneRow {
   arm: CompilerGateArm
 }
 
-// THE UNIT-TEST ROW IS NOT BLOCKING UNDER A DECLARED DROP (operator-approved, escalation
-// msg_e83c070f, 2026-10-05): the step overran its cap on every head after gunbc#12951, so its red
-// said nothing about the diff and refused every merge. The job still runs and reports;
-// gunbc.rung_drop rust_unit_tests_over_their_cap names the trigger that flips it back to LaneBlocks.
+// THE UNIT-TEST ROW BLOCKS AGAIN. It was LaneAnnouncedNotBlocking under gunbc.rung_drop
+// rust_unit_tests_over_their_cap from 2026-10-05, when the step overran its cap on every head after
+// gunbc#12951; it blocks again with a cap derived after gunbc#13452 (see compiler_gate_unit_test_timeout).
+// That drop is superseded by the #13452 deletion ruling, not retired by its trigger.
 fn compiler_gate_lane_rows() -> List<CompilerGateLaneRow> {
   [
     CompilerGateLaneRow {
       job_id: compiler_gate_unit_test_job_id,
       var_name: "RUST_UNIT_TESTS",
-      arm: GateArmSkippableOnFork {
-        notice: "the v1 unit-test lane is skipped for a fork pull request: it runs on the fleet",
+      arm: GateArmSkippedOnPullRequest {
+        notice: "the v1 unit-test lane does not run on pull_request: it runs on merge_group and workflow_dispatch on the fleet",
         unobserved_error: "the v1 unit-test lane produced no success"
       },
-      standing: LaneAnnouncedNotBlocking {
-        flip_trigger: "gunbc.rung_drop rust_unit_tests_over_their_cap: the full v1 --lib unit suite completes under its cap on the fleet runner on every head. Sufficient for: the lane red meaning a test failed, never that its clock ran out."
-      },
+      standing: LaneBlocks,
+    },
+    CompilerGateLaneRow {
+      job_id: compiler_gate_seed_job_id,
+      var_name: "SEED",
+      standing: LaneBlocks,
+      arm: GateArmSkippableOnFork {
+        notice: "the seed lane is skipped for a fork pull request: no compiler pair was built or restored for this head",
+        unobserved_error: "the seed lane produced no success"
+      }
     },
     CompilerGateLaneRow {
       job_id: compiler_gate_emit_build_job_id,
@@ -1683,7 +2041,7 @@ data compiler_gate_workflow: Workflow = Workflow {
     kv(key: (required_ci_contract_epoch_env_key as String), value: yaml_string(s: (required_ci_contract_epoch as String)))
   ] },
   permissions: Present { value: compiler_gate_permissions },
-  jobs: [compiler_gate_unit_test_job(), compiler_gate_emit_build_job(), compiler_gate_floor_job(), compiler_gate_generated_job(), compiler_gate_aggregate_job()]
+  jobs: [compiler_gate_unit_test_job(), compiler_gate_seed_job(), compiler_gate_emit_build_job(), compiler_gate_floor_job(), compiler_gate_generated_job(), compiler_gate_aggregate_job()]
 }
 
 data compiler_gate_capability_refusal_reason: String = "REFUSED gunbc.compiler_gate_workflow: a job's capability closure does not hold, a floor script is not renderable, the workflow runs a job that compiler_gate_lane_rows does not roster, or a blocking lane or the aggregate runs on a hosted runner (compiler_gate_merge_path_runs_on_the_fleet, operator ruling 2026-09-28). No workflow yaml was emitted. Fix the step roles in the lane's bound steps, add the job's row, or put the merge-path job on gunbc_ci_selected_runner_spec. The gate's needs, env bindings and every conditional are FOLDED from that roster, so they cannot disagree with it and this refusal has nothing to say about them."
@@ -1701,7 +2059,7 @@ fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
         WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
           WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
         WorkflowToolchainHomesAdmitted =>
-          if compiler_gate_unit_test_capability_closure_holds() && compiler_gate_emit_build_capability_closure_holds() && compiler_gate_floor_capability_closure_holds() && compiler_gate_generated_capability_closure_holds() && compiler_gate_floor_scripts_are_renderable() && compiler_gate_lane_standings_hold() && compiler_gate_merge_path_runs_on_the_fleet() {
+          if compiler_gate_unit_test_capability_closure_holds() && compiler_gate_emit_build_capability_closure_holds() && compiler_gate_seed_capability_closure_holds() && compiler_gate_floor_capability_closure_holds() && compiler_gate_generated_capability_closure_holds() && compiler_gate_floor_scripts_are_renderable() && compiler_gate_lane_standings_hold() && compiler_gate_merge_path_runs_on_the_fleet() {
             match emit_yaml(v: project_workflow_to_yaml(workflow: compiler_gate_workflow)) {
               EmittedYaml { text: t } => WitnessFloorGenerated { content: t }
               YamlEmitRefused { path: p, reason: r } => WitnessFloorGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.compiler_gate_workflow", path: p, reason: r) }

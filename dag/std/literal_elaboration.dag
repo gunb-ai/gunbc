@@ -1,7 +1,7 @@
 module std.literal_elaboration
 
 import std.types { List, String, Bool, Int, NonEmptyStr }
-import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.syntax { LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull, LitSymbol }
 
 // THE EXPECTED-TYPE-DIRECTED LITERAL INTRODUCTION JUDGMENT, as a model (DESIGN section 4: one
@@ -302,5 +302,35 @@ fn kernel_mint_ownership(rows: List<KernelMintDeclaration>, minted_name: String,
       if declaration_ref_eq(a: bound, b: declaration) { DeclarationOwnsTheMint } else { DeclarationDoesNotOwnTheMint }
     KernelMintDeclarationAbsent => DeclarationDoesNotOwnTheMint
     KernelMintDeclarationAmbiguous { row_count: n } => KernelMintOwnershipAmbiguous { row_count: n }
+  }
+}
+
+// WHETHER AN AUTHORED IMPORT OF A KERNEL-MINTED SPELLING IS THE MINT ITSELF. The exemption is the
+// full DeclarationRef, not the module path: a row for owner.Maybe does not admit importing
+// owner.Optional. Ambiguous mint rows are their own arm so the consumer cannot guess a module.
+type KernelNamedImportStanding
+  = KernelNamedImportAdmitted
+  | KernelNamedImportCollides { kernel_declaration_module: String }
+  | KernelNamedImportMintAmbiguous { row_count: Int }
+
+fn kernel_named_import_standing(
+  imported_name: String,
+  import_path: String,
+  module_declares_type: Bool,
+  rows: List<KernelMintDeclaration>
+) -> KernelNamedImportStanding {
+  if module_declares_type == false {
+    KernelNamedImportAdmitted
+  } else {
+    match kernel_mint_declaration_for(rows: rows, minted_name: imported_name) {
+      KernelMintDeclarationFound { declaration: d } =>
+        if declaration_ref_eq(a: d, b: decl_ref(module_path: import_path, decl_name: imported_name)) {
+          KernelNamedImportAdmitted
+        } else {
+          KernelNamedImportCollides { kernel_declaration_module: d.module_path as String }
+        }
+      KernelMintDeclarationAbsent => KernelNamedImportAdmitted
+      KernelMintDeclarationAmbiguous { row_count: n } => KernelNamedImportMintAmbiguous { row_count: n }
+    }
   }
 }

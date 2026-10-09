@@ -1,19 +1,20 @@
 module extdeps.fans.arctic
 
 import std.types { List }
-import std.measure { micrometer, millimeter, percent, rpm }
+import std.measure {Celsius,celsius}
+import std.measure { Micrometer, micrometer, millimeter, percent, rpm }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.fans.types {
   FanMountingPattern,
   fan_mounting_pattern,
-  ConventionUnverified,
+  ConventionUnverified, ReadFromVendorDrawing,
   FanCatalogRow,
   FanSpeedRangePublished,
   FanStopsBelowPwm,
   FluidDynamicBearing,
 }
 import extdeps.vendor.arctic { arctic }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -106,3 +107,70 @@ data arctic_p8_mounting_pattern: FanMountingPattern = fan_mounting_pattern(
     convention: "80 mm axial fan square mounting pattern, unverified against a held part",
   },
 )
+
+// Published axial frame depth, separate from the conventional mounting-hole pattern.
+data arctic_p8_frame_depth: Micrometer = micrometer(count: 25000)
+
+// ---------------------------------------------------------------------------------------------
+// THE FIGURES A CHASSIS MODEL CONSUMES BEYOND THE SPEED RANGE, each with its own standing.
+//
+// Airflow, mass, current, cable length and ambient range cite the primary PDF
+// directly read 2026-10-04. Maximum free-air flow is not installed airflow.
+data arctic_p8_rated_power: Milliwatt = milliwatt(count: 1080)
+data arctic_p8_rated_power_standing: CitedFigureStanding = CitedToAuthority { authority: extdeps_external_authority_anchor }
+
+data arctic_p8_spec_authority: ExternalAuthority = ExternalAuthority {uri:Uri {scheme:Https,locator:"www.arctic.de/media/84/14/68/1697784882/Spec_Sheet_P8_PWM_PST_EN.pdf"}}
+// First-party PDF read 2026-10-04: 39.76 m3/h, not reseller 40.3. Maximum free-air flow.
+data arctic_p8_operating_ambient_max: Celsius = celsius(count:40)
+data arctic_p8_published_airflow: MillilitrePerSecond = millilitre_per_second(count: 11044)
+data arctic_p8_published_airflow_standing: CitedFigureStanding = CitedToAuthority {authority:arctic_p8_spec_authority}
+
+data arctic_p8_mass: Gram = gram(count: 81)
+data arctic_p8_mass_standing: CitedFigureStanding = CitedToAuthority {authority:arctic_p8_spec_authority}
+
+data arctic_p8_rated_current: Milliampere = milliampere(count: 90)
+data arctic_p8_rated_current_standing: CitedFigureStanding = CitedToAuthority {authority:arctic_p8_spec_authority}
+
+data arctic_p8_cable_length: Millimeter = millimeter(400)
+data arctic_p8_cable_length_standing: CitedFigureStanding = CitedToAuthority {authority:arctic_p8_spec_authority}
+
+// PWM SHARING TECHNOLOGY: the "PST" in the model name. Each fan carries a pass-through 4-pin
+// socket, so a bank of P8 PWM PST fans chains fan-to-fan and reaches the board on ONE header
+// cable. The chassis harness census counts the bank as one header cable plus (n - 1) short links
+// because of this row. The maximum chain length ARCTIC supports is not stated on the listings
+// read; the header's own current limit is the board's unresolved row, not this one.
+type PwmSharingChain
+  = PstPassThrough { max_chained_standing: CitedFigureStanding }
+  | NoPassThrough
+
+data arctic_p8_pwm_sharing: PwmSharingChain = PstPassThrough {
+  max_chained_standing: TranscribedUncited {
+    read_obligation: "Read ARCTIC's PST statement for the maximum number of fans per chain; the model name and the listings establish the pass-through exists, not its limit.",
+  },
+}
+
+// Publisher mounting drawings visually read on 2026-10-04. Nominal dimensions;
+// drawing tolerance is +/- 0.3 mm on these frame edges and pitches. Printed fit is separate.
+data arctic_p14_mounting_authority: ExternalAuthority = ExternalAuthority {uri:Uri {scheme:Https,locator:"support.arctic.de/products/p14-pwm-pst/techdocs/140mm_fan-Mounting_hole_pattern.pdf"}}
+data arctic_p14_mounting_pattern: FanMountingPattern = fan_mounting_pattern(frame_edge:micrometer(count:140000),hole_pitch:micrometer(count:125000),hole_clearance_diameter:micrometer(count:4300),evidence:ReadFromVendorDrawing {authority:arctic_p14_mounting_authority})
+data arctic_p12_mounting_authority: ExternalAuthority = ExternalAuthority {uri:Uri {scheme:Https,locator:"support.arctic.de/products/p12-pwm-pst/techdocs/120mm_fan-Mounting_hole_pattern.pdf"}}
+data arctic_p12_mounting_pattern: FanMountingPattern = fan_mounting_pattern(frame_edge:micrometer(count:120000),hole_pitch:micrometer(count:105000),hole_clearance_diameter:micrometer(count:4300),evidence:ReadFromVendorDrawing {authority:arctic_p12_mounting_authority})
+data arctic_f9_mounting_authority: ExternalAuthority = ExternalAuthority {uri:Uri {scheme:Https,locator:"support.arctic.de/products/f9-pwm-pst/techdocs/92mm_fan-Mounting_hole_pattern.pdf"}}
+data arctic_f9_mounting_pattern: FanMountingPattern = fan_mounting_pattern(frame_edge:micrometer(count:92000),hole_pitch:micrometer(count:82500),hole_clearance_diameter:micrometer(count:4300),evidence:ReadFromVendorDrawing {authority:arctic_f9_mounting_authority})
+
+// P14 PWM PST sheet, technical specifications p.1, directly read 2026-10-04.
+data arctic_p14_spec_authority: ExternalAuthority = ExternalAuthority {uri:Uri {scheme:Https,locator:"www.arctic.de/media/1d/98/04/1693306037/Spec_Sheet_P14_PWM_PST_EN.pdf"}}
+data arctic_p14_frame_depth: Micrometer = micrometer(count:27000)
+
+// Technical specifications p.1, publisher PDF re-read 2026-10-05. These are
+// P14 rows even where a number happens to equal the P8 specification.
+data arctic_p14_cable_length: Millimeter = millimeter(count:400)
+data arctic_p14_cable_length_standing: CitedFigureStanding = CitedToAuthority {authority:arctic_p14_spec_authority}
+data arctic_p14_rated_current: Milliampere = milliampere(count:120)
+data arctic_p14_rated_current_standing: CitedFigureStanding = CitedToAuthority {authority:arctic_p14_spec_authority}
+data arctic_p14_pwm_sharing: PwmSharingChain = PstPassThrough {max_chained_standing:TranscribedUncited {read_obligation:"P14 sheet establishes a four-pin plug and pass-through socket, not an allowed chain current or fan count. Resolve the board header limit before chaining."}}
+data arctic_p14_wiring_model_scope: ExternalModelScope = ExternalModelScope {
+ subject:ExternalSubjectRef {declaration:DeclarationRef {module_path:"extdeps.fans.arctic",decl_name:"arctic_p14_cable_length",field:WholeDeclaration}},
+ first_citation:arctic_p14_spec_authority,
+ further_citations:[],
+}

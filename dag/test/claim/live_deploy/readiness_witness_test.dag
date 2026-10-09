@@ -103,10 +103,8 @@ fn unused_surface_bundle() -> RoadmapSiteSurfaceBundle {
     subject_identity: witness_expected_surface_identity(),
     producer_identity: witness_expected_surface_identity(),
     bundle_identity: witness_expected_surface_identity(),
-    roadmap_md: unused_surface_artifact(),
     dispatch_json: unused_surface_artifact(),
     daily_html: unused_surface_artifact(),
-    full_html: unused_surface_artifact(),
     dispatch_js: unused_surface_artifact(),
     healthz_body: "",
   }
@@ -115,10 +113,8 @@ fn unused_surface_bundle() -> RoadmapSiteSurfaceBundle {
 fn unused_process_body_at_admitted_revision() -> String {
   let bundle = unused_surface_bundle()
   healthz_body_with_release_identity(
-    roadmap: bundle.roadmap_md,
     dispatch: bundle.dispatch_json,
     daily: bundle.daily_html,
-    full: bundle.full_html,
     dispatch_js: bundle.dispatch_js,
     release_revision: deploy_witness_release_revision,
     surface_bundle_identity: bundle.bundle_identity,

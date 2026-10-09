@@ -1,0 +1,22 @@
+module test.claim.printer_job_monitor_witness_test
+import std.types {Bool}
+import gunbc.fleet.printer_job_monitor {observe_job,monitor_step,JobRunning,JobCompletedAwaitingInspection,JobUnresolved,JobPaused,JobFailed,MonitorCompleted,MonitorAttention,MonitorExhausted,MonitorAgain}
+import test.claim.printer_start_reconciliation_witness_test {report}
+
+test fn only_exact_complete_report_finishes_monitoring() -> Bool {
+ (match observe_job(text:report(state:"FINISH",file:"expected.3mf",code:"0"),remote:"expected.3mf") {JobCompletedAwaitingInspection=>true _=>false}) &&
+ (match observe_job(text:report(state:"FINISH",file:"other.3mf",code:"0"),remote:"expected.3mf") {JobUnresolved=>true _=>false}) &&
+ (match observe_job(text:report(state:"IDLE",file:"expected.3mf",code:"0"),remote:"expected.3mf") {JobUnresolved=>true _=>false}) &&
+ (match observe_job(text:"{\"print\":{\"gcode_state\":\"FINISH\",\"gcode_file\":\"expected.3mf\"}}",remote:"expected.3mf") {JobUnresolved=>true _=>false})
+}
+test fn finish_with_real_error_does_not_report_completion() -> Bool {
+ (match observe_job(text:report(state:"FINISH",file:"expected.3mf",code:"83902511"),remote:"expected.3mf") {JobFailed=>true _=>false}) &&
+ (match observe_job(text:report(state:"FINISH",file:"expected.3mf",code:"83935249"),remote:"expected.3mf") {JobCompletedAwaitingInspection=>true _=>false})
+}
+test fn attention_and_unknown_never_request_another_start() -> Bool {
+ (match monitor_step(observation:JobPaused,remaining:100,unresolved:0) {MonitorAttention=>true _=>false}) &&
+ (match monitor_step(observation:JobFailed,remaining:100,unresolved:0) {MonitorAttention=>true _=>false}) &&
+ (match monitor_step(observation:JobUnresolved,remaining:100,unresolved:7) {MonitorExhausted=>true _=>false}) &&
+ (match monitor_step(observation:JobRunning,remaining:100,unresolved:7) {MonitorAgain {remaining:n,unresolved:u}=>n==99 && u==0 _=>false}) &&
+ (match monitor_step(observation:JobCompletedAwaitingInspection,remaining:1,unresolved:7) {MonitorCompleted=>true _=>false})
+}

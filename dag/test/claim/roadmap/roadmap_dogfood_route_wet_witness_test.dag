@@ -29,7 +29,7 @@ import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_
 import std.content_hash { content_hash_of_value }
 import std.materialization_provider { wire_content_hash_to_hex }
 import gunbc.roadmap_dispatch_actuator { dispatch_attempt_launch_path_for_instance, dispatch_attempt_state_path_for_instance }
-import gunbc.roadmap_launch_admission { LaunchIdentity, attempt_launch_record_json, launch_identity_null_revision, Operator }
+import gunbc.roadmap_launch_admission { LaunchIdentity, attempt_launch_record_json, launch_identity_null_revision, Operator, launch_host_unobserved_static_render }
 import gunbc.roadmap_belt { ManualReady }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json, attempt_request_binding_path_for_instance, RequestClaimBound }
@@ -38,6 +38,9 @@ import gunbc.harness.harness_seat_pointer { HarnessSeatPointer }
 import product.capacity.event_chain { PartitionId }
 import std.measure { token_count }
 import gunbc.roadmap_belt_tick_cli { belt_start_record_exit }
+import gunbc.roadmap_served_observation { served_observation_issue_query_surface, IssueQueryRows }
+import test.claim.roadmap.roadmap_authority_subtree_fixture { fx_authority_subtree_projection }
+import gunbc.roadmap_belt_actuate { WorkflowAttemptsObserved }
 
 // WET CONTROLS FOR THE DOGFOOD START RECEIPT'S STORE (side-chat ruling on #13077 at e7e9ca9b). Each
 // claim builds a FRESH instance layout under a temporary directory and runs the production recorder
@@ -166,6 +169,22 @@ test fn a_converged_fresh_root_reads_absent_and_the_tick_tail_succeeds() -> Bool
   (match r { DogfoodStartNoCompleteAttempt => true  DogfoodStartRecorded { receipt: _ } => false  DogfoodStartAlreadyRecorded => false  DogfoodStartRefused { reason: _ } => false })
     && (match belt_start_record_exit(start: r) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false })
     && !dogfood_route_acceptance_holds_on(instance: instance)
+}
+
+// THE TICK TAIL'S ISSUE-QUERY SURFACE RENDERS OVER THE REAL STANDINGS READ: on a converged fresh
+// root the event carrier opens no snapshot, so the standings read is CarrierClosed over an
+// unobserved result; with one declared node on the plan, each row reads its standing, so the surface
+// must take the standings through the snapshot close and render that row, never abort the tick on
+// a carrier record where standings belong.
+test fn the_issue_query_surface_renders_over_the_carrier_standings_read() -> Bool {
+  let instance = converge_root(instance: fresh_instance(tag: "issueq"))
+  let surface = served_observation_issue_query_surface(
+    instance: instance,
+    plan: fx_authority_subtree_projection(ids: ["shell-typed-invocation"]),
+    observed: WorkflowAttemptsObserved { attempts: [] },
+    launch: launch_host_unobserved_static_render(),
+  )
+  (match surface.kind { IssueQueryRows => true  _ => false }) && surface.status == 200 && string_contains(s: surface.body, pattern: "shell-typed-invocation")
 }
 
 // PLANTING THROUGH THE GENERIC STORE, never a dogfood-start writer: the production module exposes

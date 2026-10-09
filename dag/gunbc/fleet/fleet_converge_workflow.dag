@@ -1,11 +1,20 @@
 module gunbc.fleet_converge_workflow
 
+import gunbc.fleet_printer_access {printer_access_code_loci}
+import gunbc.auth.approval_keyring_pins {approval_submission_mac_key_path_env,approval_capability_mac_key_path_env,approval_store_receipt_mac_key_path_env}
+import gunbc.auth.approval_decision_store {approval_mac_key_path}
+import gunbc.auth.approval_request_submission {approval_submission_mac_key_path}
+import gunbc.auth.approval_store_receipt {approval_store_receipt_mac_key_path}
+import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
+
 import extdeps.github.expressions { Expression, ContextAccess, Github, StringLiteral, Equals, LogicalOr, LogicalAnd, interpolate }
 import gunbc.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironment, FabricAllocationStoreOnly, WorkspaceSlotCommissioningOnly, LiveDeploy }
 import gunbc.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
 
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
 
+import gunbc.fleet.printer_federation { printer_environment, printer_provider_resource, printer_service_account,printer_lan_host_identity }
+import gunbc.ci_spec { gunbc_ci_printer_workflow_invoke }
 import gunbc.namecheap.federation { namecheap_environment, namecheap_provider_resource, namecheap_service_account }
 import gunbc.ci_spec { gunbc_ci_namecheap_observe_invoke, gunbc_ci_sm_max_time }
 
@@ -33,6 +42,7 @@ import gunbc.spark.arm_group_launch_dispatch { arm_checkpoint_env, arm_checkpoin
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_receipt_path, runner_id_probes_env_name, roster_page_size_env_name }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
+import gunbc.cloudflare.r2_conditional_put_race_probe { race_probe_receipt_path }
 import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_observation_receipt_path }
 import gunbc.machine_intake_mtcollins1_kvm_observer_observe { mtcollins1_kvm_observer_probe_bound, mtcollins1_kvm_observer_probe_artifact_glob }
 import gunbc.machine_intake_megarac_kvm_still { megarac_kvm_observer_release_allowance }
@@ -163,6 +173,9 @@ import gunbc.ci_spec {
   gunbc_ci_r2_object_write_mint_invoke,
   gunbc_ci_r2_workspace_object_read_mint_invoke,
   gunbc_ci_r2_workspace_object_write_mint_invoke,
+  gunbc_ci_r2_cache_object_read_mint_invoke,
+  gunbc_ci_r2_cache_object_write_mint_invoke,
+  gunbc_ci_r2_conditional_put_race_probe_invoke,
   gunbc_ci_workspace_source_pack_invoke,
   gunbc_ci_workspace_checkpoint_measure_invoke,
   gunbc_ci_workspace_checkpoint_restore_invoke,
@@ -344,6 +357,9 @@ type FleetConvergeWorkflowMode
   | R2ObjectWriteMint
   | R2WorkspaceObjectReadMint
   | R2WorkspaceObjectWriteMint
+  | R2CacheObjectReadMint
+  | R2CacheObjectWriteMint
+  | R2ConditionalPutRaceProbe
   | WorkspaceSourcePack
   | WorkspaceCheckpointMeasure
   | WorkspaceCheckpointRestore
@@ -363,6 +379,7 @@ type FleetConvergeWorkflowMode
   | OrgRunnerRosterObserve
   | GcpIamConverge
   | NamecheapObserve
+  | PrinterWorkflow
 
 fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String {
   match mode {
@@ -419,6 +436,9 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     R2ObjectWriteMint => "r2_object_write_mint"
     R2WorkspaceObjectReadMint => "r2_workspace_object_read_mint"
     R2WorkspaceObjectWriteMint => "r2_workspace_object_write_mint"
+    R2CacheObjectReadMint => "r2_cache_object_read_mint"
+    R2CacheObjectWriteMint => "r2_cache_object_write_mint"
+    R2ConditionalPutRaceProbe => "r2_conditional_put_race_probe"
     WorkspaceSourcePack => "workspace_source_pack"
     WorkspaceCheckpointMeasure => "workspace_checkpoint_measure"
     WorkspaceCheckpointRestore => "workspace_checkpoint_restore"
@@ -427,6 +447,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     MtCollins1Boot => "mtcollins1_boot"
     GcpIamConverge => "gcp_iam_converge"
     NamecheapObserve => "namecheap_observe"
+    PrinterWorkflow => "printer"
     PairServingD0 => "pair_serving_d0"
     MtCollins1FanObserve => "mtcollins1_fan_observe"
     MtCollins1UiBundleObserve => "mtcollins1_ui_bundle_observe"
@@ -462,7 +483,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, SparkV41CheckpointMaterialize, SparkV41RowStoreEncode, SparkV41RowStoreReadback, SparkV41EngramDifferential, SparkRuntimeImageProduce, SparkRuntimeImageDistribute, SparkArmGroupLoad, SparkArmCheckpointMaterialize, SparkArmGroupObserve, SparkArmGroupLaunchPlan, SparkArmGroupLaunch, SparkV41ServingLoad, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, ApprovalDeviceEnrolmentCodeIssue, MtCollins1Boot, MtCollins1FanObserve, MtCollins1UiBundleObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, FabricWriterIdentityObserve, PairServingD0, MicrovmRunnerGroupEnsure, GcpIamConverge, NamecheapObserve]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, SparkV41CheckpointMaterialize, SparkV41RowStoreEncode, SparkV41RowStoreReadback, SparkV41EngramDifferential, SparkRuntimeImageProduce, SparkRuntimeImageDistribute, SparkArmGroupLoad, SparkArmCheckpointMaterialize, SparkArmGroupObserve, SparkArmGroupLaunchPlan, SparkArmGroupLaunch, SparkV41ServingLoad, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, ApprovalDeviceEnrolmentCodeIssue, MtCollins1Boot, MtCollins1FanObserve, MtCollins1UiBundleObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, FabricWriterIdentityObserve, PairServingD0, MicrovmRunnerGroupEnsure, GcpIamConverge, NamecheapObserve, PrinterWorkflow]
 // WHICH RELEASE PRODUCT A MODE'S JOB RUNS, NAMED PER MODE WITH NO WILDCARD (as the scope and fleet-key
 // matches above name theirs). A mode whose steps run only gunbc and claim_executor declares the
 // compiler pair (gunbc.fleet_release_bins_key compiler_pair_release_product): its build job then
@@ -522,6 +543,9 @@ fn fleet_converge_mode_release_product(mode: FleetConvergeWorkflowMode) -> Fleet
     R2ObjectWriteMint => SixteenBinaryPack
     R2WorkspaceObjectReadMint => SixteenBinaryPack
     R2WorkspaceObjectWriteMint => SixteenBinaryPack
+    R2CacheObjectReadMint => SixteenBinaryPack
+    R2CacheObjectWriteMint => SixteenBinaryPack
+    R2ConditionalPutRaceProbe => SixteenBinaryPack
     WorkspaceSourcePack => CompilerPairOnly
     WorkspaceCheckpointMeasure => CompilerPairOnly
     WorkspaceCheckpointRestore => CompilerPairOnly
@@ -545,6 +569,7 @@ fn fleet_converge_mode_release_product(mode: FleetConvergeWorkflowMode) -> Fleet
     MicrovmRunnerGroupEnsure => SixteenBinaryPack
     GcpIamConverge => SixteenBinaryPack
     NamecheapObserve => SixteenBinaryPack
+    PrinterWorkflow => SixteenBinaryPack
   }
 }
 
@@ -633,6 +658,9 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     R2ObjectWriteMint => none
     R2WorkspaceObjectReadMint => none
     R2WorkspaceObjectWriteMint => none
+    R2CacheObjectReadMint => none
+    R2CacheObjectWriteMint => none
+    R2ConditionalPutRaceProbe => none
     WorkspaceSourcePack => none
     WorkspaceCheckpointMeasure => none
     WorkspaceCheckpointRestore => none
@@ -641,6 +669,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     MtCollins1Boot => none
     GcpIamConverge => none
     NamecheapObserve => none
+    PrinterWorkflow => none
     PairServingD0 => none
     MtCollins1FanObserve => none
     MtCollins1UiBundleObserve => none
@@ -733,6 +762,9 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     R2BucketAdminMint => FleetSshKeyNotConsumed
     R2WorkspaceObjectReadMint => FleetSshKeyNotConsumed
     R2WorkspaceObjectWriteMint => FleetSshKeyNotConsumed
+    R2CacheObjectReadMint => FleetSshKeyNotConsumed
+    R2CacheObjectWriteMint => FleetSshKeyNotConsumed
+    R2ConditionalPutRaceProbe => FleetSshKeyNotConsumed
     WorkspaceSourcePack => FleetSshKeyNotConsumed
     WorkspaceCheckpointMeasure => FleetSshKeyNotConsumed
     WorkspaceCheckpointRestore => FleetSshKeyNotConsumed
@@ -798,6 +830,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     MicrovmRunnerGroupEnsure => FleetSshKeyNotConsumed
     GcpIamConverge => FleetSshKeyNotConsumed
     NamecheapObserve => FleetSshKeyNotConsumed
+    PrinterWorkflow => FleetSshKeyNotConsumed
   }
 }
 
@@ -1451,6 +1484,9 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     R2ObjectWriteMint => ExecutorDomain
     R2WorkspaceObjectReadMint => ExecutorDomain
     R2WorkspaceObjectWriteMint => ExecutorDomain
+    R2CacheObjectReadMint => ExecutorDomain
+    R2CacheObjectWriteMint => ExecutorDomain
+    R2ConditionalPutRaceProbe => SubjectDomain { group: "r2-conditional-put-race-probe" }
     WorkspaceSourcePack => ExecutorDomain
     WorkspaceCheckpointMeasure => ExecutorDomain
     WorkspaceCheckpointRestore => ExecutorDomain
@@ -1470,6 +1506,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     OrgRunnerRosterObserve => ExecutorDomain
     GcpIamConverge => ExecutorDomain
     NamecheapObserve => ExecutorDomain
+    PrinterWorkflow => ExecutorDomain
   }
 }
 
@@ -2274,6 +2311,9 @@ data fleet_converge_r2_bucket_admin_mint_step_if: String = fleet_converge_mode_s
 data fleet_converge_r2_object_write_mint_step_if: String = fleet_converge_mode_step_if(mode: R2ObjectWriteMint)
 data fleet_converge_r2_workspace_object_read_mint_step_if: String = fleet_converge_mode_step_if(mode: R2WorkspaceObjectReadMint)
 data fleet_converge_r2_workspace_object_write_mint_step_if: String = fleet_converge_mode_step_if(mode: R2WorkspaceObjectWriteMint)
+data fleet_converge_r2_cache_object_read_mint_step_if: String = fleet_converge_mode_step_if(mode: R2CacheObjectReadMint)
+data fleet_converge_r2_cache_object_write_mint_step_if: String = fleet_converge_mode_step_if(mode: R2CacheObjectWriteMint)
+data fleet_converge_r2_conditional_put_race_probe_step_if: String = fleet_converge_mode_step_if(mode: R2ConditionalPutRaceProbe)
 
 // ── THE APP-KEY VERSION VERIFIER ─────────────────────────────────────────────────────────────
 // A MODE AND NOT A JOB, for the reason the R2 mint gives above: this job is already dispatch-only,
@@ -3224,6 +3264,125 @@ fn fleet_converge_r2_workspace_object_write_mint_receipt_upload_step() -> Step {
   }
 }
 
+fn fleet_converge_r2_cache_object_read_mint_step() -> Step {
+  RunStep {
+    name: Present { value: "R2 cache-blobs object-read token mint (AccountTokens.Create + Secret Manager custody)" },
+    id: Present { value: "r2_cache_object_read_mint" },
+    run: gunbc_ci_r2_cache_object_read_mint_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_r2_cache_object_read_mint_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_r2_cache_object_read_mint_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload R2 cache-blobs object-read mint receipt (token id + custody version resource; no secret)" },
+    id: Present { value: "r2_cache_object_read_mint_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "r2-cache-object-read-mint-receipt")),
+      kv(key: "path", value: yaml_string(s: r2_mint_receipt_glob_in(
+        scope: fleet_converge_r2_mint_receipt_scope(),
+        profile: R2OriginObjectRead,
+      ))),
+      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: join(["always() && ", fleet_converge_r2_cache_object_read_mint_step_if], "") },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_r2_cache_object_write_mint_step() -> Step {
+  RunStep {
+    name: Present { value: "R2 cache-blobs object-write token mint (AccountTokens.Create + Secret Manager custody)" },
+    id: Present { value: "r2_cache_object_write_mint" },
+    run: gunbc_ci_r2_cache_object_write_mint_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_r2_cache_object_write_mint_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_r2_cache_object_write_mint_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload R2 cache-blobs object-write mint receipt (token id + custody version resource; no secret)" },
+    id: Present { value: "r2_cache_object_write_mint_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "r2-cache-object-write-mint-receipt")),
+      kv(key: "path", value: yaml_string(s: r2_mint_receipt_glob_in(
+        scope: fleet_converge_r2_mint_receipt_scope(),
+        profile: R2OriginObjectWrite,
+      ))),
+      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: join(["always() && ", fleet_converge_r2_cache_object_write_mint_step_if], "") },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+// THE R2 IF-MATCH RACE PROBE (gunbc.cloudflare.r2_conditional_put_race_probe). It touches no host: it
+// writes and deletes one probe key in the workspace bucket with that bucket's pinned write credential.
+// The dispatch is the operator's approval; the receipt names every round's statuses and the verdict,
+// and is uploaded whether the probe passed, was falsified, or proved nothing.
+// THE PROBE'S OWN STEP BUDGET, AN ENVELOPE AND NOT A MEASUREMENT. The step pays one gunbc run resolve
+// (minutes, as gunbc_ci_gunbc_run_resolve_step_timeout_minutes records) plus race_probe_rounds rounds of
+// two curl invocations each (one seed PUT, one parallel pair), each bounded by a round trip to R2. The
+// aux 5m would kill it mid-run and lose the receipt, which is the one artifact the run exists to make;
+// raising the aux value would multiply across every aux step, so this constant is this step.
+data fleet_converge_r2_conditional_put_race_probe_step_timeout_minutes: Duration = 30
+
+fn fleet_converge_r2_conditional_put_race_probe_step() -> Step {
+  RunStep {
+    name: Present { value: "R2 If-Match race probe (two concurrent conditional PUTs per round on one entity tag)" },
+    id: Present { value: "r2_conditional_put_race_probe" },
+    run: gunbc_ci_r2_conditional_put_race_probe_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_r2_conditional_put_race_probe_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: fleet_converge_r2_conditional_put_race_probe_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_r2_conditional_put_race_probe_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload R2 If-Match race probe receipt (per-round statuses and verdict; no secret)" },
+    id: Present { value: "r2_conditional_put_race_probe_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "r2-conditional-put-race-probe-receipt")),
+      kv(key: "path", value: yaml_string(s: race_probe_receipt_path)),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 90)),
+    ] },
+    env: none,
+    if_condition: Present { value: join(["always() && ", fleet_converge_r2_conditional_put_race_probe_step_if], "") },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
 fn fleet_converge_app_control_plane_receipt_upload_step() -> Step {
   UsesStep {
     name: Present { value: "Upload GitHub App control plane observation receipt" },
@@ -4021,7 +4180,7 @@ data fleet_converge_checkout_ref: Expression = LogicalOr {
     left: LogicalAnd {
       left: LogicalOr {
         left: LogicalOr { left: fleet_converge_dispatch_mode_is(mode: MtCollins1Boot), right: fleet_converge_dispatch_mode_is(mode: GcpIamConverge) },
-        right: fleet_converge_dispatch_mode_is(mode: NamecheapObserve),
+        right: LogicalOr { left: fleet_converge_dispatch_mode_is(mode: NamecheapObserve), right: fleet_converge_dispatch_mode_is(mode: PrinterWorkflow) },
       },
       right: fleet_converge_event_sha,
     },
@@ -4089,6 +4248,7 @@ data fleet_converge_shared_job_if: String = join([
   "github.event.inputs.mode != '", fleet_converge_workflow_mode_wire(mode: MtCollins1Boot), "'",
   " && github.event.inputs.mode != '", fleet_converge_workflow_mode_wire(mode: GcpIamConverge), "'",
   " && github.event.inputs.mode != '", fleet_converge_workflow_mode_wire(mode: NamecheapObserve), "'",
+  " && github.event.inputs.mode != '", fleet_converge_workflow_mode_wire(mode: PrinterWorkflow), "'",
 ], "")
 
 // THE MODE IS MT. COLLINS UNIT 1'S BOOT (its recut is cut 7 of docs/plans/managed-host-untangle.md),
@@ -4330,6 +4490,12 @@ fn fleet_converge_job() -> Job {
         fleet_converge_r2_workspace_object_read_mint_receipt_upload_step(),
         fleet_converge_r2_workspace_object_write_mint_step(),
         fleet_converge_r2_workspace_object_write_mint_receipt_upload_step(),
+        fleet_converge_r2_cache_object_read_mint_step(),
+        fleet_converge_r2_cache_object_read_mint_receipt_upload_step(),
+        fleet_converge_r2_cache_object_write_mint_step(),
+        fleet_converge_r2_cache_object_write_mint_receipt_upload_step(),
+        fleet_converge_r2_conditional_put_race_probe_step(),
+        fleet_converge_r2_conditional_put_race_probe_receipt_upload_step(),
         fleet_converge_workspace_source_pack_step(),
         fleet_converge_workspace_source_pack_receipt_upload_step(),
         fleet_converge_workspace_checkpoint_measure_step(),
@@ -4592,6 +4758,9 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     R2BucketAdminMint => fleet_converge_shared_job_id
     R2WorkspaceObjectReadMint => fleet_converge_shared_job_id
     R2WorkspaceObjectWriteMint => fleet_converge_shared_job_id
+    R2CacheObjectReadMint => fleet_converge_shared_job_id
+    R2CacheObjectWriteMint => fleet_converge_shared_job_id
+    R2ConditionalPutRaceProbe => fleet_converge_shared_job_id
     WorkspaceSourcePack => fleet_converge_shared_job_id
     WorkspaceCheckpointMeasure => fleet_converge_shared_job_id
     WorkspaceCheckpointRestore => fleet_converge_shared_job_id
@@ -4600,6 +4769,7 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     MicrovmRunnerGroupEnsure => fleet_converge_shared_job_id
     GcpIamConverge => "gcp-iam-converge" as NonEmptyStr
     NamecheapObserve => "namecheap-observe" as NonEmptyStr
+    PrinterWorkflow => "printer" as NonEmptyStr
   }
 }
 
@@ -4643,6 +4813,7 @@ data fleet_converge_job_edges: List<FleetConvergeJobEdge> = [
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: ApprovalBrokerDarkInstall), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: MicrovmControllerInstall), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: RlmLaunchDeploymentReceipt), needs: [fleet_converge_release_bins_job_id as String] },
+  FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: PrinterWorkflow), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: NamecheapObserve), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: GcpIamConverge), needs: [fleet_converge_release_bins_job_id as String] },
 ]
@@ -4682,6 +4853,7 @@ fn fleet_converge_jobs() -> List<Job> {
     fleet_converge_rlm_launch_deployment_receipt_job(),
     fleet_converge_gcp_iam_converge_job(),
     fleet_converge_namecheap_observe_job(),
+    fleet_converge_printer_job(),
   ]
 }
 
@@ -4937,6 +5109,12 @@ data fleet_converge_dispatch_inputs: List<DispatchInput> = [
     default: none,
     type: InputString,
   },
+  DispatchInput { name: "printer", description: Present { value: "Printer identity; required for printer mode" }, required: false, default: none, type: InputChoice { options: map(printer_access_code_loci,p=>p.printer as String) } },
+  DispatchInput { name: "printer_operation", description: Present { value: "Observe credential identity or start one pinned project" }, required: false, default: none, type: InputChoice { options: ["observe", "print"] } },
+  DispatchInput { name: "printer_project_path", description: Present { value: "Absolute path of staged sliced project on srv1" }, required: false, default: none, type: InputString },
+  DispatchInput { name: "printer_project_sha256", description: Present { value: "SHA-256 of the reviewed sliced project" }, required: false, default: none, type: InputString },
+  DispatchInput { name: "printer_credential_version", description: Present { value: "Numeric Secret Manager version returned by observation" }, required: false, default: none, type: InputString },
+  DispatchInput { name: "printer_bed_clear", description: Present { value: "Operator reports this printer bed is clear for this dispatch" }, required: false, default: none, type: InputChoice { options: ["false", "true"] } },
   DispatchInput {
     name: "workspace_source_object",
     description: Present { value: "workspace_checkpoint_measure only: the lower-hex SHA-256 the workspace_source_pack receipt printed as address= (the archive's own digest; the fetched bytes must hash to it)" },
@@ -5115,6 +5293,53 @@ fn fleet_converge_namecheap_observe_job() -> Job {
     if_condition: Present { value: fleet_converge_mode_step_if(mode: NamecheapObserve) },
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes + 20 },
     continue_on_error: none, concurrency: none,
+    permissions: Present { value: WorkflowPermissions {
+      contents: Present { value: PermRead }, pull_requests: none, issues: none,
+      actions: Present { value: PermRead }, id_token: Present { value: PermWrite },
+    } },
+  }
+}
+
+// The printer's identity pins this job to main and to its dedicated environment.
+// Inputs are data passed through env, never interpolated into executable shell.
+fn fleet_converge_printer_job() -> Job {
+  Job {
+    id: fleet_converge_mode_job_id(mode: PrinterWorkflow) as String, name: none,
+    runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", printer_lan_host_identity() as String] },
+    environment: Present { value: printer_environment as String },
+    steps: [
+      fleet_converge_event_sha_checkout_step(), ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(),
+      ci_wif_auth_step_for(name: "WIF auth (dedicated printer credential reader)",
+        provider_resource: printer_provider_resource(), service_account: printer_service_account as String),
+      RunStep {
+        name: Present { value: "Printer: observe credential or deliver and start the pinned project" },
+        id: Present { value: "printer" }, run: gunbc_ci_printer_workflow_invoke(), shell: none,
+        env: Present { value: [
+          kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+          kv(key:approval_submission_mac_key_path_env as String,value:yaml_string(s:approval_submission_mac_key_path as String)),
+          kv(key:approval_capability_mac_key_path_env as String,value:yaml_string(s:approval_mac_key_path as String)),
+          kv(key:approval_store_receipt_mac_key_path_env as String,value:yaml_string(s:approval_store_receipt_mac_key_path as String)),
+          kv(key: "PRINTER_TARGET", value: yaml_string(s: "${{ inputs.printer }}")),
+          kv(key: "PRINTER_OPERATION", value: yaml_string(s: "${{ inputs.printer_operation }}")),
+          kv(key: "PRINTER_PROJECT_PATH", value: yaml_string(s: "${{ inputs.printer_project_path }}")),
+          kv(key: "PRINTER_PROJECT_SHA256", value: yaml_string(s: "${{ inputs.printer_project_sha256 }}")),
+          kv(key: "PRINTER_CREDENTIAL_VERSION", value: yaml_string(s: "${{ inputs.printer_credential_version }}")),
+          kv(key: "PRINTER_BED_CLEAR", value: yaml_string(s: "${{ inputs.printer_bed_clear }}")),
+        ] },
+        working_directory: none, if_condition: none, continue_on_error: none,
+        timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes },
+      },
+      fleet_converge_receipt_upload_step(id: "printer_receipt", name: "Upload printer operation receipt",
+        artifact: "printer-operation", path: printer_workflow_receipt_path, if_condition: "success()"),
+    ],
+    needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: PrinterWorkflow)),
+    env: none, outputs: none,
+    if_condition: Present { value: fleet_converge_mode_step_if(mode: PrinterWorkflow) },
+    timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes + 20 },
+    continue_on_error: none,
+    concurrency: Present { value: ConcurrencyMappingQueueNotMax {
+      group: "printer-${{ inputs.printer }}", cancel_in_progress: Present { value: CancelInProgressBool { value: false } }, explicit_single: none,
+    } },
     permissions: Present { value: WorkflowPermissions {
       contents: Present { value: PermRead }, pull_requests: none, issues: none,
       actions: Present { value: PermRead }, id_token: Present { value: PermWrite },

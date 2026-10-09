@@ -1,9 +1,9 @@
 module extdeps.cpu.ampere
 
 import std.types { String, List }
-import std.measure { ByteSize, byte_size, celsius, hardware_thread_count, hertz, watt }
+import std.measure { Gram, gram, ByteSize, byte_size, celsius, hardware_thread_count, hertz, watt }
 import extdeps.external_authority { ExternalAuthority, FactCitation }
-import std.decl_ref { decl_field_ref }
+import std.decl_ref { decl_field_ref, decl_ref }
 import extdeps.uri { Uri, Https }
 import extdeps.publication { HeldSpecificationSupersessionStanding, NewerRevisionPubliclyServed, HeldRevisionIsCurrentPublicCopy }
 import extdeps.toolchain.types { Aarch64 }
@@ -353,3 +353,12 @@ data ampere_cpu_catalog_rows: List<CpuModelCatalogRow> = [
   altra_q6430_catalog,
   altra_q8030_catalog,
 ]
+
+// Processor Mass Specification, section 4, p.17 of Altra Max Rev A1 issues
+// 1.15/1.25/1.30. Typical package mass, not a guaranteed tolerance interval.
+// The non-Max Altra's 112 g must not be substituted for this installed family.
+data ampere_altra_max_typical_package_mass: Gram = gram(count:114)
+data ampere_altra_max_package_mass_citation: FactCitation = FactCitation {
+  authority: ampere_altra_max_rev_a1_datasheet_authority,
+  fact: decl_ref(module_path:"extdeps.cpu.ampere",decl_name:"ampere_altra_max_typical_package_mass"),
+}
