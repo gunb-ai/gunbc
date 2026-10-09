@@ -69,7 +69,7 @@ pub fn required_floor_nominal_subject_module_identities(
     };
     let module_seeds = required_floor_nominal_closure_module_seeds(
         &seeds.required_gate_authored_modules,
-        &seeds.local_repo_wet_schedule_rows,
+        &seeds.local_repo_wet_seed_modules,
     );
     let subject = match assemble_prepared_subject_closure(
         source_roots,
