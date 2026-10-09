@@ -10,6 +10,7 @@ import extdeps.systemd.service_exec {
   ExecCommandLineRendering, ExecCommandLineRendered, ExecCommandLineRefused, exec_command_line,
   exec_command_line_full_privileges,
 }
+import extdeps.posix.signal { LinuxStandardSignal, linux_standard_signal_of_name }
 import extdeps.tools.gnu_coreutils { mkdir_create_only_command }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
@@ -105,7 +106,7 @@ fn attempt_exit_hook(instance_root: String, node_id: String, attempt_key: String
 // different facts -- a process killed by SIGTERM did not exit 15 -- and the record keeps them apart.
 type AttemptProcessEnd
   = AttemptProcessExitedWith { status: Int }
-  | AttemptProcessSignaled { signal: String }
+  | AttemptProcessSignaled { signal: LinuxStandardSignal }
 
 type AttemptExitRecord {
   node_id: String
@@ -128,6 +129,13 @@ type AttemptProcessEndDecode
   = AttemptProcessEndOf { end: AttemptProcessEnd }
   | AttemptProcessEndRefused { reason: String }
 
+fn attempt_process_signaled_of(status: String) -> AttemptProcessEndDecode {
+  match linux_standard_signal_of_name(name: status) {
+    Present { value: signal } => AttemptProcessEndOf { end: AttemptProcessSignaled { signal: signal } }
+    Absent => AttemptProcessEndRefused { reason: join(["EXIT_STATUS is not a standard Linux signal name (signal(7)): ", status], "") }
+  }
+}
+
 fn attempt_process_end_of(code: ServiceExitCode, status: String) -> AttemptProcessEndDecode {
   match code {
     ServiceExitCodeExited =>
@@ -135,8 +143,8 @@ fn attempt_process_end_of(code: ServiceExitCode, status: String) -> AttemptProce
         Present { value: n } => AttemptProcessEndOf { end: AttemptProcessExitedWith { status: n } }
         Absent => AttemptProcessEndRefused { reason: join(["EXIT_CODE is exited but EXIT_STATUS is not a number: ", status], "") }
       }
-    ServiceExitCodeKilled => AttemptProcessEndOf { end: AttemptProcessSignaled { signal: status } }
-    ServiceExitCodeDumped => AttemptProcessEndOf { end: AttemptProcessSignaled { signal: status } }
+    ServiceExitCodeKilled => attempt_process_signaled_of(status: status)
+    ServiceExitCodeDumped => attempt_process_signaled_of(status: status)
     ServiceExitCodeUnlisted { word } => AttemptProcessEndRefused { reason: join(["EXIT_CODE is not a word systemd.exec(5) documents: ", word], "") }
   }
 }

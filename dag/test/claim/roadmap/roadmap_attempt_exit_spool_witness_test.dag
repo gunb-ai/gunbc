@@ -1,5 +1,6 @@
 module test.claim.roadmap.roadmap_attempt_exit_spool_witness_test
 
+import extdeps.posix.signal { linux_standard_signal_number }
 import std.types { String, List, Bool }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole, AttemptReviewerRole,
@@ -39,7 +40,7 @@ test fn an_exit_record_decodes_to_its_status_and_a_kill_to_its_signal() -> Bool 
   let killed = match attempt_exit_entry_decode(entry_name: "n-1+k1+worker+0123456789abcdef0123456789abcdef+signal+killed+TERM") {
     AttemptExitEntryDecoded { record } =>
       (match record.result { ServiceResultSignal => true _ => false })
-        && (match record.end { AttemptProcessSignaled { signal } => signal == "TERM" AttemptProcessExitedWith { status: _ } => false })
+        && (match record.end { AttemptProcessSignaled { signal } => linux_standard_signal_number(signal: signal) == 15 AttemptProcessExitedWith { status: _ } => false })
     AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
   }
   exited && killed
@@ -90,4 +91,13 @@ test fn a_records_role_is_part_of_its_subject() -> Bool {
     AttemptExitRecordUnreadable { reason: _ } => false
   }
   only_reviewer && reviewer_found
+}
+
+// A SIGNAL NAME OUTSIDE signal(7)'s standard set has no constructor, so the record that names one is
+// refused at decode rather than carried as text to the point of use.
+test fn an_unlisted_signal_name_is_refused_at_decode() -> Bool {
+  match attempt_exit_entry_decode(entry_name: "n-1+k1+worker+0123456789abcdef0123456789abcdef+signal+killed+RTMIN") {
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => true
+    AttemptExitEntryDecoded { record: _ } => false
+  }
 }
