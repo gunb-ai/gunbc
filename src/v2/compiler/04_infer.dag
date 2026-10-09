@@ -4156,14 +4156,15 @@ fn infer_judge_application_argument_instantiating(
 }
 
 // THE SITE'S INSTANTIATION IS KEPT, NOT DISCARDED. Each Transform actual extends
-// InferGatherFoldAcc.application_instances once (infer_gather_extend_application_instances);
-// this row seeds infer_judge_formal_args with that list rather than recomputing the prefix.
-// The result step reads the same instantiation (infer_application_result_type). An unresolved
-// formal set judges nothing and binds no instance.
+// InferGatherFoldAcc.application_instances once (infer_gather_extend_application_instances)
+// and pairing lives on acc.application_pairs after the callee settles. This row returns
+// that list; it does not rebuild pairs (infer_application_formal_args already ran there)
+// and does not re-judge them. The result step reads the same instantiation
+// (infer_application_result_type). An unresolved formal set judges nothing and binds no
+// instance. FormalsOrderRefused is still refused here if it reached the row.
 fn infer_application_argument_inhabitance(
   node: Node,
   entries: List<InferredFactsEntry>,
-  declarations: SymbolIndex,
   instances: List<TypeVariableInstance>
 ) -> Outcome<List<TypeVariableInstance>> {
   match infer_application_formals(node: node, entries: entries) {
@@ -4178,23 +4179,8 @@ fn infer_application_argument_inhabitance(
       }
     FormalsOrderRefused { reason: reason } =>
       outcome_rejected(application_parameter_order_diagnostic(application: node, reason: reason))
-    FormalsInDeclaredOrder { formals: formals } =>
-      match infer_application_formal_args(node: node, formals: formals, entries: entries) {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: _, diagnostics: _ } =>
-          match infer_judge_formal_args(
-            position: position_direct_call_argument(),
-            site: JudgedAtApplication { application: node },
-            entries: entries,
-            declarations: declarations,
-            pairs: [],
-            type_params: infer_application_type_params(node: node, entries: entries),
-            instances: instances
-          ) {
-            Rejected { diagnostics: r } => Rejected { diagnostics: r }
-            Accepted { value: judged, diagnostics: d } => Accepted { value: judged, diagnostics: d }
-          }
-      }
+    FormalsInDeclaredOrder { formals: _ } =>
+      Accepted { value: instances, diagnostics: None }
   }
 }
 
@@ -4452,7 +4438,7 @@ fn infer_gather_fold_acc_failed(
     application_instances: application_instances,
 
     application_pairs: application_pairs,
-        children_remaining: children_remaining
+    children_remaining: children_remaining
   }
 }
 
@@ -4480,7 +4466,7 @@ fn infer_gather_fold_acc_ok(
     application_instances: application_instances,
 
     application_pairs: application_pairs,
-        children_remaining: children_remaining
+    children_remaining: children_remaining
   }
 }
 
@@ -4546,7 +4532,7 @@ fn infer_gather_branch_row_on_entries(
             application_instances: infer_no_type_variable_instances(),
 
             application_pairs: optional_absent(),
-        children_remaining: 0
+            children_remaining: 0
           )
         Accepted { value: entry, diagnostics: ed } =>
           infer_gather_fold_acc_ok(
@@ -4564,7 +4550,7 @@ fn infer_gather_branch_row_on_entries(
             application_instances: infer_no_type_variable_instances(),
 
             application_pairs: optional_absent(),
-        children_remaining: 0
+            children_remaining: 0
           )
       }
   }
@@ -4606,7 +4592,7 @@ fn infer_gather_match_row_on_entries(
             application_instances: infer_no_type_variable_instances(),
 
             application_pairs: optional_absent(),
-        children_remaining: 0
+            children_remaining: 0
           )
         Accepted { value: entry, diagnostics: ed } =>
           infer_gather_fold_acc_ok(
@@ -4624,7 +4610,7 @@ fn infer_gather_match_row_on_entries(
             application_instances: infer_no_type_variable_instances(),
 
             application_pairs: optional_absent(),
-        children_remaining: 0
+            children_remaining: 0
           )
       }
   }
@@ -4665,7 +4651,7 @@ fn infer_gather_loop_row_on_entries(
             application_instances: infer_no_type_variable_instances(),
 
             application_pairs: optional_absent(),
-        children_remaining: 0
+            children_remaining: 0
           )
         Accepted { value: entry, diagnostics: ed } =>
           infer_gather_fold_acc_ok(
@@ -4683,7 +4669,7 @@ fn infer_gather_loop_row_on_entries(
             application_instances: infer_no_type_variable_instances(),
 
             application_pairs: optional_absent(),
-        children_remaining: 0
+            children_remaining: 0
           )
       }
   }
@@ -4728,7 +4714,7 @@ fn infer_gather_transform_frontier_on_entries(
             application_instances: infer_no_type_variable_instances(),
 
             application_pairs: optional_absent(),
-        children_remaining: 0
+            children_remaining: 0
           )
         Accepted { value: entry, diagnostics: ed } =>
           infer_gather_fold_acc_ok(
@@ -4746,7 +4732,7 @@ fn infer_gather_transform_frontier_on_entries(
             application_instances: infer_no_type_variable_instances(),
 
             application_pairs: optional_absent(),
-        children_remaining: 0
+            children_remaining: 0
           )
       }
   }
@@ -4878,7 +4864,7 @@ fn infer_gather_transform_row_on_entries(
               application_instances: infer_no_type_variable_instances(),
 
               application_pairs: optional_absent(),
-        children_remaining: 0
+              children_remaining: 0
             )
           Accepted { value: facts, diagnostics: d } =>
             match admitted_inferred_facts_entry(node: node, facts: facts) {
@@ -4894,7 +4880,7 @@ fn infer_gather_transform_row_on_entries(
                   application_instances: infer_no_type_variable_instances(),
 
                   application_pairs: optional_absent(),
-        children_remaining: 0
+                  children_remaining: 0
                 )
               Accepted { value: entry, diagnostics: ed } =>
                 infer_gather_fold_acc_ok(
@@ -4909,7 +4895,7 @@ fn infer_gather_transform_row_on_entries(
                   application_instances: infer_no_type_variable_instances(),
 
                   application_pairs: optional_absent(),
-        children_remaining: 0
+                  children_remaining: 0
                 )
             }
         }
@@ -4926,7 +4912,7 @@ fn infer_gather_application_row_on_entries(
   resolved: ResolvedTree,
   instances: List<TypeVariableInstance>,
 ) -> InferGatherFoldAcc {
-  match infer_application_argument_inhabitance(node: node, entries: entries, declarations: resolved.resolved_declarations, instances: instances) {
+  match infer_application_argument_inhabitance(node: node, entries: entries, instances: instances) {
     Rejected { diagnostics: r } =>
       infer_gather_fold_acc_failed(
         node: node,
@@ -4965,7 +4951,7 @@ fn infer_gather_application_row_on_entries(
               application_instances: infer_no_type_variable_instances(),
 
               application_pairs: optional_absent(),
-        children_remaining: 0
+              children_remaining: 0
             )
           Accepted { value: facts, diagnostics: d } =>
             match admitted_inferred_facts_entry(node: node, facts: facts) {
@@ -4981,7 +4967,7 @@ fn infer_gather_application_row_on_entries(
                   application_instances: infer_no_type_variable_instances(),
 
                   application_pairs: optional_absent(),
-        children_remaining: 0
+                  children_remaining: 0
                 )
               Accepted { value: entry, diagnostics: ed } =>
                 infer_gather_fold_acc_ok(
@@ -4999,7 +4985,7 @@ fn infer_gather_application_row_on_entries(
                   application_instances: infer_no_type_variable_instances(),
 
                   application_pairs: optional_absent(),
-        children_remaining: 0
+                  children_remaining: 0
                 )
             }
         }
@@ -5315,7 +5301,7 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
           application_instances: infer_no_type_variable_instances(),
 
           application_pairs: optional_absent(),
-        children_remaining: length(xs: n.children)
+          children_remaining: length(xs: n.children)
         )
       }
     ComputationNode { behavior: Bind } =>
@@ -5332,7 +5318,7 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
           application_instances: infer_no_type_variable_instances(),
 
           application_pairs: optional_absent(),
-        children_remaining: length(xs: n.children)
+          children_remaining: length(xs: n.children)
         )
       } else {
       match type_annotation_optional(n: n) {
@@ -5349,7 +5335,7 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
             application_instances: infer_no_type_variable_instances(),
 
             application_pairs: optional_absent(),
-        children_remaining: length(xs: n.children)
+            children_remaining: length(xs: n.children)
           )
         Absent => infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types)
       }
@@ -5378,7 +5364,7 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
           application_instances: infer_no_type_variable_instances(),
 
           application_pairs: optional_absent(),
-        children_remaining: length(xs: n.children)
+          children_remaining: length(xs: n.children)
         )
       } else {
         infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types)
@@ -5400,7 +5386,7 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
           application_instances: infer_no_type_variable_instances(),
 
           application_pairs: optional_absent(),
-        children_remaining: length(xs: n.children)
+          children_remaining: length(xs: n.children)
         )
       } else {
         infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types)
@@ -5419,7 +5405,7 @@ fn infer_gather_fold_init(n: Node, partials: List<Node>, kinds: List<RosterKindI
           application_instances: infer_no_type_variable_instances(),
 
           application_pairs: optional_absent(),
-        children_remaining: length(xs: n.children)
+          children_remaining: length(xs: n.children)
         )
       } else {
         infer_gather_fold_not_derived(n: n, partials: partials, kinds: kinds, resolved: resolved, instances: instances, binder_types: binder_types)
@@ -5707,7 +5693,7 @@ fn infer_gather_formed_facts_row(
             application_instances: infer_no_type_variable_instances(),
 
             application_pairs: optional_absent(),
-        children_remaining: 0
+            children_remaining: 0
           )
         Accepted { value: entry, diagnostics: ed } =>
           infer_gather_fold_acc_ok(
@@ -5725,7 +5711,7 @@ fn infer_gather_formed_facts_row(
             application_instances: infer_no_type_variable_instances(),
 
             application_pairs: optional_absent(),
-        children_remaining: 0
+            children_remaining: 0
           )
       }
   }
@@ -5897,17 +5883,24 @@ type InferGatherApplicationExtend {
 
 type InferFormalArgAtAcc {
   i: Int
+  index: Int
   found: Optional<InhabitanceFormalArg>
 }
 
+fn infer_formal_arg_at_step(acc: InferFormalArgAtAcc, pair: InhabitanceFormalArg) -> InferFormalArgAtAcc {
+  if acc.i == acc.index {
+    InferFormalArgAtAcc { i: acc.i + 1, index: acc.index, found: optional_present(value: pair) }
+  } else {
+    InferFormalArgAtAcc { i: acc.i + 1, index: acc.index, found: acc.found }
+  }
+}
+
 fn infer_formal_arg_at(xs: List<InhabitanceFormalArg>, index: Int) -> Optional<InhabitanceFormalArg> {
-  fold(xs, init: InferFormalArgAtAcc { i: 0, found: optional_absent() }, f: fn(acc, pair) {
-    if acc.i == index {
-      InferFormalArgAtAcc { i: acc.i + 1, found: optional_present(value: pair) }
-    } else {
-      InferFormalArgAtAcc { i: acc.i + 1, found: acc.found }
-    }
-  }).found
+  fold(
+    xs,
+    init: InferFormalArgAtAcc { i: 0, index: index, found: optional_absent() },
+    f: infer_formal_arg_at_step
+  ).found
 }
 
 fn infer_gather_extend_kept(acc: InferGatherFoldAcc) -> InferGatherApplicationExtend {
@@ -5941,6 +5934,8 @@ fn infer_gather_extend_kept_outcome(acc: InferGatherFoldAcc) -> Outcome<InferGat
 // ONE JUDGMENT PER ACTUAL, CARRIED ON THE GATHER ACC. Pairs live on acc.application_pairs after the
 // callee child; each later actual indexes that list. infer_judge_formal_args extends
 // acc.application_instances by that one pair. The child frame reads the same list.
+// Absent pairs is FormalsUnresolved: keep the acc so the row can count it. A missing
+// pair refuses only when the list is present and the index is past its end.
 fn infer_gather_extend_application_instances(
   acc: InferGatherFoldAcc,
   edge: Edge,
@@ -5963,7 +5958,7 @@ fn infer_gather_extend_application_instances(
       Present { value: idx } =>
         match acc.application_pairs {
           Absent =>
-            outcome_rejected(infer_application_actual_pair_missing_diagnostic(actual: edge.target))
+            infer_gather_extend_kept_outcome(acc: acc)
           Present { value: pairs } =>
             match infer_formal_arg_at(xs: pairs, index: idx) {
               Absent =>
@@ -6065,7 +6060,7 @@ fn infer_gather_fold_step(
       application_instances: acc.application_instances,
 
       application_pairs: acc.application_pairs,
-        children_remaining: acc.children_remaining
+      children_remaining: acc.children_remaining
     )
   } else if infer_arrow_empty_domain_edge(parent: acc.node, edge: edge, children_remaining: acc.children_remaining)
     || infer_sum_nullary_payload_edge(parent: acc.node, edge: edge) {
@@ -6082,7 +6077,7 @@ fn infer_gather_fold_step(
           application_instances: acc.application_instances,
 
           application_pairs: acc.application_pairs,
-        children_remaining: acc.children_remaining
+          children_remaining: acc.children_remaining
         )
       Accepted { value: domain_entry, diagnostics: _ } =>
         infer_gather_fold_step_merged(
@@ -6115,7 +6110,7 @@ fn infer_gather_fold_step(
               application_instances: acc.application_instances,
 
               application_pairs: acc.application_pairs,
-        children_remaining: acc.children_remaining
+              children_remaining: acc.children_remaining
             )
           Accepted { value: ext, diagnostics: d } =>
             infer_gather_fold_step_merged(
@@ -6225,7 +6220,7 @@ fn infer_gather_fold_step_merged(
       application_instances: acc.application_instances,
 
       application_pairs: acc.application_pairs,
-        children_remaining: children_remaining
+      children_remaining: children_remaining
     )
   }
 }
@@ -6783,7 +6778,7 @@ fn infer_gather_settled_row(
             application_instances: infer_no_type_variable_instances(),
 
             application_pairs: optional_absent(),
-        children_remaining: 0
+            children_remaining: 0
           )
         Accepted { value: _, diagnostics: rd } =>
           infer_gather_settled_unannotated_row(
@@ -7005,7 +7000,7 @@ fn infer_gather_settled_unannotated_row(
           application_instances: acc.application_instances,
 
           application_pairs: acc.application_pairs,
-        children_remaining: 0
+          children_remaining: 0
         )
       }
 }
@@ -7186,17 +7181,20 @@ fn infer_application_actual_child_frame(parent: Node, frame: InferFrame, acc: In
   match infer_gather_authored_actual_index(acc: acc) {
     Absent => infer_frame_inherited(frame: frame)
     Present { value: idx } =>
-      match infer_application_lambda_expected_binder_types(
-        actual: edge.target,
-        instances: acc.application_instances,
-        pairs: acc.application_pairs,
-        idx: idx
-      ) {
+      match infer_operator_arrow(operator: edge.target) {
         Absent => infer_frame_inherited(frame: frame)
-        Present { value: rows } =>
+        Present { value: _ } =>
           InferFrame {
-            instances: frame.instances,
-            binder_types: infer_append_binder_types(xs: frame.binder_types, ys: rows),
+            instances: acc.application_instances,
+            binder_types: match infer_application_lambda_expected_binder_types(
+              actual: edge.target,
+              instances: acc.application_instances,
+              pairs: acc.application_pairs,
+              idx: idx
+            ) {
+              Absent => frame.binder_types
+              Present { value: rows } => infer_append_binder_types(xs: frame.binder_types, ys: rows)
+            },
             entering: InferFrameEnteredPlain
           }
       }
@@ -7235,6 +7233,29 @@ fn infer_application_lambda_expected_binder_types(
   }
 }
 
+type InferBinderTypeFoldAcc {
+  lambda: Node
+  rows: List<InferBinderType>
+}
+
+fn infer_binder_type_fold_step(acc: InferBinderTypeFoldAcc, t: Node) -> InferBinderTypeFoldAcc {
+  InferBinderTypeFoldAcc {
+    lambda: acc.lambda,
+    rows: list_snoc_item(
+      xs: acc.rows,
+      item: InferBinderType { site: acc.lambda.occurrence_id, derived: t }
+    )
+  }
+}
+
+fn infer_binder_types_from_domain(lambda: Node, types: List<Node>) -> List<InferBinderType> {
+  fold(
+    types,
+    init: InferBinderTypeFoldAcc { lambda: lambda, rows: Empty },
+    f: infer_binder_type_fold_step
+  ).rows
+}
+
 // ONE ROW PER LAMBDA, AND ONLY FOR A SINGLE DOMAIN BINDER. Resolve sites every Arrow domain
 // binder at the Arrow (v2.compiler.resolve arrow_domain_frame_binders); infer_payload_binder_derived_type
 // returns the first site match. Mapping fn(a, b) onto fn(Int, String) -> … would type both as Int.
@@ -7253,11 +7274,7 @@ fn infer_lambda_domain_binder_types(lambda: Node, expected: Node) -> Optional<Li
               Absent => optional_absent()
               Present { value: types } =>
                 if length(xs: types) == 1 {
-                  optional_present(
-                    value: list_map(xs: types, f: fn(t) {
-                      InferBinderType { site: lambda.occurrence_id, derived: t }
-                    })
-                  )
+                  optional_present(value: infer_binder_types_from_domain(lambda: lambda, types: types))
                 } else {
                   optional_absent()
                 }
