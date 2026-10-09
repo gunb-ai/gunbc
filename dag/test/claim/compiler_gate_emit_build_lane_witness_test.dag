@@ -9,8 +9,7 @@ import gunbc.compiler_gate_workflow {
   compiler_gate_blocking_job_ids,
   CompilerGateLaneRow, LaneBlocks, LaneAnnouncedNotBlocking,
   compiler_gate_aggregate_job,
-  compiler_gate_emit_build_job_id, compiler_gate_unit_test_job_id,
-  compiler_gate_floor_job_id, compiler_gate_generated_job_id,
+  compiler_gate_emit_build_job_id,
   compiler_gate_emit_build_bound_steps,
   compiler_gate_emit_build_capability_closure_holds,
   compiler_gate_lane_result_expression,
@@ -19,10 +18,10 @@ import gunbc.compiler_gate_workflow {
   compiler_gate_aggregate_script_lines_for, compiler_gate_aggregate_step_env_for,
   compiler_gate_blocking_rows_of, CompilerGateLaneStanding, GateArmStrict,
   compiler_gate_blocking_rows, compiler_gate_lane_rows,
-  compiler_gate_same_repo_expression, compiler_gate_floor_job_condition,
+  compiler_gate_same_repo_expression, compiler_gate_fleet_job_condition,
   compiler_gate_emit_build_notice_step,
   compiler_gate_emit_build_notice_lines,
-  compiler_gate_emit_build_step, compiler_gate_unit_test_job_condition
+  compiler_gate_emit_build_step
 }
 import gunbc.emitted_subject_build_gate {
   NativeEmitBuildStanding, EmitBuildExpectedGreen, EmitBuildExpectedRed, EmittedBuildSignature,
@@ -30,6 +29,7 @@ import gunbc.emitted_subject_build_gate {
   emitted_subject_build_rows,
   emitted_subject_build_label_text,
   emitted_subject_build_command,
+  emitted_subject_build_step_name,
   native_fault_experiment_env_name, native_fault_experiment_skip_value
 }
 import extdeps.exec.command { shell_command_render }
@@ -141,18 +141,15 @@ test fn the_emit_build_lane_blocks_and_is_read_by_the_gate() -> Bool {
     && any(compiler_gate_aggregate_job().needs, n => n == compiler_gate_emit_build_job_id)
 }
 
-// THE ESTABLISHED LANES STILL BLOCK, NAMED RATHER THAN COUNTED. Without this, the claim above would
-// be satisfied by a gate that reads nothing at all. It joins at identity grain in both directions
-// (DESIGN section 5: completeness is an identity join, not a count equality), so dropping a lane,
-// or adding one that blocks without being named here, reds it -- where the earlier `== 3` would
-// have let a swapped lane through. The generated-artifact lane joined the set by the 2026-09-27
-// ruling that moved it beside the floor; the hosted compiler and clippy lanes left it by the
-// 2026-09-28 ruling that put the merge path on the fleet (the seed build is the fleet prelude's, and
-// the lint is a step on `generated`); emit-build joined it on the 2026-10-02 sign-off; the v1 unit-test lane rejoined it when
-// the lane blocked again after gunbc#13452 (gunbc.rung_drop rust_unit_tests_over_their_cap superseded, not retired by its trigger).
+// THE BLOCKING SET IS EXACTLY THE ONE LANE, NAMED RATHER THAN COUNTED. Without this, the claim above
+// would be satisfied by a gate that reads other lanes too. It joins at identity grain in both
+// directions (DESIGN section 5: completeness is an identity join, not a count equality), so dropping
+// the lane, or adding one that blocks without being named here, reds it. The v1 unit-test, floor and
+// generated-artifact lanes left the set with the 2026-10-09 ruling that deleted them
+// (gunbc.rung_drop v1_required_lanes_withdrawn); a change that returns one of them reds here.
 test fn the_established_lanes_still_block() -> Bool {
   let blocking = compiler_gate_blocking_job_ids()
-  let established = [compiler_gate_unit_test_job_id, compiler_gate_emit_build_job_id, compiler_gate_floor_job_id, compiler_gate_generated_job_id]
+  let established = [compiler_gate_emit_build_job_id]
   all(established, id => any(blocking, b => b == id))
     && all(blocking, b => any(established, id => id == b))
     && all(blocking, id => any(compiler_gate_aggregate_job().needs, n => n == id))
@@ -190,15 +187,20 @@ test fn each_subject_is_invoked_through_gunbc_test() -> Bool {
   )
 }
 
-// ONE STEP PER SUBJECT ON TOP OF THE SHARED PRELUDE, and the prelude is the fleet prelude's six
-// steps (checkout, home isolation, toolchain, pin, build, isolated-homes guard). A lane that grew a subject without growing a step would run one compilation and report on
-// two.
-// SIX PRELUDE STEPS, ONE PER SUBJECT, AND ONE STANDING-NOTICE STEP AT THE END. The `+ 1` was
-// added by the change that introduced the notice, and this claim FAILED until it was -- which is
-// the count doing its job rather than a number kept in step by hand.
+// ONE STEP PER SUBJECT, JOINED AT IDENTITY RATHER THAN COUNTED. A lane that grew a subject without
+// growing a step would run one compilation and report on two; a lane that kept a step for a
+// subject no row declares would report on a compilation nobody rostered. Both directions are read
+// by step NAME, which gunbc.emitted_subject_build_gate derives from the row's label. This replaced
+// `length(steps) == 6 + rows + 1`: that literal was the lane's shape on the day it was written, the
+// native-product steps (store root, two federations, the save) grew the lane past it, and the
+// count went red without the property it stood for having changed -- a measurement copied from the
+// tree, which DESIGN section 5 refuses as an oracle.
 test fn the_lane_binds_one_step_per_subject_above_the_prelude() -> Bool {
-  length(xs: compiler_gate_emit_build_bound_steps())
-    == 6 + length(xs: emitted_subject_build_rows()) + 1
+  let names = compiler_gate_emit_build_bound_steps() |> map(b => b.step_name)
+  let subject_names = emitted_subject_build_rows() |> map(r => emitted_subject_build_step_name(row: r))
+  all(subject_names, s => length(xs: filter(xs: names, predicate: fn(n) { n == s })) == 1)
+    && length(xs: filter(xs: names, predicate: fn(n) { string_contains(s: n, pattern: "emit and build ") }))
+      == length(xs: subject_names)
 }
 
 // THE CARGO CONSUMER HAS A PROVIDER ORDERED BEFORE IT. This is the same closure check every other
@@ -222,7 +224,7 @@ test fn a_hyphenated_lane_result_renders_as_an_index() -> Bool {
 // AND THE DOT-SAFE LANES ARE UNCHANGED BY ROUTING THEM THROUGH THE SAME AUTHORITY, which is the
 // claim that makes the consolidation safe rather than merely tidy.
 test fn a_dot_safe_lane_result_still_renders_as_a_dereference() -> Bool {
-  compiler_gate_lane_result_expression(job_id: compiler_gate_floor_job_id) == "${{ needs.floor.result }}"
+  compiler_gate_lane_result_expression(job_id: "probe_lane") == "${{ needs.probe_lane.result }}"
 }
 
 // ═══ THE GATE IS DERIVED, WHICH IS WHAT `needs` ALONE COULD NOT ESTABLISH (review 69973) ═══
@@ -272,17 +274,19 @@ test fn w_RED_an_announced_lane_binds_no_variable_and_is_read_by_no_clause() -> 
     && string_contains(s: blocking_script, pattern: "[ \"$PROBE_LANE\" != success ]")
 }
 
-// AND THE DELETED UNIT-TEST LANE REACHES NEITHER SURFACE. Without this the gate could read a lane
-// that no longer runs -- whose variable would render EMPTY, compare unequal to `success`, and refuse
-// every run. emit-build left this claim on the 2026-10-02 sign-off: it now BLOCKS, and
-// the_emit_build_lane_blocks_and_is_read_by_the_gate asserts the opposite of what this claim
-// asserted about it. No live lane is announced today, so the announced-lane mechanism itself is held by
-// the supplied-row claim w_RED_an_announced_lane_binds_no_variable_and_is_read_by_no_clause.
-test fn w_RED_the_deleted_unit_test_lane_reaches_neither_surface() -> Bool {
+// AND THE FOUR WITHDRAWN LANES REACH NEITHER SURFACE (operator ruling 2026-10-09). Without this the
+// gate could read a lane that no longer runs -- whose variable would render EMPTY, compare unequal to
+// `success`, and refuse every run. Each variable is named, because a gate still binding one of them
+// is exactly the state a partial revert of the cut would leave. The positive half is
+// the_emit_build_lane_blocks_and_is_read_by_the_gate: the surfaces are not empty.
+data withdrawn_lane_variables: List<String> = ["RUST_UNIT_TESTS", "SEED", "FLOOR", "GENERATED"]
+
+test fn w_RED_the_withdrawn_v1_lanes_reach_neither_surface() -> Bool {
   let script = join(compiler_gate_aggregate_script_lines(), "\n")
   let env = compiler_gate_aggregate_step_env()
-  (any(env, e => e.key == "RUST_UNIT_TESTS") == false)
-    && (string_contains(s: script, pattern: "RUST_UNIT_TESTS") == false)
+  all(withdrawn_lane_variables, v =>
+    (any(env, e => e.key == v) == false)
+      && (string_contains(s: script, pattern: join(["$", v, "\""], "")) == false))
 }
 
 // THE FORK CARVE-OUT IS A ROW FIELD, SO IT TRAVELS WITH ITS LANE. A fleet lane legitimately skips
@@ -291,8 +295,7 @@ test fn w_RED_the_deleted_unit_test_lane_reaches_neither_surface() -> Bool {
 // skip under another lane's variable would admit an unobserved head.
 test fn every_blocking_fleet_lane_carries_its_own_skip_notice() -> Bool {
   let script = join(compiler_gate_aggregate_script_lines(), "\n")
-  string_contains(s: script, pattern: "$SAME_REPO\" = false ] && [ \"$FLOOR\" = skipped")
-    && string_contains(s: script, pattern: "$SAME_REPO\" = false ] && [ \"$GENERATED\" = skipped")
+  string_contains(s: script, pattern: "$SAME_REPO\" = false ] && [ \"$EMIT_BUILD\" = skipped")
 }
 
 // THE COMPARISON IS `!= success`, NOT AN ENUMERATION OF BAD STATES. Run 32883390033 read
@@ -300,8 +303,7 @@ test fn every_blocking_fleet_lane_carries_its_own_skip_notice() -> Bool {
 // have greened over two lanes that never ran. Derivation must not have quietly widened it.
 test fn the_unobserved_arm_refuses_every_state_but_success() -> Bool {
   let script = join(compiler_gate_aggregate_script_lines(), "\n")
-  string_contains(s: script, pattern: "\"$FLOOR\" != success")
-    && string_contains(s: script, pattern: "\"$GENERATED\" != success")
+  string_contains(s: script, pattern: "\"$EMIT_BUILD\" != success")
     && (string_contains(s: script, pattern: "= cancelled") == false)
     && (string_contains(s: script, pattern: "= abandoned") == false)
 }
@@ -315,7 +317,7 @@ test fn w_RED_the_gate_script_renders_no_empty_conditional() -> Bool {
     && (string_contains(s: script, pattern: "if  || ") == false)
 }
 
-// THE FORK PREDICATE IS ONE PREDICATE IN TWO TRANSPORTS (review 69999). The floor lane's job `if`
+// THE FORK PREDICATE IS ONE PREDICATE IN TWO TRANSPORTS (review 69999). The fleet lane's job `if`
 // takes it bare; the gate's step env takes it interpolated. If those ever became two spellings,
 // the two failure modes are opposite and both silent: the fleet lane skips while the gate refuses
 // (a merge-queue stall on every fork PR), or the gate excuses a skip that was not fork-driven (an
@@ -324,10 +326,10 @@ test fn w_RED_the_gate_script_renders_no_empty_conditional() -> Bool {
 test fn the_fork_predicate_has_one_authority_across_both_transports() -> Bool {
   string_contains(
     s: compiler_gate_same_repo_expression(),
-    pattern: compiler_gate_floor_job_condition()
+    pattern: compiler_gate_fleet_job_condition()
   )
     && string_contains(s: compiler_gate_same_repo_expression(), pattern: "${{ ")
-    && string_contains(s: compiler_gate_floor_job_condition(), pattern: "github.repository")
+    && string_contains(s: compiler_gate_fleet_job_condition(), pattern: "github.repository")
 }
 
 // ═══ THE STANDING NOTICE: WHAT A STRANGER READS WHEN THEY CLICK THE RED X ═══
@@ -501,12 +503,6 @@ test fn every_emit_build_subject_step_passes_the_fault_experiment_input() -> Boo
       }
     UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
   })
-}
-
-// THE UNIT LANE DOES NOT RUN ON pull_request: its condition excludes the event and so admits
-// merge_group and workflow_dispatch.
-test fn w_RED_the_unit_test_lane_condition_excludes_pull_request() -> Bool {
-  compiler_gate_unit_test_job_condition() == "github.event_name != 'pull_request'"
 }
 
 // THE RUNNER'S COPY OF THE SKIP CONTRACT IS PINNED TO THE .dag ROWS (review 77571): renaming the env

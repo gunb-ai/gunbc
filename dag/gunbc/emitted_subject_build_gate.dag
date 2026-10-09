@@ -19,13 +19,14 @@ import gunbc.instrument_targets { self_host_label, v2_native_cli_label }
 // in for a compile. Those controls are the instruments' own and are not restated here; this module
 // decides only WHICH subjects the required lane runs and with what argv.
 //
-// WHAT ITS RED DISCRIMINATES THAT NO EXISTING REQUIRED LANE DOES, which is the question
-// gunbc.compiler_gate_workflow's roster header requires an author to answer before proposing a
-// lane. Every required lane today reads the corpus through the INTERPRETER or through the SEED's
-// own Rust: the floor evaluates witnesses, the generated lane lints hand-written and stage0-mirrored
-// Rust and regenerates the stage0 mirrors, and both build the seed binary. NOTHING ON THE MERGE
-// PATH EMITS A V2 CLOSURE AND COMPILES THE RESULT. So a defect that is invisible under evaluation
-// and fatal under emission reaches main green. That is not a hypothesis: `gunbc.recurring_failure_mode`
+// WHAT ITS RED DISCRIMINATES, AND WHY IT LANDED BESIDE LANES THAT ALREADY READ THE CORPUS. Every
+// other required lane of that day read the corpus through the INTERPRETER or through the SEED's own
+// Rust: the floor evaluated witnesses, the generated lane linted hand-written and stage0-mirrored
+// Rust and regenerated the stage0 mirrors, and both built the seed binary. NOTHING ON THE MERGE
+// PATH EMITTED A V2 CLOSURE AND COMPILED THE RESULT, so a defect invisible under evaluation and
+// fatal under emission reached main green. Those lanes were withdrawn on 2026-10-09 and this is now
+// the only required lane (gunbc.compiler_gate_workflow header); the argument below is why it is the
+// one that was kept. That is not a hypothesis: `gunbc.recurring_failure_mode`
 // `bounded_natural_arithmetic_evaluated_as_unbounded_int` records it in as many words -- rows over
 // `UInt8` typecheck and their witnesses evaluate, "their emitted Rust is produced by nothing on the
 // merge path" -- and BOTH retained subjects refused on it at once, because `std.integer` is in every
