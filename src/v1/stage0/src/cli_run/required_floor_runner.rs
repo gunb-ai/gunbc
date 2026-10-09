@@ -5889,28 +5889,85 @@ impl<'a> DagSrc<'a> {
             false
         }
     }
+    fn parse_hex_digit(&mut self) -> Result<u32, String> {
+        let c = self
+            .bump()
+            .ok_or_else(|| "truncated hex escape".to_string())?;
+        match c {
+            '0'..='9' => Ok(c as u32 - '0' as u32),
+            'a'..='f' => Ok(c as u32 - 'a' as u32 + 10),
+            'A'..='F' => Ok(c as u32 - 'A' as u32 + 10),
+            _ => Err("non-hex digit in numeric string escape".to_string()),
+        }
+    }
+    fn push_unicode_scalar(buf: &mut String, cp: u32) -> Result<(), String> {
+        char::from_u32(cp)
+            .map(|ch| buf.push(ch))
+            .ok_or_else(|| "numeric string escape is not a Unicode scalar".to_string())
+    }
+    /// Decode a `.dag` string by `extdeps.languages.dag` `dag_string_escapes` /
+    /// `dag_string_decode_step`: `\"` `\\` `\0` `\n` `\r` `\t` `\{` `\}` `\xHH` `\u{H..H}`.
+    /// Any other escape, a trailing backslash, or a malformed numeric form refuses.
     fn parse_string(&mut self) -> Result<String, String> {
         if !self.eat("\"") {
             return Err("expected string literal".to_string());
         }
         let mut buf = String::new();
-        let mut escaped = false;
-        while let Some(c) = self.bump() {
-            if escaped {
-                buf.push(c);
-                escaped = false;
-                continue;
-            }
-            if c == '\\' {
-                escaped = true;
-                continue;
-            }
+        loop {
+            let c = self.bump().ok_or_else(|| "unclosed string".to_string())?;
             if c == '"' {
                 return Ok(buf);
             }
-            buf.push(c);
+            if c != '\\' {
+                buf.push(c);
+                continue;
+            }
+            let e = self
+                .bump()
+                .ok_or_else(|| "trailing string escape".to_string())?;
+            match e {
+                '"' | '\\' | '{' | '}' => buf.push(e),
+                '0' => buf.push('\0'),
+                'n' => buf.push('\n'),
+                'r' => buf.push('\r'),
+                't' => buf.push('\t'),
+                'x' => {
+                    let hi = self.parse_hex_digit()?;
+                    let lo = self.parse_hex_digit()?;
+                    Self::push_unicode_scalar(&mut buf, (hi << 4) | lo)?;
+                }
+                'u' => {
+                    if !self.eat("{") {
+                        return Err("malformed unicode string escape".to_string());
+                    }
+                    let mut digits = 0u32;
+                    let mut value = 0u32;
+                    loop {
+                        match self.peek() {
+                            Some('}') => {
+                                self.bump();
+                                break;
+                            }
+                            Some(_) => {
+                                digits += 1;
+                                if digits > 6 {
+                                    return Err("unicode string escape is too long".to_string());
+                                }
+                                value = (value << 4) | self.parse_hex_digit()?;
+                            }
+                            None => return Err("unclosed unicode string escape".to_string()),
+                        }
+                    }
+                    if digits == 0 {
+                        return Err("empty unicode string escape".to_string());
+                    }
+                    Self::push_unicode_scalar(&mut buf, value)?;
+                }
+                _ => {
+                    return Err(format!("unknown string escape \\{e}"));
+                }
+            }
         }
-        Err("unclosed string".to_string())
     }
     fn parse_ident(&mut self) -> Result<String, String> {
         let mut buf = String::new();
@@ -19994,6 +20051,22 @@ mod floor_base_tree_tests {
         let err =
             super::wet_schedule_seed_modules(mixed).expect_err("computed member beside literal");
         assert!(err.contains("PolicyRosterNotAListLiteral"), "{err}");
+        let escaped_bs = "fn required_gate_prefixes() -> List<String> { [\"a\\\\b\"] }\n";
+        assert_eq!(
+            super::dag_fn_string_list_literal(escaped_bs, "required_gate_prefixes").expect("\\\\"),
+            vec!["a\\b".to_string()]
+        );
+        let escaped_quote = "fn required_gate_prefixes() -> List<String> { [\"a\\\"b\"] }\n";
+        assert_eq!(
+            super::dag_fn_string_list_literal(escaped_quote, "required_gate_prefixes")
+                .expect("escaped quote"),
+            vec!["a\"b".to_string()]
+        );
+        let unknown = "fn required_gate_prefixes() -> List<String> { [\"a\\qb\"] }\n";
+        let err = super::dag_fn_string_list_literal(unknown, "required_gate_prefixes")
+            .expect_err("unknown escape");
+        assert!(err.contains("PolicyRosterNotAListLiteral"), "{err}");
+        assert!(err.contains("unknown string escape"), "{err}");
     }
 
     #[test]
