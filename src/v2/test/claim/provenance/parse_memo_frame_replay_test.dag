@@ -237,6 +237,145 @@ test fn parse_memo_hit_carries_no_abandoned_path_provenance() -> Bool {
   }
 }
 
+// THE COLLIDING DIRECTION, and the specimen behind gunbc.recurring_failure_mode
+// parse_memo_hit_serves_occurrences_minted_on_an_abandoned_path. The mirror of abandoned_path_root:
+//
+//   S = a a X z | R X y      R = a a      X = b      tokens: a a b y
+//
+// Backtracking restores the allocator, so ids are re-minted along whichever path survives.
+// Alternative one mints three ids before X, then X's own, and fails at z. Alternative two mints FOUR
+// ids before X (a, a, their conjunction, R's wrap) -- one more than the miss path -- so a served X
+// would carry a b whose id the surviving path has already given to R's wrap. The expected results
+// are stated without reference to any memo: every minted occurrence in the accepted tree is
+// distinct, and the token b resolves to its own bytes, 2..3. The run takes its materialization from
+// the production door, so it reds whenever that door admits the memo for this grammar.
+fn collision_path_root() -> GrammarRoot {
+  GrammarRoot {
+    start: ^collision_path_s,
+    productions: Cons {
+      head: GrammarProduction {
+        name: ^collision_path_s,
+        expression: Choice {
+          left: Sequence {
+            left: Sequence {
+              left: abandoned_terminal(token_class: ^abandoned_tok_a),
+              right: abandoned_terminal(token_class: ^abandoned_tok_a)
+            },
+            right: Sequence {
+              left: Nonterminal { production: ^collision_path_x },
+              right: abandoned_terminal(token_class: ^abandoned_tok_z)
+            }
+          },
+          right: Sequence {
+            left: Nonterminal { production: ^collision_path_r },
+            right: Sequence {
+              left: Nonterminal { production: ^collision_path_x },
+              right: abandoned_terminal(token_class: ^abandoned_tok_y)
+            }
+          }
+        },
+        emitted: grammar_atom(identity: ^collision_path_s)
+      },
+      tail: Cons { head: GrammarProduction {
+        name: ^collision_path_r,
+        expression: Sequence {
+          left: abandoned_terminal(token_class: ^abandoned_tok_a),
+          right: abandoned_terminal(token_class: ^abandoned_tok_a)
+        },
+        emitted: grammar_atom(identity: ^collision_path_r)
+      },
+      tail: Cons { head: GrammarProduction {
+        name: ^collision_path_x,
+        expression: abandoned_terminal(token_class: ^abandoned_tok_b),
+        emitted: grammar_atom(identity: ^collision_path_x)
+      },
+      tail: std.algebra.Empty } }
+    },
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn collision_path_derived_run() -> Optional<ParseMemoFrameReplayRun> {
+  let contract_locus = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^collision_path_grammar_contract)
+  match grammar_validate_for_parse(root: collision_path_root(), at: contract_locus) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: validated, diagnostics: _ } =>
+      let analysis = compute_grammar_first_analysis(root: validated.root)
+      match parse_table_memo_materialization_for(r: analysis.memo_recurrence) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: derived, diagnostics: _ } =>
+          parse_memo_frame_replay_run_modeled(
+            tokens: abandoned_path_tokens(),
+            validated: validated,
+            analysis: analysis,
+            materialization: derived
+          )
+      }
+  }
+}
+
+fn parse_memo_minted_ids(tree: Node) -> List<std.occurrence_identity.OccurrenceId> {
+  fold_list(
+    xs: node_subtree_nodes(root: tree),
+    empty: std.algebra.Empty,
+    cons: fn(acc, n) {
+      match n.occurrence_id {
+        OccurrenceMinted { id: id } => list_snoc_item(xs: acc, item: id)
+        OccurrenceSynthetic => acc
+        OccurrenceProjected { id: _, caused_by: _ } => acc
+        OccurrencePending { caused_by: _ } => acc
+      }
+    }
+  )
+}
+
+fn occurrence_id_set_empty() -> Map<std.occurrence_identity.OccurrenceId, Bool> {
+  empty_map()
+}
+
+fn parse_memo_minted_ids_distinct(run: ParseMemoFrameReplayRun) -> Bool {
+  let ids = parse_memo_minted_ids(tree: run.tree)
+  let distinct = fold_list(
+    xs: ids,
+    empty: occurrence_id_set_empty(),
+    cons: fn(acc, id) { map_insert(m: acc, key: id, value: true) }
+  )
+  length(xs: map_keys(distinct)) == length(xs: ids)
+}
+
+fn collision_b_locus() -> Locus {
+  Textual { file: ^abandoned_path_file, extent: ByteRange { start: 2, end: 3 } }
+}
+
+fn parse_memo_loci_contain(loci: List<Optional<Locus>>, want: Locus) -> Bool {
+  fold_list(
+    xs: loci,
+    empty: false,
+    cons: fn(acc, l) {
+      match l {
+        Absent => acc
+        Present { value: got } => acc || (got == want)
+      }
+    }
+  )
+}
+
+fn collision_run_holds(run: ParseMemoFrameReplayRun) -> Bool {
+  match parse_memo_frame_replay_loci(run: run) {
+    Absent => false
+    Present { value: loci } =>
+      parse_memo_minted_ids_distinct(run: run)
+        && parse_memo_loci_contain(loci: loci, want: collision_b_locus())
+  }
+}
+
+test fn parse_memo_production_door_keeps_occurrences_distinct_on_a_colliding_grammar() -> Bool {
+  match collision_path_derived_run() {
+    Absent => false
+    Present { value: run } => collision_run_holds(run: run)
+  }
+}
+
 // A HIT WHOSE FRAME HOLDS A NESTED MEMOIZED FRAME.
 //
 //   S = X z | (X y) z*      X = W b      W = a      tokens: a b y
@@ -410,17 +549,15 @@ fn derived_memo_materialization_is(root: GrammarRoot, want: Materialization) -> 
 }
 
 // THESE TWO CLAIMS CARRY AN ADMISSION ARM, NOT ONLY A REPLAY ONE, and that is a load the module
-// name does not advertise. Between them they are the only controls that drive the REAL
-// prepare_grammar across both admitted outcomes: Memoize here, from a census that counts a
-// discarding backtrack site, and Recompute below, from a census that counts nothing. The
-// direct-computation half is also asserted by
-// v2.test.claim.compiler_materialization_witness.materialization_control_prepare_is_admitted,
-// but nothing over there reaches a store-permitting admission through the production door -- so
-// if these are retargeted or rewritten for replay reasons, that coverage leaves with them and
-// every remaining control stays green. Keep an admitted-Memoize route through prepare_grammar
-// somewhere, or move it deliberately and say where it went.
-test fn parse_memo_demand_derived_discharged_when_the_grammar_abandons_a_demand() -> Bool {
-  derived_memo_materialization_is(root: abandoned_path_root(), want: Memoize)
+// name does not advertise. Between them they drive the REAL prepare_grammar across both census
+// outcomes: a census that counts a discarding backtrack site here, and one that counts nothing
+// below. Since the 2026-10-08 ruling priced the parse recurrence below the cost floor
+// (v2.compiler.materialization_carriers parse_table_memo_cost_floor_exempt) BOTH answer Recompute,
+// so the arm is told apart by the verdict, in
+// v2.test.claim.compiler_materialization_witness
+// parse_table_demand_with_recurrence_is_priced_below_the_cost_floor, not by the prescription.
+test fn parse_memo_demand_derived_below_cost_floor_when_the_grammar_abandons_a_demand() -> Bool {
+  derived_memo_materialization_is(root: abandoned_path_root(), want: Recompute)
 }
 
 test fn parse_memo_demand_derived_single_when_the_grammar_cannot_recur() -> Bool {

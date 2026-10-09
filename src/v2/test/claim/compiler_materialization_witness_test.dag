@@ -1,7 +1,7 @@
 module v2.test.claim.compiler_materialization_witness
 
 import v2.std.live_tree { LiveTreeDisposition }
-import std.realization { LocalInProcess, Memoize, Recompute }
+import std.realization { LocalInProcess, Recompute }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.compiler.materialization_carriers {
   cached_stage_realization,
@@ -21,7 +21,7 @@ import v2.compiler.materialization_carriers {
   parse_table_memo_plural_scope_too_narrow_count,
   parse_table_memo_provider_id,
   parse_table_memo_retention_preserved,
-  parse_table_memo_verdict_is_discharged_for,
+  parse_table_memo_verdict_is_below_cost_floor_for,
   parse_table_memo_verdict_is_single_recompute_for,
   parse_table_realized_step,
   refused_scope_is_not_admitted,
@@ -71,13 +71,16 @@ fn nullable_only_census() -> ParseMemoRecurrence {
   ParseMemoRecurrence { discarding_backtrack_sites: 0, nullable_nonterminals: 1 }
 }
 
+// Recompute on both census outcomes since the 2026-10-08 ruling priced the recurrence below the
+// cost floor (v2.compiler.materialization_carriers parse_table_memo_cost_floor_exempt): no table
+// built through the production door admits a store.
 test fn parse_table_carrier_inhabits_realization() -> Bool {
   match parse_table_realized_step(r: recurrent_census()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: step, diagnostics: _ } =>
-      (step.materialization == Memoize)
+      (step.materialization == Recompute)
         && (step.placement == LocalInProcess)
-        && materialization_admission_admits_store(
+        && !materialization_admission_admits_store(
              a: parse_table_memo_materialization_for(r: recurrent_census())
            )
         && !materialization_admission_admits_store(
@@ -110,12 +113,13 @@ test fn parse_table_empty_uses_catalog_identity() -> Bool {
 }
 
 // Both arms read off the VERDICT: a refusal also prescribes Memoize, so the prescription alone
-// could not tell a discharge from an unmet obligation. The nullable-only census discriminates the
-// second recurrence source -- dropping it from parse_memo_recurrence_is_possible reds here.
-test fn parse_table_demand_is_discharged_by_its_catalog_provider() -> Bool {
-  parse_table_memo_verdict_is_discharged_for(r: recurrent_census())
-    && parse_table_memo_verdict_is_discharged_for(r: nullable_only_census())
-    && !parse_table_memo_verdict_is_discharged_for(r: parse_memo_no_recurrence)
+// could not tell the priced arm from an unmet obligation. The nullable-only census discriminates the
+// second recurrence source -- dropping it from parse_memo_recurrence_is_possible reds here, because
+// the demand would fall to AcceptedSingleRecompute instead of reaching the cost-floor roster.
+test fn parse_table_demand_with_recurrence_is_priced_below_the_cost_floor() -> Bool {
+  parse_table_memo_verdict_is_below_cost_floor_for(r: recurrent_census())
+    && parse_table_memo_verdict_is_below_cost_floor_for(r: nullable_only_census())
+    && !parse_table_memo_verdict_is_below_cost_floor_for(r: parse_memo_no_recurrence)
 }
 
 test fn parse_table_demand_without_recurrence_is_accepted_single_recompute() -> Bool {
@@ -199,15 +203,14 @@ fn materialization_control_prepare_is_refused() -> Bool {
 // direct-computation arm reaching the real prepare -- a grammar that needs no memo does not get
 // one -- and pinning Memoize here would have pinned a memo the grammar does not demand.
 //
-// WHERE THE OTHER ADMITTED ARM IS EXERCISED, cited because this control no longer carries it.
-// THIS pair drives prepare_grammar to a Recompute admission; the MEMOIZE admission through the
-// same door is driven by v2.test.provenance.parse_memo_frame_replay
-// parse_memo_demand_derived_discharged_when_the_grammar_abandons_a_demand, on a grammar whose
-// census counts a discarding backtrack site. Those two claims are the only place the real
-// prepare produces a store-permitting answer, and their stated subject is REPLAY, so retargeting
-// them for replay reasons would delete this module's Memoize counterpart while every control
-// here stayed green. That is why the citation runs both ways: the replay claims carry a matching
-// note naming this control.
+// WHERE THE OTHER RECURRENCE ARM IS EXERCISED, cited because this control does not carry it.
+// THIS pair drives prepare_grammar on a grammar with no recurrence (AcceptedSingleRecompute). The
+// recurrent arm through the same door -- a census that counts a discarding backtrack site, priced
+// below the cost floor since the 2026-10-08 ruling, so also Recompute -- is driven by
+// v2.test.provenance.parse_memo_frame_replay
+// parse_memo_demand_derived_below_cost_floor_when_the_grammar_abandons_a_demand. No grammar reaches
+// a store-permitting admission through the real prepare any more; the replay claims that force
+// Memoize keep the store path executing until the memo carrier is deleted.
 fn materialization_control_prepare_is_admitted() -> Bool {
   match prepare_grammar(grammar: materialization_control_grammar()) {
     Rejected { diagnostics: _ } => false
