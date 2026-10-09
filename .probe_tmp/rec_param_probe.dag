@@ -1,0 +1,11 @@
+module probe.rec_param_probe
+
+import std.types { List }
+
+type Rec { a: String }
+
+fn takes_rec(r: Rec) -> Bool { true }
+
+fn a_list() -> List<String> { ["--quiet"] }
+
+fn probe() -> Bool { takes_rec(r: a_list()) }

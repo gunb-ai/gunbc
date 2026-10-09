@@ -1,0 +1,6 @@
+module probe_rec
+
+type Rec { a: String }
+fn takes_rec(r: Rec) -> Bool { true }
+fn a_list() -> List<String> { ["--quiet"] }
+fn probe() -> Bool { takes_rec(r: a_list()) }

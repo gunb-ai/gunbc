@@ -1,0 +1,6 @@
+module probe_listrec
+
+type Rec { a: String }
+fn takes_list(xs: List<Int>) -> Bool { true }
+fn a_rec() -> Rec { Rec { a: "x" } }
+fn probe() -> Bool { takes_list(xs: a_rec()) }

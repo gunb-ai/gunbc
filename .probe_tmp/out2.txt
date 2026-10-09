@@ -1,0 +1,3 @@
+error: resolve failed for .probe_tmp/scope_probe.dag
+  cause: .probe_tmp/scope_probe.dag:11:52: error: type mismatch: expected 'Primitive(Int)', got 'Primitive(String)'
+.probe_tmp/scope_probe.dag:11:52: error: value does not inhabit its declared type at the direct call argument for parameter 'n': declared 'Primitive(Int)', produced 'Primitive(String)'

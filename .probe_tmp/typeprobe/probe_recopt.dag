@@ -1,0 +1,6 @@
+module probe_recopt
+
+type Rec { a: String }
+fn takes_rec(r: Rec) -> Bool { true }
+fn an_opt() -> Optional<Int> { Some(1) }
+fn probe() -> Bool { takes_rec(r: an_opt()) }

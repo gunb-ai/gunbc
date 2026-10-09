@@ -1,0 +1,5 @@
+module probe_int
+
+fn takes_int(n: Int) -> Bool { true }
+fn a_str() -> String { "x" }
+fn probe() -> Bool { takes_int(n: a_str()) }

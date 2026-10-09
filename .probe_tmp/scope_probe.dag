@@ -1,0 +1,11 @@
+module probe.scope_probe
+
+import std.types { List }
+
+type Rec { a: String }
+
+fn takes_int(n: Int) -> Bool { true }
+
+fn a_string() -> String { "not-an-int" }
+
+fn probe_int_given_string() -> Bool { takes_int(n: a_string()) }

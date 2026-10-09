@@ -1,0 +1,7 @@
+module probe_rec2
+
+type Rec { a: String }
+type Other { b: Int }
+fn takes_rec(r: Rec) -> Bool { true }
+fn an_other() -> Other { Other { b: 1 } }
+fn probe() -> Bool { takes_rec(r: an_other()) }
