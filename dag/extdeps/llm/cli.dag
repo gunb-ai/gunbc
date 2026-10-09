@@ -219,6 +219,8 @@ data claude_cli_max_turns_flag: String = "--max-turns"
 
 data claude_cli_append_system_prompt_flag: String = "--append-system-prompt"
 
+data claude_cli_effort_flag: String = "--effort"
+
 fn claude_print_max_turns_args(bound: ClaudePrintTurnBound) -> List<String> {
   match bound {
     ClaudePrintUnboundedTurns => []
@@ -231,6 +233,7 @@ fn shape_claude_print_argv(
   start_prompt: String,
   permission_args: List<String>,
   model: ProviderModelSelection,
+  effort: ReasoningEffort,
   turn_bound: ClaudePrintTurnBound,
 ) -> List<String> {
   concat(
@@ -240,10 +243,13 @@ fn shape_claude_print_argv(
       concat(
         claude_print_max_turns_args(bound: turn_bound),
         concat(
-          [claude_cli_append_system_prompt_flag, append_system_prompt],
+          [claude_cli_effort_flag, reasoning_effort_label(effort: effort)],
           concat(
-            claude_model_args(selection: model),
-            concat(permission_args, [start_prompt]),
+            [claude_cli_append_system_prompt_flag, append_system_prompt],
+            concat(
+              claude_model_args(selection: model),
+              concat(permission_args, [start_prompt]),
+            ),
           ),
         ),
       ),
@@ -276,7 +282,7 @@ fn shape_claude_invoke_argv(
       claude_model_args(selection: model),
       [
         "--settings", settings_json,
-        "--effort", reasoning_effort_label(effort: effort),
+        claude_cli_effort_flag, reasoning_effort_label(effort: effort),
         "--session-id", session_id,
         "-n", node_id,
         "--append-system-prompt", append_system_prompt,

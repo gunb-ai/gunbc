@@ -303,12 +303,14 @@ test fn witness_dispatch_effort_ignores_intricacy() -> Bool {
 
 test fn witness_claude_argv_uses_dangerous_skip_permissions() -> Bool {
   let argv = claude_spawn_argv(
+    effort: ReasoningHigh,
     model: ProviderAccountDefaultModel,
     brief: "brief body",
   )
   string_contains(s: join(argv, separator: "\0"), pattern: "--dangerously-skip-permissions")
     && string_contains(s: join(argv, separator: "\0"), pattern: "-p")
     && string_contains(s: join(argv, separator: "\0"), pattern: "stream-json")
+    && string_contains(s: join(argv, separator: "\0"), pattern: "--effort")
     && !string_contains(s: join(argv, separator: "\0"), pattern: "--session-id")
     && !string_contains(s: join(argv, separator: "\0"), pattern: "--resume")
 }
@@ -325,6 +327,7 @@ test fn witness_git_worktree_argv_is_execfile_safe() -> Bool {
 
 test fn witness_tmux_spawn_argv_threads_claude_argv() -> Bool {
   let claude = claude_spawn_argv(
+    effort: ReasoningMedium,
     model: ProviderAccountDefaultModel,
     brief: "brief",
   )
@@ -908,6 +911,7 @@ test fn witness_host_exec_argv_shapes_bound_to_extdeps() -> Bool {
 
 test fn witness_claude_invoke_permission_args_are_gunbc_policy() -> Bool {
   let argv = claude_spawn_argv(
+    effort: ReasoningHigh,
     model: ProviderAccountDefaultModel,
     brief: "brief",
   )
@@ -1054,6 +1058,7 @@ data witness_pinned_dispatch_model: NonEmptyStr = "claude-opus-4-1-20250805" as 
 
 test fn witness_pinned_model_reaches_claude_argv() -> Bool {
   let argv = claude_spawn_argv(
+    effort: ReasoningHigh,
     model: ProviderModelPinned { model: witness_pinned_dispatch_model },
     brief: "brief",
   )
@@ -1065,6 +1070,7 @@ test fn witness_pinned_model_reaches_claude_argv() -> Bool {
 
 test fn witness_claude_account_default_passes_no_model_flag() -> Bool {
   let argv = claude_spawn_argv(
+    effort: ReasoningHigh,
     model: ProviderAccountDefaultModel,
     brief: "brief",
   )

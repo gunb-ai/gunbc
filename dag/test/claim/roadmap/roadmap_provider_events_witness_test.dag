@@ -1,6 +1,6 @@
 module test.claim.roadmap_provider_events_witness_test
 
-import std.types { Bool, String, Int, List, FilePath }
+import std.types { Bool, String, Int, List }
 import extdeps.languages.json.emit { json_object }
 import gunbc.harness.harness_wire { WireToolUseBlock }
 import gunbc.harness.harness_tool_kind {
@@ -26,8 +26,6 @@ import gunbc.roadmap_provider_events {
   parse_codex_jsonl,
   parse_codex_jsonl_with_line_budget,
   claude_code_line_codex_kind,
-  claude_provider_event_projection_args,
-  codex_provider_event_projection_args,
   CodexThreadStarted,
   CodexTurnCompleted,
   CodexTurnFailed,
@@ -488,11 +486,21 @@ test fn claude_stream_json_projects_into_the_codex_event_kinds_the_belt_reads() 
     Present { value: _ } => false
   }
   let filter = codex_provider_event_projection_filter as String
-  system_ok && tool_ok && result_ok && fail_ok && rate_skip
+  let parsed = parse_codex_jsonl(
+    text: "{\"type\":\"system\"}\n{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\"}]}}\n{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false}\n",
+  )
+  let inhabitance = match parsed {
+    CodexEventsRefused { events_before_refusal: _, line_number: _, raw: _, reason: _ } => false
+    CodexEventsParsed { events: _ } =>
+      match provider_execution_state(parsed: parsed) {
+        ProviderCompleted { activity: _ } => true
+        _ => false
+      }
+  }
+  system_ok && tool_ok && result_ok && fail_ok && rate_skip && inhabitance
     && string_contains(s: filter, pattern: "$type == \"result\"")
     && string_contains(s: filter, pattern: "$type == \"system\"")
     && string_contains(s: filter, pattern: "rate_limit_event")
-    && claude_provider_event_projection_args(path: "/tmp/e.jsonl" as FilePath) == codex_provider_event_projection_args(path: "/tmp/e.jsonl" as FilePath)
 }
 
 test fn a_harness_tool_round_reaches_the_operator_as_its_own_activity() -> Bool {
