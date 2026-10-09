@@ -4,7 +4,7 @@ import std.types { String, List, Int }
 import std.measure { Second, second_count }
 import std.optional { Present, Absent }
 import v2.std.node { Node }
-import v2.std.diagnostic { Outcome, Accepted, Rejected, NonEmptyDiagnostics }
+import v2.std.diagnostic { Outcome, Accepted, Rejected, NonEmptyDiagnostics, diagnostics_reason_lexemes }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes, bash_build_word_cmdsubst,
@@ -13,7 +13,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_or_else, bash_build_subshell_from_stmts, bash_build_with_redir_to_file, bash_build_exit,
   bash_build_pipe,
 }
-import gunbc.fleet_release_bins_key { compiler_pair_candidate_artifact_name, release_bins_pack_object_name, bash_emit_refusal_reasons }
+import gunbc.fleet_release_bins_key { compiler_pair_candidate_artifact_name, release_bins_pack_object_name }
 
 // WHERE fleet-desired FINDS THE CANDIDATE THE MERGE QUEUE BUILT FOR THE REVISION THAT JUST LANDED.
 //
@@ -413,7 +413,7 @@ fn candidate_script_row(script: String, statements: List<Node>) -> CandidateScri
 }
 
 fn candidate_script_refusal_text(row: CandidateScriptRow, diagnostics: NonEmptyDiagnostics) -> String {
-  join(["REFUSED ", row.script, ": v2.workflow.bash_emit refused its statements (", bash_emit_refusal_reasons(diagnostics: diagnostics), ")"], "")
+  join(["REFUSED ", row.script, ": v2.workflow.bash_emit refused its statements (", diagnostics_reason_lexemes(diagnostics: diagnostics), ")"], "")
 }
 
 fn candidate_script_text(row: CandidateScriptRow) -> String {

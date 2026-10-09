@@ -2,8 +2,8 @@ module gunbc.fleet_release_bins_key
 
 import std.types { String, List, Bool, Int, list_length }
 import std.measure { Second, second, second_count, seconds_per_day }
-import v2.std.node { Node, symbol_lexeme }
-import v2.std.diagnostic { Outcome, Accepted, Rejected, NonEmptyDiagnostics, outcome_accepted }
+import v2.std.node { Node }
+import v2.std.diagnostic { Outcome, Accepted, Rejected, outcome_accepted, diagnostics_reason_lexemes }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import extdeps.shell.exec { TransportScript, transport_script_seal }
 import std.optional { Present, Absent }
@@ -1466,16 +1466,12 @@ fn release_bins_joined(parts: List<Outcome<String>>) -> Outcome<String> {
   })
 }
 
-// The fold's refusal reasons, by name. A refused runner's text is a step that refuses at runtime
-// with those reasons, never the empty string: an empty `run` reads as a step that did nothing.
-fn bash_emit_refusal_reasons(diagnostics: NonEmptyDiagnostics) -> String {
-  join(map(concat([diagnostics.head], diagnostics.tail), d => symbol_lexeme(sym: d.reason)), ", ")
-}
-
+// A refused runner's text is a step that refuses at runtime with the fold's reasons, never the empty
+// string: an empty `run` reads as a step that did nothing.
 fn release_bins_script_text(outcome: Outcome<String>) -> String {
   match outcome {
     Accepted { value: v, diagnostics: _ } => v
-    Rejected { diagnostics: ds } => join(["echo '::error title=release-bins ScriptEmissionRefused::REFUSED gunbc.fleet_release_bins_key release_bins_script_text: v2.workflow.bash_emit refused a release-bins runner (", bash_emit_refusal_reasons(diagnostics: ds), ")'\nexit 1\n"], "")
+    Rejected { diagnostics: ds } => join(["echo '::error title=release-bins ScriptEmissionRefused::REFUSED gunbc.fleet_release_bins_key release_bins_script_text: v2.workflow.bash_emit refused a release-bins runner (", diagnostics_reason_lexemes(diagnostics: ds), ")'\nexit 1\n"], "")
   }
 }
 
