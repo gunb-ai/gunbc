@@ -1446,22 +1446,53 @@ fn infer_receiver_declares_no_fields_diagnostic(node: Node) -> Diagnostic {
 // structural callable contract, nothing wider.
 // THE CALLABLE EVIDENCE OF A DECLARATION, or its absence. Reuses the application path's readers so a
 // reference cannot ground to a callee shape that path would refuse.
+// A named-member wrap (body_lower_fn_decl_named_member_wrap: Conj { name: Arrow }) is not itself an
+// Arrow. Namespace graft usually re-hangs the Arrow at the index path; this peel is the same read
+// when the wrap still stands.
+fn infer_named_member_wrap_arrow(declared: Node) -> Optional<Node> {
+  match declared.kind {
+    TypeNode { connective: Conj } =>
+      match list_at_optional(xs: declared.children, index: 0) {
+        Absent => Absent
+        Present { value: edge } =>
+          match edge.label {
+            Authored { name: _ } => infer_operator_arrow(operator: edge.target)
+            Positional => Absent
+            StructuralLabel { label: _ } => Absent
+          }
+      }
+    TypeNode { connective: Arrow } => Absent
+    TypeNode { connective: Atom { identity: _ } } => Absent
+    TypeNode { connective: Disj } => Absent
+    TypeNode { connective: Cardinality } => Absent
+    TypeNode { connective: Instantiation } => Absent
+    ComputationNode { behavior: _ } => Absent
+  }
+}
+
+fn infer_arrow_callable_evidence(arrow: Node) -> Optional<Node> {
+  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+    Absent => Absent
+    Present { value: domain } =>
+      match infer_formals_from_domain(domain: domain) {
+        Absent => Absent
+        Present { value: _formals } =>
+          match arrow_declared_parameter_order(arrow: arrow) {
+            ArrowParameterOrderAbsent => Absent
+            ArrowParameterOrderMalformed => Absent
+            ArrowParameterOrderDeclared { labels: _ } => Present { value: arrow }
+          }
+      }
+  }
+}
+
 fn infer_declaration_callable_evidence(declared: Node) -> Optional<Node> {
   match infer_operator_arrow(operator: declared) {
-    Absent => Absent
-    Present { value: arrow } =>
-      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+    Present { value: arrow } => infer_arrow_callable_evidence(arrow: arrow)
+    Absent =>
+      match infer_named_member_wrap_arrow(declared: declared) {
         Absent => Absent
-        Present { value: domain } =>
-          match infer_formals_from_domain(domain: domain) {
-            Absent => Absent
-            Present { value: _formals } =>
-              match arrow_declared_parameter_order(arrow: arrow) {
-                ArrowParameterOrderAbsent => Absent
-                ArrowParameterOrderMalformed => Absent
-                ArrowParameterOrderDeclared { labels: _ } => Present { value: arrow }
-              }
-          }
+        Present { value: arrow } => infer_arrow_callable_evidence(arrow: arrow)
       }
   }
 }
@@ -1557,16 +1588,10 @@ fn infer_declaration_reference_facts_indexed(
             Absent =>
               inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
             Present { value: callable } =>
-              infer_reference_facts_or_frontier(
-                o: infer_facts_denoting(
-                  o: inferred_facts_from_derived_type(
-                    node: n,
-                    derived_type: callable,
-                    descent: Holds { value: descent_proof }
-                  ),
-                  declaration: declared
-                ),
+              infer_callable_use_facts(
                 n: n,
+                declared: declared,
+                callable: callable,
                 descent_proof: descent_proof
               )
           }
@@ -1580,8 +1605,45 @@ fn infer_declaration_reference_facts_indexed(
 // (which conflates two facts). Recording the declaration the lookup returned keeps one authority for
 // "which declaration does this reference name" and leaves eval a consumer of it.
 //
-// ONLY A GROUNDED REFERENCE CARRIES ONE. An underived arm keeps its Absent denotation, so a consumer
-// cannot reach an executable body for a reference whose contract was refused.
+// A recovered Arrow whose Instantiation return fails canonical_grounding_from_derived_type used to
+// lose the Arrow: infer_reference_facts_or_frontier replaced Rejected with GroundingNotDerived and
+// no denotation, so infer_application_callee_arrow_with_facts answered Absent and type_params was
+// empty (bind_outcome<T,U> -> Outcome<U>). The use stays underived for demanding consumers; the
+// denotation keeps the declaration so gather can still read the Arrow.
+fn infer_callable_use_facts(
+  n: Node,
+  declared: Node,
+  callable: Node,
+  descent_proof: TerminationProof
+) -> Outcome<InferredFacts> {
+  match inferred_facts_from_derived_type(
+    node: n,
+    derived_type: callable,
+    descent: Holds { value: descent_proof }
+  ) {
+    Accepted { value: facts, diagnostics: d } =>
+      infer_facts_denoting(
+        o: Accepted { value: facts, diagnostics: d },
+        declaration: declared
+      )
+    Rejected { diagnostics: _ } =>
+      Accepted {
+        value: InferredFacts {
+          grounding: GroundingNotDerived { node: n },
+          descent: Holds { value: descent_proof },
+          denotation: optional_present(value: declared)
+        },
+        diagnostics: Some {
+          diagnostics: diagnostics_singleton(
+            d: infer_grounding_not_derived_diagnostic(at: node_locus(node: n))
+          )
+        }
+      }
+  }
+}
+
+// ONLY A GROUNDED REFERENCE CARRIES ONE, except the recovered-Arrow underived arm above, which
+// names the declaration so callee formals and type_params remain readable.
 fn infer_facts_denoting(o: Outcome<InferredFacts>, declaration: Node) -> Outcome<InferredFacts> {
   bind_outcome(
     o: o,
@@ -3529,9 +3591,20 @@ fn infer_application_callee_arrow_with_facts(
             Absent => Absent
             Present { value: facts } =>
               match facts.grounding {
-                GroundingNotDerived { node: _ } => Absent
+                GroundingNotDerived { node: _ } =>
+                  match facts.denotation {
+                    Absent => Absent
+                    Present { value: declared } => infer_declaration_callable_evidence(declared: declared)
+                  }
                 DerivedGrounding { grounding: g } =>
-                  infer_operator_arrow(operator: g.witness.structural.evidence)
+                  match infer_operator_arrow(operator: g.witness.structural.evidence) {
+                    Present { value: arrow } => Present { value: arrow }
+                    Absent =>
+                      match facts.denotation {
+                        Absent => Absent
+                        Present { value: declared } => infer_declaration_callable_evidence(declared: declared)
+                      }
+                  }
               }
           }
       }

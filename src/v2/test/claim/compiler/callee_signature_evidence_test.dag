@@ -1,0 +1,107 @@
+module v2.test.claim.compiler.callee_signature_evidence
+
+import v2.test.lens_common.infer_fixture {
+  ClaimParam,
+  claim_atom_node,
+  claim_callable_arrow,
+  claim_int_literal
+}
+import v2.compiler.infer {
+  infer_application_callee_arrow_with_facts,
+  infer_declaration_callable_evidence
+}
+import v2.compiler.inferred_tree {
+  GroundingNotDerived,
+  InferredFacts,
+  InferredFactsEntry
+}
+import v2.std.cardinality { RankingComponent, TerminationProof }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node {
+  Authored,
+  ComputationNode,
+  Conj,
+  Edge,
+  Node,
+  Positional,
+  Transform,
+  TypeNode
+}
+import v2.std.witness { Holds }
+import std.optional { Absent, Present }
+import std.types { Bool, String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn cse_int_atom() -> Node {
+  claim_atom_node(s: ^Int)
+}
+
+fn cse_arrow() -> Node {
+  claim_callable_arrow(
+    site: 1,
+    params: [ClaimParam { name: ^x, type_node: cse_int_atom() }],
+    codomain: cse_int_atom(),
+    body: claim_int_literal(lexeme: "0", n: 0)
+  )
+}
+
+fn cse_wrap_of(arrow: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Authored { name: ^f }, target: arrow }],
+    occurrence_id: arrow.occurrence_id
+  }
+}
+
+fn cse_operator() -> Node {
+  claim_atom_node(s: ^f)
+}
+
+fn cse_underived_with_denotation(declared: Node) -> InferredFacts {
+  InferredFacts {
+    grounding: GroundingNotDerived { node: cse_operator() },
+    descent: Holds {
+      value: TerminationProof {
+        non_increasing: [],
+        strict: RankingComponent { measured: ^cse }
+      }
+    },
+    denotation: Present { value: declared }
+  }
+}
+
+test fn cse_named_member_wrap_callable_evidence_is_the_arrow_holds() -> Bool {
+  let arrow = cse_arrow()
+  match infer_declaration_callable_evidence(declared: cse_wrap_of(arrow: arrow)) {
+    Absent => false
+    Present { value: recovered } => recovered == arrow
+  }
+}
+
+test fn cse_underived_use_still_yields_the_denoted_arrow_holds() -> Bool {
+  let arrow = cse_arrow()
+  let operator = cse_operator()
+  match infer_application_callee_arrow_with_facts(
+    node: Node {
+      kind: ComputationNode { behavior: Transform },
+      children: [Edge { label: Positional, target: operator }],
+      occurrence_id: operator.occurrence_id
+    },
+    entries: [InferredFactsEntry {
+      node: operator,
+      facts: cse_underived_with_denotation(declared: cse_wrap_of(arrow: arrow))
+    }]
+  ) {
+    Absent => false
+    Present { value: recovered } => recovered == arrow
+  }
+}
+
+test fn cse_plain_arrow_callable_evidence_holds() -> Bool {
+  let arrow = cse_arrow()
+  match infer_declaration_callable_evidence(declared: arrow) {
+    Absent => false
+    Present { value: recovered } => recovered == arrow
+  }
+}
