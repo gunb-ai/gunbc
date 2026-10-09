@@ -8,6 +8,7 @@ import v2.std.demand_engine {
   BlockedByCycle,
   BlockedByMissingEdge,
   BlockedByRefusedPrerequisite,
+  BlockedKeyConflict,
   BlockedNoDemand,
   BlockedWaitingForCapacity,
   DemandAdmitted,
@@ -40,7 +41,7 @@ import std.optional { Absent, Present }
 import v2.std.text { String }
 import std.cache_identity { parse_source_artifact_kind }
 import std.content_hash { Fnv1a64Structural }
-import std.materialization_ladder { FreshEffect, PureComputation }
+import std.materialization_ladder { DemandNature, FreshEffect, IdempotentEffect, PureComputation, WorldRead, nature_eq }
 import std.judgment_contract { DemandIdentity }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -111,6 +112,11 @@ fn g_cause_eq(a: DemandBlockedCause, b: DemandBlockedCause) -> Bool {
     BlockedWaitingForCapacity =>
       match b { BlockedWaitingForCapacity => true  _ => false }
     BlockedNoDemand => match b { BlockedNoDemand => true  _ => false }
+    BlockedKeyConflict { stored: sa, requested: ra } =>
+      match b {
+        BlockedKeyConflict { stored: bs, requested: br } => nature_eq(a: sa, b: bs) && nature_eq(a: ra, b: br)
+        _ => false
+      }
     _ => false
   }
 }
@@ -725,4 +731,138 @@ test fn a_duplicated_dependency_does_not_duplicate_a_ready_identity_holds() -> B
       predicate: fn(id) { demand_identity_eq(a: id, b: g_b()) }
     )
   ) == 1
+}
+
+// ── one key, two natures ───────────────────────────────────────────────────────────────────────
+//
+// An existing entry answers a request only when the request declares the SAME complete nature
+// (std.materialization_ladder nature_eq). Each pair below is a request the engine used to attach or
+// re-produce under the stored nature alone; each must now stand as a typed key conflict naming both.
+
+fn g_conflict(stored: DemandNature, requested: DemandNature) -> DemandState<Int> {
+  DemandBlocked { cause: BlockedKeyConflict { stored: stored, requested: requested } }
+}
+
+fn g_requested_twice(first: DemandNature, second: DemandNature) -> DemandEngine<Int> {
+  demand_engine_request(
+    e: demand_engine_request(e: demand_engine_empty(), id: g_a(), nature: first),
+    id: g_a(),
+    nature: second
+  )
+}
+
+// Neither request is served from the other: no attachment and no extra production is recorded.
+fn g_conflict_recorded(first: DemandNature, second: DemandNature) -> Bool {
+  let e = g_requested_twice(first: first, second: second)
+  g_state_is(e: e, id: g_a(), want: g_conflict(stored: first, requested: second))
+    && match demand_engine_entry(e: e, id: g_a()) {
+      Absent => false
+      Present { value: entry } => entry.attachments == 0 && entry.productions == 0
+    }
+}
+
+test fn a_fresh_request_does_not_attach_to_a_pure_entry_holds() -> Bool {
+  g_conflict_recorded(first: PureComputation, second: FreshEffect)
+}
+
+test fn a_pure_request_does_not_attach_to_a_fresh_entry_holds() -> Bool {
+  g_conflict_recorded(first: FreshEffect, second: PureComputation)
+}
+
+// Both share, and they are still different contracts.
+test fn pure_and_idempotent_are_different_demands_holds() -> Bool {
+  g_conflict_recorded(first: PureComputation, second: IdempotentEffect)
+    && g_conflict_recorded(first: IdempotentEffect, second: PureComputation)
+}
+
+test fn a_changed_world_read_envelope_is_a_different_demand_holds() -> Bool {
+  g_conflict_recorded(
+    first: WorldRead { staleness_envelope_declared: true },
+    second: WorldRead { staleness_envelope_declared: false }
+  )
+    && g_conflict_recorded(
+      first: WorldRead { staleness_envelope_declared: false },
+      second: WorldRead { staleness_envelope_declared: true }
+    )
+}
+
+// THE POSITIVE CONTROL. Equal natures still share, for every share-admitted nature, so the conflict
+// above is decided by the nature and not by the second request alone.
+fn g_equal_nature_attaches(n: DemandNature) -> Bool {
+  let e = g_requested_twice(first: n, second: n)
+  match demand_engine_entry(e: e, id: g_a()) {
+    Absent => false
+    Present { value: entry } => entry.attachments == 1 && entry.productions == 0
+  }
+}
+
+test fn equal_share_admitted_natures_still_attach_holds() -> Bool {
+  g_equal_nature_attaches(n: PureComputation)
+    && g_equal_nature_attaches(n: IdempotentEffect)
+    && g_equal_nature_attaches(n: WorldRead { staleness_envelope_declared: true })
+}
+
+// AND THE SHARED DEMAND RUNS ONCE. Two equal requests, one admission, one settlement: the second
+// request is served by that one execution and nothing is left ready to run again.
+test fn equal_natures_share_one_execution_holds() -> Bool {
+  let sealed = demand_engine_seal(e: g_requested_twice(first: PureComputation, second: PureComputation))
+  let admitted = demand_engine_next(e: sealed, offer: DemandLeaseOffer { seats: 1 })
+  let after = demand_engine_settle(e: sealed, id: g_a(), state: DemandAvailable { value: 7 })
+  match admitted {
+    DemandAdmitted { identity: id } => demand_identity_key(id: id) == demand_identity_key(id: g_a())
+    DemandNotAdmitted { cause: _ } => false
+  }
+    && g_state_is(e: after, id: g_a(), want: DemandAvailable { value: 7 })
+    && length(xs: demand_engine_ready_queue(e: after)) == 0
+    && match demand_engine_entry(e: after, id: g_a()) {
+      Absent => false
+      Present { value: entry } => entry.attachments == 1 && entry.productions == 1
+    }
+}
+
+// A -> B, both pure, sealed. Used to show the conflict reaches a dependent and outlives the lifecycle.
+fn g_chain() -> DemandEngine<Int> {
+  demand_engine_seal(
+    e: demand_engine_relate(
+      e: demand_engine_request(
+        e: demand_engine_request(e: demand_engine_empty(), id: g_a(), nature: PureComputation),
+        id: g_b(),
+        nature: PureComputation
+      ),
+      relation: g_edge(prerequisite: g_a(), dependent: g_b())
+    )
+  )
+}
+
+// AFTER THE RESULT IS AVAILABLE. A was settled with a value and B became ready on it; a fresh request
+// for A's key must not be served that value, and B -- which named A's key -- leaves the ready order
+// with a refused prerequisite rather than running on an answer to a different demand.
+test fn a_conflict_after_an_available_result_is_not_served_holds() -> Bool {
+  let available = demand_engine_settle(e: g_chain(), id: g_a(), state: DemandAvailable { value: 1 })
+  let conflicted = demand_engine_request(e: available, id: g_a(), nature: FreshEffect)
+  g_state_is(e: available, id: g_b(), want: DemandReady)
+    && g_state_is(e: conflicted, id: g_a(), want: g_conflict(stored: PureComputation, requested: FreshEffect))
+    && g_state_is(e: conflicted, id: g_b(), want: DemandBlocked { cause: BlockedByRefusedPrerequisite { prerequisite: g_a() } })
+    && length(xs: demand_engine_ready_queue(e: conflicted)) == 0
+}
+
+// THE CONFLICT IS DURABLE. Readiness used to preserve only settled and cycle-blocked states, so a
+// bare blocked state would have been re-derived to ready by seal. Here it survives seal, a later
+// settlement of the in-flight production, and a further request under either nature -- and is
+// never admitted.
+test fn a_key_conflict_survives_seal_settle_and_rerequest_holds() -> Bool {
+  let want = g_conflict(stored: PureComputation, requested: FreshEffect)
+  let conflicted = g_requested_twice(first: PureComputation, second: FreshEffect)
+  let sealed = demand_engine_seal(e: conflicted)
+  let settled = demand_engine_settle(e: sealed, id: g_a(), state: DemandAvailable { value: 1 })
+  let again_pure = demand_engine_request(e: settled, id: g_a(), nature: PureComputation)
+  let again_fresh = demand_engine_request(e: settled, id: g_a(), nature: FreshEffect)
+  g_state_is(e: sealed, id: g_a(), want: want)
+    && g_state_is(e: settled, id: g_a(), want: want)
+    && g_state_is(e: again_pure, id: g_a(), want: want)
+    && g_state_is(e: again_fresh, id: g_a(), want: want)
+    && match demand_engine_next(e: sealed, offer: DemandLeaseOffer { seats: 1 }) {
+      DemandAdmitted { identity: _ } => false
+      DemandNotAdmitted { cause: _ } => true
+    }
 }

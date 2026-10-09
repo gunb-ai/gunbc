@@ -17,7 +17,7 @@ import std.optional { Absent, Optional, Present, optional_absent, optional_prese
 import v2.std.dependency { DependencyRelation }
 import v2.std.integer { Int }
 import v2.std.text { String }
-import std.materialization_ladder { DemandNature, FreshEffect, IdempotentEffect, PureComputation, WorldRead }
+import std.materialization_ladder { DemandNature, FreshEffect, IdempotentEffect, PureComputation, WorldRead, nature_eq }
 import std.judgment_contract { DemandIdentity, demand_identity_canonical }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -68,7 +68,7 @@ type DemandBlockedCause
   | BlockedWaitingForCapacity
   | BlockedLookupPending
   | BlockedNoDemand
-  | BlockedKeyConflict
+  | BlockedKeyConflict { stored: DemandNature, requested: DemandNature }
 
 fn demand_blocked_cause_text(c: DemandBlockedCause) -> String {
   match c {
@@ -78,7 +78,7 @@ fn demand_blocked_cause_text(c: DemandBlockedCause) -> String {
     BlockedWaitingForCapacity => "ready, but no lease was offered for its requirements"
     BlockedLookupPending => "a materialization lookup for this demand has not answered"
     BlockedNoDemand => "nothing demanded this judgment"
-    BlockedKeyConflict => "two distinct subjects derived one demand key"
+    BlockedKeyConflict { stored: _, requested: _ } => "one demand key was requested under two different natures, so it names two demands"
   }
 }
 
@@ -170,7 +170,7 @@ fn demand_state_is_cycle_blocked<V>(s: DemandState<V>) -> Bool {
         BlockedWaitingForCapacity => false
         BlockedLookupPending => false
         BlockedNoDemand => false
-        BlockedKeyConflict => false
+        BlockedKeyConflict { stored: _, requested: _ } => false
       }
     DemandWaiting => false
     DemandReady => false
@@ -181,6 +181,38 @@ fn demand_state_is_cycle_blocked<V>(s: DemandState<V>) -> Bool {
     DemandAvailable { value: _ } => false
     DemandRefused => false
   }
+}
+
+// A KEY CONFLICT IS ALSO A VERDICT FOR THE WHOLE RUN. The key was requested under two different
+// natures, so it does not name one demand and no later lifecycle step can make it name one again:
+// readiness, seal and settlement each carry it rather than re-deriving over it.
+fn demand_state_is_key_conflict<V>(s: DemandState<V>) -> Bool {
+  match s {
+    DemandBlocked { cause: c } =>
+      match c {
+        BlockedKeyConflict { stored: _, requested: _ } => true
+        BlockedByCycle { members: _ } => false
+        BlockedByMissingEdge { prerequisite: _ } => false
+        BlockedByRefusedPrerequisite { prerequisite: _ } => false
+        BlockedWaitingForCapacity => false
+        BlockedLookupPending => false
+        BlockedNoDemand => false
+      }
+    DemandWaiting => false
+    DemandReady => false
+    DemandLeasePending => false
+    DemandRunning => false
+    DemandSuspended => false
+    DemandCommitPending => false
+    DemandAvailable { value: _ } => false
+    DemandRefused => false
+  }
+}
+
+// A dependent reads a key-conflicted prerequisite as refused: its value can no longer be trusted to
+// answer the demand the dependent named, so waiting on it would be a stall with no cause.
+fn demand_state_refuses_dependents<V>(s: DemandState<V>) -> Bool {
+  demand_state_is_refused(s: s) || demand_state_is_key_conflict(s: s)
 }
 
 fn demand_state_is_settled<V>(s: DemandState<V>) -> Bool {
@@ -408,7 +440,11 @@ fn demand_engine_request<V>(
 ) -> DemandEngine<V> {
   match demand_engine_entry(e: e, id: id) {
     Present { value: existing } =>
-      if demand_nature_admits_sharing(nature: existing.nature) {
+      if demand_state_is_key_conflict(s: existing.state) {
+        e
+      } else if !nature_eq(a: existing.nature, b: nature) {
+        demand_engine_key_conflict(e: e, existing: existing, requested: nature)
+      } else if demand_nature_admits_sharing(nature: existing.nature) {
         DemandEngine {
           entries: map_insert(
             m: e.entries,
@@ -460,6 +496,50 @@ fn demand_engine_request<V>(
         readiness_computations: e.readiness_computations,
         entries_visited: e.entries_visited
       }
+  }
+}
+
+// ONE KEY, TWO NATURES. Sharing is decided by the nature, so an entry may answer a request only when
+// the request declares the SAME complete nature: comparing either side's sharing permission alone
+// would attach a fresh effect to a pure entry in one order and a pure request to a fresh entry in the
+// other, and Pure and Idempotent both share while being different contracts. The comparison is the
+// ladder's own nature_eq, not a second one written here. The entry leaves the ready order, its direct
+// dependents are re-derived (they now read a refused prerequisite), and the conflict stands for the
+// rest of the run -- including over a result that was already available, which is no longer a
+// trustworthy answer for either demand.
+fn demand_engine_key_conflict<V>(
+  e: DemandEngine<V>,
+  existing: DemandEntry<V>,
+  requested: DemandNature
+) -> DemandEngine<V> {
+  let id = existing.identity
+  let conflict: DemandState<V> = DemandBlocked {
+    cause: BlockedKeyConflict { stored: existing.nature, requested: requested }
+  }
+  let marked = DemandEngine {
+    entries: map_insert(m: e.entries, key: id, value: demand_entry_with_state(entry: existing, state: conflict)),
+    entry_order: e.entry_order,
+    relations: e.relations,
+    dependents_of: e.dependents_of,
+    prerequisites_of: e.prerequisites_of,
+    ready: demand_ready_remove(ready: e.ready, id: id),
+    in_flight: e.in_flight + demand_in_flight_delta(before: demand_entry_state(entry: existing), after: conflict),
+    completion_order: e.completion_order,
+    readiness_computations: e.readiness_computations,
+    entries_visited: e.entries_visited + 1
+  }
+  let direct = demand_engine_dependents(e: marked, id: id)
+  DemandEngine {
+    entries: demand_engine_reevaluate_only(e: marked, ids: direct),
+    entry_order: marked.entry_order,
+    relations: marked.relations,
+    dependents_of: marked.dependents_of,
+    prerequisites_of: marked.prerequisites_of,
+    ready: demand_ready_sync_many(e: marked, ready: marked.ready, ids: direct),
+    in_flight: marked.in_flight,
+    completion_order: marked.completion_order,
+    readiness_computations: marked.readiness_computations + length(xs: direct),
+    entries_visited: marked.entries_visited + length(xs: direct)
   }
 }
 
@@ -566,6 +646,8 @@ fn demand_readiness<V>(e: DemandEngine<V>, id: DemandIdentity) -> DemandState<V>
         entry.state
       } else if demand_state_is_cycle_blocked(s: entry.state) {
         entry.state
+      } else if demand_state_is_key_conflict(s: entry.state) {
+        entry.state
       } else {
         let prereqs = demand_engine_prerequisites(e: e, id: id)
         let missing = filter(xs: prereqs, predicate: fn(p) { !demand_engine_has(e: e, id: p) })
@@ -574,7 +656,7 @@ fn demand_readiness<V>(e: DemandEngine<V>, id: DemandIdentity) -> DemandState<V>
           predicate: fn(p) {
             match demand_engine_entry(e: e, id: p) {
               Absent => false
-              Present { value: pe } => demand_state_is_refused(s: pe.state)
+              Present { value: pe } => demand_state_refuses_dependents(s: pe.state)
             }
           }
         )
@@ -618,7 +700,7 @@ fn demand_engine_seal<V>(e: DemandEngine<V>) -> DemandEngine<V> {
       entries: demand_engine_entries_mapped(
         e: e,
         f: fn(entry) {
-          if demand_in_cycle(e: e, id: entry.identity) {
+          if demand_in_cycle(e: e, id: entry.identity) && !demand_state_is_key_conflict(s: entry.state) {
             DemandEntry {
               identity: entry.identity,
               nature: entry.nature,
@@ -846,6 +928,9 @@ fn demand_engine_next<V>(e: DemandEngine<V>, offer: DemandLeaseOffer) -> DemandA
 // bound checkable from outside, since a rescan would reach the same final states. The completion order is recorded rather than derived afterwards because it is the
 // receipt the A/B cutover compares: two runs of one closure must complete in one order, and an
 // order reconstructed from final states has already lost it.
+//
+// A production that completes after its key was found conflicted still counts as produced, but its
+// result does not replace the conflict: the key names two demands, and neither may read this value.
 fn demand_engine_settle<V>(
   e: DemandEngine<V>,
   id: DemandIdentity,
@@ -855,14 +940,15 @@ fn demand_engine_settle<V>(
     Absent => DemandWaiting
     Present { value: prior } => demand_entry_state(entry: prior)
   }
+  let landed = if demand_state_is_key_conflict(s: before) { before } else { state }
   let settled = DemandEngine {
-    entries: demand_engine_settle_entry(e: e, id: id, state: state),
+    entries: demand_engine_settle_entry(e: e, id: id, state: landed),
     entry_order: e.entry_order,
     relations: e.relations,
     dependents_of: e.dependents_of,
     prerequisites_of: e.prerequisites_of,
-    ready: demand_ready_sync(ready: e.ready, id: id, state: state),
-    in_flight: e.in_flight + demand_in_flight_delta(before: before, after: state),
+    ready: demand_ready_sync(ready: e.ready, id: id, state: landed),
+    in_flight: e.in_flight + demand_in_flight_delta(before: before, after: landed),
     completion_order: list_snoc_item(xs: e.completion_order, item: id),
     readiness_computations: e.readiness_computations,
     entries_visited: e.entries_visited + 1
