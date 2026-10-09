@@ -34,9 +34,10 @@ fn id_uid_argv() -> List<String> {
 // IS — so the probe supplies no user and reads the login name the session itself carries. A user
 // operand would ask the account database about a different account and answer the wrong question.
 //
-// -un, NOT -u: -n selects NAMES over numeric uids (the probe records the login name it was granted,
-// not a per-host uid), and -u then prints that name alone rather than the full `id` record. One flag
-// for the name, one for the field; the probe trims the newline the remote shell leaves on stdout.
+// -un, NOT -u: -u selects the effective-USER field of the id record, and -n renders it as the name
+// rather than the numeric uid (the probe records the login name it was granted, not a per-host uid)
+// — one flag for the field, one for the rendering. The probe trims the newline the remote shell
+// leaves on stdout.
 fn id_user_name_argv() -> List<String> {
   [id_program().invocation as String, "-un"]
 }

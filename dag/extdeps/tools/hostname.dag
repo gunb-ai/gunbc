@@ -38,19 +38,18 @@ data extdeps_hostnamectl_external_authority_anchor: ExternalAuthority = External
   }
 }
 
-// TWO READ ROWS BECAUSE THEY ANSWER DIFFERENT QUESTIONS. Bare `hostname` prints whatever the host is
-// configured to call itself, which may be fully qualified; `hostname -s` prints the first label only.
-// The reach probe compares its read for EXACT equality against the enrolled fleet slot label (the
-// short name a host is known by on the LAN), so it needs the configured name the host itself reports
-// — not a re-derived first label — and the probe therefore owns this row, the bare spelling, while a
-// converge that matches by short label owns `hostname_short_read_argv`. Collapsing the two would
-// silently change which name a caller compared.
-fn hostname_read_argv() -> List<String> {
-  [hostname_program().invocation as String]
-}
-
+// `hostname -s` prints the first label only; the bare `hostname` (owned by hostname_read_command,
+// consumed by the spark/fabric reads) prints whatever the host is configured to call itself, which
+// may be fully qualified. The short read is the identity grain: the enrolled slot labels are short
+// (srv1, ...) and the model's short-hostname read (HostIdentityShortHostnameRead, the ReadShort op
+// above) is `hostname -s`. The recorded case this row prevents: a host configured with an FQDN
+// (srv1.example.com) answered by the BARE read returns the qualified name, which exact-equality-
+// fails the short slot label srv1 — a fail-closed identity refusal against a host whose short name
+// IS enrolled. The decision: a probe that compares against a short slot label observes at the short
+// grain; whether the bare read is ever the right one for some OTHER consumer is a separate
+// question, and the bare row is owned by hostname_read_command, not this one.
 fn hostname_short_read_argv() -> List<String> {
-  ["hostname", "-s"]
+  [hostname_program().invocation as String, "-s"]
 }
 
 service os.Hostname {

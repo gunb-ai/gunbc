@@ -2,9 +2,10 @@ module gunbc.host_reach_identity_probe
 
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.id { id_user_name_argv }
-import extdeps.tools.hostname { hostname_read_argv }
+import extdeps.tools.hostname { hostname_short_read_argv }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.fleet_known_hosts_anchor { shape_ssh_shell_exec }
 import gunbc.typed_argv_exec {
   typed_argv_probe_over_ssh,
   TypedArgvExecOutcome,
@@ -328,13 +329,37 @@ type FleetReachProbeRun {
 // receipt stays keyed by fleet IDENTITY — addressing is transport, never identity.
 // Repairs #1 + #2: consult fleet_probe_target_for FIRST. A refused target (unobserved
 // principal) yields ProbeTargetUnobserved and NEVER touches SSH. A ready target runs two
-// typed argv ops against the SAME explicit principal@endpoint — `hostname_read_argv` for
-// host identity and `id_user_name_argv` for the account actually reached — so ProbeReachable
+// typed argv ops against the SAME explicit principal@endpoint — the short-grain hostname
+// read for host identity and `id -un` for the account actually reached — so ProbeReachable
 // carries both dimensions and the receipt carries the requested principal for the identity
 // verdict. The argv is spelled by the tool module that owns the tool, not hand-typed here:
-// the probe no longer decides how `hostname` or `id` get their flags.
+// the probe no longer decides how `hostname` or `id` get their flags. The short grain is the
+// identity grain (enrolled slot labels are short, srv1, ...; the model's short-hostname read
+// is `hostname -s`) — see hostname_short_read_argv for the recorded FQDN case it prevents.
+//
+// The seam hands exactly these words to ssh: the seam (typed_argv_exec) binds the op's argv
+// through shape_ssh_shell_exec(host, argv). *_argv exposes each op's argv verbatim — the same
+// call the op itself makes — and *_route_argv the seam's wire form, so a witness can assert
+// the PROBE's argv (what the op hands the seam, and the host + flags the seam sends) equals the
+// builder's flags, i.e. the builder is what the probe actually sends.
+fn probe_ready_target_argv() -> List<String> {
+  hostname_short_read_argv()
+}
+
+fn probe_principal_argv() -> List<String> {
+  id_user_name_argv()
+}
+
+fn probe_ready_target_route_argv(host: String) -> List<String> {
+  shape_ssh_shell_exec(host: host as NonEmptyStr, argv: probe_ready_target_argv())
+}
+
+fn probe_principal_route_argv(target: String) -> List<String> {
+  shape_ssh_shell_exec(host: target as NonEmptyStr, argv: probe_principal_argv())
+}
+
 fn probe_reachable_with_principal(target: String, hostname_stdout: String) -> ReachProbeOutcome {
-  match typed_argv_probe_over_ssh(host: target as NonEmptyStr, argv: id_user_name_argv()) {
+  match typed_argv_probe_over_ssh(host: target as NonEmptyStr, argv: probe_principal_argv()) {
     TypedArgvExecConverged { result: idr } =>
       if idr.success {
         ProbeReachable { observed_short_hostname: trim(hostname_stdout), observed_principal: trim(idr.stdout) }
@@ -347,7 +372,7 @@ fn probe_reachable_with_principal(target: String, hostname_stdout: String) -> Re
 
 fn probe_ready_target_once(host: String, endpoint: String, remote_principal: String) -> ReachProbeOutcome {
   let target = fleet_probe_ready_ssh_target(t_host: host, endpoint: endpoint, remote_principal: remote_principal)
-  match typed_argv_probe_over_ssh(host: target as NonEmptyStr, argv: hostname_read_argv()) {
+  match typed_argv_probe_over_ssh(host: target as NonEmptyStr, argv: probe_ready_target_argv()) {
     TypedArgvExecConverged { result: r } =>
       if r.success {
         probe_reachable_with_principal(target: target, hostname_stdout: r.stdout)
