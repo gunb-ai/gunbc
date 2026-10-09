@@ -44,7 +44,7 @@ jobs:
         with:
           components: rustfmt
           cache: false
-          rustflags: "-D warnings --remap-path-prefix=${{ github.workspace }}=. --remap-path-prefix=${{ runner.temp }}/cargo=/cargo --remap-path-prefix=${{ runner.temp }}/rustup=/rustup"
+          rustflags: -D warnings --remap-path-prefix=${{ github.workspace }}=. --remap-path-prefix=${{ runner.temp }}/cargo=/cargo --remap-path-prefix=${{ runner.temp }}/rustup=/rustup
       - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
         run: |-
           # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing
@@ -105,7 +105,7 @@ jobs:
         with:
           components: rustfmt
           cache: false
-          rustflags: "-D warnings --remap-path-prefix=${{ github.workspace }}=. --remap-path-prefix=${{ runner.temp }}/cargo=/cargo --remap-path-prefix=${{ runner.temp }}/rustup=/rustup"
+          rustflags: -D warnings --remap-path-prefix=${{ github.workspace }}=. --remap-path-prefix=${{ runner.temp }}/cargo=/cargo --remap-path-prefix=${{ runner.temp }}/rustup=/rustup
       - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
         run: |-
           # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing
@@ -401,7 +401,7 @@ jobs:
         with:
           components: rustfmt
           cache: false
-          rustflags: "-D warnings --remap-path-prefix=${{ github.workspace }}=. --remap-path-prefix=${{ runner.temp }}/cargo=/cargo --remap-path-prefix=${{ runner.temp }}/rustup=/rustup"
+          rustflags: -D warnings --remap-path-prefix=${{ github.workspace }}=. --remap-path-prefix=${{ runner.temp }}/cargo=/cargo --remap-path-prefix=${{ runner.temp }}/rustup=/rustup
       - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
         run: |-
           # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing
@@ -562,7 +562,7 @@ jobs:
         with:
           components: rustfmt
           cache: false
-          rustflags: "-D warnings --remap-path-prefix=${{ github.workspace }}=. --remap-path-prefix=${{ runner.temp }}/cargo=/cargo --remap-path-prefix=${{ runner.temp }}/rustup=/rustup"
+          rustflags: -D warnings --remap-path-prefix=${{ github.workspace }}=. --remap-path-prefix=${{ runner.temp }}/cargo=/cargo --remap-path-prefix=${{ runner.temp }}/rustup=/rustup
       - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
         run: |-
           # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing
@@ -768,7 +768,7 @@ jobs:
         with:
           components: rustfmt
           cache: false
-          rustflags: "-D warnings --remap-path-prefix=${{ github.workspace }}=. --remap-path-prefix=${{ runner.temp }}/cargo=/cargo --remap-path-prefix=${{ runner.temp }}/rustup=/rustup"
+          rustflags: -D warnings --remap-path-prefix=${{ github.workspace }}=. --remap-path-prefix=${{ runner.temp }}/cargo=/cargo --remap-path-prefix=${{ runner.temp }}/rustup=/rustup
       - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
         run: |-
           # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing

@@ -64,7 +64,7 @@ jobs:
         with:
           components: rustfmt
           cache: false
-          rustflags: "-D warnings --remap-path-prefix=${{ github.workspace }}=. --remap-path-prefix=${{ runner.temp }}/cargo=/cargo --remap-path-prefix=${{ runner.temp }}/rustup=/rustup"
+          rustflags: -D warnings --remap-path-prefix=${{ github.workspace }}=. --remap-path-prefix=${{ runner.temp }}/cargo=/cargo --remap-path-prefix=${{ runner.temp }}/rustup=/rustup
         if: hashFiles('heal-candidate/heal-repair-candidate-blob-*') != ''
       - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
         run: |-
