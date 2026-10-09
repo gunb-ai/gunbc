@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.cardinality_axis_has_two_homes_at_two_grains
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data cardinality_axis_has_two_homes_at_two_grains: RecurringFailureMode = RecurringFailureMode {
+  identity: "cardinality_axis_has_two_homes_at_two_grains" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: one axis -- whether a field may be absent -- has two homes at two grains under one spelling (a DESIGN section 3 meaning fork). HOME 1, std.constructors Cardinality = Required | Optional: the decoded occupancy VALUE. HOME 2, the v2.std.node Connective arm Cardinality: a node CONSTRUCTOR wrapping T to spell T?, which encodes exactly the Optional arm of home 1 (Required has no node; it is the absence of the wrapper). Nothing declares that mapping; v2.std.node_query declared_field_cardinality_of_target restates it by hand.",
+    "HARM: a module importing both refuses with 'Cardinality' AMBIGUOUS (found on N7's native route, //v2/test/parse/expression_bodied_fn_decl_parse:all), and every reader of a field's cardinality must re-derive Required-versus-Optional from the connective. RECEIPT: gunbc#13377 qualified both references in v2.std.node_query, which resolves the import-level ambiguity only; the fork stands. OWNER: calm-boar-904 (N7). RUNG FOUND AT: mitigatable (the collision refuses loudly; no wrong answer). CEILING: structurally impossible -- one authority for the axis, the node encoding derived from it. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the Optional de-fork's transition 2 lands (one Optional authority on both routes), SUFFICIENT FOR the connective's cardinality to be stated as or derived from that one authority so that no consumer maps between the two by hand.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "std.constructors", decl_name: "Cardinality", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.node", decl_name: "Connective", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.node_query", decl_name: "declared_field_cardinality_of_target", field: WholeDeclaration },
+  ],
+}
