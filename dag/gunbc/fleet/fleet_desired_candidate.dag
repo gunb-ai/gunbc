@@ -13,7 +13,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_or_else, bash_build_subshell_from_stmts, bash_build_with_redir_to_file, bash_build_exit,
   bash_build_pipe,
 }
-import gunbc.fleet_release_bins_key { compiler_pair_candidate_artifact_name, release_bins_pack_object_name }
+import gunbc.fleet_release_bins_key { compiler_pair_candidate_artifact_name, release_bins_pack_object_name, script_emission_refused_text }
 
 // WHERE fleet-desired FINDS THE CANDIDATE THE MERGE QUEUE BUILT FOR THE REVISION THAT JUST LANDED.
 //
@@ -419,7 +419,7 @@ fn candidate_script_refusal_text(row: CandidateScriptRow, diagnostics: NonEmptyD
 fn candidate_script_text(row: CandidateScriptRow) -> String {
   match row.outcome {
     Accepted { value: v, diagnostics: _ } => v
-    Rejected { diagnostics: ds } => join(["echo '::error title=pair-candidate ScriptEmissionRefused::", candidate_script_refusal_text(row: row, diagnostics: ds), "'\nexit 1\n"], "")
+    Rejected { diagnostics: ds } => script_emission_refused_text(script: row.script, diagnostics: ds)
   }
 }
 
