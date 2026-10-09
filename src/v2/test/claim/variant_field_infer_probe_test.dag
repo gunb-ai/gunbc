@@ -1009,6 +1009,131 @@ fn vfp_supplied_underived_scrutinee_unused_binder_resolved() -> Outcome<Resolved
   }
 }
 
+fn vfp_wrap_path() -> List<Symbol> {
+  [^vfp_ub, ^Wrap]
+}
+
+fn vfp_out_of_int() -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge { label: Positional, target: declaration_reference_node(qn: vfp_out_path(), occurrence_id: vfp_occ(n: 130)) },
+      Edge { label: Positional, target: vfp_int_atom() }
+    ],
+    occurrence_id: vfp_occ(n: 131)
+  )
+}
+
+fn vfp_wrap_declaration() -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Disj },
+    children: [
+      Edge {
+        label: Authored { name: ^W },
+        target: node_with_occurrence_id(
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge {
+              label: Authored { name: ^inner },
+              target: binder_node(type_node: vfp_out_of_int(), default: optional_absent())
+            }
+          ],
+          occurrence_id: vfp_occ(n: 132)
+        )
+      },
+      Edge {
+        label: Authored { name: ^EmptyWrap },
+        target: node_with_occurrence_id(kind: TypeNode { connective: Conj }, children: [], occurrence_id: vfp_occ(n: 133))
+      }
+    ],
+    occurrence_id: vfp_occ(n: 134)
+  )
+}
+
+fn vfp_wrap_index() -> SymbolIndex {
+  symbol_index_insert(index: vfp_out_index(), qualified_path: vfp_wrap_path(), resolved: vfp_wrap_declaration())
+}
+
+fn vfp_nested_formal_binder() -> Node {
+  lexical_reference_node(label: ^v, occurrence_id: vfp_occ(n: 121))
+}
+
+fn vfp_nested_acc_pattern() -> Node {
+  construct_node(
+    reference: declaration_reference_node(qn: [^vfp_ub, ^Out, ^Acc], occurrence_id: vfp_occ(n: 135)),
+    field_edges: [Edge { label: Authored { name: ^value }, target: vfp_nested_formal_binder() }],
+    source: vfp_t_atom_at(n: 136)
+  )
+}
+
+fn vfp_wrap_w_arm() -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: core_edge_label(marker: MatchArmPatternEdge),
+        target: construct_node(
+          reference: declaration_reference_node(qn: [^vfp_ub, ^Wrap, ^W], occurrence_id: vfp_occ(n: 137)),
+          field_edges: [Edge { label: Authored { name: ^inner }, target: vfp_nested_acc_pattern() }],
+          source: vfp_t_atom_at(n: 138)
+        )
+      },
+      Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: vfp_ub_zero() }
+    ],
+    occurrence_id: vfp_occ(n: 139)
+  )
+}
+
+fn vfp_wrap_wildcard_arm() -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: vfp_wildcard_field() },
+      Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: vfp_ub_zero() }
+    ],
+    occurrence_id: vfp_occ(n: 140)
+  )
+}
+
+fn vfp_supplied_underived_nested_formal_resolved() -> Outcome<ResolvedTree> {
+  Accepted {
+    value: ResolvedTree {
+      root: node_with_occurrence_id(
+        kind: ComputationNode { behavior: Match },
+        children: [
+          Edge { label: Positional, target: vfp_ub_scrutinee() },
+          Edge { label: Positional, target: vfp_wrap_w_arm() },
+          Edge { label: Positional, target: vfp_wrap_wildcard_arm() }
+        ],
+        occurrence_id: vfp_occ(n: 141)
+      ),
+      symbol_index: empty_symbol_index(),
+      resolved_declarations: vfp_wrap_index(),
+      lexical_bindings: map_insert(
+        map_insert(
+          empty_map(),
+          OccurrenceId { value: 111 },
+          LexicalBinding {
+            binder_site: vfp_occ(n: 119),
+            declared: optional_absent(),
+            value: optional_absent(),
+            owed_formal: optional_absent()
+          }
+        ),
+        OccurrenceId { value: 121 },
+        LexicalBinding {
+          binder_site: vfp_occ(n: 121),
+          declared: optional_absent(),
+          value: optional_absent(),
+          owed_formal: optional_present(value: vfp_t_atom_at(n: 142))
+        }
+      ),
+      unavailable_providers: []
+    },
+    diagnostics: None
+  }
+}
+
 test fn vfp_payload_binder_derived_type_misses_an_unlisted_site_holds() -> Bool {
   infer_payload_binder_derived_type(
     binder_types: vfp_supplied_binder_types(),
@@ -1143,6 +1268,10 @@ test fn vfp_the_unbound_formal_wildcard_field_still_infers_holds() -> Bool {
 
 test fn vfp_an_unused_formal_binder_refuses_when_the_scrutinee_is_underived_holds() -> Bool {
   vfp_supplied_infer_terminal(resolved: vfp_supplied_underived_scrutinee_unused_binder_resolved()) == ^infer_reason_pattern_payload_formal_uninstantiated
+}
+
+test fn vfp_a_nested_formal_binder_refuses_when_the_scrutinee_is_underived_holds() -> Bool {
+  vfp_supplied_infer_terminal(resolved: vfp_supplied_underived_nested_formal_resolved()) == ^infer_reason_pattern_payload_formal_uninstantiated
 }
 
 // THE N7 SHAPE: Outcome<T>-shaped reconstruct — a payload binder consumed as a construct field

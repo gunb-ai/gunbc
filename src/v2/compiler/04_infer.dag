@@ -6829,10 +6829,14 @@ fn infer_match_arm_child_frame(parent: Node, frame: InferFrame, acc: InferGather
                     match infer_match_arm_binder_types(arm: edge.target, coproduct: coproduct) {
                       MatchArmFormalUndischarged { at: at } => infer_match_arm_formal_refused(frame: frame, at: at)
                       MatchArmBinders { rows: rows } =>
-                        InferFrame {
-                          instances: frame.instances,
-                          binder_types: infer_append_binder_types(xs: frame.binder_types, ys: rows),
-                          entering: InferFrameEnteredPlain
+                        match infer_match_arm_owed_formal_unpaid_at(n: edge.target, resolved: resolved, discharged: rows) {
+                          Present { value: at } => infer_match_arm_formal_refused(frame: frame, at: at)
+                          Absent =>
+                            InferFrame {
+                              instances: frame.instances,
+                              binder_types: infer_append_binder_types(xs: frame.binder_types, ys: rows),
+                              entering: InferFrameEnteredPlain
+                            }
                         }
                     }
                 }
@@ -6860,16 +6864,16 @@ fn infer_match_arm_formal_refused(frame: InferFrame, at: Node) -> InferFrame {
 
 fn infer_match_arm_refuse_unpaid_or_inherit(frame: InferFrame, arm: Node, resolved: ResolvedTree) -> InferFrame {
   match find_core_child(root: arm, marker: MatchArmPatternEdge) {
-    Rejected { diagnostics: _ } => infer_frame_inherited(frame: frame)
+    Rejected { diagnostics: _ } => infer_match_arm_inherit_unless_owed(frame: frame, arm: arm, resolved: resolved)
     Accepted { value: pat, diagnostics: _ } =>
       match construct_tag_path_optional(n: pat) {
-        Absent => infer_frame_inherited(frame: frame)
+        Absent => infer_match_arm_inherit_unless_owed(frame: frame, arm: arm, resolved: resolved)
         Present { value: arm_path } =>
           match qualified_name_init(qn: arm_path) {
-            Empty => infer_frame_inherited(frame: frame)
+            Empty => infer_match_arm_inherit_unless_owed(frame: frame, arm: arm, resolved: resolved)
             Cons { head: _, tail: _ } =>
               match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: qualified_name_init(qn: arm_path)) {
-                Absent => infer_frame_inherited(frame: frame)
+                Absent => infer_match_arm_inherit_unless_owed(frame: frame, arm: arm, resolved: resolved)
                 Present { value: declared } =>
                   match declared.kind {
                     TypeNode { connective: Disj } =>
@@ -6882,15 +6886,51 @@ fn infer_match_arm_refuse_unpaid_or_inherit(frame: InferFrame, arm: Node, resolv
                         }
                       ) {
                         MatchArmFormalUndischarged { at: at } => infer_match_arm_formal_refused(frame: frame, at: at)
-                        MatchArmBinders { rows: _ } => infer_frame_inherited(frame: frame)
+                        MatchArmBinders { rows: _ } => infer_match_arm_inherit_unless_owed(frame: frame, arm: arm, resolved: resolved)
                       }
-                    TypeNode { connective: _ } => infer_frame_inherited(frame: frame)
-                    ComputationNode { behavior: _ } => infer_frame_inherited(frame: frame)
+                    TypeNode { connective: _ } => infer_match_arm_inherit_unless_owed(frame: frame, arm: arm, resolved: resolved)
+                    ComputationNode { behavior: _ } => infer_match_arm_inherit_unless_owed(frame: frame, arm: arm, resolved: resolved)
                   }
               }
           }
       }
   }
+}
+
+fn infer_match_arm_inherit_unless_owed(frame: InferFrame, arm: Node, resolved: ResolvedTree) -> InferFrame {
+  match infer_match_arm_owed_formal_unpaid_at(n: arm, resolved: resolved, discharged: infer_no_binder_types()) {
+    Present { value: at } => infer_match_arm_formal_refused(frame: frame, at: at)
+    Absent => infer_frame_inherited(frame: frame)
+  }
+}
+
+fn infer_binder_type_discharges(rows: List<InferBinderType>, site: NodeOccurrenceIdentity) -> Bool {
+  any(xs: rows, predicate: fn(r) { r.site == site })
+}
+
+fn infer_match_arm_owed_formal_unpaid_at(n: Node, resolved: ResolvedTree, discharged: List<InferBinderType>) -> Optional<Node> {
+  match resolved_tree_lexical_binding(tree: resolved, reference: n) {
+    Present { value: binding } =>
+      match binding.owed_formal {
+        Present { value: _ } =>
+          if infer_binder_type_discharges(rows: discharged, site: binding.binder_site) {
+            infer_match_arm_owed_formal_unpaid_in_children(n: n, resolved: resolved, discharged: discharged)
+          } else {
+            optional_present(value: n)
+          }
+        Absent => infer_match_arm_owed_formal_unpaid_in_children(n: n, resolved: resolved, discharged: discharged)
+      }
+    Absent => infer_match_arm_owed_formal_unpaid_in_children(n: n, resolved: resolved, discharged: discharged)
+  }
+}
+
+fn infer_match_arm_owed_formal_unpaid_in_children(n: Node, resolved: ResolvedTree, discharged: List<InferBinderType>) -> Optional<Node> {
+  fold(n.children, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => infer_match_arm_owed_formal_unpaid_at(n: e.target, resolved: resolved, discharged: discharged)
+    }
+  })
 }
 
 type InferMatchArmBinders
