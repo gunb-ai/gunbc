@@ -34,12 +34,14 @@ import v1.std.core {
   is_file_transport, is_local_transport, TransportKind, RestTransport, ShellTransport,
   FileTransport, LocalTransport, classify_transport, transport_verb, transport_base_path, transport_has_auth, field_init_operation_modifier,
   operation_modifier_name, with_required_cardinality, tuple_type_name, find_child_named,
-  Connective, Conj, Disj, NoConnective, Arrow, CardOptional
+  Connective, Conj, Disj, NoConnective, Arrow, Required, CardOptional
 }
 
-import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index }
+import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index, type_reference_declaration_reading, TypeReferenceNamesDeclaration }
 
 import std.induction { InductiveField, SubValueUnknown }
+
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 
 import v1.compiler.infer_types { resolved_type, is_product_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node, is_unit_like, is_declared_container_alias_spelling }
 
@@ -64,7 +66,8 @@ import v1.compiler.infer_lookup { lookup_func_sig }
 
 import v1.compiler.infer {
   InferScope, is_where_refinement_type,
-  build_params_scope, extend_scope, call_param_caller_labels
+  build_params_scope, extend_scope, call_param_caller_labels,
+  resolved_type_name
 }
 
 import v1.compiler.infer_emit_info { TypeSummary, EmitGraphInfo }
@@ -1327,6 +1330,7 @@ type ShellResultField {
 type ShellEmissionRefusal
   = ShellOutputKeyNotModeled { key: String }
   | ShellChannelNotRealizedByTarget { key: String, target_name: String }
+  | ShellCapturePolicyInputAbsent { key: String }
 
 // The single authority for which declared output keys the shell realization can
 // answer. Read by the binding; there is no second list.
@@ -1336,17 +1340,11 @@ type ShellEmissionRefusal
 // when no `from` key is authored -- so the two directions of the one procedure
 // (DESIGN section 4) read the same rule rather than agreeing by coincidence.
 //
-// NOT MODELED, named rather than left to be inferred, because each names a fact
-// the emitted realization cannot honestly produce:
-//
-//   the byte-accounting and truncation channels -- stdout/stderr_total_bytes,
-//   _retained_bytes and _truncated. An operation declaring them also declares a
-//   capture policy (gunbc.WitnessBin.Run carries a WitnessStderrCapturePolicy
-//   input), and the emitted `std::process::Command` body implements no policy at
-//   all. Answering `false` and a raw length would not be a conservative default,
-//   it would assert that the declared policy ran and did not truncate. The
-//   next-rung trigger is the emitted realization implementing the declared
-//   capture policy; until then these refuse as a counted capability gap.
+// The byte-accounting and truncation channels are modeled. The rust handler
+// answers them from the declared WitnessStderrCapturePolicy (concurrent drain).
+// Answering `false` and a raw length without running that policy is still
+// forbidden; python and go refuse the three channels until they bind the same
+// handler fact.
 //
 //   the digest channels -- stdout/stderr_digest_hex, which the interpreter
 //   answers and the emitted realization has no digest facility for. The
@@ -1381,23 +1379,36 @@ fn shell_result_channel_key(c: ShellResultChannel) -> String {
 // WHETHER A TARGET CAN REALIZE A CHANNEL IS A FACT ABOUT THE TARGET, and keeping
 // it here rather than in the roster is the whole point of the split.
 //
-// The three capture-accounting channels are REAL shell channels -- the interpreter
-// answers all three from the declared WitnessStderrCapturePolicy -- and no emitted
-// realization implements a capture policy at all. The emitted `Command` body
-// captures whole streams, so `truncated` would always be false and total would
-// always equal retained: not a conservative default but an assertion that the
-// declared policy ran and did not truncate.
-//
-// NEXT-RUNG TRIGGER, at capability grain: the emitted realization implementing the
-// declared capture policy, sufficient to answer truncation and both byte counts
-// from the policy the operation declares. Until then every realizing target
-// refuses these three, and the refusal is LOCATED AT THE FIELD.
-fn shell_channel_realized_by_target(c: ShellResultChannel, target: RenderTarget) -> Bool {
+// The three capture-accounting channels are REAL shell channels. The rust
+// realization handler (v1.compiler.emit_rust emit_shell_call) implements the
+// declared WitnessStderrCapturePolicy: concurrent drain, BoundedTail retains a
+// tail, Complete retains within the host budget
+// (`v1_rt::read_host_budget_bytes` over `v1_rt::resolve_host_budget_join`,
+// the one composer `memory_governor::resolve_host_budget` also calls) or
+// refuses. Python and go still realize no capture policy, so they refuse these
+// three at field grain rather than answering false / raw length (that answer
+// would assert the declared policy ran).
+fn shell_channel_is_capture_accounting(c: ShellResultChannel) -> Bool {
   match c {
-    ShellChanStderrTruncated => false
-    ShellChanStderrTotalBytes => false
-    ShellChanStderrRetainedBytes => false
-    _ => target_renders_shell_transport(target: target)
+    ShellChanStderrTruncated => true
+    ShellChanStderrTotalBytes => true
+    ShellChanStderrRetainedBytes => true
+    _ => false
+  }
+}
+
+fn shell_channel_realized_by_target(c: ShellResultChannel, target: RenderTarget) -> Bool {
+  if shell_channel_is_capture_accounting(c: c) {
+    target_is_rust(target: target)
+  } else {
+    target_renders_shell_transport(target: target)
+  }
+}
+
+fn target_is_rust(target: RenderTarget) -> Bool {
+  match target {
+    Rust => true
+    _ => false
   }
 }
 
@@ -1416,6 +1427,9 @@ fn shell_emission_refusal_fact(refusal: ShellEmissionRefusal) -> String {
     ShellChannelNotRealizedByTarget { key: k, target_name: tn } =>
       concat("shell output channel '", k, "' is a modeled channel that target ", tn,
         " cannot realize -- the emitted realization implements no stderr capture policy, so answering it would assert that the declared policy ran")
+    ShellCapturePolicyInputAbsent { key: k } =>
+      concat("shell output channel '", k,
+        "' is a capture-accounting channel and this operation does not declare a required scalar stderr_capture: WitnessStderrCapturePolicy -- answering it would apply a policy nobody declared")
   }
 }
 
@@ -2577,6 +2591,31 @@ fn file_operation_has_content_input(op_node: Node, source_indices: Map<String, N
   file_operation_has_input(op_node: op_node, name: "content", source_indices: source_indices)
 }
 
+fn required_stderr_capture_policy_declaration() -> DeclarationRef {
+  decl_ref(module_path: "std.shell_stream_capture", decl_name: "WitnessStderrCapturePolicy")
+}
+
+fn param_type_is_stderr_capture_policy_declaration(p: Node, env: TypeEnv) -> Bool {
+  match type_reference_declaration_reading(n: param_node_type_expr(n: p), source_indices: env.source_indices, env: env) {
+    TypeReferenceNamesDeclaration { declaration: d } =>
+      declaration_ref_eq(a: d, b: required_stderr_capture_policy_declaration())
+    _ => false
+  }
+}
+
+fn param_is_required_stderr_capture_policy(p: Node, env: TypeEnv) -> Bool {
+  let ty = param_node_type_expr(n: p)
+  param_node_name_at(n: p, source_indices: env.source_indices) == "stderr_capture"
+    && p.return_cardinality == Required
+    && ty.return_cardinality == Required
+    && !node_is_collection(n: ty, source_indices: env.source_indices)
+    && param_type_is_stderr_capture_policy_declaration(p: p, env: env)
+}
+
+fn operation_declares_required_stderr_capture_policy(op_node: Node, env: TypeEnv) -> Bool {
+  op_node.params |> any(p => param_is_required_stderr_capture_policy(p: p, env: env))
+}
+
 // The channels the interpreter's map_file_outputs answers, read back as the emitter's obligation.
 // Emission and interpretation are one decision procedure run in two directions (DESIGN §4), so
 // this list is the emitted side of that map and diverging from it is a behavioral fork.
@@ -2816,7 +2855,24 @@ fn unmodeled_shell_transport_operation_diagnostics(tm: TypedModule, item: Node, 
                 },
                 module_name: module_name)] }
             Present { value: c } =>
-              if shell_channel_realized_by_target(c: c, target: target) { [] }
+              if shell_channel_is_capture_accounting(c: c)
+                && target_is_rust(target: target)
+                && !operation_declares_required_stderr_capture_policy(op_node: op_node, env: env)
+              {
+                [make_error_node(
+                  diagnostic: TransportEmissionNotModeled {
+                    transport_kind: "shell",
+                    service: service_name,
+                    operation: authored_name(env: env, node: op_node),
+                    declaring_module: module_name,
+                    target: render_target_name(target: target),
+                    missing_realization_fact: shell_emission_refusal_fact(refusal: ShellCapturePolicyInputAbsent {
+                      key: shell_result_channel_key(c: c)
+                    }),
+                    span: ch.span
+                  },
+                  module_name: module_name)]
+              } else if shell_channel_realized_by_target(c: c, target: target) { [] }
               else { [make_error_node(
                 diagnostic: TransportEmissionNotModeled {
                   transport_kind: "shell",

@@ -333,8 +333,8 @@ fn kernel_budget_sourcing_static_source(g: KernelBudgetSourcing) -> HostBudgetSo
 // may bound a refusal; it may not stand in for a reading.
 
 // THE CGROUP-v1 ARM JOINS THIS SAME DECLARED MIRROR rather than opening a second one. The seed's
-// memory_governor CgroupV1HierarchicalMemoryLimit arm, CgroupV1MemoryLimitValue,
-// cgroup_v1_hierarchical_limit_from_stat and cgroup_v1_unlimited_bytes hand-realize
+// v1_rt HostBudgetCgroupV1 arm, host_budget_cgroup_v1_from_stat and
+// host_budget_cgroup_v1_unlimited_bytes hand-realize
 // BudgetSourceCgroupV1HierarchicalMemoryLimit here and extdeps.linux.cgroup_v1_memory's parse, under
 // the bootstrap constraint stated in the note below: the budget bounds the resolve, so it is read
 // before any .dag value exists. The mirror keeps the model's three states (limited / unlimited /

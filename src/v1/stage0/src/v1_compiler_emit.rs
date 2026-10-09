@@ -21,6 +21,8 @@ pub use crate::std_coercion::TypeDeclarationProvenance;
 use crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent;
 pub use crate::std_coercion::TypeRealizationDecision;
 use crate::std_coercion::TypeRealizationDecision::*;
+pub use crate::std_decl_ref::DeclarationRef;
+pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq};
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 pub use crate::std_occurrence_identity::occurrence_id_eq;
@@ -55,6 +57,7 @@ pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_infer::InferScope;
 pub use crate::v1_compiler_infer::{
     build_params_scope, call_param_caller_labels, extend_scope, is_where_refinement_type,
+    resolved_type_name,
 };
 use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling::{
     DataVariantBareString, DataVariantInternalTagged, DataVariantSpellingRefused,
@@ -62,9 +65,14 @@ use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling::{
 };
 pub use crate::v1_compiler_infer_emit_info::{DataVariantWireSpelling, EmitGraphInfo, TypeSummary};
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
+use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration;
 pub use crate::v1_compiler_infer_env::UnitVariantContribution;
-pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index, lookup_type_for};
-pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_env::{
+    authored_name, empty_symbol_index, lookup_type_for, type_reference_declaration_reading,
+};
+pub use crate::v1_compiler_infer_env::{
+    GlobalBareLookupState, TypeBinding, TypeEnv, TypeReferenceDeclarationReading,
+};
 pub use crate::v1_compiler_infer_items::{item_is_effectful_callee, item_resource_names};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_lookup::lookup_func_sig;
@@ -110,7 +118,7 @@ use crate::v1_std_core::CallSemantics::ResolvedDirectCallSemantics;
 use crate::v1_std_core::CallTargetIdentity::{
     CallableTargetUndetermined, LocallyBoundCall, RuntimePrimitiveCall, SourceDeclarationCall,
 };
-use crate::v1_std_core::Cardinality::CardOptional;
+use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled;
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -2827,6 +2835,7 @@ pub struct ShellResultField {
 pub enum ShellEmissionRefusal {
     ShellOutputKeyNotModeled { key: String },
     ShellChannelNotRealizedByTarget { key: String, target_name: String },
+    ShellCapturePolicyInputAbsent { key: String },
 }
 impl ShellEmissionRefusal {
     pub fn key(&self) -> String {
@@ -2835,6 +2844,7 @@ impl ShellEmissionRefusal {
             ShellEmissionRefusal::ShellChannelNotRealizedByTarget { key: __val, .. } => {
                 __val.clone()
             }
+            ShellEmissionRefusal::ShellCapturePolicyInputAbsent { key: __val, .. } => __val.clone(),
         }
     }
 }
@@ -2891,12 +2901,27 @@ pub fn shell_result_channel_key(c: ShellResultChannel) -> String {
     }
 }
 
-pub fn shell_channel_realized_by_target(c: ShellResultChannel, target: RenderTarget) -> bool {
+pub fn shell_channel_is_capture_accounting(c: ShellResultChannel) -> bool {
     match c.clone() {
-        ShellResultChannel::ShellChanStderrTruncated => false,
-        ShellResultChannel::ShellChanStderrTotalBytes => false,
-        ShellResultChannel::ShellChanStderrRetainedBytes => false,
-        _ => target_renders_shell_transport(target.clone()),
+        ShellResultChannel::ShellChanStderrTruncated => true,
+        ShellResultChannel::ShellChanStderrTotalBytes => true,
+        ShellResultChannel::ShellChanStderrRetainedBytes => true,
+        _ => false,
+    }
+}
+
+pub fn shell_channel_realized_by_target(c: ShellResultChannel, target: RenderTarget) -> bool {
+    if shell_channel_is_capture_accounting(c.clone()) {
+        target_is_rust(target.clone())
+    } else {
+        target_renders_shell_transport(target.clone())
+    }
+}
+
+pub fn target_is_rust(target: RenderTarget) -> bool {
+    match target.clone() {
+        RenderTarget::Rust => true,
+        _ => false,
     }
 }
 
@@ -2911,6 +2936,7 @@ pub fn shell_emission_refusal_fact(refusal: Rc<ShellEmissionRefusal>) -> String 
     match (*refusal.clone()).clone() {
     ShellEmissionRefusal::ShellOutputKeyNotModeled { key: k, .. } => v1_rt::concat(v1_rt::concat("shell transport output key '".to_string(), k.clone()), "' has no modeled channel -- the modeled channels are stdout, stderr, exit_success, success, exists, exit_code, stdout_lines, stderr_truncated, stderr_total_bytes and stderr_retained_bytes".to_string()),
     ShellEmissionRefusal::ShellChannelNotRealizedByTarget { key: k, target_name: tn, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("shell output channel '".to_string(), k.clone()), "' is a modeled channel that target ".to_string()), tn.clone()), " cannot realize -- the emitted realization implements no stderr capture policy, so answering it would assert that the declared policy ran".to_string()),
+    ShellEmissionRefusal::ShellCapturePolicyInputAbsent { key: k, .. } => v1_rt::concat(v1_rt::concat("shell output channel '".to_string(), k.clone()), "' is a capture-accounting channel and this operation does not declare a required scalar stderr_capture: WitnessStderrCapturePolicy -- answering it would apply a policy nobody declared".to_string()),
 }
 }
 
@@ -5407,6 +5433,62 @@ pub fn file_operation_has_content_input(
     )
 }
 
+pub fn required_stderr_capture_policy_declaration() -> Rc<DeclarationRef> {
+    crate::std_decl_ref::decl_ref(
+        "std.shell_stream_capture".to_string(),
+        "WitnessStderrCapturePolicy".to_string(),
+    )
+}
+
+pub fn param_type_is_stderr_capture_policy_declaration(p: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
+        crate::v1_std_core::param_node_type_expr(p.clone()),
+        env.source_indices.clone(),
+        env.clone(),
+    ))
+    .clone()
+    {
+        TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+            declaration: d, ..
+        } => crate::std_decl_ref::declaration_ref_eq(
+            d.clone(),
+            required_stderr_capture_policy_declaration(),
+        ),
+        _ => false,
+    }
+}
+
+pub fn param_is_required_stderr_capture_policy(p: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    {
+        let ty = crate::v1_std_core::param_node_type_expr(p.clone());
+        (((((crate::v1_std_core::param_node_name_at(p.clone(), env.source_indices.clone())
+            == "stderr_capture".to_string())
+            && (p.return_cardinality.clone() == Cardinality::Required))
+            && (ty.return_cardinality.clone() == Cardinality::Required))
+            && !crate::v1_compiler_infer_types::node_is_collection(
+                ty.clone(),
+                env.source_indices.clone(),
+            ))
+            && param_type_is_stderr_capture_policy_declaration(p.clone(), env.clone()))
+    }
+}
+
+pub fn operation_declares_required_stderr_capture_policy(
+    op_node: Rc<Node>,
+    env: Rc<TypeEnv>,
+) -> bool {
+    {
+        let mut __found = false;
+        for p in op_node.params.clone().iter().cloned() {
+            if param_is_required_stderr_capture_policy(p.clone(), env.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
 pub fn is_modeled_file_output_channel(key: String) -> bool {
     match file_result_channel_of_key(key.clone()) {
         Some(_) => true,
@@ -5732,10 +5814,23 @@ match crate::v1_std_core::classify_transport(t.clone(), si.clone()) {
     span: ch.span.clone(),
 }), module_name.clone())])
             },
-    Some(c) => if shell_channel_realized_by_target(c.clone(), target.clone()) {
-                Rc::new(vec![])
-            } else {
+    Some(c) => if ((shell_channel_is_capture_accounting(c.clone()) && target_is_rust(target.clone())) && !operation_declares_required_stderr_capture_policy(op_node.clone(), env.clone())) {
                 Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
+    transport_kind: "shell".to_string(),
+    service: service_name.clone(),
+    operation: crate::v1_compiler_infer_env::authored_name(env.clone(), op_node.clone()),
+    declaring_module: module_name.clone(),
+    target: render_target_name(target.clone()),
+    missing_realization_fact: shell_emission_refusal_fact(Rc::new(ShellEmissionRefusal::ShellCapturePolicyInputAbsent {
+    key: shell_result_channel_key(c.clone()),
+})),
+    span: ch.span.clone(),
+}), module_name.clone())])
+            } else {
+                if shell_channel_realized_by_target(c.clone(), target.clone()) {
+                    Rc::new(vec![])
+                } else {
+                    Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
     transport_kind: "shell".to_string(),
     service: service_name.clone(),
     operation: crate::v1_compiler_infer_env::authored_name(env.clone(), op_node.clone()),
@@ -5747,6 +5842,7 @@ match crate::v1_std_core::classify_transport(t.clone(), si.clone()) {
 })),
     span: ch.span.clone(),
 }), module_name.clone())])
+                }
             },
 }).iter().cloned()); } __result }),
     _ => Rc::new(vec![]),

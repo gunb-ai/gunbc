@@ -1614,3 +1614,323 @@ pub fn contiguous_loop_elementwise_kernel(
     }
     out
 }
+/// The one host-budget precedence. `read_host_budget_bytes` and
+/// `memory_governor::resolve_host_budget` both call `resolve_host_budget_join`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HostBudgetJoinSource {
+    CgroupMemoryHigh { cgroup_dir: String },
+    CgroupMemoryMax { cgroup_dir: String },
+    CgroupV1HierarchicalMemoryLimit { cgroup_dir: String },
+    DarwinPhysicalMemory,
+}
+
+impl HostBudgetJoinSource {
+    pub fn label(&self) -> String {
+        match self {
+            HostBudgetJoinSource::CgroupMemoryHigh { cgroup_dir } => {
+                format!("cgroup memory.high ({})", cgroup_dir)
+            }
+            HostBudgetJoinSource::CgroupMemoryMax { cgroup_dir } => {
+                format!("cgroup memory.max ({})", cgroup_dir)
+            }
+            HostBudgetJoinSource::CgroupV1HierarchicalMemoryLimit { cgroup_dir } => format!(
+                "cgroup v1 memory.stat hierarchical_memory_limit ({})",
+                cgroup_dir
+            ),
+            HostBudgetJoinSource::DarwinPhysicalMemory => "sysctl hw.memsize".to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HostBudgetJoin {
+    Resolved {
+        effective_bytes: u64,
+        requested_bytes: Option<u64>,
+        source: HostBudgetJoinSource,
+        observed_bytes: u64,
+    },
+    DeclaredUnverified {
+        requested_bytes: u64,
+        reason: String,
+    },
+    Unreadable {
+        reason: String,
+    },
+}
+
+impl HostBudgetJoin {
+    pub fn bytes(&self) -> Option<u64> {
+        match self {
+            HostBudgetJoin::Resolved {
+                effective_bytes, ..
+            } => Some(*effective_bytes),
+            HostBudgetJoin::DeclaredUnverified {
+                requested_bytes, ..
+            } => Some(*requested_bytes),
+            HostBudgetJoin::Unreadable { .. } => None,
+        }
+    }
+    pub fn label(&self) -> String {
+        match self {
+            HostBudgetJoin::Resolved {
+                effective_bytes,
+                requested_bytes,
+                source,
+                observed_bytes,
+            } => match requested_bytes {
+                Some(requested) => format!(
+                    "effective planning minimum {} bytes (env request {}; observed {}={} bytes)",
+                    effective_bytes,
+                    requested,
+                    source.label(),
+                    observed_bytes
+                ),
+                None => source.label(),
+            },
+            HostBudgetJoin::Unreadable { reason } => format!("unreadable: {}", reason),
+            HostBudgetJoin::DeclaredUnverified {
+                requested_bytes,
+                reason,
+            } => format!(
+                "declared-unverified: env GUNBC_MEMORY_BUDGET_BYTES={}; {}",
+                requested_bytes, reason
+            ),
+        }
+    }
+}
+
+pub fn resolve_host_budget_join(
+    env_override: Option<u64>,
+    cgroup_high: Option<(String, u64)>,
+    cgroup_max: Option<(String, u64)>,
+    cgroup_v1_limit: Option<(String, HostBudgetCgroupV1)>,
+    darwin_physical: Option<u64>,
+) -> HostBudgetJoin {
+    let cgroup_v1_limit = match cgroup_v1_limit {
+        Some((dir, HostBudgetCgroupV1::Unparseable(body))) => {
+            return HostBudgetJoin::Unreadable { reason: format!("cgroup v1 memory hierarchy at {} holds this process but its hierarchical_memory_limit is unreadable ({}); a bound that may be the tightest cannot be replaced by another reading", dir, body) };
+        }
+        Some((dir, HostBudgetCgroupV1::Limited(bytes))) => Some((dir, bytes)),
+        Some((_, HostBudgetCgroupV1::Unlimited)) | None => None,
+    };
+    let observation = [
+        cgroup_high
+            .map(|(cgroup_dir, b)| (HostBudgetJoinSource::CgroupMemoryHigh { cgroup_dir }, b)),
+        cgroup_max.map(|(cgroup_dir, b)| (HostBudgetJoinSource::CgroupMemoryMax { cgroup_dir }, b)),
+        cgroup_v1_limit.map(|(cgroup_dir, b)| {
+            (
+                HostBudgetJoinSource::CgroupV1HierarchicalMemoryLimit { cgroup_dir },
+                b,
+            )
+        }),
+    ]
+    .into_iter()
+    .flatten()
+    .fold(
+        None::<(HostBudgetJoinSource, u64)>,
+        |best, cand| match best {
+            Some(cur) if cur.1 <= cand.1 => Some(cur),
+            _ => Some(cand),
+        },
+    );
+    if let Some((source, observed_bytes)) = observation {
+        return HostBudgetJoin::Resolved {
+            effective_bytes: env_override
+                .map(|requested| requested.min(observed_bytes))
+                .unwrap_or(observed_bytes),
+            requested_bytes: env_override,
+            source,
+            observed_bytes,
+        };
+    }
+    if let Some(bytes) = darwin_physical {
+        return HostBudgetJoin::Resolved {
+            effective_bytes: env_override
+                .map(|requested| requested.min(bytes))
+                .unwrap_or(bytes),
+            requested_bytes: env_override,
+            source: HostBudgetJoinSource::DarwinPhysicalMemory,
+            observed_bytes: bytes,
+        };
+    }
+    if let Some(requested_bytes) = env_override {
+        return HostBudgetJoin::DeclaredUnverified { requested_bytes, reason: "no observed private memory.high, memory.max or v1 hierarchical_memory_limit verifies the executor allowance; the declaration is a planning request, not an enforced process limit".to_string() };
+    }
+    HostBudgetJoin::Unreadable { reason: format!("no cgroup memory.high, memory.max or v1 hierarchical_memory_limit binds this process and GUNBC_MEMORY_BUDGET_BYTES cannot verify one (target_os={}), so the planning allowance is UNKNOWN. Refusing rather than admitting against the widest signal available: a host-shared reading is a number about the MACHINE, not about this slot, and admitting against one is the rc=137 SIGKILL this arm exists to prevent (BuildBuddy receipt 2026-08-30, gunbc.host_budget_source host_budget_source_seed_mirror_disposition). The executor must expose an enforceable limit; GUNBC_MEMORY_BUDGET_BYTES may only request a lower planning ceiling.", std::env::consts::OS) }
+}
+
+pub fn read_host_budget_bytes() -> (Option<u64>, String) {
+    let join = resolve_host_budget_join(
+        std::env::var("GUNBC_MEMORY_BUDGET_BYTES")
+            .ok()
+            .and_then(|s| s.trim().parse::<u64>().ok()),
+        host_budget_tightest_cgroup("memory.high"),
+        host_budget_tightest_cgroup("memory.max"),
+        host_budget_cgroup_v1(),
+        host_budget_darwin_physical(),
+    );
+    (join.bytes(), join.label())
+}
+
+#[derive(Clone)]
+pub enum HostBudgetCgroupV1 {
+    Limited(u64),
+    Unlimited,
+    Unparseable(String),
+}
+
+pub fn host_budget_tightest_cgroup_under(
+    self_cg: &str,
+    root: &std::path::Path,
+    limit_file: &str,
+) -> Option<(String, u64)> {
+    let rel = self_cg
+        .lines()
+        .find_map(|l| l.strip_prefix("0::"))
+        .map(|p| p.trim().trim_start_matches('/').to_string())?;
+    let mut dir = root.join(&rel);
+    let mut best: Option<(u64, std::path::PathBuf)> = None;
+    loop {
+        if let Ok(s) = std::fs::read_to_string(dir.join(limit_file)) {
+            let s = s.trim();
+            if s != "max" {
+                if let Ok(v) = s.parse::<u64>() {
+                    let take = best.as_ref().map(|(cur, _)| v < *cur).unwrap_or(true);
+                    if take {
+                        best = Some((v, dir.clone()));
+                    }
+                }
+            }
+        }
+        if dir == root || !dir.pop() {
+            break;
+        }
+    }
+    best.map(|(v, d)| (d.display().to_string(), v))
+}
+
+pub fn host_budget_tightest_cgroup(limit_file: &str) -> Option<(String, u64)> {
+    let self_cg = std::fs::read_to_string("/proc/self/cgroup").ok()?;
+    host_budget_tightest_cgroup_under(&self_cg, std::path::Path::new("/sys/fs/cgroup"), limit_file)
+}
+
+pub fn host_budget_cgroup_v1_unlimited_bytes(page_size: u64) -> u64 {
+    (i64::MAX as u64 / page_size) * page_size
+}
+
+pub fn host_budget_cgroup_v1() -> Option<(String, HostBudgetCgroupV1)> {
+    let self_cg = std::fs::read_to_string("/proc/self/cgroup").ok()?;
+    let mountinfo = std::fs::read_to_string("/proc/self/mountinfo").ok()?;
+    let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+    if page_size <= 0 {
+        return Some((
+            "/proc/self/mountinfo".to_string(),
+            HostBudgetCgroupV1::Unparseable("sysconf(_SC_PAGESIZE) unreadable".to_string()),
+        ));
+    }
+    host_budget_cgroup_v1_under(
+        std::path::Path::new("/"),
+        &self_cg,
+        &mountinfo,
+        page_size as u64,
+    )
+}
+
+pub fn host_budget_cgroup_v1_under(
+    fs_root: &std::path::Path,
+    self_cg: &str,
+    mountinfo: &str,
+    page_size: u64,
+) -> Option<(String, HostBudgetCgroupV1)> {
+    let dir = host_budget_cgroup_v1_memory_dir(self_cg, mountinfo)?;
+    let dir_path = std::path::Path::new(&dir);
+    let joined = fs_root.join(dir_path.strip_prefix("/").unwrap_or(dir_path));
+    let value = match std::fs::read_to_string(joined.join("memory.stat")) {
+        Ok(stat) => host_budget_cgroup_v1_from_stat(&stat, page_size),
+        Err(e) => HostBudgetCgroupV1::Unparseable(format!("memory.stat: {}", e)),
+    };
+    Some((joined.display().to_string(), value))
+}
+
+pub fn host_budget_cgroup_v1_memory_dir(self_cg: &str, mountinfo: &str) -> Option<String> {
+    let (mount_root, mount_point) = mountinfo.lines().find_map(|line| {
+        let fields: Vec<&str> = line.split(' ').collect();
+        let dash = fields.iter().position(|f| *f == "-")?;
+        let fstype = fields.get(dash + 1)?;
+        let super_opts = fields.get(dash + 3)?;
+        if *fstype == "cgroup" && super_opts.split(',').any(|o| o == "memory") {
+            Some((fields.get(3)?.to_string(), fields.get(4)?.to_string()))
+        } else {
+            None
+        }
+    })?;
+    let path = self_cg.lines().find_map(|l| {
+        let mut parts = l.splitn(3, ':');
+        let (_id, controllers, path) = (parts.next()?, parts.next()?, parts.next()?);
+        controllers
+            .split(',')
+            .any(|c| c == "memory")
+            .then(|| path.trim().to_string())
+    })?;
+    let rel = if mount_root == "/" {
+        path.as_str()
+    } else {
+        let rest = path.strip_prefix(mount_root.as_str())?;
+        if !(rest.is_empty() || rest.starts_with('/')) {
+            return None;
+        }
+        rest
+    };
+    Some(
+        std::path::Path::new(&mount_point)
+            .join(rel.trim_start_matches('/'))
+            .display()
+            .to_string(),
+    )
+}
+
+pub fn host_budget_cgroup_v1_from_stat(memory_stat: &str, page_size: u64) -> HostBudgetCgroupV1 {
+    let hits: std::vec::Vec<&str> = memory_stat
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("hierarchical_memory_limit "))
+        .collect();
+    let [body] = hits.as_slice() else {
+        return HostBudgetCgroupV1::Unparseable(memory_stat.to_string());
+    };
+    let unlimited = host_budget_cgroup_v1_unlimited_bytes(page_size);
+    match body.trim().parse::<i128>() {
+        Ok(n) if n < 0 => HostBudgetCgroupV1::Unparseable(body.to_string()),
+        Ok(n) if n >= unlimited as i128 => HostBudgetCgroupV1::Unlimited,
+        Ok(n) => HostBudgetCgroupV1::Limited(n as u64),
+        Err(_) => HostBudgetCgroupV1::Unparseable(body.to_string()),
+    }
+}
+
+/// Darwin `hw.memsize` via `sysctlbyname`. Authority: `extdeps.darwin.sysctl` `HwMemsize`.
+pub fn host_budget_darwin_physical() -> Option<u64> {
+    #[cfg(target_os = "macos")]
+    {
+        let name = std::ffi::CStr::from_bytes_with_nul(b"hw.memsize\0").ok()?;
+        let mut value: u64 = 0;
+        let mut len: libc::size_t = std::mem::size_of::<u64>() as libc::size_t;
+        let rc = unsafe {
+            libc::sysctlbyname(
+                name.as_ptr(),
+                (&mut value as *mut u64).cast::<libc::c_void>(),
+                &mut len,
+                std::ptr::null_mut(),
+                0,
+            )
+        };
+        if rc == 0 && value > 0 {
+            Some(value)
+        } else {
+            None
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
+    }
+}
