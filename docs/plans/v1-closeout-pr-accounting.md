@@ -7,8 +7,8 @@ As of 2026-10-09; it includes the operator's side-chat dispositions. There are 1
 | In the mega branch | 32 | Lands when #13641 lands |
 | Pending fold | 64 | On a manager's integration branch, with the conflict worker, or waiting for CI; folded into #13641 next |
 | Blocked | 4 | Needs an operator or host action first |
-| Left out | 44 | Not in the snapshot. Its remaining work is recorded under Outstanding work before the PR is closed; nothing is dropped |
-| Unreported, owned by a live lane | 4 | Waiting on that lane's report |
+| Left out | 46 | Not in the snapshot. Its remaining work is recorded under Outstanding work before the PR is closed; nothing is dropped |
+| Unreported, owned by a live lane | 2 | Waiting on that lane's report |
 | Orphans: no live owner | 13 | Triaged by the closeout: fold if done and clean, otherwise close |
 | Kept up by request | 1 | #13203 blackjack |
 
@@ -62,7 +62,6 @@ These are merged into `integration/v1-closeout`.
 | [#13615](https://github.com/gunb-ai/gunbc/pull/13615) | Delete unused memo and preparation carriers (native-memory-inert-carri | draft / CLEAN | conflict worker (stack; keep floor_preparation_witness_test.dag deleted) |
 | [#13608](https://github.com/gunb-ai/gunbc/pull/13608) | RFM: fixture-closure-union-emit suspected superlinear cost | ready / CLEAN | via eager-gull-22 |
 | [#13596](https://github.com/gunb-ai/gunbc/pull/13596) | target_invocation witness: repair two false claims; file the unplanned | ready / CLEAN | via eager-gull-22 |
-| [#13595](https://github.com/gunb-ai/gunbc/pull/13595) | Reclassify the match-arm proven-disjoint InternalError as a located Ty | draft / CLEAN | via eager-gull-22 |
 | [#13590](https://github.com/gunb-ai/gunbc/pull/13590) | Native ingest: refuse two files claiming one module path | ready / CLEAN | via eager-gull-22 |
 | [#13588](https://github.com/gunb-ai/gunbc/pull/13588) | std.change: import any and Present so its own names resolve natively | ready / CLEAN | via eager-gull-22 |
 | [#13586](https://github.com/gunb-ai/gunbc/pull/13586) | guarantee_stall: correct accumulator-copy native-resolve residue recei | ready / CLEAN | via eager-gull-22 |
@@ -75,16 +74,15 @@ These are merged into `integration/v1-closeout`.
 | [#13519](https://github.com/gunb-ai/gunbc/pull/13519) | stage0 witness bins: close compile subjects through the closure author | ready / CLEAN | via eager-gull-22 |
 | [#13517](https://github.com/gunb-ai/gunbc/pull/13517) | Managed-host cut O1c-3b: BmcSecure gated through the convergence fold | ready / DIRTY | via eager-gull-22 |
 | [#13507](https://github.com/gunb-ai/gunbc/pull/13507) | Board identity: bound host's FRU board reaches its per-board authority | ready / CLEAN | via eager-gull-22 |
-| [#13503](https://github.com/gunb-ai/gunbc/pull/13503) | Move AMI-bundle-derived MegaRAC content out of public gunbc | ready / BLOCKED | via eager-gull-22 |
 | [#13497](https://github.com/gunb-ai/gunbc/pull/13497) | Emit arrival_converge; IAM pair and pinned accessor (msg_f03558d1) | ready / CLEAN | via eager-gull-22 |
 | [#13341](https://github.com/gunb-ai/gunbc/pull/13341) | v2 parse: occurrence ids minted once per parse across a rejected attem | ready / CLEAN | via eager-gull-22 |
 | [#13333](https://github.com/gunb-ai/gunbc/pull/13333) | v2 resolve: the single-tree namespace binds its own variants and recor | ready / CLEAN | via eager-gull-22 |
 | [#13247](https://github.com/gunb-ai/gunbc/pull/13247) | mtcollins1 runner: boot leg, runner-host medium + runner-host-up termi | ready / BLOCKED | via eager-gull-22 |
 | [#13225](https://github.com/gunb-ai/gunbc/pull/13225) | mtcollins1 runner: extract qualification instruments from the run (leg | ready / DIRTY | via eager-gull-22 |
+| [#13503](https://github.com/gunb-ai/gunbc/pull/13503) | Move AMI-bundle-derived MegaRAC content out of public gunbc | ready / BLOCKED | eager-gull-22 (latest review on head approves; older REQUEST_CHANGES are on stale heads) |
 | [#13598](https://github.com/gunb-ai/gunbc/pull/13598) | Retire native_serve_request_budget_unrealized: native-serve holds the  | ready / CLEAN | gentle-dove-36 (with the conflict worker) |
 | [#13593](https://github.com/gunb-ai/gunbc/pull/13593) | File emitter defect: variant pattern nested inside Present drops the R | ready / CLEAN | gentle-dove-36 (with the conflict worker) |
 | [#13584](https://github.com/gunb-ai/gunbc/pull/13584) | Seed eval: empty list is not Unit | ready / CLEAN | gentle-dove-36 (with the conflict worker) |
-| [#13574](https://github.com/gunb-ai/gunbc/pull/13574) | Interim check-time refusal of list-read == Present{..} | ready / CLEAN | gentle-dove-36 (with the conflict worker) |
 | [#13567](https://github.com/gunb-ai/gunbc/pull/13567) | Emit algebra length on host String as string_length | ready / CLEAN | gentle-dove-36 (with the conflict worker) |
 | [#13549](https://github.com/gunb-ai/gunbc/pull/13549) | Fix every T? == T site the whole-population census found | ready / CLEAN | gentle-dove-36 (with the conflict worker) |
 | [#13454](https://github.com/gunb-ai/gunbc/pull/13454) | Native broker 2K-b: identity-keyed type_summaries; Host-Option decided | ready / CLEAN | gentle-dove-36 (with the conflict worker) |
@@ -119,6 +117,8 @@ These are merged into `integration/v1-closeout`.
 | [#13611](https://github.com/gunb-ai/gunbc/pull/13611) | demand engine: a request under a different nature is a durable key con | ready / CLEAN | side chat, folds when CI green |
 | [#13607](https://github.com/gunb-ai/gunbc/pull/13607) | Connect srv1 workspace VM lifecycle and kernel prerequisites | draft / BLOCKED | side chat, in progress: kernel activation/readback, VM commissioning + SSH, release/reuse/expiry checks, CI |
 | [#13597](https://github.com/gunb-ai/gunbc/pull/13597) | Make the crate partitioner the only emitted-Rust layout; delete single | draft / DIRTY | side chat, not yet done: needs a main merge + regen, the remaining acceptance runs, and a PR body update; folds once marked ready |
+| [#13428](https://github.com/gunb-ai/gunbc/pull/13428) | Carry the alias declaration: its name resolves to its target (ruling B | ready / CLEAN | with the sharp-raven fold worker (green, approved; conflicts in 03_normalize/body_lowering_fold) |
+| [#13643](https://github.com/gunb-ai/gunbc/pull/13643) | Census: cross-module record field values are judged (rcf pin rewritten | draft / BLOCKED | with the sharp-raven fold worker if its last check is green (census, approved) |
 
 ## Blocked
 
@@ -136,15 +136,18 @@ These are drafts, red, superseded or WIP, per the manager's report or a side cha
 | PR | Title | Draft / merge state | Note |
 | --- | --- | --- | --- |
 | [#13097](https://github.com/gunb-ai/gunbc/pull/13097) | G1: belt verify through the materialization provider; compute outcomes | ready / BLOCKED | bold-bee: red on T?==T sites until #13549; draft |
-| [#13604](https://github.com/gunb-ai/gunbc/pull/13604) | Prepare the required-floor gate once; project policy from that subject | draft / BLOCKED | eager-gull: left out |
-| [#13591](https://github.com/gunb-ai/gunbc/pull/13591) | Resolve free kernel calls to std.primitives identity; infer refuses th | draft / CLEAN | eager-gull: left out |
-| [#13576](https://github.com/gunb-ai/gunbc/pull/13576) | DRAFT: floor-control for #13575 (plan forged-probe census) | draft / UNSTABLE | eager-gull: left out |
-| [#13432](https://github.com/gunb-ai/gunbc/pull/13432) | [DO NOT MERGE] baseline control: fixture-closure union with only a KVM | draft / BLOCKED | eager-gull: left out |
-| [#13420](https://github.com/gunb-ai/gunbc/pull/13420) | Managed-host cut 5: fan, served-UI and KVM observations over ManagedHo | draft / BLOCKED | eager-gull: left out |
-| [#13391](https://github.com/gunb-ai/gunbc/pull/13391) | Refuse a product value at a kernel-scalar (or refined) declared type | ready / DIRTY | eager-gull: left out |
-| [#13288](https://github.com/gunb-ai/gunbc/pull/13288) | mtcollins1 runner: the dedicated runner-qualification group, ensured o | ready / CLEAN | eager-gull: left out |
-| [#13252](https://github.com/gunb-ai/gunbc/pull/13252) | mtcollins1 runner offer at measured one-socket shape + census meminfo  | ready / CLEAN | eager-gull: left out |
-| [#13211](https://github.com/gunb-ai/gunbc/pull/13211) | mtcollins1 runner: dispatch the floor to the attempt's slot and read t | ready / BLOCKED | eager-gull: left out |
+| [#13574](https://github.com/gunb-ai/gunbc/pull/13574) | Interim check-time refusal of list-read == Present{..} | ready / CLEAN | eager-gull: OPERATOR: reverted out (review 78262) |
+| [#13604](https://github.com/gunb-ai/gunbc/pull/13604) | Prepare the required-floor gate once; project policy from that subject | draft / BLOCKED | eager-gull: REQUEST_CHANGES review 78326 (hand .dag walker in seed); reverted |
+| [#13391](https://github.com/gunb-ai/gunbc/pull/13391) | Refuse a product value at a kernel-scalar (or refined) declared type | ready / DIRTY | eager-gull: REQUEST_CHANGES review 78347 (census missing); conflicts main |
+| [#13591](https://github.com/gunb-ai/gunbc/pull/13591) | Resolve free kernel calls to std.primitives identity; infer refuses th | draft / CLEAN | eager-gull: WIP stacked on #13588; native-cli unconfirmed |
+| [#13595](https://github.com/gunb-ai/gunbc/pull/13595) | Reclassify the match-arm proven-disjoint InternalError as a located Ty | draft / CLEAN | eager-gull: depends on #13574; reverted out |
+| [#13576](https://github.com/gunb-ai/gunbc/pull/13576) | DRAFT: floor-control for #13575 (plan forged-probe census) | draft / UNSTABLE | eager-gull: red draft control for #13575 |
+| [#13211](https://github.com/gunb-ai/gunbc/pull/13211) | mtcollins1 runner: dispatch the floor to the attempt's slot and read t | ready / BLOCKED | eager-gull: red: floor 90m cap in fixture-closure-union-emit; needs #13608 newer head 8ff94ca471 |
+| [#13420](https://github.com/gunb-ai/gunbc/pull/13420) | Managed-host cut 5: fan, served-UI and KVM observations over ManagedHo | draft / BLOCKED | eager-gull: red: floor stuck-floor pin; waits #13575 |
+| [#13432](https://github.com/gunb-ai/gunbc/pull/13432) | [DO NOT MERGE] baseline control: fixture-closure union with only a KVM | draft / BLOCKED | eager-gull: scratch baseline, DO NOT MERGE |
+| [#13288](https://github.com/gunb-ai/gunbc/pull/13288) | mtcollins1 runner: the dedicated runner-qualification group, ensured o | ready / CLEAN | eager-gull: stacked on #13211 |
+| [#13640](https://github.com/gunb-ai/gunbc/pull/13640) | mtcollins1 runner: dispatch floor to ephemeral slot + collect instrume | draft / DIRTY | eager-gull: superseded quiet-cat-583 WIP flush |
+| [#13252](https://github.com/gunb-ai/gunbc/pull/13252) | mtcollins1 runner offer at measured one-socket shape + census meminfo  | ready / CLEAN | eager-gull: waits on census boot measurement |
 | [#13475](https://github.com/gunb-ai/gunbc/pull/13475) | fold_list empty: [] no longer locks the accumulator as List<Unit> | draft / BLOCKED | gentle-dove: APPROVED (review 78364), fix judged sound; only CI red (4 failing). Closest to revivable |
 | [#13330](https://github.com/gunb-ai/gunbc/pull/13330) | Derived-node identity step 2, shape 2: unify_generics reads a containe | ready / BLOCKED | gentle-dove: REQUEST_CHANGES review 76999 (Bool predicate over DeclField in std/decl_ref.dag; inline it at the caller) |
 | [#13633](https://github.com/gunb-ai/gunbc/pull/13633) | Re-land #13255 (3rd conflict) + propose de-hotspotting native_emission | draft / DIRTY | gentle-dove: left out |
@@ -153,20 +156,19 @@ These are drafts, red, superseded or WIP, per the manager's report or a side cha
 | [#13632](https://github.com/gunb-ai/gunbc/pull/13632) | dusk qwen 3 | ready / BLOCKED | qwen: jq length(null)->0 fabricated default (DESIGN §5) |
 | [#13634](https://github.com/gunb-ai/gunbc/pull/13634) | C2 #13482: the seven review fixes (own-interface entries, lookup-first | draft / BLOCKED | royal-moth: left out |
 | [#13482](https://github.com/gunb-ai/gunbc/pull/13482) | C2: typecheck materialization through the local store | draft / CLEAN | royal-moth: left out |
+| [#13399](https://github.com/gunb-ai/gunbc/pull/13399) | Move the bottom seam to the leaf std.error_primitives; trim diverges t | draft / DIRTY | sharp-raven: APPROVED (review 76752); needs rebase on main + CI fix |
+| [#13426](https://github.com/gunb-ai/gunbc/pull/13426) | Foreign lexer reds: rust ingest bare +, TS single-quoted string body;  | draft / CLEAN | sharp-raven: APPROVED (review 76863); base #13425, never ran CI; easy pickup once sharp-raven is folded |
+| [#13284](https://github.com/gunb-ai/gunbc/pull/13284) | v2: kernel-String concat through a free-monoid structure bound on the  | ready / DIRTY | sharp-raven: APPROVED (review 76877); needs rebase + CI fix; unowned since XL-2 was cancelled |
 | [#13630](https://github.com/gunb-ai/gunbc/pull/13630) | Recover callee Arrow through Instantiation-grounding refusal | ready / CLEAN | sharp-raven: BLOCKING §5 fail-open: refused callee reaches eval body (reviews 78331/78359) |
-| [#13426](https://github.com/gunb-ai/gunbc/pull/13426) | Foreign lexer reds: rust ingest bare +, TS single-quoted string body;  | draft / CLEAN | sharp-raven: base #13425, never ran CI |
 | [#13558](https://github.com/gunb-ai/gunbc/pull/13558) | N7: derive payload-binder facts for construct-field consumption | ready / CLEAN | sharp-raven: base n7/payload-binder-combined-base, no CI (approved) |
-| [#13643](https://github.com/gunb-ai/gunbc/pull/13643) | Census: cross-module record field values are judged (rcf pin rewritten | draft / BLOCKED | sharp-raven: census, opened after wind-down (approved): candidate |
-| [#13642](https://github.com/gunb-ai/gunbc/pull/13642) | Census: quoted-key brace is not a record field at resolve, not lowerin | ready / BLOCKED | sharp-raven: census, opened after wind-down (approved): candidate |
+| [#13642](https://github.com/gunb-ai/gunbc/pull/13642) | Census: quoted-key brace is not a record field at resolve, not lowerin | ready / BLOCKED | sharp-raven: census, approved but CI red (2 failing) |
 | [#13541](https://github.com/gunb-ai/gunbc/pull/13541) | Retire v2.std.algebra filter/any onto the collection roster's callback | ready / DIRTY | sharp-raven: conflicts; 15 root scratch scripts (review 78343) |
-| [#13637](https://github.com/gunb-ai/gunbc/pull/13637) | XL-2 3c: enumerate ServiceSetAside consumers before delete-first | ready / BLOCKED | sharp-raven: docs-only 3c census (approved): easy pickup |
+| [#13637](https://github.com/gunb-ai/gunbc/pull/13637) | XL-2 3c: enumerate ServiceSetAside consumers before delete-first | ready / BLOCKED | sharp-raven: docs-only 3c census (approved); not merged per docs-only preference; input to unowned XL-2 3c |
 | [#13635](https://github.com/gunb-ai/gunbc/pull/13635) | XL-2 cleanup mgr | draft / BLOCKED | sharp-raven: duplicate of #13621 |
 | [#13548](https://github.com/gunb-ai/gunbc/pull/13548) | DRAFT: unimported-type import migration (source_reference_repoint) | ready / CLEAN | sharp-raven: plan only, empty roster, REQUEST_CHANGES 78338; reverted from the branch |
-| [#13399](https://github.com/gunb-ai/gunbc/pull/13399) | Move the bottom seam to the leaf std.error_primitives; trim diverges t | draft / DIRTY | sharp-raven: red, conflicts with main |
-| [#13284](https://github.com/gunb-ai/gunbc/pull/13284) | v2: kernel-String concat through a free-monoid structure bound on the  | ready / DIRTY | sharp-raven: red, conflicts with main |
-| [#13378](https://github.com/gunb-ai/gunbc/pull/13378) | std.unicode.scalar: partial from_code_point (typed refusal) + char_tex | ready / DIRTY | sharp-raven: red/stale vs #13453; take prep/13378-no-rung-drop (no PR) |
 | [#13377](https://github.com/gunb-ai/gunbc/pull/13377) | node_query: qualify the Cardinality/Optional references (import-level  | ready / BLOCKED | sharp-raven: red: DependencyView import turns off the bare channel (main defect from #13500) |
 | [#13430](https://github.com/gunb-ai/gunbc/pull/13430) | XL-2 PR2b: string templates — disjoint lexer, one ^dag_string_template | ready / BLOCKED | sharp-raven: red; tplscan scratch + WIP head (review 78344); waits on #13284 |
+| [#13378](https://github.com/gunb-ai/gunbc/pull/13378) | std.unicode.scalar: partial from_code_point (typed refusal) + char_tex | ready / DIRTY | sharp-raven: stack APPROVED (review 76866) but red/stale vs #13453; revive from prep/13378-no-rung-drop |
 | [#13623](https://github.com/gunb-ai/gunbc/pull/13623) | Type undeclared lambda actuals from preceding application formals (N7  | ready / CLEAN | sharp-raven: stacked on #13558, red on target (approved) |
 | [#13392](https://github.com/gunb-ai/gunbc/pull/13392) | Manual git R0 fixture: request the default -z records its decoders mod | draft / CLEAN | sharp-raven: stacked on red #13378 (approved) |
 | [#13390](https://github.com/gunb-ai/gunbc/pull/13390) | Split RFC 3986 §2.1 percent-coding into extdeps.uri.percent_encoding;  | draft / CLEAN | sharp-raven: stacked on red #13378 (approved) |
@@ -184,9 +186,7 @@ These are drafts, red, superseded or WIP, per the manager's report or a side cha
 
 | PR | Title | Draft / merge state | Note |
 | --- | --- | --- | --- |
-| [#13640](https://github.com/gunb-ai/gunbc/pull/13640) | mtcollins1 runner: dispatch floor to ephemeral slot + collect instrume | draft / DIRTY | eager-gull-22 (session quiet-stag-623) |
 | [#13516](https://github.com/gunb-ai/gunbc/pull/13516) | Managed-host cut O1c-3a: ManagedHostAdmission population with drop-arm | ready / CLEAN | eager-gull-22 (session eager-gull-22) |
-| [#13428](https://github.com/gunb-ai/gunbc/pull/13428) | Carry the alias declaration: its name resolves to its target (ruling B | ready / CLEAN | sharp-raven-357 (session sharp-raven-357) |
 | [#13212](https://github.com/gunb-ai/gunbc/pull/13212) | Starter eval set: .dag modeling and DESIGN.md adherence, graded mechan | ready / CLEAN | valiant-crab-775 (session valiant-crab-775) |
 
 ## Orphans
@@ -214,6 +214,8 @@ No live session owns these. The proposed disposition: a CLEAN, non-draft PR from
 | PR | Why |
 | --- | --- |
 | #13648 | Auto-opened on neat-boar-16's archive from stale branch pkg11b-fix: no merge base with main, and the only new commit is .probe_tmp scratch. Its rung drops and projection roster are already on main |
+| #13649, #13650, #13651, #13652, #13654 | Auto-opened or re-opened when managers were archived; content is in #13641, or a superseded duplicate (#13654 duplicates #13560) |
+| #13656 | deep-crab-89 wind-down WIP of the FQDN follow-up; self-contradictory (review 78372) |
 | #13636, #13644, #13646, #13647 | Auto-opened integration PRs. Their content is in #13641 (or, for #13647, deliberately left out) |
 | #13638 | Duplicate of #13430 |
 | #13552, #13555 | They build the BMC-hosted boot route, which was dropped; the srv13-16 naming is carried by #13570 |
@@ -236,7 +238,7 @@ This is work that has to go somewhere even though none of it merges now. Each ro
 | #13616 real-path receipt | bold-bee-114 | Capture the first srv2 tick after deploy; per-shard reads should be 1 |
 | #13632 jq fan-config migration | stern-boar-596 | Fix length(null)->0 with select(type==...); add a pure request seam and a route test |
 | Redfish/http.Client onto transport rest (was #13631) | stern-boar-596 | Restart from scratch; decide the credential model first |
-| #13626 follow-up: FQDN vs short slot label in the identity probe | stern-boar-596 | Decide whether to accept an FQDN; today it is a fail-closed refusal |
+| #13626 follow-up: FQDN vs short slot label in the identity probe | stern-boar-596 / deep-crab-89 | DECISION NEEDED: short (-s) or bare hostname. A WIP attempt (#13656, closed; branch session/deep-crab-89-followup @8255a8f1bd) contradicted itself (review 78372). Today the probe refuses fail-closed |
 | #13578 dusk-1 Qwen replica + failure classifier | swift-ibex-601 | Fix review 78337: a third placement arm, refusing an absent clock, the stale capacity claim |
 | #13430 XL-2 string templates (PR2b) | XL-2 lane (closed) | Unowned. Its REQUEST_CHANGES is stale; it needs #13436's named conversions |
 | #13613 Tailscale ACL grant for dusk-1 | side chat | Find the ambiguous name in tailscale_acl_witness |
@@ -260,7 +262,17 @@ This is work that has to go somewhere even though none of it merges now. Each ro
 | #13574 interim T?==T wall | gentle-dove-36 / eager-gull-22 | Review 78262: the approval cites escalation msg_66f62924, which can't be found; it recognizes List reads by leaf name, not declaration (§4). Keep or revert is with the operator |
 | #13265 type-param scope | gentle-dove-36 | Review 78367: without module-scope params, Result's `ok` binds to an unrelated fn ok (fabricated type). Don't land until binders carry the instantiated field type |
 | sharp-raven integration fold | closeout | integration/sharp-raven-357 @82d7624f5a conflicts with #13641 in ~200 files; a dedicated worker folds it after the conflict worker's PR lands |
-| srv2 v2-native census/frontier run | sharp-raven-357 for swift-bat-828 | Still running on srv2; nobody owns reading the result now |
+| srv2 v2-native census/frontier run on main d0f2067 | sharp-raven-357, owed to the operator | Relaunched detached as srv2 user unit v2native-census.service (invocation 43a0c64d4e45, MemoryMax=60G, ~25 min emit+build, then the corpus walk, 3h cap per instrument). Check: `ssh srv2 'systemctl --user status v2native-census; cat ~/rmain/v2native.exits'`; logs ~/rmain/v2-native-census.log and v2-native-frontier.log. Someone must read the result and report the stage-by-stage counts (swift-bat-828 is archived) |
+| LIVE MAIN DEFECT: #13500 made bare DependencyView ambiguous | sharp-raven-357 | Any closure with gunbc.roadmap.roadmap_hierarchy_view plus src/v2/lens/unused_parameters.dag or structural_resolution.dag refuses. Fix: full explicit import lists in those two lens files (#13377's partial import made it worse) |
+| N7 filesystem_io refuses in normalize (service_realization_unreachable) | sharp-raven-357 | Needs XL-2 3c (3b-ii is not sufficient). Census in #13637; forwarded to smart-gull-336. NOTE: the XL-2 lane is cancelled, so 3c is unowned |
+| v2-infer PRs validated only by the v1 floor | sharp-raven-357 | Only #13502 and #13308 execute native binaries. Cutting the floor removes the validator unless the claims move to a native job (smart-gull-336 has been told) |
+| Logged follow-ups | sharp-raven-357 | #13436 decimal_digit_of_reduced_units accepts out-of-range Int; #13320 ViaHomomorphism arm admits without installing a conversion; bash_orch_if Rejected=>"" fail-open (partly fixed by #13618) |
+| #13608 newer head 8ff94ca471 (deep-ram-343's emit fix: is_known_variant scan -> carried variant_to_enum; predicted emit 1500s -> 100-300s) | eager-gull-22 | Unverified, no CI. The snapshot takes #13608 at c7c3ef7744. #13211 needs the newer head |
+| eager-gull closed children | eager-gull-22 | bold-moth, warm-crane, zesty-wren, sleek-koi, sharp-ant and quiet-stag were closed before the no-close directive; their PRs are in this accounting via their re-homing |
+| #13548 unimported-type import migrate | sharp-raven-357 | Review 78338: a hand-listed roster of native bare spellings duplicates is_kernel_type/is_container_type; a second import-list scanner duplicates source_reference_repoint's. Consume both instead |
+| #13630 callee facts on the underived arm | sharp-raven-357 | Review 78359 (§5 fail-open): a refused contract keeps a denotation, so eval dispatches into the body. Gate eval on DerivedGrounding, or carry the recovered Arrow in a separate field |
+| #13541 filter/any retirement (337 files) | sharp-raven-357 | Delete the 15 root scratch scripts (review 78343), rebase, then give it a fresh full review |
+| #13637 XL-2 3c consumer census (docs-only, approved) | sharp-raven-357 | Not merged (docs-only preference; plans bankruptcy). It is the input to the unowned 3c deletion that clears N7 filesystem_io |
 | session/lively-wren-411 @6194f56012 | bold-bee-114 | Duplicate member_not_a_binder fix, superseded by #13560. No PR; delete the branch |
 | wise-koi-396 (shell-dag live-deploy restart-tailscale) | stern-boar-596 | Nothing was ever pushed; the work is unstarted |
 
@@ -295,7 +307,7 @@ This is work that has to go somewhere even though none of it merges now. Each ro
 
 ### Lanes not yet reported
 
-eager-gull-22 is finishing their integration branches. swift-bat-828 (state of CI) is in an error state and has 2 PRs. neat-boar-16's #12942 is in the mega branch, and its unowned follow-ups are in its memory note `pending/neat-boar-16-capacity-freeze.txt`, which still needs reading.
+eager-gull-22 is reverting #13574/#13595 and re-gating their integration branches. swift-bat-828 (state of CI) is in an error state and has 2 PRs. neat-boar-16's #12942 is in the mega branch, and its unowned follow-ups are in its memory note `pending/neat-boar-16-capacity-freeze.txt`, which still needs reading.
 
 ### swift-bat-828 branches (checked by a side chat)
 
@@ -308,6 +320,25 @@ The marshal projected-let drop; negative-literal verdict loss (#13289). Both fro
 ### Archive flush residue
 
 Archiving a session commits its leftover worktree files as a 'WIP' commit and pushes them. That happened on #13648 (.probe_tmp scratch) and #13634 (t_tmp.sh). Any archived manager's branch may carry such a tip commit. Check the tip before reviving or merging one of these branches.
+
+## Mega branch status and plan
+
+- #13641 is red only on the stale provisional v1_rt.rs (E0425/E0433). crisp-ant-863's #13653 (wave-2 conflicts, the #13574 revert, regen) fixes it.
+- Merge order from here: #13653 -> gate cut (smart-gull-336's new head of #13658) -> eager-gull-22's branch -> sharp-raven-357's branch (~200-file conflict, dedicated worker) -> #13657 re-verify.
+- #13655 (Second-typed retry/quota) is merged into the branch; review 78371's comment placement is fixed at 146bbbafdb5.
+
+Notes for the remaining merges:
+
+- #13545 (46 T?==T rewrites) overlaps #13600 and #13549 in witness files; either form is fine, keep one that compiles.
+- grounded_principal_witness: #13549 derives counts from ci_runner_sudo_binaries (keep that); then DROP #13545's floor_expected_red_chunk_grounded_principal_transcribed_counts (3 entries) if those claims pass.
+- #13428 (session/lively-bear-843, green, approved) also folds here; conflicts in 03_normalize.dag and body_lowering_fold.dag.
+- #13126 is the grammar-overlap final step; after the fold, the overlap count should be zero.
+- #13453 adds base-fact (claim_executor --base-fact) steps to witnesses.yml via compiler_gate_workflow. smart-gull-336's gate cut owns those files; when the cut is merged, its side wins and the v1-floor base-fact steps go with the floor.
+- #13643 (census, approved review 78351): fold if its pending check is green at fold time.
+- GATE CUT #13658 (smart-gull-336, head e1b851e5a8fb, base main d0f2067): once it's green on its own head, merge it into integration/v1-closeout; its side wins on dag/gunbc/witness/compiler_gate_workflow.dag and .github/workflows/witnesses.yml. OPERATOR RULING (via smart-gull-336): do NOT delete repo_self_slice_cost_control_command. Keep it and the v1_rt list_slice_tests RED/GREEN pair as a LOCAL-ONLY check, named in DESIGN.md's Building & checks local-checks row beside clippy and the v1 unit tests, preserved for later native migration.
+- #13658 head e1b851e5a8fb is SUPERSEDED: the operator wants emit-build + the aggregate collapsed into one required job named 'witnesses' that emits and builds both products fresh (restored native-product hits refused). Wait for smart-gull-336's new green head. Merge it into the mega branch AFTER #13653 (or via main if the operator lands it first); take its side whole on compiler_gate_workflow.dag + witnesses.yml, then regen.
+- After the cut, no required lane checks generated-artifact drift: run tools.generated_artifact_gate main (remotely) before pushing any wave.
+- v1 regen: one emission round (operator 2026-10-04); no fixed-point loop.
 
 ## Notes
 
