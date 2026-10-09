@@ -1,0 +1,61 @@
+module test.claim.candidate_script_emission_refusal
+
+import std.types { Bool, String, List }
+import std.optional { Present, Absent }
+import v2.std.node { Node }
+import v2.extdeps.languages.bash_build { bash_build_stmt_list_from_nodes }
+import gunbc.fleet_release_bins_key { cmdl, release_bins_emitted, release_bins_script_text }
+import gunbc.fleet_desired_candidate { candidate_script_row, candidate_script_text, candidate_scripts_refusal }
+
+// A REFUSED SCRIPT EMISSION MUST REFUSE, NEVER VANISH. The subject is the reading of
+// v2.workflow.bash_emit's Rejected outcome by the workflow script producers:
+// gunbc.fleet_desired_candidate candidate_script_text / candidate_scripts_refusal and
+// gunbc.fleet_release_bins_key release_bins_script_text. The supplied refused input is the one that
+// reached production on #13453: a statement list nested directly in a statement list, which the bash
+// grammar has no production for. Before this change both producers read that refusal as "", so the
+// generated step carried no script and the workflow kept no trace of why; only the generated-artifact
+// drift gate noticed the step had gone.
+
+fn refused_statements() -> List<Node> {
+  [bash_build_stmt_list_from_nodes(stmts: [cmdl(ls: ["echo", "nested"])])]
+}
+
+fn accepted_statements() -> List<Node> {
+  [cmdl(ls: ["echo", "fine"])]
+}
+
+// RED on the pre-fix reading (it answered ""): the step's text is a runtime refusal naming the fold's reason.
+test fn a_refused_candidate_script_is_a_refusing_step_not_an_empty_one() -> Bool {
+  let t = candidate_script_text(row: candidate_script_row(script: "probe.refused_script", statements: refused_statements()))
+  string_contains(s: t, pattern: "ScriptEmissionRefused")
+    && string_contains(s: t, pattern: "probe.refused_script")
+    && string_contains(s: t, pattern: "grammar_relation_production_not_found")
+    && string_contains(s: t, pattern: "exit 1")
+}
+
+// Generation refuses on the refused row, naming it -- not the accepted row before it.
+test fn a_refused_candidate_script_refuses_workflow_generation() -> Bool {
+  match candidate_scripts_refusal(rows: [
+    candidate_script_row(script: "probe.accepted_script", statements: accepted_statements()),
+    candidate_script_row(script: "probe.refused_script", statements: refused_statements()),
+  ]) {
+    Present { value: r } => string_contains(s: r, pattern: "probe.refused_script") && !string_contains(s: r, pattern: "probe.accepted_script")
+    Absent => false
+  }
+}
+
+// Positive control: accepted rows refuse nothing, and their text is the fold's script itself.
+test fn accepted_candidate_scripts_refuse_nothing_and_carry_the_emitted_text() -> Bool {
+  let row = candidate_script_row(script: "probe.accepted_script", statements: accepted_statements())
+  let none_refused = match candidate_scripts_refusal(rows: [row]) {
+    Present { value: _ } => false
+    Absent => true
+  }
+  none_refused && string_contains(s: candidate_script_text(row: row), pattern: "fine") && !string_contains(s: candidate_script_text(row: row), pattern: "ScriptEmissionRefused")
+}
+
+// The release-bins runners read the same outcome through release_bins_script_text: RED pre-fix ("").
+test fn a_refused_release_bins_runner_is_a_refusing_step_not_an_empty_one() -> Bool {
+  let t = release_bins_script_text(outcome: release_bins_emitted(statements: refused_statements()))
+  string_contains(s: t, pattern: "ScriptEmissionRefused") && string_contains(s: t, pattern: "exit 1")
+}
