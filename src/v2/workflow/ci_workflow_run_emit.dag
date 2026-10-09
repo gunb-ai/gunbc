@@ -21,16 +21,33 @@ import v2.std.collection { Absent }
 import v2.std.diagnostic { Accepted, Rejected, None, Some }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.ci_isolated_toolchain_home_layout {
+  ci_isolated_cargo_home_segment,
+  ci_isolated_rustup_home_segment,
+  ci_isolated_home_shell_path
+}
 
 data ci_workflow_run_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ ci_workflow run-step emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN 5: refuse, never widen)\n"
 
-data ci_isolate_rm_rustup_cargo_command: String = "rm -rf \"$RUNNER_TEMP/rustup\" \"$RUNNER_TEMP/cargo\""
+data ci_isolate_rm_rustup_cargo_command: String = concat(
+  concat(
+    concat("rm -rf \"", ci_isolated_home_shell_path(segment: ci_isolated_rustup_home_segment)),
+    concat("\" \"", ci_isolated_home_shell_path(segment: ci_isolated_cargo_home_segment))
+  ),
+  "\""
+)
 
 data ci_isolate_echo_home_command: String = "echo \"HOME=$RUNNER_TEMP\" >> \"$GITHUB_ENV\""
 
-data ci_isolate_echo_cargo_home_command: String = "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\""
+data ci_isolate_echo_cargo_home_command: String = concat(
+  concat("echo \"CARGO_HOME=", ci_isolated_home_shell_path(segment: ci_isolated_cargo_home_segment)),
+  "\" >> \"$GITHUB_ENV\""
+)
 
-data ci_isolate_echo_rustup_home_command: String = "echo \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\""
+data ci_isolate_echo_rustup_home_command: String = concat(
+  concat("echo \"RUSTUP_HOME=", ci_isolated_home_shell_path(segment: ci_isolated_rustup_home_segment)),
+  "\" >> \"$GITHUB_ENV\""
+)
 
 // Durable native-artifact cache root (extdeps.realization.native_artifact_cache,
 // PerRunnerFilesystem): RUNNER_TOOL_CACHE survives the per-run RUNNER_TEMP wipe on self-hosted

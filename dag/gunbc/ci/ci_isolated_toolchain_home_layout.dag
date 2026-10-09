@@ -1,0 +1,19 @@
+module gunbc.ci_isolated_toolchain_home_layout
+
+import std.types { String }
+
+// ONE LAYOUT FOR THE PER-SLOT TOOLCHAIN HOMES. Isolation shell, GHA remap FROM paths, and
+// the canonical remap TO prefix all read these segments. Changing a segment moves every
+// consumer; a remap that named a different directory than isolation created would embed
+// host paths in the seed and silently MISS every cross-host native-product lookup.
+
+data ci_isolated_cargo_home_segment: String = "cargo"
+data ci_isolated_rustup_home_segment: String = "rustup"
+
+fn ci_isolated_home_shell_path(segment: String) -> String {
+  join(["$RUNNER_TEMP/", segment], "")
+}
+
+fn ci_isolated_home_gha_suffix(segment: String) -> String {
+  join(["/", segment], "")
+}

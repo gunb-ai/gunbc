@@ -6,6 +6,11 @@ import extdeps.github.expressions {
   HashFiles,
   serialize_template, runner_os, runner_arch, runner_temp, github_workspace
 }
+import gunbc.ci_isolated_toolchain_home_layout {
+  ci_isolated_cargo_home_segment,
+  ci_isolated_rustup_home_segment,
+  ci_isolated_home_gha_suffix
+}
 
 fn ci_cache_hash_files() -> Expression {
   FunctionCall {
@@ -30,25 +35,25 @@ data ci_github_workspace_template: ExpressionTemplate = {
 data ci_isolated_cargo_home_template: ExpressionTemplate = {
   segments: [
     Interpolation { expression: runner_temp() },
-    LiteralText { text: "/cargo" }
+    LiteralText { text: ci_isolated_home_gha_suffix(segment: ci_isolated_cargo_home_segment) }
   ]
 }
 
 data ci_isolated_rustup_home_template: ExpressionTemplate = {
   segments: [
     Interpolation { expression: runner_temp() },
-    LiteralText { text: "/rustup" }
+    LiteralText { text: ci_isolated_home_gha_suffix(segment: ci_isolated_rustup_home_segment) }
   ]
 }
 
 data ci_cache_path_template: ExpressionTemplate = {
   segments: [
     Interpolation { expression: runner_temp() },
-    LiteralText { text: "/cargo/registry/index/\n" },
+    LiteralText { text: join([ci_isolated_home_gha_suffix(segment: ci_isolated_cargo_home_segment), "/registry/index/\n"], "") },
     Interpolation { expression: runner_temp() },
-    LiteralText { text: "/cargo/registry/cache/\n" },
+    LiteralText { text: join([ci_isolated_home_gha_suffix(segment: ci_isolated_cargo_home_segment), "/registry/cache/\n"], "") },
     Interpolation { expression: runner_temp() },
-    LiteralText { text: "/cargo/git/db/\ntarget/" }
+    LiteralText { text: join([ci_isolated_home_gha_suffix(segment: ci_isolated_cargo_home_segment), "/git/db/\ntarget/"], "") }
   ]
 }
 

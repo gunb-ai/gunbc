@@ -20,6 +20,22 @@ import gunbc.toolchain_home_standing {
   WorkflowToolchainHomeRefused,
 }
 import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step }
+import v2.workflow.ci_workflow_run_emit {
+  ci_isolate_echo_cargo_home_command,
+  ci_isolate_echo_rustup_home_command
+}
+import gunbc.ci_isolated_toolchain_home_layout {
+  ci_isolated_cargo_home_segment,
+  ci_isolated_rustup_home_segment,
+  ci_isolated_home_shell_path,
+  ci_isolated_home_gha_suffix
+}
+import gunbc.ci_workflow_expressions {
+  ci_github_workspace,
+  ci_isolated_cargo_home,
+  ci_isolated_rustup_home
+}
+import gunbc.repo_self_warning_policy { repo_self_seed_build_rustflags }
 import gunbc.witness_floor_workflow { witness_floor_workflow }
 import gunbc.fleet_converge_workflow { fleet_converge_workflow }
 import gunbc.fleet_desired_admission_workflow { fleet_desired_admission_workflow }
@@ -247,4 +263,33 @@ test fn every_fleet_converge_yml_job_carries_a_toolchain_home_standing() -> Bool
 
 test fn every_fleet_desired_yml_job_carries_a_toolchain_home_standing() -> Bool {
   workflow_is_admitted(workflow: fleet_desired_admission_workflow)
+}
+
+// Isolation shell and seed rustflags remap FROM/TO must name the same layout segments.
+// A remap that pointed at a different directory than isolation created would embed host
+// paths in the seed with no typed refusal — producer_compiler would MISS across hosts.
+test fn isolation_shell_and_seed_remap_share_the_isolated_home_layout() -> Bool {
+  let flags = repo_self_seed_build_rustflags(
+    checkout: ci_github_workspace(),
+    cargo_home: ci_isolated_cargo_home(),
+    rustup_home: ci_isolated_rustup_home()
+  )
+  string_contains(
+    s: ci_isolate_echo_cargo_home_command,
+    pattern: ci_isolated_home_shell_path(segment: ci_isolated_cargo_home_segment)
+  )
+    && string_contains(
+      s: ci_isolate_echo_rustup_home_command,
+      pattern: ci_isolated_home_shell_path(segment: ci_isolated_rustup_home_segment)
+    )
+    && string_contains(s: flags, pattern: ci_isolated_cargo_home())
+    && string_contains(s: flags, pattern: ci_isolated_rustup_home())
+    && string_contains(
+      s: flags,
+      pattern: ci_isolated_home_gha_suffix(segment: ci_isolated_cargo_home_segment)
+    )
+    && string_contains(
+      s: flags,
+      pattern: ci_isolated_home_gha_suffix(segment: ci_isolated_rustup_home_segment)
+    )
 }

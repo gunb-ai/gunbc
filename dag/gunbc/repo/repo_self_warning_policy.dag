@@ -1,6 +1,11 @@
 module gunbc.repo_self_warning_policy
 
 import std.types { String, List }
+import gunbc.ci_isolated_toolchain_home_layout {
+  ci_isolated_cargo_home_segment,
+  ci_isolated_rustup_home_segment,
+  ci_isolated_home_gha_suffix
+}
 
 // THAT A WARNING IS AN ERROR IS ONE FACT ABOUT THIS REPOSITORY, SPELLED ONCE. It reaches rustc
 // two ways: as the lint arguments after clippy's `--` separator (gunbc.repo_self_build
@@ -37,25 +42,28 @@ fn repo_self_warning_denial_rustflags() -> String {
 }
 
 data repo_self_seed_checkout_remap_to: String = "."
-data repo_self_seed_cargo_home_remap_to: String = "/cargo"
-data repo_self_seed_rustup_home_remap_to: String = "/rustup"
 
 fn rustc_remap_path_prefix_flag(from: String, to: String) -> String {
   join(["--remap-path-prefix=", from, "=", to], "")
 }
 
-// SEED PATH REMAP FOR BYTE-IDENTICAL RELEASE BINARIES. The FROM paths are parameters
-// (checkout, isolated cargo home, isolated rustup home); this row does not mention
-// GitHub Actions. Callers in the workflow generators supply the serialized GHA
-// expressions. Measured: two checkouts with two CARGO_HOMEs, remapped to `.` and
-// `/cargo`, produced identical gunbc SHA-256.
+// SEED PATH REMAP. FROM paths are parameters supplied by the workflow generators (serialized
+// GHA expressions over the same isolated-home layout isolation consumes). TO for cargo and
+// rustup is `ci_isolated_home_gha_suffix` of that layout's segments, so a segment change
+// moves isolation and remap together.
 fn repo_self_seed_build_rustflags(checkout: String, cargo_home: String, rustup_home: String) -> String {
   join(
     [
       repo_self_warning_denial_rustflags(),
       rustc_remap_path_prefix_flag(from: checkout, to: repo_self_seed_checkout_remap_to),
-      rustc_remap_path_prefix_flag(from: cargo_home, to: repo_self_seed_cargo_home_remap_to),
-      rustc_remap_path_prefix_flag(from: rustup_home, to: repo_self_seed_rustup_home_remap_to)
+      rustc_remap_path_prefix_flag(
+        from: cargo_home,
+        to: ci_isolated_home_gha_suffix(segment: ci_isolated_cargo_home_segment)
+      ),
+      rustc_remap_path_prefix_flag(
+        from: rustup_home,
+        to: ci_isolated_home_gha_suffix(segment: ci_isolated_rustup_home_segment)
+      )
     ],
     " "
   )
