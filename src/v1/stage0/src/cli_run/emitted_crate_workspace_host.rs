@@ -158,12 +158,12 @@ pub fn run_emitted_crate_workspace(
     let target_dir = probe_root
         .target_dir()
         .join("emitted_crate_workspace_target");
+    // POSITIVE CONTROL: the production layout builds. The files land first: the compiler
+    // identity is asked from the crate's own directory, which must exist to spawn in.
+    write_files(&root, &realized.files)?;
     let invocation =
         super::emitted_closure_compile_host::probe_cargo_invocation(&root, &target_dir)
             .map_err(|c| refusal("CargoNotResolved", c))?;
-
-    // POSITIVE CONTROL: the production layout builds.
-    write_files(&root, &realized.files)?;
     let green = super::emitted_closure_compile_host::run_cargo(&root, &target_dir, &red.to_module);
     let (green_exit_status, green_warning_count) = match &green {
         super::emitted_closure_compile_host::CargoVerdict::Completed {
