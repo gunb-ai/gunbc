@@ -23,8 +23,8 @@ test fn the_merge_queue_run_is_admitted_to_the_write_federation() -> Bool {
 // The refusing controls: a pull_request event, another repository and a missing event are each refused.
 test fn a_pull_request_or_foreign_run_is_refused_by_the_write_federation() -> Bool {
   let pins = native_product_write_claim_pins()
-  let pr = map(pins, p => if (p.claim as String) == "event_name" { OidcClaimPin { claim: p.claim, value: "pull_request" } } else { p })
-  let foreign = map(pins, p => if (p.claim as String) == "repository_id" { OidcClaimPin { claim: p.claim, value: "1" } } else { p })
+  let pr = map(pins, p => if (p.claim as String) == "event_name" { OidcClaimPin { claim: p.claim, value: "pull_request", relation: p.relation } } else { p })
+  let foreign = map(pins, p => if (p.claim as String) == "repository_id" { OidcClaimPin { claim: p.claim, value: "1", relation: p.relation } } else { p })
   let no_event = filter(pins, p => (p.claim as String) != "event_name")
   !claim_pins_admit(pins: pins, claims: pr) && !claim_pins_admit(pins: pins, claims: foreign) && !claim_pins_admit(pins: pins, claims: no_event)
 }

@@ -20,11 +20,12 @@ test fn w_unknown_printer_never_selects_a_default_machine() -> Bool {
   match select_printer(name: "printer-03") { PrinterSelectionRefused => true  PrinterSelected { printer: _ } => false }
 }
 
-test fn w_printer_federation_rejects_other_workflow_branch_and_environment() -> Bool {
+test fn w_printer_federation_rejects_other_workflow_tag_and_environment() -> Bool {
   let pins = printer_claim_pins()
   claim_pins_admit(pins: pins, claims: pins) &&
-  !claim_pins_admit(pins: pins, claims: map(pins, p => if p.claim == "ref" { OidcClaimPin { claim: p.claim, value: "refs/heads/untrusted" } } else { p })) &&
-  !claim_pins_admit(pins: pins, claims: map(pins, p => if p.claim == "environment" { OidcClaimPin { claim: p.claim, value: "namecheap-dns" } } else { p })) &&
+  claim_pins_admit(pins: pins, claims: map(pins, p => if p.claim == "workflow_ref" { OidcClaimPin { claim: p.claim, value: concat(p.value, "session/x"), relation: p.relation } } else { p })) &&
+  !claim_pins_admit(pins: pins, claims: map(pins, p => if p.claim == "workflow_ref" { OidcClaimPin { claim: p.claim, value: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/tags/x", relation: p.relation } } else { p })) &&
+  !claim_pins_admit(pins: pins, claims: map(pins, p => if p.claim == "environment" { OidcClaimPin { claim: p.claim, value: "namecheap-dns", relation: p.relation } } else { p })) &&
   !claim_pins_admit(pins: pins, claims: filter(pins, p => p.claim != "workflow_ref"))
 }
 

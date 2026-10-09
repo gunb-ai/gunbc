@@ -214,10 +214,7 @@ import gunbc.clock_read { clock_now_probed_at }
 import gunbc.actions_run_binding {
   ActionsRunBinding, observe_actions_run_binding, ActionsRunBound, ActionsRunUnbound,
   actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent,
-  read_expected_revision,
-  ExpectedRevisionPresent,
-  ExpectedRevisionAbsent,
-  admit_run_revision,
+  admit_optional_expected_revision,
   RunRevisionAdmitted,
   RunRevisionRefused,
   fleet_converge_expected_host_env_name,
@@ -823,14 +820,10 @@ fn fleet_converge_scoped_plan_wet(scope: FleetConvergeScope) -> ProcessExit
     ActionsRunUnbound { variable: v, detail: d } =>
       exit_failure(reason: join(["fleet_converge_plan: RunUnbound — ", v, " ", d, "; the plan mode mints a run-bound receipt and runs only inside the fleet-converge workflow"], ""))
     ActionsRunBound { binding: run } =>
-      match read_expected_revision() {
-        ExpectedRevisionAbsent =>
-          exit_failure(reason: "fleet_converge_plan: ExpectedRevisionAbsent — RLM_EXPECTED_REVISION is required so the plan run is bound to the operator-selected R, not merely to whatever ref was dispatched")
-        ExpectedRevisionPresent { revision: expected_r } =>
-          match admit_run_revision(binding: run, expected: expected_r) {
-            RunRevisionRefused { expected: e, observed: o } =>
-              exit_failure(reason: join(["fleet_converge_plan: RunRevisionRefused — expected ", e, " but this run checked out ", o], ""))
-            RunRevisionAdmitted { revision: _ } =>
+      match admit_optional_expected_revision(binding: run) {
+        RunRevisionRefused { expected: e, observed: o } =>
+          exit_failure(reason: join(["fleet_converge_plan: RunRevisionRefused — expected ", e, " but this run checked out ", o], ""))
+        RunRevisionAdmitted { revision: _ } =>
       match actions_variable_read(name: fleet_converge_expected_host_env_name) {
         ActionsVariableAbsent { variable: v, detail: d } =>
           exit_failure(reason: join(["fleet_converge_plan: ExpectedHostAbsent — ", v, " ", d], ""))
@@ -841,7 +834,6 @@ fn fleet_converge_scoped_plan_wet(scope: FleetConvergeScope) -> ProcessExit
             scope: scope,
           )
       }
-          }
       }
   }
 }
@@ -1015,14 +1007,10 @@ fn fleet_converge_apply_wet() -> ProcessExit
     ActionsRunUnbound { variable: v, detail: d } =>
       exit_failure(reason: join(["fleet_converge_apply: RunUnbound — ", v, " ", d, "; the apply mode mints a run-bound receipt and runs only inside the fleet-converge workflow"], ""))
     ActionsRunBound { binding: run } =>
-      match read_expected_revision() {
-        ExpectedRevisionAbsent =>
-          exit_failure(reason: "fleet_converge_apply: ExpectedRevisionAbsent — RLM_EXPECTED_REVISION is required; without it apply can mutate srv1 at a revision the operator never selected")
-        ExpectedRevisionPresent { revision: expected_r } =>
-          match admit_run_revision(binding: run, expected: expected_r) {
-            RunRevisionRefused { expected: e, observed: o } =>
-              exit_failure(reason: join(["fleet_converge_apply: RunRevisionRefused — expected ", e, " but this run checked out ", o, "; refusing before the locked actuator"], ""))
-            RunRevisionAdmitted { revision: admitted_r } =>
+      match admit_optional_expected_revision(binding: run) {
+        RunRevisionRefused { expected: e, observed: o } =>
+          exit_failure(reason: join(["fleet_converge_apply: RunRevisionRefused — expected ", e, " but this run checked out ", o, "; refusing before the locked actuator"], ""))
+        RunRevisionAdmitted { revision: admitted_r } =>
       match actions_variable_read(name: fleet_converge_plan_run_id_env_name) {
         ActionsVariableAbsent { variable: v, detail: d } =>
           exit_failure(reason: join(["fleet_converge_apply: PlanRunIdAbsent — ", v, " ", d], ""))
@@ -1034,7 +1022,6 @@ fn fleet_converge_apply_wet() -> ProcessExit
               fleet_converge_apply_bound_wet(run: run, plan_run_id: plan_run_id, plan_receipt: plan_receipt, expected_revision_admitted: admitted_r)
           }
       }
-          }
       }
   }
 }
@@ -1336,14 +1323,10 @@ data fleet_converge_operator_mode_plan: String = "plan"
 data fleet_converge_operator_mode_apply: String = "apply"
 data fleet_converge_operator_mode_deploy: String = "deploy"
 
-// THE DEPLOY CANDIDATE IS HEAD OF THE CHECKOUT BEING EXECUTED, so the branch that checkout is on
-// is workflow policy and it is asked explicitly. The workflow deploys from main; an operator who
-// wants a different branch on the dashboard says so with --candidate-branch, and the value is
-// compared to the observed branch rather than trusted. An empty requirement refuses rather than
-// admitting whatever HEAD happens to be, because "any branch" is the one policy that must never
-// be the default of a command that restarts the served dashboard.
+// THE DEPLOY CANDIDATE IS HEAD OF THE CHECKOUT BEING EXECUTED. An empty --candidate-branch admits
+// the observed branch (dev-branch deploy). A named requirement still has to equal the checkout.
 fn fleet_converge_deploy_branch_admits(observed: String, required: String) -> Bool {
-  trim(s: required) != "" && trim(s: observed) == trim(s: required)
+  trim(s: observed) != "" && (trim(s: required) == "" || trim(s: observed) == trim(s: required))
 }
 
 fn fleet_converge_operator_cli_entry(

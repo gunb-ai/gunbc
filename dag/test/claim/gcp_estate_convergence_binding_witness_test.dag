@@ -18,30 +18,34 @@ fn dispatch_claims() -> List<OidcClaimPin> {
 }
 
 fn with_claim(claim: String, value: String) -> List<OidcClaimPin> {
-  map(fleet_convergence_claim_pins(), p => if (p.claim as String) == claim { OidcClaimPin { claim: p.claim, value: value } } else { p })
+  map(fleet_convergence_claim_pins(), p => if (p.claim as String) == claim { OidcClaimPin { claim: p.claim, value: value, relation: p.relation } } else { p })
 }
 
-// Accepting control: the fleet-converge workflow dispatched at main is admitted.
+// Accepting control: the fleet-converge workflow dispatched on main or a session branch is admitted.
 test fn the_fleet_converge_dispatch_at_main_is_admitted() -> Bool {
   claim_pins_admit(pins: fleet_convergence_claim_pins(), claims: dispatch_claims())
 }
 
-// Refusing controls: a pull request, the merge queue, a main-ref job of another workflow (heal-publish,
-// witnesses), a branch dispatch and another repository each fail a pin.
+test fn a_session_branch_dispatch_is_admitted() -> Bool {
+  claim_pins_admit(pins: fleet_convergence_claim_pins(), claims: with_claim("workflow_ref", "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/session/x"))
+}
+
+// Refusing controls: a pull request, the merge queue, another workflow, a tag dispatch and another
+// repository each fail a pin. A pull-merge ref is not a heads prefix.
 test fn no_other_run_is_admitted() -> Bool {
   let pins = fleet_convergence_claim_pins()
   !claim_pins_admit(pins: pins, claims: with_claim("event_name", "pull_request"))
     && !claim_pins_admit(pins: pins, claims: with_claim("event_name", "merge_group"))
     && !claim_pins_admit(pins: pins, claims: with_claim("event_name", "workflow_run"))
     && !claim_pins_admit(pins: pins, claims: with_claim("workflow_ref", "gunb-ai/gunbc/.github/workflows/witnesses.yml@refs/heads/main"))
-    && !claim_pins_admit(pins: pins, claims: with_claim("workflow_ref", "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/session/x"))
-    && !claim_pins_admit(pins: pins, claims: with_claim("ref", "refs/pull/13509/merge"))
+    && !claim_pins_admit(pins: pins, claims: with_claim("workflow_ref", "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/tags/x"))
+    && !claim_pins_admit(pins: pins, claims: with_claim("workflow_ref", "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/pull/13509/merge"))
     && !claim_pins_admit(pins: pins, claims: with_claim("repository_id", "1"))
 }
 
-test fn the_condition_names_the_workflow_and_the_dispatch() -> Bool {
+test fn the_condition_names_the_workflow_prefix_and_the_dispatch() -> Bool {
   let c = fleet_convergence_attribute_condition()
-  c.contains("assertion.workflow_ref == ") && c.contains("fleet-converge.yml@refs/heads/main") && c.contains("assertion.event_name == 'workflow_dispatch'")
+  c.contains("assertion.workflow_ref.startsWith(") && c.contains("fleet-converge.yml@refs/heads/") && c.contains("assertion.event_name == 'workflow_dispatch'") && !c.contains("assertion.ref ==")
 }
 
 // The estate binding, the consumers' provider and the converge target all name the pinned federation,

@@ -10,7 +10,7 @@ import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_attribute_condition
 // The plan must read before anyone approves, so the job needs a credential of its own; it gets the
 // managed-host boot's construction (gunbc.auth.managed_host_boot_federation) for the same reasons -- a
 // DEDICATED POOL WITH ONE PROVIDER, the job pinned by its `environment` claim beside the workflow
-// file at main and a dispatch on main, never the repo-wide pool whose principals every job in the
+// file on a heads ref and a workflow_dispatch, never the repo-wide pool whose principals every job in the
 // repository can become. The accounts it reaches are iam-observe, which reads policies and changes
 // nothing, and iam-converge, which the job impersonates only after a live approval.
 //
