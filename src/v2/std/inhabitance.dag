@@ -438,6 +438,10 @@ fn inhabitance_application_refusal_reason(
   }
 }
 
+fn undecidable_generic_formal() -> InhabitanceUndecidableReason {
+  UndecidableGenericFormal
+}
+
 fn undecidable_formal_unresolved() -> InhabitanceUndecidableReason {
   UndecidableFormalUnresolved
 }
