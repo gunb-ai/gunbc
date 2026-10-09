@@ -259,7 +259,7 @@ pub fn oci_wire_digest_parts(raw: String) -> Option<Rc<OciWireDigestParts>> {
             std::option::Option::None
         } else {
             match parts.clone().first().cloned() {
-                Some(algorithm) => match parts.clone().iter().cloned().skip(1 as usize).next() {
+                Some(algorithm) => match parts.clone().get((1) as usize).cloned() {
                     Some(encoded) => Some(oci_wire_digest_parts_from_split(
                         algorithm.clone(),
                         encoded.clone(),

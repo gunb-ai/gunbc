@@ -358,12 +358,7 @@ pub fn iteration_element_name(
     {
         let params = crate::v1_std_core::lambda_param_names_at(lambda.clone(), si.clone());
         match method_callback_element_position(method_semantics.clone()) {
-            Some(pos) => params
-                .clone()
-                .iter()
-                .cloned()
-                .skip(pos.clone() as usize)
-                .next(),
+            Some(pos) => params.clone().get((pos.clone()) as usize).cloned(),
             std::option::Option::None => std::option::Option::None,
         }
     }
@@ -10206,10 +10201,8 @@ pub fn merge_param_evidence(
         DescentEvidence::Strict,
         |acc: DescentEvidence, call_evidence: Rc<Vec<Rc<SubValueRelation>>>| match call_evidence
             .clone()
-            .iter()
+            .get((param_index.clone()) as usize)
             .cloned()
-            .skip(param_index.clone() as usize)
-            .next()
         {
             Some(rel) => crate::std_termination::descent_evidence_lattice_meet(
                 acc.clone(),
@@ -10232,10 +10225,8 @@ pub fn extract_shrink_factor(
             std::option::Option::None => std::option::Option::None,
             Some(prev) => match call_evidence
                 .clone()
-                .iter()
+                .get((param_index.clone()) as usize)
                 .cloned()
-                .skip(param_index.clone() as usize)
-                .next()
             {
                 Some(rel) => match (*rel.clone()).clone() {
                     SubValueRelation::StrictSubValue { factor: f, .. } => {
@@ -10287,10 +10278,8 @@ pub fn max_path_descending(
                     match de.clone() {
                         Some(evidence) => match evidence
                             .clone()
-                            .iter()
+                            .get((param_index.clone()) as usize)
                             .cloned()
-                            .skip(param_index.clone() as usize)
-                            .next()
                         {
                             Some(rel) => match (*rel.clone()).clone() {
                                 SubValueRelation::StrictSubValue { .. } => 1,
@@ -10406,10 +10395,8 @@ pub fn distinct_descended_fields(
             |acc: Rc<HashMap<String, bool>>, call_evidence: Rc<Vec<Rc<SubValueRelation>>>| {
                 match call_evidence
                     .clone()
-                    .iter()
+                    .get((param_index.clone()) as usize)
                     .cloned()
-                    .skip(param_index.clone() as usize)
-                    .next()
                 {
                     Some(rel) => match (*rel.clone()).clone() {
                         SubValueRelation::StrictSubValue { field: f, .. } => {

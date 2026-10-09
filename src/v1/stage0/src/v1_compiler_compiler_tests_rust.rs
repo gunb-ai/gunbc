@@ -283,7 +283,7 @@ pub fn first_or_empty(items: Rc<Vec<String>>) -> String {
 }
 
 pub fn second_or_empty(items: Rc<Vec<String>>) -> String {
-    match items.clone().iter().cloned().skip(1 as usize).next() {
+    match items.clone().get((1) as usize).cloned() {
         Some(v) => v.clone(),
         std::option::Option::None => "".to_string(),
     }

@@ -734,14 +734,7 @@ pub fn render_rust_type_without_applied_binding(
                                 let key_node = crate::v1_compiler_infer_types::child_type_node(
                                     key_child.clone(),
                                 );
-                                let val_node = match n
-                                    .children
-                                    .clone()
-                                    .iter()
-                                    .cloned()
-                                    .skip(1 as usize)
-                                    .next()
-                                {
+                                let val_node = match n.children.clone().get((1) as usize).cloned() {
                                     Some(val_child) => {
                                         if rust_type_node_is_arrow(val_child.clone()) {
                                             val_child.clone()
@@ -3118,7 +3111,7 @@ if peel.clone() {
                                                             } else {
                                                                 if crate::v1_compiler_infer_types::node_is_keyed_collection(n.clone(), source_indices.clone()) {
                                                     match arg_list.clone().first().cloned() {
-    Some(k) => match arg_list.clone().iter().cloned().skip(1 as usize).next() {
+    Some(k) => match arg_list.clone().get((1) as usize).cloned() {
     Some(v) => crate::v1_compiler_emit::emit_keyed_container_type(name.clone(), k.clone(), v.clone(), base.clone(), RenderTarget::Rust),
     std::option::Option::None => v1_rt::concat(v1_rt::concat(v1_rt::concat(base.clone(), "<".to_string()), arg_list.clone().join(&", ".to_string())), ">".to_string()),
 },
@@ -3533,7 +3526,7 @@ pub fn rust_alias_rhs_applied_container_or_base(
 ) -> String {
     if crate::v1_compiler_infer_types::node_is_keyed_collection(n.clone(), source_indices.clone()) {
         match arg_list.clone().first().cloned() {
-            Some(k) => match arg_list.clone().iter().cloned().skip(1 as usize).next() {
+            Some(k) => match arg_list.clone().get((1) as usize).cloned() {
                 Some(v) => crate::v1_compiler_emit::emit_keyed_container_type(
                     leaf.clone(),
                     k.clone(),
@@ -14899,10 +14892,8 @@ pub fn rust_use_after_crate(line: String) -> String {
                     .map(|s| s.to_string())
                     .collect::<Vec<_>>(),
             )
-            .iter()
+            .get((1) as usize)
             .cloned()
-            .skip(1 as usize)
-            .next()
             {
                 Some(rest) => rest.clone(),
                 std::option::Option::None => "".to_string(),
@@ -15047,10 +15038,8 @@ pub fn rust_pub_use_braced_names(line: String) -> Rc<Vec<String>> {
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
         )
-        .iter()
+        .get((1) as usize)
         .cloned()
-        .skip(1 as usize)
-        .next()
         {
             Some(rest) => match Rc::new(
                 rest.clone()
@@ -15246,10 +15235,8 @@ pub fn rust_use_bound_symbol(entry: String) -> String {
             .map(|s| s.to_string())
             .collect::<Vec<_>>(),
     )
-    .iter()
+    .get((1) as usize)
     .cloned()
-    .skip(1 as usize)
-    .next()
     {
         Some(bound_name) => bound_name.clone(),
         std::option::Option::None => entry.clone(),
@@ -25038,14 +25025,7 @@ pub fn rust_empty_map_value_type_str(
     shared_types: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    match map_type
-        .children
-        .clone()
-        .iter()
-        .cloned()
-        .skip(1 as usize)
-        .next()
-    {
+    match map_type.children.clone().get((1) as usize).cloned() {
         Some(value_child) => {
             let rendered = render_rust_type(
                 crate::v1_compiler_infer_types::child_type_node(value_child.clone()),
@@ -26823,10 +26803,8 @@ pub fn rust_call_arg_fail_closed_unwrap(
 ) -> String {
     match callee.clone() {
         Some(info) => match function_value_params(info.params.clone())
-            .iter()
+            .get((idx.clone()) as usize)
             .cloned()
-            .skip(idx.clone() as usize)
-            .next()
         {
             Some(param) => {
                 let param_type = crate::v1_std_core::param_node_type_expr(param.clone());
@@ -26874,10 +26852,8 @@ pub fn rust_call_arg_function_value_adapt(
         }
         match callee.clone() {
             Some(info) => match function_value_params(info.params.clone())
-                .iter()
+                .get((idx.clone()) as usize)
                 .cloned()
-                .skip(idx.clone() as usize)
-                .next()
             {
                 Some(param) => {
                     let arity = (crate::v1_std_core::param_node_type_expr(param.clone())
@@ -27110,7 +27086,7 @@ pub fn emit_typed_call(
                     scope.clone(),
                 );
                 let get_list = get_args.clone().first().cloned();
-                let get_idx = get_args.clone().iter().cloned().skip(1 as usize).next();
+                let get_idx = get_args.clone().get((1) as usize).cloned();
                 let get_result = match get_list.clone() {
                     Some(list_arg) => match get_idx.clone() {
                         Some(idx_arg) => {
@@ -27174,10 +27150,8 @@ pub fn emit_typed_call(
                 let update_arg = crate::v1_std_core::arg_value(
                     with_args
                         .clone()
-                        .iter()
+                        .get((1) as usize)
                         .cloned()
-                        .skip(1 as usize)
-                        .next()
                         .clone()
                         .unwrap(),
                 );
@@ -27428,10 +27402,8 @@ pub fn emit_typed_call(
                     let a = pair.1.clone();
                     let arg_emit_info = match application_plan
                         .clone()
-                        .iter()
+                        .get((idx.clone()) as usize)
                         .cloned()
-                        .skip(idx.clone() as usize)
-                        .next()
                     {
                         Some(application) => {
                             crate::v1_compiler_infer_emit_info::emit_info_with_expected_type(
@@ -28260,13 +28232,7 @@ pub fn lambda_scope_from_children(
     .fold(scope.clone(), |acc: Rc<InferScope>, pair: (i64, String)| {
         let idx = pair.0.clone();
         let param_name = pair.1.clone();
-        let param_type = match param_nodes
-            .clone()
-            .iter()
-            .cloned()
-            .skip(idx.clone() as usize)
-            .next()
-        {
+        let param_type = match param_nodes.clone().get((idx.clone()) as usize).cloned() {
             Some(pn) => match pn.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved {
                     node: resolved_type,
@@ -28315,13 +28281,7 @@ pub fn lambda_param_type_strs(
                 let inferred_type = if (fold_acc_uses_fallback.clone() && (idx.clone() == 0)) {
                     std::option::Option::None
                 } else {
-                    match param_nodes
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .skip(idx.clone() as usize)
-                        .next()
-                    {
+                    match param_nodes.clone().get((idx.clone()) as usize).cloned() {
                         Some(pn) => match pn.inferred.clone().as_deref().cloned() {
                             Some(InferredNode::Resolved {
                                 node: param_type, ..
@@ -28376,16 +28336,11 @@ pub fn lambda_param_type_strs(
                         std::option::Option::None => std::option::Option::None,
                     }
                 };
-                let fallback_type = match fallback_types
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .skip(idx.clone() as usize)
-                    .next()
-                {
-                    Some(ty) => ty.clone(),
-                    std::option::Option::None => "_".to_string(),
-                };
+                let fallback_type =
+                    match fallback_types.clone().get((idx.clone()) as usize).cloned() {
+                        Some(ty) => ty.clone(),
+                        std::option::Option::None => "_".to_string(),
+                    };
                 let spec = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust);
                 let ident =
                     crate::v1_compiler_emit::emit_ident(param_name.clone(), RenderTarget::Rust);
@@ -28758,7 +28713,7 @@ pub fn emit_rust_fold_method_call(
             scope.type_env.clone().source_indices.clone(),
             acc_type_node.clone(),
         );
-        let fold_lambda_node = match args.clone().iter().cloned().skip(1 as usize).next() {
+        let fold_lambda_node = match args.clone().get((1) as usize).cloned() {
             Some(a) => crate::v1_std_core::arg_value(a.clone()),
             std::option::Option::None => type_variable_node("".to_string()),
         };
@@ -29052,7 +29007,7 @@ pub fn emit_rust_fold_method_call(
         let sharing = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust)
             .sharing
             .clone();
-        let elem_unused = match args.clone().iter().cloned().skip(1 as usize).next() {
+        let elem_unused = match args.clone().get((1) as usize).cloned() {
             Some(a) => fold_lambda_element_unused(
                 crate::v1_std_core::arg_value(a.clone()),
                 scope.type_env.clone().source_indices.clone(),
@@ -29072,7 +29027,7 @@ pub fn emit_rust_fold_method_call(
             iter_template.clone(),
             recv_str.clone(),
         );
-        let step_awaits = match args.clone().iter().cloned().skip(1 as usize).next() {
+        let step_awaits = match args.clone().get((1) as usize).cloned() {
             Some(a) => rust_expr_reaches_awaited_call(
                 crate::v1_std_core::arg_value(a.clone()),
                 registry.clone(),
@@ -29094,7 +29049,7 @@ pub fn emit_rust_fold_method_call(
             )
         } else {
             {
-                let fold_fn = match args.clone().iter().cloned().skip(1 as usize).next() {
+                let fold_fn = match args.clone().get((1) as usize).cloned() {
                     Some(a) => emit_typed_fold_lambda(
                         crate::v1_std_core::arg_value(a.clone()),
                         lambda_acc_type_str.clone(),
@@ -29149,7 +29104,7 @@ let acc_name = match ps.clone().first().cloned() {
     Some(n) => n.clone(),
     std::option::Option::None => "_".to_string(),
 };
-let elem_name = match ps.clone().iter().cloned().skip(1 as usize).next() {
+let elem_name = match ps.clone().get((1) as usize).cloned() {
     Some(n) => n.clone(),
     std::option::Option::None => "_".to_string(),
 };
@@ -29250,7 +29205,7 @@ pub fn fold_lambda_element_unused(
                 lambda_expr.clone(),
                 source_indices.clone(),
             );
-            match ps.clone().iter().cloned().skip(1 as usize).next() {
+            match ps.clone().get((1) as usize).cloned() {
                 Some(elem_name) => (elem_name.clone() == "_".to_string()),
                 std::option::Option::None => false,
             }
@@ -37046,13 +37001,7 @@ pub fn emit_typed_tco_reassign(
             let mut __result = Vec::new();
             for pair in pairs.iter().cloned() {
                 __result.push({
-                    let av = match arg_values
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .skip(pair.0.clone() as usize)
-                        .next()
-                    {
+                    let av = match arg_values.clone().get((pair.0.clone()) as usize).cloned() {
                         Some(v) => v.clone(),
                         std::option::Option::None => pair.1.clone(),
                     };

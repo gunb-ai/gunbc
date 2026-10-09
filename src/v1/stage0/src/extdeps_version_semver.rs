@@ -324,13 +324,7 @@ pub fn semver_core_of_dotted(text: String) -> Option<Rc<SemVerVersion>> {
 }
 
 pub fn semver_dotted_part(parts: Rc<Vec<String>>, index: i64) -> Option<Rc<SemVerNumericField>> {
-    match parts
-        .clone()
-        .iter()
-        .cloned()
-        .skip(index.clone() as usize)
-        .next()
-    {
+    match parts.clone().get((index.clone()) as usize).cloned() {
         std::option::Option::None => std::option::Option::None,
         Some(w) => semver_numeric_field(Rc::new(
             w.clone().chars().map(|c| c as i64).collect::<Vec<_>>(),
@@ -589,10 +583,9 @@ pub fn semver_core_parse(cps: Rc<Vec<i64>>) -> Option<Rc<SemVerVersion>> {
             } else {
                 match fields.clone().first().cloned() {
                     std::option::Option::None => std::option::Option::None,
-                    Some(major) => match fields.clone().iter().cloned().skip(1 as usize).next() {
+                    Some(major) => match fields.clone().get((1) as usize).cloned() {
                         std::option::Option::None => std::option::Option::None,
-                        Some(minor) => match fields.clone().iter().cloned().skip(2 as usize).next()
-                        {
+                        Some(minor) => match fields.clone().get((2) as usize).cloned() {
                             std::option::Option::None => std::option::Option::None,
                             Some(patch) => Some(Rc::new(SemVerVersion {
                                 major: major.clone(),
