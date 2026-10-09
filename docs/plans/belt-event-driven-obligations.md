@@ -54,11 +54,12 @@ Fusing them made every stage's latency every other stage's latency. On srv2, fro
 ### Events, not a timer (`gunbc.live_deploy`)
 
 - **No belt timer.** The deployment member is `BeltEventPathUnit`, which installs:
-  - the exit path unit, a `DirectoryNotEmpty=` level on the exit inbox, which starts the drain service (`belt_exit_drain_cli`);
+  - the exit path unit, a `DirectoryNotEmpty=` level on the exit inbox and on `queued/`, which starts the drain service (`belt_exit_drain_cli`);
   - the publication-answer path unit, a `PathChanged=` edge on the answer directory, which starts the discovery service (`belt_discover_once_cli`);
-  - the spool stages: inbox, queued, done and refused.
-- **The drain** hands each recorded exit to its attempt's unit. It moves the entry to `queued/` once handed off and to `refused/` when it cannot be handed off, so the path goes quiet. A worker exit also queues the launch obligation.
-- **The attempt's run** moves its queued entries to `done/` only after its receipt is written.
+  - the spool stages: inbox, queued, running, done and refused.
+- **The drain** hands each recorded exit to its attempt's unit and moves it to `queued/`, or to `refused/` when it cannot be handed off, so the inbox path goes quiet. It then **sweeps `queued/`**: every attempt that still has an unclaimed entry there is enqueued again (a held unit is a no-op; a gone unit is started). A worker exit also queues the launch obligation.
+- **Queued is a level, and acknowledgment is bound to a run** (bold-bee-114, 2026-10-09). The exit path unit watches `inbox/` and `queued/` with `DirectoryNotEmpty=`. An attempt's run first **claims** its population, the create-only move `queued -> running` of every entry for the attempt (an entry whose exit was recorded before the run's first observation, so the run is guaranteed to have seen it). The receipt names the claim (`claimed_exits`), and only after it is written does the run move exactly that claim `running -> done`. A later arrival is never in the claim, so it is never acknowledged by a run that did not observe it; it stays `queued`, the level starts the drain, and the sweep hands the attempt to a new run. A held unit is not proof the active run includes a new event. A run that finds `running` entries for its attempt adopts them (the unit name is the exclusive hold, so they are a dead predecessor's). The run makes at most `belt_attempt_obligation_pass_bound` passes, re-claiming when an arrival is already queued; the bound leaves the rest to the level. Controls: `test.claim.roadmap.roadmap_belt_exit_drain_wet_witness_test` cuts A (exit after the final observation, before settlement), B (after settlement, before the unit exits) and C (unit or host gone while queued, or dead claim).
+- **Stated cost.** An unclaimed arrival that lands while its attempt's unit is held restarts the drain (a corpus load) repeatedly until that unit's pass re-claims or the unit exits; this wastes work and loses nothing. A stuck `running` or `queued` entry is the backlog row's `StaleBacklog`.
 - **Launch** is the demoted tick: admission, spawn, teardown and bounded discovery. It has one unit name per instance. The deployment's belt service only queues it (`belt_launch_enqueue_cli`).
 - **Deadlines need no wake-up timer.** Every awaited unit (worker, reviewer, auditor) has its own run bound, and ending at that bound writes an exit record like any other ending. The deadline is therefore an event too.
 
@@ -69,7 +70,7 @@ Fusing them made every stage's latency every other stage's latency. On srv2, fro
 ### Receipts and the page
 
 - **Tick receipt v7:** spawn, teardown and discovery passes.
-- **Per-attempt obligation receipt:** `receipts/obligations-<node>-<attempt>.json`, consumed by `/workflow.json`. A pending verification now shows that attempt's own verify step.
+- **Per-attempt obligation receipt:** `receipts/obligations-<node>-<attempt>.json`, consumed by `/workflow.json`. Its decoder is total and subject-bound: node and attempt must equal the requested subject, `observed_at`, the claim and the standing are validated, every step is decoded (each kind at most once, no unknown kind, no malformed pass) before verify is projected. A pending verification now shows that attempt's own verify step.
 
 ### The RLM launch receipt
 

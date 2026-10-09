@@ -2,16 +2,16 @@ module test.claim.roadmap.roadmap_belt_exit_drain_wet_witness
 
 import extdeps.shell
 import std.types { Bool, String, List, NonEmptyStr }
-import gunbc.host_layout { attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_done_dir, attempt_exit_refused_dir }
+import gunbc.host_layout { attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_record_observe, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable, AttemptWorkerRole,
-  attempt_exit_stage_list, AttemptExitInbox, AttemptExitQueued, AttemptExitDone, AttemptExitRefused,
+  attempt_exit_stage_list, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused, AttemptExitSpoolStage,
   AttemptExitStageNames, AttemptExitStageUnreadable,
 }
-import gunbc.roadmap.roadmap_belt_obligation { BeltObligationEnqueue, BeltObligationStarted, belt_attempt_obligation_unit_name, belt_instance_obligation_unit_name, LaunchObligation }
+import gunbc.roadmap.roadmap_belt_obligation { BeltObligationEnqueue, BeltObligationStarted, BeltObligationHeld, belt_attempt_obligation_unit_name, belt_instance_obligation_unit_name, LaunchObligation }
 import gunbc.roadmap_belt_actuate {
-  belt_exit_drain_at, BeltExitDrained, BeltExitDrainRefused, BeltExitEntryHanded, BeltExitEntryRefused,
-  belt_exit_entries_settle_at, belt_exec, ExecOk, ExecFailed, ExecRefused,
+  belt_exit_drain_at, BeltExitDrain, BeltExitDrained, BeltExitDrainRefused, BeltExitEntryHanded, BeltExitEntryRefused,
+  belt_exit_entries_settle_at, belt_exit_entries_claim_at, BeltExitClaimed, BeltExitClaimRefused, belt_exec, ExecOk, ExecFailed, ExecRefused,
 }
 import gunbc.roadmap_dispatch_actuator {
   host_exec_argv, AttemptUnitAbsent, AttemptUnitStartRecorded, attempt_worker_unit_observation_of, worker_process_from_attempt_unit,
@@ -28,7 +28,7 @@ import gunbc.worker_lifecycle { WorkerProcessExited }
 
 fn fresh_spool(tag: String) -> String {
   let root = shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_exit_spool_", tag, ".XXXXXX"], "")).path
-  let made = belt_exec(cmd: host_exec_argv(program: "mkdir", args: ["-p", attempt_exit_inbox_dir(instance_root: root), attempt_exit_queued_dir(instance_root: root), attempt_exit_done_dir(instance_root: root), attempt_exit_refused_dir(instance_root: root)]), workdir: "/")
+  let made = belt_exec(cmd: host_exec_argv(program: "mkdir", args: ["-p", attempt_exit_inbox_dir(instance_root: root), attempt_exit_queued_dir(instance_root: root), attempt_exit_running_dir(instance_root: root), attempt_exit_done_dir(instance_root: root), attempt_exit_refused_dir(instance_root: root)]), workdir: "/")
   root
 }
 
@@ -44,6 +44,35 @@ fn names_in(root: String, stage_is_queued: Bool) -> List<String> {
   match attempt_exit_stage_list(instance_root: root, stage: if stage_is_queued { AttemptExitQueued } else { AttemptExitInbox }) {
     AttemptExitStageNames { names } => names
     AttemptExitStageUnreadable { reason: _ } => ["<unreadable>"]
+  }
+}
+
+fn names_at(root: String, stage: AttemptExitSpoolStage) -> List<String> {
+  match attempt_exit_stage_list(instance_root: root, stage: stage) {
+    AttemptExitStageNames { names } => names
+    AttemptExitStageUnreadable { reason: _ } => ["<unreadable>"]
+  }
+}
+
+fn claimed_of(root: String) -> List<String> {
+  match belt_exit_entries_claim_at(root: root, node_id: "wet-node", attempt_key: "feedfacefeedface") {
+    BeltExitClaimed { entries } => entries
+    BeltExitClaimRefused { reason: _ } => ["<refused>"]
+  }
+}
+
+fn held(node_id: String, attempt_key: String) -> BeltObligationEnqueue {
+  BeltObligationHeld { unit: belt_attempt_obligation_unit_name(node_id: node_id, attempt_key: attempt_key) }
+}
+
+fn sweep_started_for_attempt(drained: BeltExitDrain) -> Bool {
+  match drained {
+    BeltExitDrained { entries, launch: _ } =>
+      any(entries, e => match e {
+        BeltExitEntryHanded { entry: _, enqueue: BeltObligationStarted { unit } } => (unit as String) == (belt_attempt_obligation_unit_name(node_id: "wet-node", attempt_key: "feedfacefeedface") as String)
+        _ => false
+      })
+    BeltExitDrainRefused { reason: _ } => false
   }
 }
 
@@ -102,7 +131,7 @@ test fn a_collected_workers_exit_is_read_from_the_spool_alone() -> Bool {
   let root = fresh_spool(tag: "collected")
   let wrote = record(root: root, name: worker_exit)
   let drained = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() })
-  let unsettled = belt_exit_entries_settle_at(root: root, node_id: "wet-node", attempt_key: "feedfacefeedface")
+  let unsettled = belt_exit_entries_settle_at(root: root, claimed: claimed_of(root: root))
   let unit = "gunbc-attempt-wet-node-feedfacefeedface.service" as NonEmptyStr
   let verdict = worker_process_from_attempt_unit(
     observation: attempt_worker_unit_observation_of(
@@ -115,4 +144,66 @@ test fn a_collected_workers_exit_is_read_from_the_spool_alone() -> Bool {
   )
   wrote && count(unsettled) == 0 && count(names_in(root: root, stage_is_queued: true)) == 0
     && (match verdict { WorkerProcessExited { exit_code, last_command: _ } => exit_code == 0 _ => false })
+}
+
+// bold-bee-114 NO-LAND (2026-10-09), CUT A -- an exit that arrives AFTER THE RUN'S FINAL OBSERVATION BUT
+// BEFORE SETTLEMENT is not acknowledged by a receipt that never observed it. The first exit is claimed
+// (queued -> running) and the second arrives while the unit is held; settling the claim moves only the
+// first to done, the second stays queued, and a later run's claim is what carries it to done.
+test fn an_exit_after_the_final_observation_stays_queued_until_a_later_runs_claim_settles_it() -> Bool {
+  let root = fresh_spool(tag: "cut-a")
+  let first = record(root: root, name: worker_exit)
+  let d1 = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() })
+  let claim = claimed_of(root: root)
+  let second = record(root: root, name: reviewer_exit)
+  let d2 = belt_exit_drain_at(root: root, enqueue: (n, k) => held(node_id: n, attempt_key: k), launch: fn() { launched() })
+  let unsettled = belt_exit_entries_settle_at(root: root, claimed: claim)
+  let after_first_run = claim == [worker_exit]
+    && names_at(root: root, stage: AttemptExitDone) == [worker_exit]
+    && names_at(root: root, stage: AttemptExitQueued) == [reviewer_exit]
+    && count(names_at(root: root, stage: AttemptExitRunning)) == 0
+  let next_claim = claimed_of(root: root)
+  let unsettled_next = belt_exit_entries_settle_at(root: root, claimed: next_claim)
+  first && second && count(unsettled) == 0 && after_first_run && next_claim == [reviewer_exit] && count(unsettled_next) == 0
+    && count(names_at(root: root, stage: AttemptExitQueued)) == 0 && count(names_at(root: root, stage: AttemptExitDone)) == 2
+}
+
+// CUT B -- an exit that arrives AFTER SETTLEMENT BUT BEFORE THE UNIT EXITS is handed to a unit that is
+// still held (so the hand-off is a no-op and nothing ran for it). The entry stays queued: the queued
+// level starts the drain again, and once the unit is gone the drain's sweep starts a run for the
+// attempt, which claims the entry and settles it to done under its own claim.
+test fn an_exit_after_settlement_is_swept_to_a_new_run_once_the_unit_is_gone() -> Bool {
+  let root = fresh_spool(tag: "cut-b")
+  let first = record(root: root, name: worker_exit)
+  let d1 = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() })
+  let unsettled = belt_exit_entries_settle_at(root: root, claimed: claimed_of(root: root))
+  let late = record(root: root, name: reviewer_exit)
+  let while_held = belt_exit_drain_at(root: root, enqueue: (n, k) => held(node_id: n, attempt_key: k), launch: fn() { launched() })
+  let still_queued = names_at(root: root, stage: AttemptExitQueued) == [reviewer_exit] && !(names_at(root: root, stage: AttemptExitDone) == [worker_exit, reviewer_exit])
+  let unit_gone = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() })
+  let new_run_claim = claimed_of(root: root)
+  let settled = belt_exit_entries_settle_at(root: root, claimed: new_run_claim)
+  first && late && count(unsettled) == 0 && still_queued && sweep_started_for_attempt(drained: unit_gone)
+    && new_run_claim == [reviewer_exit] && count(settled) == 0 && count(names_at(root: root, stage: AttemptExitQueued)) == 0
+    && count(names_at(root: root, stage: AttemptExitDone)) == 2
+}
+
+// CUT C -- THE UNIT OR THE HOST IS GONE WHILE AN ENTRY IS QUEUED (a reboot loses the transient unit, no
+// event is left to deliver). The drain runs with an EMPTY inbox, the sweep alone finds the queued entry
+// and starts its attempt's run, and that run's claim -- adopting a dead predecessor's running entry as
+// well -- is the only thing that moves either to done.
+test fn a_queued_or_dead_claimed_exit_needs_no_new_event_to_reach_done_under_a_runs_claim() -> Bool {
+  let root = fresh_spool(tag: "cut-c")
+  let first = record(root: root, name: worker_exit)
+  let handed_once = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() })
+  let dead_run_claim = claimed_of(root: root)
+  let late = record(root: root, name: reviewer_exit)
+  let queued_after = belt_exit_drain_at(root: root, enqueue: (n, k) => held(node_id: n, attempt_key: k), launch: fn() { launched() })
+  let sweep_only = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() })
+  let adopted = claimed_of(root: root)
+  let settled = belt_exit_entries_settle_at(root: root, claimed: adopted)
+  first && late && dead_run_claim == [worker_exit] && sweep_started_for_attempt(drained: sweep_only)
+    && count(adopted) == 2 && any(adopted, e => e == worker_exit) && any(adopted, e => e == reviewer_exit)
+    && count(settled) == 0 && count(names_at(root: root, stage: AttemptExitRunning)) == 0 && count(names_at(root: root, stage: AttemptExitQueued)) == 0
+    && count(names_at(root: root, stage: AttemptExitDone)) == 2
 }

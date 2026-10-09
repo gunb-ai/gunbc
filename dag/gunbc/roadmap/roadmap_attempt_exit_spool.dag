@@ -1,7 +1,7 @@
 module gunbc.roadmap.roadmap_attempt_exit_spool
 
 import std.types { String, NonEmptyStr, List, Bool, Int }
-import gunbc.host_layout { attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_done_dir, attempt_exit_refused_dir }
+import gunbc.host_layout { attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir }
 import extdeps.systemd.service_exec {
   ServiceStopVariable, InvocationIdVariable, ServiceResultVariable, ExitCodeVariable, ExitStatusVariable,
   ServiceResult, service_result_of_wire, ServiceExitCode, service_exit_code_of_wire,
@@ -193,11 +193,12 @@ fn attempt_exit_entry_decode(entry_name: String) -> AttemptExitEntryDecode {
 }
 
 // WHERE IN THE SPOOL AN ENTRY STANDS, which is responsibility, not evidence: the record means the
-// same thing in every stage. Inbox: no obligation has taken it. Queued: an obligation was started for
-// it. Done: its obligation's receipt exists. Refused: the drain could not hand it off.
+// same thing in every stage. Inbox: no obligation has taken it. Queued: recorded and handed off, no run has
+// claimed it. Running: a live run claimed it and has not settled it. Done: its obligation's receipt exists. Refused: the drain could not hand it off.
 type AttemptExitSpoolStage
   = AttemptExitInbox
   | AttemptExitQueued
+  | AttemptExitRunning
   | AttemptExitDone
   | AttemptExitRefused
 
@@ -205,6 +206,7 @@ fn attempt_exit_spool_stage_dir(instance_root: String, stage: AttemptExitSpoolSt
   match stage {
     AttemptExitInbox => attempt_exit_inbox_dir(instance_root: instance_root)
     AttemptExitQueued => attempt_exit_queued_dir(instance_root: instance_root)
+    AttemptExitRunning => attempt_exit_running_dir(instance_root: instance_root)
     AttemptExitDone => attempt_exit_done_dir(instance_root: instance_root)
     AttemptExitRefused => attempt_exit_refused_dir(instance_root: instance_root)
   }
@@ -311,6 +313,7 @@ fn attempt_exit_stage_listings(instance_root: String) -> List<AttemptExitStageLi
   [
     attempt_exit_stage_list(instance_root: instance_root, stage: AttemptExitInbox),
     attempt_exit_stage_list(instance_root: instance_root, stage: AttemptExitQueued),
+    attempt_exit_stage_list(instance_root: instance_root, stage: AttemptExitRunning),
     attempt_exit_stage_list(instance_root: instance_root, stage: AttemptExitDone),
     attempt_exit_stage_list(instance_root: instance_root, stage: AttemptExitRefused),
   ]

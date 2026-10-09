@@ -30,7 +30,7 @@ import gunbc.roadmap_belt_actuate {
   IntegrationCoreDeferred, IntegrationCoreUnreadable, IntegrationCoreBlocked, IntegrationCoreIntegrated,
   belt_instance_obligation_enqueue, belt_obligation_enqueue_json,
   belt_attempt_obligations_run, belt_attempt_obligation_receipt_write, belt_attempt_obligation_run_json, belt_attempt_obligation_run_failure,
-  belt_exit_entries_settle, belt_exit_drain_for_instance, belt_exit_drain_json, belt_exit_drain_failures,
+  belt_exit_entries_settle, belt_exit_entries_claim, belt_exit_entries_pending_at, BeltExitClaimed, BeltExitClaimRefused, belt_exit_drain_for_instance, belt_exit_drain_json, belt_exit_drain_failures,
   belt_discover_for_instance, belt_discovery_json, belt_discovery_pass_outcome,
   belt_metering_attempts_for_instance, belt_metering_pass_outcome_from,
 }
@@ -418,27 +418,50 @@ fn belt_obligations_enqueued_exit(context: String, enqueues: List<BeltObligation
   if count(refused) == 0 { ExitSuccess } else { exit_failure(reason: join([context, ": ", to_string(value: count(refused)), " obligation(s) could not be handed to their unit: ", join(refused, "; ")], "")) }
 }
 
-fn belt_attempt_obligations_cli(node_id: String, attempt_key: String) -> ProcessExit {
-  belt_instance_from_env(entry: "belt_attempt_obligations_cli", then: instance => {
-    let observed_at = belt_tick_observed_at()
-    let run = belt_attempt_obligations_run(instance: instance, node_id: node_id, attempt_key: attempt_key)
-    match belt_attempt_obligation_receipt_write(instance: instance, run: run, node_id: node_id, attempt_key: attempt_key, observed_at: observed_at) {
-      BeltPassFailed { reason } => exit_failure(reason: join([serialize_json(v: belt_attempt_obligation_run_json(run: run, observed_at: observed_at)), "\n", reason], ""))
-      BeltPassDeferred { reason } => exit_failure(reason: reason)
-      BeltPassRefused { reason } => exit_failure(reason: reason)
-      BeltPassRecorded => {
-        let unsettled = belt_exit_entries_settle(instance: instance, node_id: node_id, attempt_key: attempt_key)
-        let tail = belt_obligations_enqueued_exit(
-          context: "after the attempt's obligations",
-          enqueues: belt_record_moved_obligation_kinds |> map(k => belt_instance_obligation_enqueue(instance: instance, kind: k)),
-        )
-        let failures = concat(
-          match belt_attempt_obligation_run_failure(run: run) { Present { value: f } => [f] Absent => [] as List<String> },
-          concat(unsettled |> map(u => join(["exit entry not settled: ", u], "")), match tail { ExitSuccess => [] as List<String> ExitFailure { code: _, reason } => [reason] }),
-        )
-        if count(failures) == 0 { ExitSuccess } else { exit_failure(reason: join(failures, "\n")) }
+// ONE PASS IS: CLAIM the attempt's queued exits, RUN, WRITE the receipt that names the claim, SETTLE
+// exactly that claim. A pass that left an unclaimed arrival queued runs again -- bounded, so a
+// hot attempt cannot hold its unit forever; what the bound leaves queued is the queued level's, which
+// starts the drain, whose sweep hands the attempt to a new run once this unit is gone.
+data belt_attempt_obligation_pass_bound: Int = 3
+
+fn belt_attempt_obligations_pass(instance: HostDashboardInstance, node_id: String, attempt_key: String, passes_left: Int) -> List<String> {
+  match belt_exit_entries_claim(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    BeltExitClaimRefused { reason } => [reason]
+    BeltExitClaimed { entries: claimed } => {
+      let observed_at = belt_tick_observed_at()
+      let run = belt_attempt_obligations_run(instance: instance, node_id: node_id, attempt_key: attempt_key)
+      match belt_attempt_obligation_receipt_write(instance: instance, run: run, node_id: node_id, attempt_key: attempt_key, observed_at: observed_at, claimed: claimed) {
+        BeltPassFailed { reason } => [join([serialize_json(v: belt_attempt_obligation_run_json(run: run, observed_at: observed_at, claimed: claimed)), "\n", reason], "")]
+        BeltPassDeferred { reason } => [reason]
+        BeltPassRefused { reason } => [reason]
+        BeltPassRecorded => {
+          let unsettled = belt_exit_entries_settle(instance: instance, claimed: claimed)
+          let own = match belt_attempt_obligation_run_failure(run: run) { Present { value: f } => [f] Absent => [] as List<String> }
+          let failures = concat(own, unsettled |> map(u => join(["exit entry not settled: ", u], "")))
+          if count(failures) > 0 || passes_left <= 1 {
+            failures
+          } else {
+            match belt_exit_entries_pending_at(root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key) {
+              BeltExitClaimRefused { reason } => [reason]
+              BeltExitClaimed { entries: pending } =>
+                if count(pending) == 0 { failures } else { belt_attempt_obligations_pass(instance: instance, node_id: node_id, attempt_key: attempt_key, passes_left: passes_left - 1) }
+            }
+          }
+        }
       }
     }
+  }
+}
+
+fn belt_attempt_obligations_cli(node_id: String, attempt_key: String) -> ProcessExit {
+  belt_instance_from_env(entry: "belt_attempt_obligations_cli", then: instance => {
+    let run_failures = belt_attempt_obligations_pass(instance: instance, node_id: node_id, attempt_key: attempt_key, passes_left: belt_attempt_obligation_pass_bound)
+    let tail = belt_obligations_enqueued_exit(
+      context: "after the attempt's obligations",
+      enqueues: belt_record_moved_obligation_kinds |> map(k => belt_instance_obligation_enqueue(instance: instance, kind: k)),
+    )
+    let failures = concat(run_failures, match tail { ExitSuccess => [] as List<String> ExitFailure { code: _, reason } => [reason] })
+    if count(failures) == 0 { ExitSuccess } else { exit_failure(reason: join(failures, "\n")) }
   })
 }
 

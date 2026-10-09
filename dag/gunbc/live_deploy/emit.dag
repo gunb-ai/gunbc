@@ -182,7 +182,7 @@ import gunbc.host_layout {
   publication_request_dir,
   publication_answer_dir,
   publication_refused_dir,
-  attempt_exit_spool_root, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
+  attempt_exit_spool_root, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
 }
 import gunbc.host_axis_caps {
   CapAuthorizationRefused, CapAuthorizationWithheld,
@@ -916,7 +916,11 @@ fn apply_publication_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
 // THE EXIT PATH IS A LEVEL, NOT AN EDGE (extdeps.systemd.unit_file SystemdPathDirective): with
 // DirectoryNotEmpty= systemd re-checks the inbox when the drain finishes, so an exit recorded while
 // the drain was running starts it again instead of waiting for the next one. The drain moves every
-// entry it hands off out of the inbox, so the inbox empties and the path goes quiet.
+// entry it hands off out of the inbox, so the inbox empties and the path goes quiet. `queued` is a
+// second level on the same unit: it holds exits no run has CLAIMED (a run claims queued -> running
+// before its first observation, so a long run does not keep the level up), so an exit that arrived
+// while its attempt's unit was held, or that a lost unit or a reboot left behind, starts the drain
+// again with no other event, and the drain's sweep hands it to a run.
 //
 // THE PUBLICATION ANSWER PATH IS AN EDGE: answers are kept, not moved, so a level would fire forever.
 // A change while discovery is running is coalesced into that run; discovery reads every attempt's
@@ -964,6 +968,7 @@ fn live_deploy_belt_exit_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFile
     path: [
       PathUnit { target: deployment_belt_exit_drain_service_unit_name(names: spec.names) },
       DirectoryNotEmpty { path: attempt_exit_inbox_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
+      DirectoryNotEmpty { path: attempt_exit_queued_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
     ],
     install: Installable { directives: [WantedBy { target: "paths.target" as NonEmptyStr }] },
   }
@@ -2887,6 +2892,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
       deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_spool_root(instance_root: spec.service.instance_root as String))),
       deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_inbox_dir(instance_root: spec.service.instance_root as String))),
       deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_queued_dir(instance_root: spec.service.instance_root as String))),
+      deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_running_dir(instance_root: spec.service.instance_root as String))),
       deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_done_dir(instance_root: spec.service.instance_root as String))),
       deploy_raw(command: install_d_owned_command(spec: spec, path: attempt_exit_refused_dir(instance_root: spec.service.instance_root as String))),
       apply_belt_service_unit_write_step(spec: spec),

@@ -346,6 +346,14 @@ fn attempt_exit_queued_dir(instance_root: String) -> String {
   join([attempt_exit_spool_root(instance_root: instance_root), "/queued"], "")
 }
 
+// `running` holds the entries a live obligation run has CLAIMED (queued -> running is the claim, taken
+// before the run's first observation) and that its receipt has not yet settled to `done`. Keeping a claim
+// out of `queued` is what lets the path unit watch `queued` as a LEVEL -- non-empty means an exit no run
+// has claimed -- without re-firing for the whole length of a long run.
+fn attempt_exit_running_dir(instance_root: String) -> String {
+  join([attempt_exit_spool_root(instance_root: instance_root), "/running"], "")
+}
+
 fn attempt_exit_done_dir(instance_root: String) -> String {
   join([attempt_exit_spool_root(instance_root: instance_root), "/done"], "")
 }

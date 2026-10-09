@@ -16,7 +16,7 @@ import extdeps.languages.json.parse {
 }
 import gunbc.actions_run_binding { json_required_string_member, JsonStringMemberFound, JsonStringMemberRefused }
 import gunbc.running_release_identity { RunningReleaseIdentity, observe_running_release_identity }
-import gunbc.roadmap.roadmap_attempt_exit_spool { AttemptExitSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitDone, AttemptExitRefused }
+import gunbc.roadmap.roadmap_attempt_exit_spool { AttemptExitSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused }
 import gunbc.live_deploy.belt_cadence { belt_tick_run_bound }
 import gunbc.roadmap_belt_actuate {
   BeltTickReceipt, BeltTickReceiptRead, BeltTickReceiptPresent, BeltTickReceiptAbsent, BeltTickReceiptUnreadable,
@@ -348,6 +348,7 @@ fn event_backlog_bound(stage: AttemptExitSpoolStage) -> Second? {
   match stage {
     AttemptExitInbox => Present { value: event_backlog_drain_bound }
     AttemptExitQueued => event_backlog_queued_bound()
+    AttemptExitRunning => event_backlog_queued_bound()
     AttemptExitDone => none
     AttemptExitRefused => none
   }
@@ -357,6 +358,7 @@ fn event_backlog_stage_label(stage: AttemptExitSpoolStage) -> String {
   match stage {
     AttemptExitInbox => "inbox"
     AttemptExitQueued => "queued"
+    AttemptExitRunning => "running"
     AttemptExitDone => "done"
     AttemptExitRefused => "refused"
   }

@@ -567,7 +567,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_record_observe, AttemptExitRecordNone, AttemptExitRecordFound, AttemptExitRecordUnreadable,
   AttemptWorkerRole, attempt_unit_role_token,
   attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
-  AttemptExitSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitDone, AttemptExitRefused,
+  AttemptExitSpoolStage, AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
   attempt_exit_spool_stage_dir, attempt_exit_stage_list, AttemptExitStageNames, AttemptExitStageUnreadable,
 }
 import extdeps.tools.gnu_coreutils { mv_exact_destination_command }
@@ -13776,12 +13776,13 @@ fn belt_attempt_obligation_step_json(step: BeltAttemptObligationStep) -> JsonVal
   ])
 }
 
-fn belt_attempt_obligation_run_json(run: BeltAttemptObligationRun, observed_at: String) -> JsonValue {
+fn belt_attempt_obligation_run_json(run: BeltAttemptObligationRun, observed_at: String, claimed: List<String>) -> JsonValue {
   match run {
     BeltAttemptObligationsRan { node_id, attempt_key, steps } =>
       json_object(members: [
         json_kv(key: "schema", value: json_string(s: belt_attempt_obligation_receipt_schema)),
         json_kv(key: "observed_at", value: json_string(s: observed_at)),
+        json_kv(key: "claimed_exits", value: json_array(elements: claimed |> map(c => json_string(s: c)))),
         json_kv(key: "node", value: json_string(s: node_id)),
         json_kv(key: "attempt", value: json_string(s: attempt_key)),
         json_kv(key: "standing", value: json_string(s: "ran")),
@@ -13791,6 +13792,7 @@ fn belt_attempt_obligation_run_json(run: BeltAttemptObligationRun, observed_at: 
       json_object(members: [
         json_kv(key: "schema", value: json_string(s: belt_attempt_obligation_receipt_schema)),
         json_kv(key: "observed_at", value: json_string(s: observed_at)),
+        json_kv(key: "claimed_exits", value: json_array(elements: claimed |> map(c => json_string(s: c)))),
         json_kv(key: "node", value: json_string(s: node_id)),
         json_kv(key: "attempt", value: json_string(s: attempt_key)),
         json_kv(key: "standing", value: json_string(s: "not-current")),
@@ -13800,6 +13802,7 @@ fn belt_attempt_obligation_run_json(run: BeltAttemptObligationRun, observed_at: 
       json_object(members: [
         json_kv(key: "schema", value: json_string(s: belt_attempt_obligation_receipt_schema)),
         json_kv(key: "observed_at", value: json_string(s: observed_at)),
+        json_kv(key: "claimed_exits", value: json_array(elements: claimed |> map(c => json_string(s: c)))),
         json_kv(key: "node", value: json_string(s: node_id)),
         json_kv(key: "attempt", value: json_string(s: attempt_key)),
         json_kv(key: "standing", value: json_string(s: "refused")),
@@ -13825,10 +13828,10 @@ fn belt_attempt_obligation_run_failure(run: BeltAttemptObligationRun) -> String?
   }
 }
 
-fn belt_attempt_obligation_receipt_write(instance: HostDashboardInstance, run: BeltAttemptObligationRun, node_id: String, attempt_key: String, observed_at: String) -> BeltPassOutcome {
+fn belt_attempt_obligation_receipt_write(instance: HostDashboardInstance, run: BeltAttemptObligationRun, node_id: String, attempt_key: String, observed_at: String, claimed: List<String>) -> BeltPassOutcome {
   let write = Filesystem.Write(
     path: belt_attempt_obligation_receipt_path(instance: instance, node_id: node_id, attempt_key: attempt_key),
-    content: serialize_json(v: belt_attempt_obligation_run_json(run: run, observed_at: observed_at)),
+    content: serialize_json(v: belt_attempt_obligation_run_json(run: run, observed_at: observed_at, claimed: claimed)),
   )
   if write.success { BeltPassRecorded } else { BeltPassFailed { reason: join(["the attempt's obligation receipt could not be written: ", write.error], "") } }
 }
@@ -14034,50 +14037,131 @@ type BeltAttemptObligationReceiptRead
   | BeltAttemptObligationReceiptAbsent
   | BeltAttemptObligationReceiptUnreadable { reason: String }
 
-fn belt_attempt_obligation_receipt_decode(raw: String) -> BeltAttemptObligationReceiptRead {
+// THE DECODER IS TOTAL AND SUBJECT-BOUND (bold-bee-114, 2026-10-09): the receipt names its node and attempt and
+// both must equal the requested subject, a foreign receipt never reads as this attempt's; observed_at and the
+// run's standing are decoded and validated; every step is decoded, each kind at most once, an unknown kind, a
+// malformed kind member or a malformed pass refuses; only then is verify projected.
+type BeltObligationStepsDecode
+  = BeltObligationStepsDecoded { kinds: List<String>, verify: BeltPassOutcome? }
+  | BeltObligationStepsUnreadable { reason: String }
+
+fn belt_attempt_obligation_receipt_unreadable(reason: String) -> BeltAttemptObligationReceiptRead {
+  BeltAttemptObligationReceiptUnreadable { reason: join(["attempt obligation receipt: ", reason], "") }
+}
+
+fn belt_attempt_obligation_receipt_string_member(doc: JsonValue, key: String) -> String? {
+  match json_required_string_member(doc: doc, key: key) {
+    JsonStringMemberFound { value: v } => Present { value: v }
+    JsonStringMemberRefused { reason: _ } => none
+  }
+}
+
+fn belt_attempt_obligation_steps_decode(steps: List<JsonValue>) -> BeltObligationStepsDecode {
+  let known = belt_attempt_obligation_order |> map(k => belt_attempt_obligation_kind_key(kind: k))
+  fold(steps, init: BeltObligationStepsDecoded { kinds: [], verify: none }, f: fn(acc, step) {
+    match acc {
+      BeltObligationStepsUnreadable { reason: _ } => acc
+      BeltObligationStepsDecoded { kinds, verify } =>
+        match json_required_string_member(doc: step, key: "kind") {
+          JsonStringMemberRefused { reason } => BeltObligationStepsUnreadable { reason: join(["a step has no readable kind: ", reason], "") }
+          JsonStringMemberFound { value: k } =>
+            if !any(known, kk => kk == k) {
+              BeltObligationStepsUnreadable { reason: join(["a step names the unknown kind ", k], "") }
+            } else if any(kinds, kk => kk == k) {
+              BeltObligationStepsUnreadable { reason: join(["the ", k, " step appears more than once"], "") }
+            } else {
+              match belt_pass_outcome_from_member(doc: step, key: "pass") {
+                BeltPassOutcomeUnreadable { reason } => BeltObligationStepsUnreadable { reason: join(["the ", k, " step: ", reason], "") }
+                BeltPassOutcomeDecoded { outcome } =>
+                  BeltObligationStepsDecoded {
+                    kinds: concat(kinds, [k]),
+                    verify: if k == belt_attempt_obligation_kind_key(kind: VerifyObligation) { Present { value: outcome } } else { verify },
+                  }
+              }
+            }
+        }
+    }
+  })
+}
+
+fn belt_attempt_obligation_receipt_decode(raw: String, node_id: String, attempt_key: String) -> BeltAttemptObligationReceiptRead {
   match parse_json_document(s: raw) {
     JsonDocumentUnreadable { gap } => BeltAttemptObligationReceiptUnreadable { reason: concat("the attempt obligation receipt is ", json_document_gap_text(gap: gap)) }
     JsonDocumentParsed { value: doc } =>
-      match json_object_unique_member(v: doc, key: "schema") {
-        JsonMemberFound { value: JsonString { value: schema } } =>
+      match belt_attempt_obligation_receipt_string_member(doc: doc, key: "schema") {
+        Absent => belt_attempt_obligation_receipt_unreadable(reason: "schema is missing")
+        Present { value: schema } =>
           if schema != belt_attempt_obligation_receipt_schema {
-            BeltAttemptObligationReceiptUnreadable { reason: "attempt obligation receipt schema is unknown" }
+            belt_attempt_obligation_receipt_unreadable(reason: "schema is unknown")
           } else {
-            match json_object_unique_member(v: doc, key: "steps") {
-              JsonMemberFound { value: JsonArray { elements } } => belt_attempt_obligation_verify_of_steps(steps: elements)
-              JsonMemberAbsent => BeltAttemptObligationReceiptPresent { verify: none }
-              JsonMemberFound { value: _ } => BeltAttemptObligationReceiptUnreadable { reason: "attempt obligation receipt steps is not an array" }
-              JsonMemberDuplicated { count: _ } => BeltAttemptObligationReceiptUnreadable { reason: "attempt obligation receipt steps is duplicated" }
-              JsonMemberNotAnObject => BeltAttemptObligationReceiptUnreadable { reason: "attempt obligation receipt is not an object" }
+            match belt_attempt_obligation_receipt_string_member(doc: doc, key: "node") {
+              Absent => belt_attempt_obligation_receipt_unreadable(reason: "node is missing")
+              Present { value: node } =>
+                match belt_attempt_obligation_receipt_string_member(doc: doc, key: "attempt") {
+                  Absent => belt_attempt_obligation_receipt_unreadable(reason: "attempt is missing")
+                  Present { value: attempt } =>
+                    if node != node_id || attempt != attempt_key {
+                      belt_attempt_obligation_receipt_unreadable(reason: join(["it is for ", node, "/", attempt, ", not the requested ", node_id, "/", attempt_key], ""))
+                    } else {
+                      match belt_attempt_obligation_receipt_string_member(doc: doc, key: "observed_at") {
+                        Absent => belt_attempt_obligation_receipt_unreadable(reason: "observed_at is missing")
+                        Present { value: observed_at } =>
+                          if string_length(s: observed_at) == 0 {
+                            belt_attempt_obligation_receipt_unreadable(reason: "observed_at is empty")
+                          } else if !belt_attempt_obligation_receipt_claim_is_strings(doc: doc) {
+                            belt_attempt_obligation_receipt_unreadable(reason: "claimed_exits is missing, duplicated or not an array of strings")
+                          } else {
+                            match belt_attempt_obligation_receipt_string_member(doc: doc, key: "standing") {
+                              Absent => belt_attempt_obligation_receipt_unreadable(reason: "standing is missing")
+                              Present { value: standing } => belt_attempt_obligation_receipt_by_standing(doc: doc, standing: standing)
+                            }
+                          }
+                      }
+                    }
+                }
             }
           }
-        JsonMemberFound { value: _ } => BeltAttemptObligationReceiptUnreadable { reason: "attempt obligation receipt schema is missing" }
-        JsonMemberAbsent => BeltAttemptObligationReceiptUnreadable { reason: "attempt obligation receipt schema is missing" }
-        JsonMemberDuplicated { count: _ } => BeltAttemptObligationReceiptUnreadable { reason: "attempt obligation receipt schema is duplicated" }
-        JsonMemberNotAnObject => BeltAttemptObligationReceiptUnreadable { reason: "attempt obligation receipt is not an object" }
       }
   }
 }
 
-fn belt_attempt_obligation_verify_of_steps(steps: List<JsonValue>) -> BeltAttemptObligationReceiptRead {
-  let verify_steps = steps |> filter(step => match json_required_string_member(doc: step, key: "kind") {
-    JsonStringMemberFound { value: k } => k == belt_attempt_obligation_kind_key(kind: VerifyObligation)
-    JsonStringMemberRefused { reason: _ } => false
-  })
-  match verify_steps.first() {
-    Absent => BeltAttemptObligationReceiptPresent { verify: none }
-    Present { value: step } =>
-      match belt_pass_outcome_from_member(doc: step, key: "pass") {
-        BeltPassOutcomeUnreadable { reason } => BeltAttemptObligationReceiptUnreadable { reason: join(["attempt obligation receipt verify step: ", reason], "") }
-        BeltPassOutcomeDecoded { outcome } => BeltAttemptObligationReceiptPresent { verify: Present { value: outcome } }
-      }
+// THE CLAIM THE RUN SETTLED AGAINST is part of the receipt: a ran, not-current or refused receipt all
+// name it, and a receipt whose claim cannot be read is unreadable rather than assumed empty.
+fn belt_attempt_obligation_receipt_claim_is_strings(doc: JsonValue) -> Bool {
+  match json_object_unique_member(v: doc, key: "claimed_exits") {
+    JsonMemberFound { value: JsonArray { elements } } =>
+      all(elements, e => match e { JsonString { value: _ } => true _ => false })
+    _ => false
+  }
+}
+
+fn belt_attempt_obligation_receipt_by_standing(doc: JsonValue, standing: String) -> BeltAttemptObligationReceiptRead {
+  if standing == "ran" {
+    match json_object_unique_member(v: doc, key: "steps") {
+      JsonMemberFound { value: JsonArray { elements } } =>
+        match belt_attempt_obligation_steps_decode(steps: elements) {
+          BeltObligationStepsUnreadable { reason } => belt_attempt_obligation_receipt_unreadable(reason: reason)
+          BeltObligationStepsDecoded { kinds: _, verify } => BeltAttemptObligationReceiptPresent { verify: verify }
+        }
+      JsonMemberAbsent => belt_attempt_obligation_receipt_unreadable(reason: "a ran receipt has no steps")
+      JsonMemberFound { value: _ } => belt_attempt_obligation_receipt_unreadable(reason: "steps is not an array")
+      JsonMemberDuplicated { count: _ } => belt_attempt_obligation_receipt_unreadable(reason: "steps is duplicated")
+      JsonMemberNotAnObject => belt_attempt_obligation_receipt_unreadable(reason: "it is not an object")
+    }
+  } else if standing == "not-current" || standing == "refused" {
+    match belt_attempt_obligation_receipt_string_member(doc: doc, key: "reason") {
+      Present { value: _ } => BeltAttemptObligationReceiptPresent { verify: none }
+      Absent => belt_attempt_obligation_receipt_unreadable(reason: join(["a ", standing, " receipt has no reason"], ""))
+    }
+  } else {
+    belt_attempt_obligation_receipt_unreadable(reason: join(["standing ", standing, " is unknown"], ""))
   }
 }
 
 fn belt_attempt_obligation_receipt_read(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> BeltAttemptObligationReceiptRead {
   match filesystem_file_observation_of_path(path: belt_attempt_obligation_receipt_path(instance: instance, node_id: node_id, attempt_key: attempt_key)) {
     FilesystemFileAbsent(_) => BeltAttemptObligationReceiptAbsent
-    FilesystemFileRead { path: _, content } => belt_attempt_obligation_receipt_decode(raw: content)
+    FilesystemFileRead { path: _, content } => belt_attempt_obligation_receipt_decode(raw: content, node_id: node_id, attempt_key: attempt_key)
     FilesystemFileIndeterminate { cause } => BeltAttemptObligationReceiptUnreadable { reason: cause }
     FilesystemFileObservationsDisagree { path: _, cause } => BeltAttemptObligationReceiptUnreadable { reason: cause }
     FilesystemFileSubjectRefused { directory: _, name: _, cause } => BeltAttemptObligationReceiptUnreadable { reason: cause }
@@ -14165,7 +14249,13 @@ fn belt_exit_drain_at(root: String, enqueue: fn(String, String) -> BeltObligatio
     AttemptExitStageUnreadable { reason } => BeltExitDrainRefused { reason: reason }
     AttemptExitStageNames { names } =>
       BeltExitDrained {
-        entries: names |> map(n => belt_exit_entry_drain_at(root: root, entry: n, enqueue: enqueue)),
+        entries: concat(
+          names |> map(n => belt_exit_entry_drain_at(root: root, entry: n, enqueue: enqueue)),
+          belt_exit_queued_sweep_at(root: root, skip: names |> flat_map(n => match attempt_exit_entry_decode(entry_name: n) {
+            AttemptExitEntryDecoded { record } => [join([record.node_id, "/", record.attempt_key], "")]
+            AttemptExitEntryMalformed { entry_name: _, reason: _ } => [] as List<String>
+          }), enqueue: enqueue),
+        ),
         launch: if any(names, n => belt_exit_entry_is_worker(entry: n)) { Present { value: launch() } } else { none },
       }
   }
@@ -14218,26 +14308,101 @@ fn belt_exit_drain_failures(d: BeltExitDrain) -> List<String> {
   }
 }
 
-// THE ATTEMPT'S RUN SETTLES ITS ENTRIES AFTER ITS RECEIPT IS WRITTEN (bold-bee-114 ruling: done/ only
-// after the obligation's receipt exists). Every queued entry for this attempt was handed to this run or
-// an earlier one of the same unit, so once the run's receipt is on disk they move to done.
-fn belt_exit_entries_settle(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> List<String> {
-  belt_exit_entries_settle_at(root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key)
+// THE RUN CLAIMS A BOUNDED POPULATION BEFORE ITS FIRST OBSERVATION, AND ONLY WHAT IT CLAIMED IS SETTLED
+// (bold-bee-114, 2026-10-09: lost wakeup and false acknowledgment). Claiming is the create-only move
+// queued -> running of every entry this attempt has in the spool at that instant -- an entry the run's
+// observations are guaranteed to have seen, because the exit was recorded before the claim and the
+// observations come after it. The receipt names the claim (`claimed_exits`); settlement moves exactly
+// those entries running -> done once the receipt is on disk. An exit that arrives later -- after the
+// final observation but before settlement, after settlement but before the unit exits, or while the
+// unit is gone -- is not in the claim, so nothing acknowledges it: it stays queued, the queued level
+// starts the drain, and the sweep hands its attempt to a NEW run that claims it. A held unit is never
+// proof the active run includes a new event.
+//
+// A `running` entry found at claim time belongs to a predecessor whose run died before settling: the
+// unit name is the exclusive hold, so no live run can own it. The new run adopts it into its claim.
+type BeltExitClaim
+  = BeltExitClaimed { entries: List<String> }
+  | BeltExitClaimRefused { reason: String }
+
+fn belt_exit_entry_is_for(entry: String, node_id: String, attempt_key: String) -> Bool {
+  match attempt_exit_entry_decode(entry_name: entry) {
+    AttemptExitEntryDecoded { record } => record.node_id == node_id && record.attempt_key == attempt_key
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
 }
 
-fn belt_exit_entries_settle_at(root: String, node_id: String, attempt_key: String) -> List<String> {
+fn belt_exit_entries_claim_at(root: String, node_id: String, attempt_key: String) -> BeltExitClaim {
   match attempt_exit_stage_list(instance_root: root, stage: AttemptExitQueued) {
-    AttemptExitStageUnreadable { reason } => [join(["the queued exit entries could not be listed: ", reason], "")]
+    AttemptExitStageUnreadable { reason } => BeltExitClaimRefused { reason: join(["the queued exit entries could not be listed: ", reason], "") }
+    AttemptExitStageNames { names: queued } =>
+      match attempt_exit_stage_list(instance_root: root, stage: AttemptExitRunning) {
+        AttemptExitStageUnreadable { reason } => BeltExitClaimRefused { reason: join(["the running exit entries could not be listed: ", reason], "") }
+        AttemptExitStageNames { names: running } => {
+          let mine = queued |> filter(n => belt_exit_entry_is_for(entry: n, node_id: node_id, attempt_key: attempt_key))
+          let failed = mine |> flat_map(n => match belt_exit_entry_move_at(root: root, entry: n, from: AttemptExitQueued, to: AttemptExitRunning) {
+            Absent => [] as List<String>
+            Present { value: why } => [join([n, ": ", why], "")]
+          })
+          if count(failed) == 0 {
+            BeltExitClaimed { entries: concat(mine, running |> filter(n => belt_exit_entry_is_for(entry: n, node_id: node_id, attempt_key: attempt_key))) }
+          } else {
+            BeltExitClaimRefused { reason: join(["exit entries could not be claimed: ", join(failed, "; ")], "") }
+          }
+        }
+      }
+  }
+}
+
+fn belt_exit_entries_claim(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> BeltExitClaim {
+  belt_exit_entries_claim_at(root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key)
+}
+
+// SETTLEMENT MOVES ONLY THE CLAIM running -> done, after the receipt that names it is written.
+fn belt_exit_entries_settle_at(root: String, claimed: List<String>) -> List<String> {
+  claimed |> flat_map(n => match belt_exit_entry_move_at(root: root, entry: n, from: AttemptExitRunning, to: AttemptExitDone) {
+    Absent => [] as List<String>
+    Present { value: why } => [join([n, ": ", why], "")]
+  })
+}
+
+fn belt_exit_entries_settle(instance: HostDashboardInstance, claimed: List<String>) -> List<String> {
+  belt_exit_entries_settle_at(root: instance.instance_root as String, claimed: claimed)
+}
+
+// EXITS THIS ATTEMPT STILL HAS UNCLAIMED, listed from the queue: the run's own re-check after settling
+// (a second bounded pass picks up an arrival the first one could not have seen).
+fn belt_exit_entries_pending_at(root: String, node_id: String, attempt_key: String) -> BeltExitClaim {
+  match attempt_exit_stage_list(instance_root: root, stage: AttemptExitQueued) {
+    AttemptExitStageUnreadable { reason } => BeltExitClaimRefused { reason: join(["the queued exit entries could not be listed: ", reason], "") }
+    AttemptExitStageNames { names } => BeltExitClaimed { entries: names |> filter(n => belt_exit_entry_is_for(entry: n, node_id: node_id, attempt_key: attempt_key)) }
+  }
+}
+
+// THE QUEUED SWEEP: the level-triggered half of the hand-off. Every attempt with an entry in `queued`
+// that this drain did not just hand off is enqueued again -- a held unit is a no-op (its own re-check or
+// the next drain picks the entry up), a gone unit is started and its run claims the entry. One enqueue
+// per attempt, whatever its entry count.
+fn belt_exit_queued_sweep_at(root: String, skip: List<String>, enqueue: fn(String, String) -> BeltObligationEnqueue) -> List<BeltExitDrainEntry> {
+  match attempt_exit_stage_list(instance_root: root, stage: AttemptExitQueued) {
+    AttemptExitStageUnreadable { reason } => [BeltExitEntryRefused { entry: "queued", reason: reason }]
     AttemptExitStageNames { names } =>
-      names
-        |> filter(n => match attempt_exit_entry_decode(entry_name: n) {
-          AttemptExitEntryDecoded { record } => record.node_id == node_id && record.attempt_key == attempt_key
-          AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
-        })
-        |> flat_map(n => match belt_exit_entry_move_at(root: root, entry: n, from: AttemptExitQueued, to: AttemptExitDone) {
-          Absent => [] as List<String>
-          Present { value: why } => [join([n, ": ", why], "")]
-        })
+      fold(names, init: [] as List<BeltExitDrainEntry>, f: (acc, n) => match attempt_exit_entry_decode(entry_name: n) {
+        AttemptExitEntryMalformed { entry_name: _, reason } => concat(acc, [BeltExitEntryRefused { entry: n, reason: join(["queued entry is not an exit record: ", reason], "") }])
+        AttemptExitEntryDecoded { record } => {
+          let key = join([record.node_id, "/", record.attempt_key], "")
+          if any(skip, k => k == key) || any(acc, e => match e { BeltExitEntryHanded { entry, enqueue: _ } => belt_exit_entry_is_for(entry: entry, node_id: record.node_id, attempt_key: record.attempt_key) _ => false }) {
+            acc
+          } else {
+            let handed = enqueue(record.node_id, record.attempt_key)
+            match handed {
+              BeltObligationEnqueueRefused { unit: _, reason } => concat(acc, [BeltExitEntryRefused { entry: n, reason: reason }])
+              BeltObligationStarted { unit: _ } => concat(acc, [BeltExitEntryHanded { entry: n, enqueue: handed }])
+              BeltObligationHeld { unit: _ } => concat(acc, [BeltExitEntryHanded { entry: n, enqueue: handed }])
+            }
+          }
+        }
+      })
   }
 }
 
@@ -14290,7 +14455,11 @@ fn belt_exit_spool_times(instance: HostDashboardInstance) -> BeltExitSpoolTimes 
     BeltExitSpoolTimesRead { entries: inbox } =>
       match belt_exit_spool_stage_times(instance: instance, stage: AttemptExitQueued, label: "queued") {
         BeltExitSpoolTimesUnreadable { reason } => BeltExitSpoolTimesUnreadable { reason: reason }
-        BeltExitSpoolTimesRead { entries: queued } => BeltExitSpoolTimesRead { entries: concat(inbox, queued) }
+        BeltExitSpoolTimesRead { entries: queued } =>
+          match belt_exit_spool_stage_times(instance: instance, stage: AttemptExitRunning, label: "running") {
+            BeltExitSpoolTimesUnreadable { reason } => BeltExitSpoolTimesUnreadable { reason: reason }
+            BeltExitSpoolTimesRead { entries: running } => BeltExitSpoolTimesRead { entries: concat(inbox, concat(queued, running)) }
+          }
       }
   }
 }

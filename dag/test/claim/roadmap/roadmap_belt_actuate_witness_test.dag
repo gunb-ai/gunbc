@@ -113,7 +113,7 @@ import gunbc.roadmap_belt_actuate {
   belt_tick_result_json_value,
   BeltDiscovered, BeltDiscoveryRefused,
   BeltAttemptObligationReceiptPresent, BeltAttemptObligationReceiptAbsent, BeltAttemptObligationReceiptUnreadable,
-  belt_attempt_obligation_receipt_decode, belt_attempt_obligation_run_json, BeltAttemptObligationsRan, BeltAttemptObligationsNotCurrent, BeltAttemptObligationStep,
+  belt_attempt_obligation_receipt_decode, belt_pass_outcome_json, BeltAttemptObligationReceiptRead, belt_attempt_obligation_run_json, BeltAttemptObligationsRan, BeltAttemptObligationsNotCurrent, BeltAttemptObligationStep,
   BeltExecOutcome, ExecOk, ExecFailed, ExecRefused,
   belt_exec,
   belt_exec_all,
@@ -1518,19 +1518,52 @@ test fn the_attempt_obligation_receipt_round_trips_its_verify_step() -> Bool {
     BeltAttemptObligationStep { kind: CaptureObligation, pass: BeltPassRecorded, detail: json_string(s: "captured") },
     BeltAttemptObligationStep { kind: VerifyObligation, pass: BeltPassFailed { reason: "validation verdict failed" }, detail: json_string(s: "failed") },
   ] }
-  let with_verify = match belt_attempt_obligation_receipt_decode(raw: serialize_json(v: belt_attempt_obligation_run_json(run: run, observed_at: "2026-10-06T00:00:00Z"))) {
+  let with_verify = match decode_receipt_for_n_k(raw: serialize_json(v: belt_attempt_obligation_run_json(run: run, observed_at: "2026-10-06T00:00:00Z", claimed: ["e1"]))) {
     BeltAttemptObligationReceiptPresent { verify: Present { value: BeltPassFailed { reason } } } => reason == "validation verdict failed"
     _ => false
   }
-  let without = match belt_attempt_obligation_receipt_decode(raw: serialize_json(v: belt_attempt_obligation_run_json(run: BeltAttemptObligationsNotCurrent { node_id: "n", attempt_key: "k", reason: "superseded" }, observed_at: "2026-10-06T00:00:00Z"))) {
+  let without = match decode_receipt_for_n_k(raw: serialize_json(v: belt_attempt_obligation_run_json(run: BeltAttemptObligationsNotCurrent { node_id: "n", attempt_key: "k", reason: "superseded" }, observed_at: "2026-10-06T00:00:00Z", claimed: ["e1"]))) {
     BeltAttemptObligationReceiptPresent { verify: Absent } => true
     _ => false
   }
-  let foreign = match belt_attempt_obligation_receipt_decode(raw: "{\"schema\":\"roadmap-belt-attempt-obligations/v0\"}") {
+  with_verify && without && receipt_unreadable(raw: "{\"schema\":\"roadmap-belt-attempt-obligations/v0\"}")
+}
+
+fn decode_receipt_for_n_k(raw: String) -> BeltAttemptObligationReceiptRead {
+  belt_attempt_obligation_receipt_decode(raw: raw, node_id: "n", attempt_key: "k")
+}
+
+fn receipt_unreadable(raw: String) -> Bool {
+  match decode_receipt_for_n_k(raw: raw) {
     BeltAttemptObligationReceiptUnreadable { reason: _ } => true
     _ => false
   }
-  with_verify && without && foreign
+}
+
+fn receipt_with_steps(node: String, attempt: String, standing: String, steps: String) -> String {
+  join(["{\"schema\":\"roadmap-belt-attempt-obligations/v1\",\"observed_at\":\"2026-10-06T00:00:00Z\",\"claimed_exits\":[],\"node\":\"", node, "\",\"attempt\":\"", attempt, "\",\"standing\":\"", standing, "\",\"steps\":", steps, "}"], "")
+}
+
+// THE DECODER IS TOTAL AND SUBJECT-BOUND (bold-bee-114, 2026-10-09): a foreign node or attempt, a duplicated
+// verify, a malformed or unknown kind, a malformed non-verify step and an unknown standing are each
+// unreadable, and the well-formed receipt for the subject is the positive control.
+test fn the_attempt_obligation_receipt_decoder_is_total_and_subject_bound() -> Bool {
+  let good_pass = belt_pass_outcome_json(o: BeltPassRecorded)
+  let verify = join(["{\"kind\":\"verify\",\"pass\":", serialize_json(v: good_pass), "}"], "")
+  let capture = join(["{\"kind\":\"capture\",\"pass\":", serialize_json(v: good_pass), "}"], "")
+  let positive = match decode_receipt_for_n_k(raw: receipt_with_steps(node: "n", attempt: "k", standing: "ran", steps: join(["[", capture, ",", verify, "]"], ""))) {
+    BeltAttemptObligationReceiptPresent { verify: Present { value: BeltPassRecorded } } => true
+    _ => false
+  }
+  positive
+    && receipt_unreadable(raw: receipt_with_steps(node: "other", attempt: "k", standing: "ran", steps: join(["[", verify, "]"], "")))
+    && receipt_unreadable(raw: receipt_with_steps(node: "n", attempt: "other", standing: "ran", steps: join(["[", verify, "]"], "")))
+    && receipt_unreadable(raw: receipt_with_steps(node: "n", attempt: "k", standing: "ran", steps: join(["[", verify, ",", verify, "]"], "")))
+    && receipt_unreadable(raw: receipt_with_steps(node: "n", attempt: "k", standing: "ran", steps: "[{\"kind\":7,\"pass\":{}}]"))
+    && receipt_unreadable(raw: receipt_with_steps(node: "n", attempt: "k", standing: "ran", steps: join(["[{\"kind\":\"bogus\",\"pass\":", serialize_json(v: good_pass), "}]"], "")))
+    && receipt_unreadable(raw: receipt_with_steps(node: "n", attempt: "k", standing: "ran", steps: join(["[{\"kind\":\"capture\",\"pass\":{\"outcome\":\"???\"}},", verify, "]"], "")))
+    && receipt_unreadable(raw: "{\"schema\":\"roadmap-belt-attempt-obligations/v1\",\"observed_at\":\"2026-10-06T00:00:00Z\",\"node\":\"n\",\"attempt\":\"k\",\"standing\":\"not-current\",\"reason\":\"r\"}")
+    && receipt_unreadable(raw: receipt_with_steps(node: "n", attempt: "k", standing: "weird", steps: join(["[", verify, "]"], "")))
 }
 
 test fn verification_presentation_wire_carries_detail() -> Bool {
