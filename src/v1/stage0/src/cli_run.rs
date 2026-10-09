@@ -3607,29 +3607,29 @@ fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBi
     rows
 }
 
-/// The closure an in-memory (not-on-disk) fixture entry compiles against: the corpus modules its
-/// authored `import` lines name, read from the workspace through `module_index`, CLOSED BY THE
-/// ONE CLOSURE AUTHORITY (`extend_sources_to_both_closure_fixpoint`), then the entry itself.
-///
-/// WHY NOT THE IMPORT EDGES ALONE (DESIGN §3, §6b). This walker used to stop at `import` lines,
-/// a fourth closure rule beside the one the gate, the witness loader and regen share. An `import`
-/// line, a qualified reference and a bare reference are the same dependency edge, so the
-/// import-only walk was not a narrower closure but a blind one: `std.syllogism` reaches
-/// `std.graph` by the bare name `GraphEdge` and `v2.std.artifact` reaches `v2.std.refinement` by
-/// qualified reference, so a fixture whose imports reached either compiled it WITHOUT its
-/// provider and reported `unresolved type` / `undefined variable 'v2'` against a module that
-/// resolves in every closure the corpus authority builds. #13195's union render made that
-/// fork refuse the floor (46 such diagnostics on #13420's run, none in its own modules).
-///
-/// The extension is seeded from the corpus modules only. The entry is the fixture's subject,
-/// authored with an explicit import manifest a witness may be probing (an unlisted use, a
-/// refused import), so its own spelling stays exactly what it declares; every module it reaches
-/// is closed as the corpus closes it. An extension failure is returned, never widened past.
-pub(crate) fn resolve_virtual_source_with_imports(
-    entry_path: &str,
+/// Scratch index for one fixture-closure extension. Same `source_files` as the process-shared
+/// slot; own caches, dropped with the loader. Reads fall through to the shared slot; writes stay
+/// on the scratch (MegaRAC rows never land on the fold's index and do not outlive the compile).
+/// parse_cache is not underlaid: those rows are intern-paired with the slot that parsed them.
+/// RFM `fixture_compile_retained_on_the_process_shared_index`.
+fn scratch_index_for_fixture_closure_extension() -> Result<MultiEntryIndex, String> {
+    let layers = witness_layer_roots();
+    let shared = entry_resolve::try_process_shared_index(&layers)?;
+    let scratch = entry_resolve::new_multi_entry_index_scratch_over(
+        shared.source_files.clone(),
+        &shared.source_roots,
+    );
+    *scratch.scratch_underlay.borrow_mut() = Some(shared);
+    Ok(scratch)
+}
+
+/// Authored-import seeds of an in-memory fixture: the corpus modules its `import` lines name,
+/// read through `module_index`. The both-closure fixpoint is applied by the caller on a chosen
+/// index, so GREEN (scratch) and RED (process-shared) differ only by that index.
+fn fixture_imported_corpus_sources(
     entry_content: &str,
     module_index: &HashMap<String, String>,
-) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+) -> Vec<Rc<v1_compiler_compile::SourceFile>> {
     let ws = process_workspace_root();
     let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
     let mut queue: Vec<String> = vec![entry_content.to_string()];
@@ -3653,28 +3653,80 @@ pub(crate) fn resolve_virtual_source_with_imports(
             }
         }
     }
-    let imported: Vec<Rc<v1_compiler_compile::SourceFile>> =
-        seen.into_iter().map(|(_, v)| v).collect();
+    seen.into_iter().map(|(_, v)| v).collect()
+}
+
+fn close_fixture_imported_corpus(
+    imported: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    index: &MultiEntryIndex,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    if imported.is_empty() {
+        return Ok(imported);
+    }
+    Ok(extend_sources_to_both_closure_fixpoint(imported, index)?
+        .into_iter()
+        // One spelling per file: the index may carry a pulled module under its absolute
+        // path, and a recorder keyed by path must not see one file as two members.
+        .map(|source| {
+            let rel = workspace_relative_repo_path(&source.path);
+            if rel == source.path {
+                source
+            } else {
+                Rc::new(v1_compiler_compile::SourceFile {
+                    path: rel,
+                    content: source.content.clone(),
+                })
+            }
+        })
+        .collect())
+}
+
+/// THE PRE-FIX LOADER, test-only: the same import seeds and closure authority as
+/// `resolve_virtual_source_with_imports`, on `try_index_for_run_or_owned_pool` over the layer
+/// roots. That is the slot the claim fold reads. The only difference from production is the
+/// index. RFM `fixture_compile_retained_on_the_process_shared_index`.
+#[cfg(test)]
+pub(crate) fn extend_fixture_imports_on_process_shared_index(
+    entry_content: &str,
+    module_index: &HashMap<String, String>,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let imported = fixture_imported_corpus_sources(entry_content, module_index);
+    let layers = witness_layer_roots();
+    let index = entry_resolve::try_index_for_run_or_owned_pool(&layers)?;
+    close_fixture_imported_corpus(imported, &index)
+}
+
+/// The closure an in-memory (not-on-disk) fixture entry compiles against: the corpus modules its
+/// authored `import` lines name, read from the workspace through `module_index`, CLOSED BY THE
+/// ONE CLOSURE AUTHORITY (`extend_sources_to_both_closure_fixpoint`), then the entry itself.
+///
+/// WHY NOT THE IMPORT EDGES ALONE (DESIGN §3, §6b). This walker used to stop at `import` lines,
+/// a fourth closure rule beside the one the gate, the witness loader and regen share. An `import`
+/// line, a qualified reference and a bare reference are the same dependency edge, so the
+/// import-only walk was not a narrower closure but a blind one: `std.syllogism` reaches
+/// `std.graph` by the bare name `GraphEdge` and `v2.std.artifact` reaches `v2.std.refinement` by
+/// qualified reference, so a fixture whose imports reached either compiled it WITHOUT its
+/// provider and reported `unresolved type` / `undefined variable 'v2'` against a module that
+/// resolves in every closure the corpus authority builds. #13195's union render made that
+/// fork refuse the floor (46 such diagnostics on #13420's run, none in its own modules).
+///
+/// The extension is seeded from the corpus modules only. The entry is the fixture's subject,
+/// authored with an explicit import manifest a witness may be probing (an unlisted use, a
+/// refused import), so its own spelling stays exactly what it declares; every module it reaches
+/// is closed as the corpus closes it. An extension failure is returned, never widened past.
+/// The fixpoint mutates a scratch index (dropped with the loader), never the process-shared
+/// slot the claim fold reads.
+pub(crate) fn resolve_virtual_source_with_imports(
+    entry_path: &str,
+    entry_content: &str,
+    module_index: &HashMap<String, String>,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let imported = fixture_imported_corpus_sources(entry_content, module_index);
     let mut sources = if imported.is_empty() {
         imported
     } else {
-        let index = entry_resolve::try_index_for_run_or_owned_pool(&witness_layer_roots())?;
-        extend_sources_to_both_closure_fixpoint(imported, &index)?
-            .into_iter()
-            // One spelling per file: the index may carry a pulled module under its absolute
-            // path, and a recorder keyed by path must not see one file as two members.
-            .map(|source| {
-                let rel = workspace_relative_repo_path(&source.path);
-                if rel == source.path {
-                    source
-                } else {
-                    Rc::new(v1_compiler_compile::SourceFile {
-                        path: rel,
-                        content: source.content.clone(),
-                    })
-                }
-            })
-            .collect()
+        let index = scratch_index_for_fixture_closure_extension()?;
+        close_fixture_imported_corpus(imported, &index)?
     };
     sources.sort_by(|a, b| a.path.cmp(&b.path));
     sources.dedup_by(|a, b| a.path == b.path);
@@ -8348,6 +8400,11 @@ fn parsed_file_references_of(
     if let Some(hit) = index.parsed_references.borrow().get(&file) {
         return hit.clone();
     }
+    if let Some(base) = index.scratch_underlay.borrow().as_ref() {
+        if let Some(hit) = base.parsed_references.borrow().get(&file) {
+            return hit.clone();
+        }
+    }
     let module_names = pool_module_names(index);
     let self_module = extract_module_path(&sf.content).unwrap_or_default();
     index
@@ -8716,6 +8773,11 @@ fn admit_bare_references_of_file(
     let file = workspace_relative_repo_path(&source.path);
     if let Some(verdict) = index.bare_reference_admission.borrow().get(&file) {
         return verdict.clone();
+    }
+    if let Some(base) = index.scratch_underlay.borrow().as_ref() {
+        if let Some(verdict) = base.bare_reference_admission.borrow().get(&file) {
+            return verdict.clone();
+        }
     }
     let verdict = if source_declares_import_lines(&source.content) {
         Ok(())
@@ -9242,6 +9304,13 @@ fn build_both_closure_edge_index(
     if let Some(hit) = index.both_closure_edges.borrow().as_ref() {
         if hit.ref_out.contains_key(&file) {
             return Ok(hit.clone());
+        }
+    }
+    if let Some(base) = index.scratch_underlay.borrow().as_ref() {
+        if let Some(hit) = base.both_closure_edges.borrow().as_ref() {
+            if hit.ref_out.contains_key(&file) {
+                return Ok(hit.clone());
+            }
         }
     }
     let ref_started = std::time::Instant::now();
@@ -12568,6 +12637,8 @@ pub struct MultiEntryIndex {
     live_read_manifest: RefCell<Option<Result<Rc<LiveReadSelectionManifest>, String>>>,
     /// Only produced rows; consumers needing every row call whole_pool_closure_edge_index.
     both_closure_edges: RefCell<Option<Rc<BothClosureEdgeIndex>>>,
+    /// Fixture-scratch read-through: the process-shared index. Writes stay on this index.
+    scratch_underlay: RefCell<Option<Rc<MultiEntryIndex>>>,
     /// Admission and edge selection need declaration heads, not resolved signatures.
     /// None identifies the whole-pool name census; Some(root) the existing tree/import view.
     closure_name_censuses: RefCell<HashMap<Option<String>, Rc<SymbolIndex>>>,
@@ -12933,11 +13004,20 @@ fn next_index_generation() -> u64 {
 /// One `MultiEntryIndex` construction: the module-name set it indexes (as a digest over the sorted
 /// module paths, with its size) and the first caller outside the `#[track_caller]` chain of index
 /// builders that demanded it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MultiEntryIndexBuildKind {
+    /// One demand for a module-name set. Two of these with one digest refuse.
+    NameSetIndex,
+    /// Isolated caches over an already-indexed name set. Countable, not a second index.
+    ScratchCachesOverExistingSet,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct MultiEntryIndexBuild {
     pub(crate) name_set_digest: u64,
     pub(crate) modules: usize,
     pub(crate) site: String,
+    pub(crate) kind: MultiEntryIndexBuildKind,
 }
 
 static MULTI_ENTRY_INDEX_BUILDS: std::sync::Mutex<Vec<MultiEntryIndexBuild>> =
@@ -12946,6 +13026,7 @@ static MULTI_ENTRY_INDEX_BUILDS: std::sync::Mutex<Vec<MultiEntryIndexBuild>> =
 pub(crate) fn record_multi_entry_index_site(
     site: &std::panic::Location<'_>,
     source_files: &ModuleSourceIndex,
+    kind: MultiEntryIndexBuildKind,
 ) {
     use std::hash::{Hash, Hasher};
     // The POOL, not only its names: two scratch pools declaring one module path at different
@@ -12962,6 +13043,7 @@ pub(crate) fn record_multi_entry_index_site(
             name_set_digest: hasher.finish(),
             modules: pool.len(),
             site: format!("{}:{}", site.file(), site.line()),
+            kind,
         });
     }
 }
@@ -12973,15 +13055,18 @@ pub(crate) fn multi_entry_index_builds() -> Vec<MultiEntryIndexBuild> {
         .unwrap_or_default()
 }
 
-/// ONE INDEX PER MODULE-NAME SET. An index is a pure function of the name set it covers, so two
-/// constructions over one set are one demand built twice, and every file each serves is parsed
-/// again per index. Refuses with the sites of every set built more than once; distinct sets are
-/// distinct demands and are not limited.
+/// ONE NAME-SET INDEX PER MODULE-NAME SET. Two `NameSetIndex` constructions over one set are one
+/// demand built twice. `ScratchCachesOverExistingSet` is recorded (countable) and is not a second
+/// index of that set. Refuses with the sites of every set indexed more than once; distinct sets
+/// are distinct demands and are not limited.
 pub(crate) fn multi_entry_index_sharing_control(
     builds: &[MultiEntryIndexBuild],
 ) -> Result<usize, String> {
     let mut by_set: BTreeMap<u64, Vec<&MultiEntryIndexBuild>> = BTreeMap::new();
     for build in builds {
+        if build.kind != MultiEntryIndexBuildKind::NameSetIndex {
+            continue;
+        }
         by_set.entry(build.name_set_digest).or_default().push(build);
     }
     let repeated: Vec<String> = by_set
@@ -38407,6 +38492,7 @@ pub fn prepare_repository_from_corpus(
 ///
 /// So the repository holds a projection with the cache emptied. The resolve is a fresh compile
 /// with no process-level memo, so the original modules drop here and their caches with them.
+///
 /// Every other field is the same `Rc`, so no evaluated value changes.
 fn prepared_graph_without_typecheck_caches(
     graph: &Rc<v1_compiler_compile::ResolvedGraph>,
@@ -42619,13 +42705,25 @@ mod reference_closure_single_parse_differential {
 
 #[cfg(test)]
 mod multi_entry_index_sharing_control_tests {
-    use super::{multi_entry_index_sharing_control, MultiEntryIndexBuild};
+    use super::{
+        multi_entry_index_sharing_control, MultiEntryIndexBuild, MultiEntryIndexBuildKind,
+    };
 
     fn build(digest: u64, site: &str) -> MultiEntryIndexBuild {
         MultiEntryIndexBuild {
             name_set_digest: digest,
             modules: 7,
             site: site.to_string(),
+            kind: MultiEntryIndexBuildKind::NameSetIndex,
+        }
+    }
+
+    fn scratch(digest: u64, site: &str) -> MultiEntryIndexBuild {
+        MultiEntryIndexBuild {
+            name_set_digest: digest,
+            modules: 7,
+            site: site.to_string(),
+            kind: MultiEntryIndexBuildKind::ScratchCachesOverExistingSet,
         }
     }
 
@@ -42651,6 +42749,18 @@ mod multi_entry_index_sharing_control_tests {
         assert!(
             err.contains("a:1") && err.contains("c:3") && !err.contains("b:2"),
             "{err}"
+        );
+    }
+
+    #[test]
+    fn scratch_kind_does_not_count_as_a_second_name_set_index() {
+        assert_eq!(
+            multi_entry_index_sharing_control(&[
+                build(1, "a:1"),
+                scratch(1, "s:1"),
+                scratch(1, "s:2"),
+            ]),
+            Ok(1)
         );
     }
 }
