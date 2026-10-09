@@ -27034,6 +27034,88 @@ pub fn lambda_argument_scope(arg: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferSc
     }
 }
 
+pub fn rust_call_target_is_v2_algebra_length(target: Rc<CallTargetIdentity>) -> bool {
+    match rust_call_target_declared_length(target.clone()) {
+        std::option::Option::None => false,
+        Some(id) => {
+            ((id.decl_name.clone() == "length".to_string())
+                && (id.owner_module_path.clone() == "v2.std.algebra".to_string()))
+        }
+    }
+}
+
+pub fn rust_call_target_declared_length(
+    target: Rc<CallTargetIdentity>,
+) -> Option<Rc<DeclaredCallableIdentity>> {
+    match (*target.clone()).clone() {
+        CallTargetIdentity::SourceDeclarationCall {
+            owner_module_path: owner,
+            decl_name: decl,
+            ..
+        } => Some(Rc::new(DeclaredCallableIdentity {
+            owner_module_path: owner.clone(),
+            decl_name: decl.clone(),
+        })),
+        CallTargetIdentity::RuntimePrimitiveCall {
+            projected_from: projected,
+            ..
+        } => projected.clone(),
+        CallTargetIdentity::LocallyBoundCall { name: _, .. } => std::option::Option::None,
+        CallTargetIdentity::CallableTargetUndetermined => std::option::Option::None,
+    }
+}
+
+pub fn rust_emit_length_on_host_string(
+    call_target: Rc<CallTargetIdentity>,
+    func: String,
+    args: Rc<Vec<Rc<Node>>>,
+    call_semantics: Option<Rc<CallSemantics>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> Option<String> {
+    if (rust_call_target_is_v2_algebra_length(call_target.clone()) == false) {
+        std::option::Option::None
+    } else {
+        {
+            let length_args = crate::v1_compiler_emit::order_typed_call_args_from_semantics(
+                args.clone(),
+                func.clone(),
+                call_semantics.clone(),
+                scope.clone(),
+            );
+            match length_args.clone().first().cloned() {
+                std::option::Option::None => std::option::Option::None,
+                Some(xs_arg) => {
+                    if is_host_text_typed_expr(
+                        crate::v1_std_core::arg_value(xs_arg.clone()),
+                        scope.type_env.clone().source_indices.clone(),
+                    ) {
+                        Some(v1_rt::concat(
+                            v1_rt::concat(
+                                "v1_rt::string_length(&".to_string(),
+                                emit_typed_expr_base(
+                                    crate::v1_std_core::arg_value(xs_arg.clone()),
+                                    registry.clone(),
+                                    scope.clone(),
+                                    depth.clone(),
+                                    shared_types.clone(),
+                                    emit_info.clone(),
+                                ),
+                            ),
+                            ")".to_string(),
+                        ))
+                    } else {
+                        std::option::Option::None
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn emit_typed_call(
     func: String,
     args: Rc<Vec<Rc<Node>>>,
@@ -27312,6 +27394,20 @@ pub fn emit_typed_call(
                 };
                 return disc_result;
             }
+        }
+        match rust_emit_length_on_host_string(
+            call_target.clone(),
+            func.clone(),
+            args.clone(),
+            call_semantics.clone(),
+            registry.clone(),
+            scope.clone(),
+            depth.clone(),
+            shared_types.clone(),
+            emit_info.clone(),
+        ) {
+            Some(lowered) => return lowered.clone(),
+            std::option::Option::None => {}
         }
         let ordered_args = crate::v1_compiler_emit::order_typed_call_args_from_semantics(
             args.clone(),
@@ -30363,7 +30459,7 @@ pub fn emit_typed_method_call(
                     method_def.clone(),
                 );
                 let method_name = if (method_name_raw.clone() == "length".to_string()) {
-                    if is_string_typed_expr(
+                    if is_host_text_typed_expr(
                         receiver.clone(),
                         scope.type_env.clone().source_indices.clone(),
                     ) {
@@ -35616,6 +35712,24 @@ pub fn is_string_typed_expr(
                 rt.clone()
             };
             is_rust_string_like(inner.clone(), source_indices.clone())
+        }
+        _ => false,
+    }
+}
+
+pub fn is_host_text_typed_expr(
+    e: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match e.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => {
+            let is_optional = (rt.return_cardinality.clone() == Cardinality::CardOptional);
+            let inner = if is_optional.clone() {
+                crate::v1_std_core::with_required_cardinality(rt.clone())
+            } else {
+                rt.clone()
+            };
+            is_host_text_carrier_type(inner.clone(), source_indices.clone())
         }
         _ => false,
     }
