@@ -16,6 +16,6 @@ data first_element_of_a_list_has_three_spellings: RecurringFailureMode = Recurri
     DeclarationRef { module_path: "v2.std.algebra", decl_name: "list_head", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.std.algebra", decl_name: "ListHeadResult", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.std.collection", decl_name: "list_at_optional", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.std.optional", decl_name: "Optional", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.optional", decl_name: "Optional", field: WholeDeclaration },
   ],
 }
