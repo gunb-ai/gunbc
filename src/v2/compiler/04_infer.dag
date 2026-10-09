@@ -5793,18 +5793,25 @@ fn infer_gather_acc_with_application_instances(acc: InferGatherFoldAcc, instance
   }
 }
 
-fn infer_inhabitance_pair_for_actual(pairs: List<InhabitanceFormalArg>, actual: Node) -> Optional<InhabitanceFormalArg> {
-  fold(pairs, init: optional_absent(), f: fn(acc, pair) {
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        if pair.arg == actual {
-          optional_present(value: pair)
-        } else {
-          acc
-        }
-    }
-  })
+fn infer_application_actual_pair_missing_diagnostic(actual: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_application_actual_pair_missing,
+    at: node_locus(node: actual),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// AUTHORED ACTUAL INDEX OF THE CHILD THE GATHER IS FOLDING. children_remaining is the count of
+// this Transform's children not yet stepped, so length - remaining is this edge's child index
+// (callee is 0). Matching pair.arg == actual would send two edges that share a node (f(a: x, b: x)
+// under sharing, or f(x, x) if interned) to the first pair and skip the second formal.
+fn infer_gather_authored_actual_index(acc: InferGatherFoldAcc) -> Optional<Int> {
+  let i = length(xs: acc.node.children) - acc.children_remaining
+  if i <= 0 {
+    optional_absent()
+  } else {
+    optional_present(value: i - 1)
+  }
 }
 
 // ONE JUDGMENT PER ACTUAL, CARRIED ON THE GATHER ACC. After each Transform actual child folds,
@@ -5833,18 +5840,24 @@ fn infer_gather_extend_application_instances(
               match infer_application_formal_args(node: acc.node, formals: formals, entries: entries) {
                 Rejected { diagnostics: _ } => Accepted { value: acc.application_instances, diagnostics: None }
                 Accepted { value: pairs, diagnostics: _ } =>
-                  match infer_inhabitance_pair_for_actual(pairs: pairs, actual: edge.target) {
-                    Absent => Accepted { value: acc.application_instances, diagnostics: None }
-                    Present { value: pair } =>
-                      infer_judge_formal_args(
-                        position: position_direct_call_argument(),
-                        site: JudgedAtApplication { application: acc.node },
-                        entries: entries,
-                        declarations: resolved.resolved_declarations,
-                        pairs: [pair],
-                        type_params: infer_application_type_params(node: acc.node, entries: entries),
-                        instances: acc.application_instances
-                      )
+                  match infer_gather_authored_actual_index(acc: acc) {
+                    Absent =>
+                      outcome_rejected(infer_application_actual_pair_missing_diagnostic(actual: edge.target))
+                    Present { value: idx } =>
+                      match list_at_optional(xs: pairs, index: idx) {
+                        Absent =>
+                          outcome_rejected(infer_application_actual_pair_missing_diagnostic(actual: edge.target))
+                        Present { value: pair } =>
+                          infer_judge_formal_args(
+                            position: position_direct_call_argument(),
+                            site: JudgedAtApplication { application: acc.node },
+                            entries: entries,
+                            declarations: resolved.resolved_declarations,
+                            pairs: [pair],
+                            type_params: infer_application_type_params(node: acc.node, entries: entries),
+                            instances: acc.application_instances
+                          )
+                      }
                   }
               }
           }
@@ -7040,7 +7053,8 @@ fn infer_application_actual_child_frame(parent: Node, frame: InferFrame, acc: In
           actual: edge.target,
           entries: acc.entries,
           resolved: resolved,
-          instances: acc.application_instances
+          instances: acc.application_instances,
+          idx: infer_gather_authored_actual_index(acc: acc)
         ) {
           Absent => infer_frame_inherited(frame: frame)
           Present { value: rows } =>
@@ -7054,39 +7068,21 @@ fn infer_application_actual_child_frame(parent: Node, frame: InferFrame, acc: In
   }
 }
 
-type InferActualIndexWalk {
-  idx: Int
-  found: Optional<Int>
-}
-
-fn infer_actual_authored_index(actuals: List<Edge>, actual: Node) -> Optional<Int> {
-  fold(actuals, init: InferActualIndexWalk { idx: 0, found: optional_absent() }, f: fn(acc, e) {
-    match acc.found {
-      Present { value: _ } => acc
-      Absent =>
-        if e.target == actual {
-          InferActualIndexWalk { idx: acc.idx, found: optional_present(value: acc.idx) }
-        } else {
-          InferActualIndexWalk { idx: acc.idx + 1, found: acc.found }
-        }
-    }
-  }).found
-}
-
 fn infer_application_lambda_expected_binder_types(
   application: Node,
   actual: Node,
   entries: List<InferredFactsEntry>,
   resolved: ResolvedTree,
-  instances: List<TypeVariableInstance>
+  instances: List<TypeVariableInstance>,
+  idx: Optional<Int>
 ) -> Optional<List<InferBinderType>> {
   match infer_operator_arrow(operator: actual) {
     Absent => optional_absent()
     Present { value: lambda } =>
-      match infer_actual_authored_index(actuals: application_actual_edges(site: application), actual: actual) {
+      match idx {
         Absent => optional_absent()
-        Present { value: idx } =>
-          match infer_application_formal_at(application: application, entries: entries, idx: idx) {
+        Present { value: i } =>
+          match infer_application_formal_at(application: application, entries: entries, idx: i) {
             Absent => optional_absent()
             Present { value: formal } =>
               match infer_operand_declared_type_instantiated(
