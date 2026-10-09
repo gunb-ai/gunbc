@@ -3625,83 +3625,23 @@ mod fixture_closure_union_tests {
         );
     }
 
-    /// Drain fragments the rust shell handler concatenates (`v1.compiler.emit_rust`
-    /// `shell_capture_drain_start` / `shell_capture_join_project`). This closeout
-    /// mirror does not carry those as `pub fn`s, so the test reads the authority
-    /// rows rather than calling a missing symbol or forking the bytes.
-    fn emit_rust_dag_string_row(name: &str) -> String {
-        let src = include_str!("../../../../../src/v1/05_emit_rust.dag");
-        let needle = format!("data {name}: String = \"");
-        let start = src
-            .find(&needle)
-            .unwrap_or_else(|| panic!("{name} missing from v1.compiler.emit_rust"));
-        let rest = &src[start + needle.len()..];
-        let mut out = String::new();
-        let mut chars = rest.chars();
-        while let Some(c) = chars.next() {
-            if c == '\\' {
-                match chars.next() {
-                    Some('n') => out.push('\n'),
-                    Some('t') => out.push('\t'),
-                    Some('"') => out.push('"'),
-                    Some('\\') => out.push('\\'),
-                    Some(other) => {
-                        out.push('\\');
-                        out.push(other);
-                    }
-                    None => break,
-                }
-            } else if c == '"' {
-                break;
-            } else {
-                out.push(c);
-            }
-        }
-        out
-    }
-
-    fn shell_capture_drain_start() -> String {
-        emit_rust_dag_string_row("shell_capture_drain_start")
-    }
-
-    fn shell_capture_join_project() -> String {
-        emit_rust_dag_string_row("shell_capture_join_project")
-    }
-
-    /// How `__stderr_complete_limit` is bound in the rustc'd specimen.
+    /// Drain fragments from `v1.compiler.emit_rust` (`shell_capture_drain_start`,
+    /// `shell_capture_join_project`). These tests inhabit those strings.
     ///
-    /// The production Complete arm (`emit_shell_stderr_policy_binding`) matches
-    /// `v1_rt::read_host_budget_bytes()`. That function is not on this stage0
-    /// `v1_rt` mirror, and a standalone rustc specimen cannot link the crate, so
-    /// this harness cannot compile that match. `FromHostJoin` still *reads* the
-    /// live join (`memory_governor::read_host_budget_bytes`, the same
-    /// `(bytes, label)` view) and plants the result; deleting the call from the
-    /// emit bind does **not** turn these tests red. That emit-bind route is
-    /// uncovered here.
-    enum CaptureBind {
-        BoundedTail { bytes: usize },
-        FromHostJoin,
-    }
-
+    /// `__stderr_complete_limit` is planted in the specimen. The production
+    /// Complete bind (`emit_shell_stderr_policy_binding` →
+    /// `v1_rt::read_host_budget_bytes()`) is not compiled here: a standalone
+    /// rustc specimen cannot link the crate, and this harness does not call that
+    /// function. Deleting the bind's `read_host_budget_bytes` call does not turn
+    /// these tests red. That host-budget route is uncovered (review 78366,
+    /// review 78373).
     fn rustc_and_run_emitted_capture(
         stem: &str,
-        bind: CaptureBind,
+        complete_limit: Option<usize>,
+        tail_bytes: usize,
         stderr_payload: &str,
         stdin_payload: Option<&str>,
     ) -> std::process::Output {
-        let (complete_limit, complete_source, tail_bytes) = match bind {
-            CaptureBind::BoundedTail { bytes } => (None, String::new(), bytes),
-            CaptureBind::FromHostJoin => {
-                let (budget, source) = crate::memory_governor::read_host_budget_bytes();
-                let n = budget.unwrap_or_else(|| {
-                    panic!(
-                        "Complete capture requires a readable host budget ({source}); \
-                         export GUNBC_MEMORY_BUDGET_BYTES under the #12550 cgroup recipe"
-                    )
-                });
-                (Some(n as usize), source, 0)
-            }
-        };
         let limit = match complete_limit {
             Some(n) => format!("Some({n})"),
             None => "None".to_string(),
@@ -3738,11 +3678,10 @@ mod fixture_closure_union_tests {
         };
         let drain = format!(
             "{}{}{}",
-            shell_capture_drain_start(),
+            crate::v1_compiler_emit_rust::shell_capture_drain_start(),
             stdin_prelude,
-            shell_capture_join_project()
+            crate::v1_compiler_emit_rust::shell_capture_join_project()
         );
-        let source_lit = format!("{:?}.to_string()", complete_source);
         let program = format!(
             "fn main() -> Result<(), Box<dyn std::error::Error>> {{\n\
              let __stderr_complete_limit: Option<usize> = {limit};\n\
@@ -3760,7 +3699,11 @@ mod fixture_closure_union_tests {
              }}\n",
             script = script.replace("{payload}", stderr_payload),
             limit = limit,
-            source = source_lit,
+            source = if complete_limit.is_some() {
+                "\"planted complete limit\".to_string()".to_string()
+            } else {
+                "String::new()".to_string()
+            },
             tail = tail_bytes,
             drain = drain,
         );
@@ -3799,7 +3742,8 @@ mod fixture_closure_union_tests {
     fn emitted_bounded_tail_truncates_and_keeps_the_tail() {
         let run = rustc_and_run_emitted_capture(
             "over-tail",
-            CaptureBind::BoundedTail { bytes: 16 },
+            None,
+            16,
             "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
             None,
         );
@@ -3816,12 +3760,7 @@ mod fixture_closure_union_tests {
 
     #[test]
     fn emitted_bounded_tail_under_cap_is_complete() {
-        let run = rustc_and_run_emitted_capture(
-            "under-cap",
-            CaptureBind::BoundedTail { bytes: 16 },
-            "abcdefghij",
-            None,
-        );
+        let run = rustc_and_run_emitted_capture("under-cap", None, 16, "abcdefghij", None);
         assert!(
             run.status.success(),
             "under-cap specimen failed: {}",
@@ -3833,36 +3772,10 @@ mod fixture_closure_union_tests {
         );
     }
 
-    static HOST_JOIN_ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    fn restore_budget_env(previous: Option<String>) {
-        match previous {
-            Some(v) => std::env::set_var("GUNBC_MEMORY_BUDGET_BYTES", v),
-            None => std::env::remove_var("GUNBC_MEMORY_BUDGET_BYTES"),
-        }
-    }
-
     #[test]
     fn emitted_complete_over_budget_refuses() {
-        let _guard = HOST_JOIN_ENV.lock().expect("join env lock");
-        let previous = std::env::var("GUNBC_MEMORY_BUDGET_BYTES").ok();
-        std::env::set_var("GUNBC_MEMORY_BUDGET_BYTES", "8");
-        let (budget, source) = crate::memory_governor::read_host_budget_bytes();
-        let n = budget.unwrap_or_else(|| {
-            panic!("Complete overflow control needs a readable join ({source})")
-        });
-        assert!(
-            n < 16,
-            "host join {n} ({source}) is not below the 16-byte payload; \
-             GUNBC_MEMORY_BUDGET_BYTES=8 must be the planning minimum"
-        );
-        let run = rustc_and_run_emitted_capture(
-            "complete-over",
-            CaptureBind::FromHostJoin,
-            "abcdefghijklmnop",
-            None,
-        );
-        restore_budget_env(previous);
+        let run =
+            rustc_and_run_emitted_capture("complete-over", Some(8), 0, "abcdefghijklmnop", None);
         assert!(
             !run.status.success(),
             "Complete overflow must refuse, got stdout {:?}",
@@ -3872,31 +3785,14 @@ mod fixture_closure_union_tests {
         assert!(
             err.contains("WitnessStderrCaptureCompleteBudgetExceeded")
                 && err.contains("16")
-                && err.contains(&n.to_string()),
+                && err.contains("8"),
             "{err}"
         );
     }
 
     #[test]
     fn emitted_complete_under_budget_retains_all() {
-        let _guard = HOST_JOIN_ENV.lock().expect("join env lock");
-        let previous = std::env::var("GUNBC_MEMORY_BUDGET_BYTES").ok();
-        std::env::set_var("GUNBC_MEMORY_BUDGET_BYTES", "64");
-        let (budget, source) = crate::memory_governor::read_host_budget_bytes();
-        let n = budget.unwrap_or_else(|| {
-            panic!("Complete under-budget control needs a readable join ({source})")
-        });
-        assert!(
-            n >= 10,
-            "host join {n} ({source}) is below the 10-byte payload"
-        );
-        let run = rustc_and_run_emitted_capture(
-            "complete-under",
-            CaptureBind::FromHostJoin,
-            "abcdefghij",
-            None,
-        );
-        restore_budget_env(previous);
+        let run = rustc_and_run_emitted_capture("complete-under", Some(64), 0, "abcdefghij", None);
         assert!(
             run.status.success(),
             "under-budget Complete failed: {}",
@@ -3912,12 +3808,8 @@ mod fixture_closure_union_tests {
     fn emitted_stdin_and_long_stderr_does_not_deadlock() {
         let stderr = "Y".repeat(80_000);
         let stdin = "X".repeat(80_000);
-        let run = rustc_and_run_emitted_capture(
-            "stdin-long-stderr",
-            CaptureBind::BoundedTail { bytes: 16 },
-            &stderr,
-            Some(&stdin),
-        );
+        let run =
+            rustc_and_run_emitted_capture("stdin-long-stderr", None, 16, &stderr, Some(&stdin));
         assert!(
             run.status.success(),
             "stdin+stderr specimen deadlocked or failed: {}",
