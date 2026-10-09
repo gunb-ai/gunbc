@@ -2501,8 +2501,8 @@ fn eval_interpret_node(
             Absent =>
               match eval_constant_member_body(node: node, facts: facts) {
                 Present { value: body } =>
-                  eval_runtime_node(
-                    node: body,
+                  eval_constant_member_value(
+                    body: body,
                     tree: tree,
                     interpretation: interpretation,
                     environment: environment,
@@ -2520,6 +2520,30 @@ fn eval_interpret_node(
       }
     }
   )
+}
+
+// THE CONSTANT'S BODY RUNS THROUGH THE SAME BODY-FORM DISPATCH A NULLARY CALL USES (eval_transform_node's
+// callee arm): v2.std.node arrow_body_admits_eval_entry decides whether the form may enter, a direct atom
+// (a literal) is allocated by eval_type_node_atom without a facts lookup, and every other admitted form
+// is walked by eval_runtime_node. A form that may not enter refuses with eval_callee_body_refusal_reason,
+// the reason the call route gives for the same form, so the two routes cannot disagree about a body.
+fn eval_constant_member_value(
+  body: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
+  effect_io: EffectIoEvalContext
+) -> Outcome<RuntimeValue> {
+  let form = classify_arrow_body_form(target: body)
+  if !arrow_body_admits_eval_entry(form: form) {
+    outcome_rejected(d: eval_diagnostic(reason: eval_callee_body_refusal_reason(form: form), node: body))
+  } else {
+    match form {
+      DirectAtomBody => eval_type_node_atom(node: body, interpretation: interpretation, environment: environment)
+      _ => eval_runtime_node(node: body, tree: tree, interpretation: interpretation, environment: environment, runtime: runtime, effect_io: effect_io)
+    }
+  }
 }
 
 // A REFERENCE TO A `data` CONSTANT EVALUATES TO THE CONSTANT'S VALUE: the body of the nullary Arrow body
