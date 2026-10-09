@@ -4,11 +4,11 @@ As of 2026-10-09; it includes the operator's side-chat dispositions. There are 1
 
 | Disposition | PRs | What happens |
 | --- | --- | --- |
-| In the mega branch | 21 | Lands when #13641 lands |
-| Pending fold | 66 | On a manager's integration branch, with the conflict worker, or waiting for CI; folded into #13641 next |
+| In the mega branch | 29 | Lands when #13641 lands |
+| Pending fold | 65 | On a manager's integration branch, with the conflict worker, or waiting for CI; folded into #13641 next |
 | Blocked | 4 | Needs an operator or host action first |
-| Left out | 39 | Closed in the second pass unless revived |
-| Unreported, owned by a live lane | 19 | Waiting on that lane's report |
+| Left out | 41 | Closed in the second pass unless revived |
+| Unreported, owned by a live lane | 10 | Waiting on that lane's report |
 | Orphans: no live owner | 15 | Triaged by the closeout: fold if done and clean, otherwise close |
 | Kept up by request | 1 | #13203 blackjack |
 
@@ -20,17 +20,23 @@ These are merged into `integration/v1-closeout`.
 | --- | --- | --- | --- |
 | [#13641](https://github.com/gunb-ai/gunbc/pull/13641) | v1 closeout mega branch (wave 1) | ready / BLOCKED | neat-wolf-604 |
 | [#13626](https://github.com/gunb-ai/gunbc/pull/13626) | host_reach_identity_probe: the identity probe's argv is spelled by its | ready / CLEAN | stern-boar-596 |
+| [#13622](https://github.com/gunb-ai/gunbc/pull/13622) | dispatch-actuator witness: supply the unrooted specimen instead of bor | ready / CLEAN | bold-bee-114 |
+| [#13616](https://github.com/gunb-ai/gunbc/pull/13616) | Belt SCM capture: read each re-bound object shard once (recapture 30x  | ready / CLEAN | bold-bee-114 |
 | [#13602](https://github.com/gunb-ai/gunbc/pull/13602) | Runner obligation and census read committed identities; Spark training | ready / CLEAN | side chat |
 | [#13601](https://github.com/gunb-ai/gunbc/pull/13601) | Fabric cell witnesses: least-cause refusal join; carry #11625/#11716 i | ready / CLEAN | side chat |
 | [#13600](https://github.com/gunb-ai/gunbc/pull/13600) | witnesses: match optional results instead of comparing T? == T (3 file | ready / CLEAN | side chat |
 | [#13599](https://github.com/gunb-ai/gunbc/pull/13599) | srv1 lab follows main instead of a July session branch | ready / CLEAN | side chat |
+| [#13587](https://github.com/gunb-ai/gunbc/pull/13587) | Bind gunbc run --arg against declared parameter types | ready / DIRTY | bold-bee-114 |
 | [#13577](https://github.com/gunb-ai/gunbc/pull/13577) | Price the parse memo below the cost floor: the production door admits  | ready / CLEAN | side chat |
 | [#13570](https://github.com/gunb-ai/gunbc/pull/13570) | BMC onboarding: Redfish PasswordChangeRequired is the factory phase; s | ready / CLEAN | side chat |
 | [#13569](https://github.com/gunb-ai/gunbc/pull/13569) | store: held-session op + O(1) named hold-slot reads | ready / CLEAN | royal-moth-86 |
 | [#13568](https://github.com/gunb-ai/gunbc/pull/13568) | Delete the pasted-operator-token refusal (operator ruling 2026-10-08) | ready / CLEAN | side chat |
+| [#13566](https://github.com/gunb-ai/gunbc/pull/13566) | Skip module-surface members in reference-derived residency reading | ready / CLEAN | bold-bee-114 |
 | [#13563](https://github.com/gunb-ai/gunbc/pull/13563) | Altra firmware library: beta BIOS 4.01 + SCP archives, flashable membe | ready / CLEAN | side chat |
+| [#13560](https://github.com/gunb-ai/gunbc/pull/13560) | Identity-only skip for module-surface members in record-field lenses | ready / CLEAN | bold-bee-114 |
 | [#13554](https://github.com/gunb-ai/gunbc/pull/13554) | srv13 first contact: factory BIOS defaults (PXE disabled by default) | ready / CLEAN | side chat |
 | [#13550](https://github.com/gunb-ai/gunbc/pull/13550) | Bankrupt docs/plans: delete hand-written plans, keep DESIGN-linked and | ready / DIRTY | side chat |
+| [#13513](https://github.com/gunb-ai/gunbc/pull/13513) | mandatory_tag gate: read the lowered data-declaration carrier (clean f | ready / CLEAN | bold-bee-114 |
 | [#13442](https://github.com/gunb-ai/gunbc/pull/13442) | Workspace transcript append rate: size-and-mtime instrument on srv1 (s | ready / CLEAN | neat-wolf-604 |
 | [#13412](https://github.com/gunb-ai/gunbc/pull/13412) | semver: route the version scheme's identity compare through the cited  | ready / CLEAN | lively-ram-153 |
 | [#13359](https://github.com/gunb-ai/gunbc/pull/13359) | Codex + Cursor worker turns on one gunbai-secrets credential each (cus | ready / CLEAN | neat-wolf-604 |
@@ -38,6 +44,8 @@ These are merged into `integration/v1-closeout`.
 | [#13351](https://github.com/gunb-ai/gunbc/pull/13351) | Oracle OCI Always Free: network + instance converge (stacked on #13335 | ready / CLEAN | nimble-heron-805 |
 | [#13346](https://github.com/gunb-ai/gunbc/pull/13346) | Remove quadratic remainder copying from code-point/octet slicing in bo | ready / CLEAN | neat-wolf-604 |
 | [#13210](https://github.com/gunb-ai/gunbc/pull/13210) | v2 native infer accepts variant-scrutinee matches (payload binder typi | ready / CLEAN |  |
+| [#13125](https://github.com/gunb-ai/gunbc/pull/13125) | belt: demote the monolithic tick into event-driven attempt obligations | ready / BLOCKED | bold-bee-114 |
+| [#13072](https://github.com/gunb-ai/gunbc/pull/13072) | Compute work is a request family of std.materialization_provider; work | ready / CLEAN | bold-bee-114 |
 | [#12942](https://github.com/gunb-ai/gunbc/pull/12942) | MQ-5 cut: producers seal what they lower (BodyTerm via sealed #12799 m | ready / CLEAN | neat-boar-16 |
 
 ## Pending fold
@@ -109,7 +117,6 @@ These are merged into `integration/v1-closeout`.
 | [#13611](https://github.com/gunb-ai/gunbc/pull/13611) | demand engine: a request under a different nature is a durable key con | ready / BLOCKED | side chat, folds when CI green |
 | [#13610](https://github.com/gunb-ai/gunbc/pull/13610) | walk_cgroup, entry_presence: tail-position self-recursion so both modu | ready / CLEAN | via silent-lark-156 |
 | [#13472](https://github.com/gunb-ai/gunbc/pull/13472) | Realize rust shell stderr-capture channels (unblocks #13217 floor) | ready / DIRTY | via silent-lark-156 |
-| [#13632](https://github.com/gunb-ai/gunbc/pull/13632) | dusk qwen 3 | ready / BLOCKED | via stern-boar-596 |
 
 ## Blocked
 
@@ -127,6 +134,7 @@ These are drafts, red, superseded or WIP, per the manager's report or a side cha
 | PR | Title | Draft / merge state | Note |
 | --- | --- | --- | --- |
 | [#13430](https://github.com/gunb-ai/gunbc/pull/13430) | XL-2 PR2b: string templates — disjoint lexer, one ^dag_string_template | ready / BLOCKED | XL-2 cancelled |
+| [#13097](https://github.com/gunb-ai/gunbc/pull/13097) | G1: belt verify through the materialization provider; compute outcomes | draft / BLOCKED | bold-bee: red on T?==T sites until #13549; draft |
 | [#13604](https://github.com/gunb-ai/gunbc/pull/13604) | Prepare the required-floor gate once; project policy from that subject | draft / BLOCKED | eager-gull: left out |
 | [#13591](https://github.com/gunb-ai/gunbc/pull/13591) | Resolve free kernel calls to std.primitives identity; infer refuses th | draft / CLEAN | eager-gull: left out |
 | [#13576](https://github.com/gunb-ai/gunbc/pull/13576) | DRAFT: floor-control for #13575 (plan forged-probe census) | draft / UNSTABLE | eager-gull: left out |
@@ -140,6 +148,7 @@ These are drafts, red, superseded or WIP, per the manager's report or a side cha
 | [#13488](https://github.com/gunb-ai/gunbc/pull/13488) | Design: nested optionality census + layer-count carrier (no code) | ready / BLOCKED | gentle-dove: left out |
 | [#13475](https://github.com/gunb-ai/gunbc/pull/13475) | fold_list empty: [] no longer locks the accumulator as List<Unit> | draft / BLOCKED | gentle-dove: left out |
 | [#13265](https://github.com/gunb-ai/gunbc/pull/13265) | Type parameters bind only inside their own declaration (rule 2 / A'; s | draft / DIRTY | gentle-dove: left out |
+| [#13632](https://github.com/gunb-ai/gunbc/pull/13632) | dusk qwen 3 | ready / BLOCKED | qwen: jq length(null)->0 fabricated default (DESIGN §5) |
 | [#13631](https://github.com/gunb-ai/gunbc/pull/13631) | dusk qwen 1 | draft / BLOCKED | qwen: no compile |
 | [#13634](https://github.com/gunb-ai/gunbc/pull/13634) | C2 #13482: the seven review fixes (own-interface entries, lookup-first | draft / BLOCKED | royal-moth: left out |
 | [#13482](https://github.com/gunb-ai/gunbc/pull/13482) | C2: typecheck materialization through the local store | draft / CLEAN | royal-moth: left out |
@@ -170,15 +179,6 @@ These are drafts, red, superseded or WIP, per the manager's report or a side cha
 
 | PR | Title | Draft / merge state | Note |
 | --- | --- | --- | --- |
-| [#13622](https://github.com/gunb-ai/gunbc/pull/13622) | dispatch-actuator witness: supply the unrooted specimen instead of bor | ready / CLEAN | bold-bee-114 (session bold-bee-114) |
-| [#13616](https://github.com/gunb-ai/gunbc/pull/13616) | Belt SCM capture: read each re-bound object shard once (recapture 30x  | ready / CLEAN | bold-bee-114 (session bold-bee-114) |
-| [#13587](https://github.com/gunb-ai/gunbc/pull/13587) | Bind gunbc run --arg against declared parameter types | ready / DIRTY | bold-bee-114 (session bold-bee-114) |
-| [#13566](https://github.com/gunb-ai/gunbc/pull/13566) | Skip module-surface members in reference-derived residency reading | ready / CLEAN | bold-bee-114 (session bold-bee-114) |
-| [#13560](https://github.com/gunb-ai/gunbc/pull/13560) | Identity-only skip for module-surface members in record-field lenses | ready / CLEAN | bold-bee-114 (session bold-bee-114) |
-| [#13513](https://github.com/gunb-ai/gunbc/pull/13513) | mandatory_tag gate: read the lowered data-declaration carrier (clean f | ready / CLEAN | bold-bee-114 (session bold-bee-114) |
-| [#13125](https://github.com/gunb-ai/gunbc/pull/13125) | belt: demote the monolithic tick into event-driven attempt obligations | ready / BLOCKED | bold-bee-114 (session bold-bee-114) |
-| [#13097](https://github.com/gunb-ai/gunbc/pull/13097) | G1: belt verify through the materialization provider; compute outcomes | draft / BLOCKED | bold-bee-114 (session bold-bee-114) |
-| [#13072](https://github.com/gunb-ai/gunbc/pull/13072) | Compute work is a request family of std.materialization_provider; work | ready / CLEAN | bold-bee-114 (session bold-bee-114) |
 | [#13640](https://github.com/gunb-ai/gunbc/pull/13640) | mtcollins1 runner: dispatch floor to ephemeral slot + collect instrume | draft / DIRTY | eager-gull-22 (session quiet-stag-623) |
 | [#13516](https://github.com/gunb-ai/gunbc/pull/13516) | Managed-host cut O1c-3a: ManagedHostAdmission population with drop-arm | ready / CLEAN | eager-gull-22 (session eager-gull-22) |
 | [#13330](https://github.com/gunb-ai/gunbc/pull/13330) | Derived-node identity step 2, shape 2: unify_generics reads a containe | ready / BLOCKED | gentle-dove-36 (session gentle-dove-36) |
