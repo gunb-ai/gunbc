@@ -102,10 +102,6 @@ fn systemctl_restart_effect(unit: NonEmptyStr) -> BashBoundOperationInvocation {
   systemctl_unit_effect(operation: "Restart", unit: unit)
 }
 
-fn systemctl_restart_with_status_capture_effect(unit: NonEmptyStr) -> BashBoundOperationInvocation {
-  systemctl_unit_effect(operation: "RestartWithStatusCapture", unit: unit)
-}
-
 // apt-get install IS elevated and dpkg -s is NOT, and the asymmetry is the two operations'
 // own: installing writes the package database, querying it reads. The former `privileged: Bool`
 // parameter made that a caller's choice at both leaves; here the read has no elevated form to pass.

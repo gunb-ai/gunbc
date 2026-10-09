@@ -28,6 +28,6 @@ data tree_sync_restart_diagnosis: RungDrop = RungDrop {
       "the synchronous restart step on srv1 (tree_sync_unit_name = gunbc-tree-sync.service)",
       "the synchronous restart step on srv2 (tree_sync_unit_name = gunbc-tree-sync.service)",
     ],
-    restoration_trigger: "a typed composite operation in extdeps.systemd (systemctl_restart_with_status_capture) replaces tree_sync_restart_step_with_diagnosis; the operation runs systemctl restart and on failure invokes systemctl_status_read to surface UnitStatusCapture as structured data; the drop is retired when that operation ships and the step rebinds to it",
+    restoration_trigger: "NOT shipped in this PR. A proper restoration requires either (a) realization-layer failure handling in host_effect_realize that invokes gunbc.systemctl_status_read on restart failure, or (b) a typed composite operation in extdeps.systemd that materializes via run_typed_argv_transport (not shell). The drop remains until that work lands and the step rebinds; this PR only removes the shell fallback and declares the loss honestly per DESIGN §4b(3)",
   },
 }
