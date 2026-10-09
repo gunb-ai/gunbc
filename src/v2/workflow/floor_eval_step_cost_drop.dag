@@ -38,6 +38,8 @@ import std.types { NonEmptyStr, List }
 //     of the dag target (`dag_text_round_trip_nested_bind_new_witness_eval_step_cost`).
 //   - `floor_eval_step_cost_drop_coproduct_fragment_normalize_rows`: the three coproduct type-declaration
 //     fragment-lowering claims (`coproduct_fragment_normalize_new_witness_eval_step_cost`).
+//   - `floor_eval_step_cost_drop_bmc_secure_apply_converge_rows`: the one Apply inhabitance of
+//     converge_arrival_through_bmc_secure (`bmc_secure_apply_converge_new_witness_eval_step_cost`).
 // The loss is a WORKFLOW fact -- which
 // identities the eval-step ceiling does not refuse -- so it lives beside the other two rosters the
 // ceiling consults (`v2.workflow.floor_grandfathered_roster`, `v2.workflow.floor_cost_debt`) and
@@ -442,8 +444,15 @@ data floor_eval_step_cost_drop_coproduct_fragment_normalize_rows: List<EvalStepC
   },
 ]
 
+data floor_eval_step_cost_drop_bmc_secure_apply_converge_rows: List<EvalStepCostDropMeasurement> = [
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake_arrival_converge_witness.w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world" as NonEmptyStr,
+    measured_by: "claim_batch --hermetic --source-root dag --source-root src/v2 --entry dag/test/claim/machine_intake/machine_intake_arrival_converge_witness_test.dag --function w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world (BuildBuddy, GUNBC_BIND_MEMORY_CGROUP_BYTES=30064771072): PASS, eval_steps over the new-witness budget. The billed work is converge_arrival_through_bmc_secure over the production prefix captures plus dry Apply+grant, which this claim is the only Apply execution of" as NonEmptyStr,
+  },
+]
+
 fn floor_eval_step_cost_drop_all_rows() -> List<EvalStepCostDropMeasurement> {
-  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows), floor_eval_step_cost_drop_interpreted_crypto_rows), floor_eval_step_cost_drop_app_attest_verifier_rows), floor_eval_step_cost_drop_span_program_rows), floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows), floor_eval_step_cost_drop_boot_matrix_rows), floor_eval_step_cost_drop_dark_install_render_rows), floor_eval_step_cost_drop_build_job_membership_rows), floor_eval_step_cost_drop_dag_emit_round_trip_rows), floor_eval_step_cost_drop_approval_intent_digest_rows), floor_eval_step_cost_drop_dag_text_round_trip_rows), floor_eval_step_cost_drop_coproduct_fragment_normalize_rows)
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows), floor_eval_step_cost_drop_interpreted_crypto_rows), floor_eval_step_cost_drop_app_attest_verifier_rows), floor_eval_step_cost_drop_span_program_rows), floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows), floor_eval_step_cost_drop_boot_matrix_rows), floor_eval_step_cost_drop_dark_install_render_rows), floor_eval_step_cost_drop_build_job_membership_rows), floor_eval_step_cost_drop_dag_emit_round_trip_rows), floor_eval_step_cost_drop_approval_intent_digest_rows), floor_eval_step_cost_drop_dag_text_round_trip_rows), floor_eval_step_cost_drop_coproduct_fragment_normalize_rows), floor_eval_step_cost_drop_bmc_secure_apply_converge_rows)
 }
 
 // THE PROJECTION THE SEED RUNNER READS AND THE MODEL TESTS AGAINST. The runner refuses an empty or

@@ -111,14 +111,14 @@ type BillingConsequence
 // (gunbc.auth.privileged_effect_census rulings_without_a_rostered_interlock), and the site's
 // realization must take that hold before any write.
 //
-// THREE INTERLOCK STATES, NOT AN OPTIONAL HOLD. InterlockPending is a hold not yet named: it must
+// TWO INTERLOCK STATES, NOT AN OPTIONAL HOLD. InterlockPending is a hold not yet named: it must
 // refuse, never discharge (a bindable irreversible effect under a pending ruling still owes a
-// witness). UnconditionalStanding is an intentional no-hold discharge, with its reason. InterlockedBy
-// is a named hold the census must roster against the site. Only UnconditionalStanding and
-// InterlockedBy discharge the irreversibility ground.
+// witness). InterlockedBy is a named hold the census must roster against the site; only that arm
+// discharges the irreversibility ground. A grant arm that writes BMC credentials must be InterlockedBy
+// the grounded Apply admission (admit_rotation_apply), never pending. Route A overlays that hold per
+// arm (standing_grant_arm_interlock); grant grain may stay InterlockPending for unnamed classes.
 type StandingRulingInterlock
   = InterlockPending { obligation: NonEmptyStr }
-  | UnconditionalStanding { reason: NonEmptyStr }
   | InterlockedBy { hold: DeclarationRef }
 
 type StandingDestructiveAuthorization {
@@ -130,7 +130,6 @@ type StandingDestructiveAuthorization {
 fn standing_ruling_discharges_irreversibility(r: StandingDestructiveAuthorization) -> Bool {
   match r.interlock {
     InterlockPending { obligation: _ } => false
-    UnconditionalStanding { reason: _ } => true
     InterlockedBy { hold: _ } => true
   }
 }
@@ -574,7 +573,6 @@ fn minted_reach_text(m: MintedCredentialReach) -> String {
 fn standing_ruling_interlock_label(r: StandingDestructiveAuthorization) -> String {
   match r.interlock {
     InterlockPending { obligation: o } => join(["InterlockPending: ", o as String], "")
-    UnconditionalStanding { reason: s } => join(["UnconditionalStanding: ", s as String], "")
     InterlockedBy { hold: i } => declaration_ref_display_key(ref: i)
   }
 }

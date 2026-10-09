@@ -1443,7 +1443,7 @@ fn floor_route_gap_expectation_chunk_14() -> List<FloorRouteGapExpectation> {
   }
   }}}
 
-// The ten test.claim.durable_exclusive_hold_file_store_wet_witness identities: the hold protocol
+// The test.claim.durable_exclusive_hold_file_store_wet_witness identities: the hold protocol
 // over the real file store -- absent acquires at 1, held refuses without writing (another owner and
 // its own spelling), release to N+1 and reacquire at N+2, two contenders over one free observation,
 // store refusal distinct from contention, refused releases leave no next generation, and a commit
@@ -1473,7 +1473,16 @@ fn floor_route_gap_expectation_chunk_15() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.durable_exclusive_hold_file_store_wet_witness.a_write_time_store_refusal_is_reported_as_unavailable_not_as_a_lost_race_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.durable_exclusive_hold_file_store_wet_witness.a_live_release_plan_carries_the_observed_generation_and_the_free_bytes_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.durable_exclusive_hold_file_store_wet_witness.w_after_acquire_invokes_the_real_slot_release", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.durable_exclusive_hold_file_store_wet_witness.w_failed_acquire_runs_no_body", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.durable_exclusive_hold_file_store_wet_witness.w_refused_acquire_body_writes_a_marker_when_called_directly", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
+    }
+    }
+    }
   }
   }
   }

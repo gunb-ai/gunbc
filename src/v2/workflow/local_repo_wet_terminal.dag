@@ -1960,6 +1960,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_file_store_wet_witness", function: "w_after_acquire_invokes_the_real_slot_release" },
+      entry: "dag/test/claim/durable_exclusive_hold_file_store_wet_witness_test.dag",
+      function: "w_after_acquire_invokes_the_real_slot_release",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_file_store_wet_witness", function: "w_failed_acquire_runs_no_body" },
+      entry: "dag/test/claim/durable_exclusive_hold_file_store_wet_witness_test.dag",
+      function: "w_failed_acquire_runs_no_body",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_file_store_wet_witness", function: "w_refused_acquire_body_writes_a_marker_when_called_directly" },
+      entry: "dag/test/claim/durable_exclusive_hold_file_store_wet_witness_test.dag",
+      function: "w_refused_acquire_body_writes_a_marker_when_called_directly",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_control_plane_wet_witness", function: "the_right_reservation_releases_its_cell_to_free_at_the_next_generation_by_real_execution" },
       entry: "dag/test/claim/fabric/fabric_control_plane_wet_witness_test.dag",
       function: "the_right_reservation_releases_its_cell_to_free_at_the_next_generation_by_real_execution",
