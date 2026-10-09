@@ -1548,6 +1548,16 @@ data fleet_converge_mutation_concurrency_group_expression: String = join([
   "format('", fleet_host_mutation_group_prefix, "{0}', ", fleet_host_input_expression, ") }}",
 ], "")
 
+fn fleet_converge_exclusive_job_concurrency(group: String) -> ConcurrencySpec? {
+  Present {
+    value: ConcurrencyMappingQueueNotMax {
+      group: group,
+      cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
+      explicit_single: none
+    }
+  }
+}
+
 data fleet_converge_spark_runtime_image_probe_step_if: String = fleet_converge_mode_step_if(mode: SparkRuntimeImageProbe)
 data fleet_converge_spark_wireless_link_converge_step_if: String = fleet_converge_mode_step_if(mode: SparkWirelessLinkConverge)
 data fleet_converge_spark_grants_observe_step_if: String = fleet_converge_mode_step_if(mode: SparkGrantsObserve)
@@ -5335,13 +5345,7 @@ fn fleet_converge_arrival_converge_job() -> Job {
     if_condition: Present { value: fleet_converge_mode_step_if(mode: ArrivalConverge) },
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes + 20 },
     continue_on_error: none,
-    concurrency: Present {
-      value: ConcurrencyMappingQueueNotMax {
-        group: join([fleet_host_mutation_group_prefix, operator_host_srv1 as String], ""),
-        cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
-        explicit_single: none
-      }
-    },
+    concurrency: fleet_converge_exclusive_job_concurrency(group: join([fleet_host_mutation_group_prefix, operator_host_srv1 as String], "")),
     permissions: Present {
       value: WorkflowPermissions {
         contents: Present { value: PermRead },
@@ -5431,9 +5435,7 @@ fn fleet_converge_printer_job() -> Job {
     if_condition: Present { value: fleet_converge_mode_step_if(mode: PrinterWorkflow) },
     timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes + 20 },
     continue_on_error: none,
-    concurrency: Present { value: ConcurrencyMappingQueueNotMax {
-      group: "printer-${{ inputs.printer }}", cancel_in_progress: Present { value: CancelInProgressBool { value: false } }, explicit_single: none,
-    } },
+    concurrency: fleet_converge_exclusive_job_concurrency(group: "printer-${{ inputs.printer }}"),
     permissions: Present { value: WorkflowPermissions {
       contents: Present { value: PermRead }, pull_requests: none, issues: none,
       actions: Present { value: PermRead }, id_token: Present { value: PermWrite },
