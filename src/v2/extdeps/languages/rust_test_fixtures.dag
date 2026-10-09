@@ -8,6 +8,7 @@ import std.algebra { Cons, Empty }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 import v2.extdeps.languages.dag { dag_bind_arrow_with_body_fixture }
+import v2.std.arrow_signature { declared_signature }
 
 import v2.extdeps.languages.rust {
   rust_add_declared_inhabitants_root,
@@ -3429,10 +3430,12 @@ fn rust_arrow_with_body_node(
   return_type_binding: Symbol,
   body: Node
 ) -> Node {
+  let domain = rust_nullary_arrow_domain_conj_node()
+  let signature = declared_signature(params: domain.children, source: domain)
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: rust_nullary_arrow_domain_conj_node() },
+      signature.domain,
       Edge {
         label: Positional,
         target: rust_type_atom_node(identity: return_type_binding)
@@ -3441,6 +3444,7 @@ fn rust_arrow_with_body_node(
         label: Positional,
         target: rust_type_atom_node(identity: return_type_binding)
       },
+      signature.order,
       Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
     ],
     occurrence_id: OccurrenceSynthetic
