@@ -7,7 +7,7 @@ module examples.blackjack.shuffle
 // the one integration claim that section 6 of the brief describes.
 
 import std.integer { UInt8 }
-import std.encoding { base64_octet_int }
+
 import examples.blackjack.cards { Card }
 import examples.blackjack.round { Shoe }
 
@@ -54,7 +54,7 @@ fn seed_from_octets(octets: List<UInt8>) -> ShuffleSeed {
             octets,
             init: 0,
             f: (acc, octet) =>
-                (acc * 256 + base64_octet_int(b: octet)) % 2147483648,
+                (acc * 256 + octet) % 2147483648,
         )
     }
 }

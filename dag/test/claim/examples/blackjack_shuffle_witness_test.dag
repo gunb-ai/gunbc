@@ -40,21 +40,3 @@ test fn seed_from_octets_combines_bytes_big_endian() -> Bool {
         Absent => false
     }
 }
-
-test fn wet_entropy_seeded_shuffle_is_standard_deck_permutation() -> Bool {
-    match base64_decode(
-        s: Urandom.ReadBytes(count: 160).octets_b64,
-        variant: Standard,
-    ) {
-        Present { value: octets } => {
-            let seed = seed_from_octets(octets: octets)
-            let shoe = shuffle(deck: standard_deck, seed: seed)
-
-            shoe.cards.length() == 52
-            && all(standard_deck, card => shoe.cards.contains(card))
-        }
-
-        Absent =>
-            false
-    }
-}

@@ -1,0 +1,22 @@
+module test.claim.examples.blackjack_shuffle_wet_witness_test
+
+import examples.blackjack.cards { standard_deck }
+import examples.blackjack.shuffle { shuffle, seed_from_octets }
+import std.encoding { base64_decode, Standard }
+import extdeps.entropy { Urandom }
+
+test fn wet_entropy_seeded_shuffle_is_standard_deck_permutation_by_real_execution() -> Bool {
+    match base64_decode(
+        s: Urandom.ReadBytes(count: 16).octets_b64,
+        variant: Standard,
+    ) {
+        Present { value: octets } => {
+            let seed = seed_from_octets(octets: octets)
+            let shoe = shuffle(deck: standard_deck, seed: seed)
+
+            shoe.cards.length() == 52
+            && all(standard_deck, card => shoe.cards.contains(card))
+        }
+        Absent => false
+    }
+}

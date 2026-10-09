@@ -322,6 +322,15 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity {
+        module_path: "test.claim.examples.blackjack_shuffle_wet_witness_test",
+        function: "wet_entropy_seeded_shuffle_is_standard_deck_permutation_by_real_execution",
+      },
+      entry: "dag/test/claim/examples/blackjack_shuffle_wet_witness_test.dag",
+      function: "wet_entropy_seeded_shuffle_is_standard_deck_permutation_by_real_execution",
+      expectation: ExpectedToHold {},
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_base_advance_wet_witness_test", function: "the_base_advance_reaches_the_target_revisions_tree_in_a_real_repository_by_real_execution" },
       entry: "dag/test/claim/roadmap/roadmap_belt_base_advance_wet_witness_test.dag",
       function: "the_base_advance_reaches_the_target_revisions_tree_in_a_real_repository_by_real_execution",
