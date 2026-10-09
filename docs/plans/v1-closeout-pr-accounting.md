@@ -146,10 +146,10 @@ These are drafts, red, superseded or WIP, per the manager's report or a side cha
 | [#13288](https://github.com/gunb-ai/gunbc/pull/13288) | mtcollins1 runner: the dedicated runner-qualification group, ensured o | ready / CLEAN | eager-gull: left out |
 | [#13252](https://github.com/gunb-ai/gunbc/pull/13252) | mtcollins1 runner offer at measured one-socket shape + census meminfo  | ready / CLEAN | eager-gull: left out |
 | [#13211](https://github.com/gunb-ai/gunbc/pull/13211) | mtcollins1 runner: dispatch the floor to the attempt's slot and read t | ready / BLOCKED | eager-gull: left out |
+| [#13475](https://github.com/gunb-ai/gunbc/pull/13475) | fold_list empty: [] no longer locks the accumulator as List<Unit> | draft / BLOCKED | gentle-dove: APPROVED (review 78364), fix judged sound; only CI red (4 failing). Closest to revivable |
 | [#13330](https://github.com/gunb-ai/gunbc/pull/13330) | Derived-node identity step 2, shape 2: unify_generics reads a containe | ready / BLOCKED | gentle-dove: REQUEST_CHANGES review 76999 (Bool predicate over DeclField in std/decl_ref.dag; inline it at the caller) |
 | [#13633](https://github.com/gunb-ai/gunbc/pull/13633) | Re-land #13255 (3rd conflict) + propose de-hotspotting native_emission | draft / DIRTY | gentle-dove: left out |
 | [#13488](https://github.com/gunb-ai/gunbc/pull/13488) | Design: nested optionality census + layer-count carrier (no code) | ready / BLOCKED | gentle-dove: left out |
-| [#13475](https://github.com/gunb-ai/gunbc/pull/13475) | fold_list empty: [] no longer locks the accumulator as List<Unit> | draft / BLOCKED | gentle-dove: left out |
 | [#13265](https://github.com/gunb-ai/gunbc/pull/13265) | Type parameters bind only inside their own declaration (rule 2 / A'; s | draft / DIRTY | gentle-dove: left out |
 | [#13632](https://github.com/gunb-ai/gunbc/pull/13632) | dusk qwen 3 | ready / BLOCKED | qwen: jq length(null)->0 fabricated default (DESIGN §5) |
 | [#13634](https://github.com/gunb-ai/gunbc/pull/13634) | C2 #13482: the seven review fixes (own-interface entries, lookup-first | draft / BLOCKED | royal-moth: left out |
@@ -213,6 +213,7 @@ No live session owns these. The proposed disposition: a CLEAN, non-draft PR from
 
 | PR | Why |
 | --- | --- |
+| #13648 | Auto-opened on neat-boar-16's archive from stale branch pkg11b-fix: no merge base with main, and the only new commit is .probe_tmp scratch. Its rung drops and projection roster are already on main |
 | #13636, #13644, #13646, #13647 | Auto-opened integration PRs. Their content is in #13641 (or, for #13647, deliberately left out) |
 | #13638 | Duplicate of #13430 |
 | #13552, #13555 | They build the BMC-hosted boot route, which was dropped; the srv13-16 naming is carried by #13570 |
@@ -243,10 +244,9 @@ This is work that has to go somewhere even though none of it merges now. Each ro
 | Unit-modeling fix (review 78356): RetryAfterSeconds and QuotaTermSeconds as Second | closeout worker adhoc-1bfd89a3-3eb | In progress; its PR targets #13641 |
 | Wave-2 conflicts (#13583, #13582, #13615, #13609) + full regen | closeout worker adhoc-ac536796-f2c | In progress; its PR targets #13641 |
 | #13617 seed binary provenance (paused, legacy) | swift-bat-828 (archived) | If revived, fix review 78362: the prose String row v1_seed_binary_provenance_admission_note becomes a typed admission row; retire/repoint gunbc_cli_build_identity_seed_dissolve_trigger and the ROADMAP boundary text that still describe build.rs rustc-env |
-| #13574 interim equality wall matches list reads by leaf name | gentle-dove-36 | REQUEST_CHANGES review 78262 is open; it rides into #13641 with gentle-dove's branch. Fix or refute it before #13641 lands |
 | #13595 String-vs-Int control | gentle-dove-36 | Switch #13574's equality control to a TypeMismatch count, then fold |
 | Nested-Present Rc-deref emitter fix; derive the expected identities from the cases; the option-C closure-by-prefix note | gentle-dove-36 | Never started (row and specimen are in #13593) |
-| #13482 / #13634 C2 cross-run typecheck store | royal-moth-86 | Switch to local_store_held_session; a real-route control (store_openings=1, hit/miss/committed>0); unset/cold/warm timings; observed_largest_entry_bytes; the live_pool_thread_tests red; the List-completeness question at ~757 files |
+| #13482 / #13634 C2 cross-run typecheck store | royal-moth-86 | Review 78363: delete the scratch t_tmp.sh re-added on #13634's tip (19c41daf). Then: Switch to local_store_held_session; a real-route control (store_openings=1, hit/miss/committed>0); unset/cold/warm timings; observed_largest_entry_bytes; the live_pool_thread_tests red; the List-completeness question at ~757 files |
 | Fleet-converge mint modes for run_cache_object_read/_write | royal-moth-86 | Never started |
 | neat-boar-16 unowned follow-ups (7) | neat-boar-16 | (1) The cost shape of the cost_debt_* / reach_base_standings tests; (2) the typed-store snapshot grain, where symbol_index ~1.71 GB per TypeEnv (calm-pike-525/calm-boar-904); (3) the floor_cost_debt_edit conjunct gap; (4) the reach-differential Err-discard; (5) the CI classifier counting cargo network warnings as structural; (6) the Int/Symbol/Char/Filesystem de-forks; (7) the LoweredShape arm frontier. Detail is in memory pending/neat-boar-16-capacity-freeze.txt |
 | OCI UsagePart.micros -> e2_micro_instances rename | nimble-heron-805 | Verified locally, never pushed; land it after #13641 |
@@ -256,6 +256,8 @@ This is work that has to go somewhere even though none of it merges now. Each ro
 | lively-ram recorded next units | lively-ram-153 | Deep substitution in infer_frame_instantiated (derivation on #13210); the sole_constructor native wall; route-gap class (b); DP-M2 residue (4 retained-shell one-offs); the argv census recount (WIP session/witty-tern-54, needs a partitioned emitter); the #13257 follow-up |
 | silent-lark D2 stack (#13217 -> #13339; respawn #13639) | silent-lark-156 | #13217 needs a main merge (import union in fleet_converge_workflow.dag, regen fleet-converge.yml keeping #13334 lines), then floor phases_failed=0. #13639 needs the three Absent->srv1 fallbacks fixed (review 78345). After D2: a one-time srv1 ownership-marker write |
 | silent-lark gaps | silent-lark-156 | walk_cgroup_pending quadratic concat (§6); fabric_storage_file_store has no head listing; rename srv1_gunbc_approval_broker_root to be host-neutral; python/go still refuse capture channels |
+| #13488 nested-optionality carrier | gentle-dove-36 | Review 78334 (REQUEST_CHANGES): the body says 'no code' but it changes 31 compiler files; the plan's own 'go' gate is not in evidence; CardOptional { layers: Int } admits 0/-1 (the plan requires OptionalLayers); it silently saturates at 8 layers; peeling Required succeeds instead of refusing. Restart from the plan's OptionalLayers design after an explicit go |
+| #13574 interim T?==T wall | gentle-dove-36 / eager-gull-22 | Review 78262: the approval cites escalation msg_66f62924, which can't be found; it recognizes List reads by leaf name, not declaration (§4). Keep or revert is with the operator |
 | session/lively-wren-411 @6194f56012 | bold-bee-114 | Duplicate member_not_a_binder fix, superseded by #13560. No PR; delete the branch |
 | wise-koi-396 (shell-dag live-deploy restart-tailscale) | stern-boar-596 | Nothing was ever pushed; the work is unstarted |
 
@@ -299,6 +301,10 @@ eager-gull-22 and sharp-raven-357 are finishing their integration branches. swif
 ### Falsified defects (do not refile)
 
 The marshal projected-let drop; negative-literal verdict loss (#13289). Both from lively-ram-153.
+
+### Archive flush residue
+
+Archiving a session commits its leftover worktree files as a 'WIP' commit and pushes them. That happened on #13648 (.probe_tmp scratch) and #13634 (t_tmp.sh). Any archived manager's branch may carry such a tip commit. Check the tip before reviving or merging one of these branches.
 
 ## Notes
 
