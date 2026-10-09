@@ -1,0 +1,22 @@
+module v2.test.lens_fact_density.surface_identity_atom_not_a_type_carrier
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.lens.fact_density { NotATypeCarrier, carrier_spec_fact }
+import v2.std.node { Atom, Node, Symbol, TypeNode }
+
+data surface_module_identity_atom: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^dag_surface_module } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data surface_body_identity_atom: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^namespace_graft_module_body } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+test fn surface_identity_atoms_are_not_hollow_aliases() -> Bool {
+  (carrier_spec_fact(carrier: surface_module_identity_atom) == NotATypeCarrier)
+    && (carrier_spec_fact(carrier: surface_body_identity_atom) == NotATypeCarrier)
+}

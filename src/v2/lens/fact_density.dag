@@ -52,9 +52,27 @@ fn connective_is_kernel_ambient_atom(c: Connective) -> Bool {
   }
 }
 
+// Graft identity atoms stand for no type denotation (namespace_graft_fold_spine /
+// namespace_graft_module_body_marker_node). Treating them as hollow aliases unmasks
+// fact_density_hollow_alias_locus on every valid module once the sibling lenses stop
+// refusing the parent shell as member_not_a_binder.
+fn connective_is_surface_identity_atom(c: Connective) -> Bool {
+  match c {
+    Atom { identity: id } =>
+      (id == ^dag_surface_module) || (id == ^namespace_graft_module_body)
+    Conj => false
+    Disj => false
+    Arrow => false
+    Cardinality => false
+    Instantiation => false
+  }
+}
+
 fn connective_spec_fact(c: Connective, named_facts: Nat) -> SourceSpecReadFact {
   if connective_is_kernel_ambient_atom(c: c) {
     KernelAmbientAtom
+  } else if connective_is_surface_identity_atom(c: c) {
+    NotATypeCarrier
   } else {
     density_fact(named_facts: named_facts)
   }

@@ -1,0 +1,25 @@
+module v2.lens.common.record_field_carrier
+
+import std.optional { Absent, Present }
+import v2.std.node { Node }
+import v2.extdeps.languages.dag {
+  namespace_graft_spine_chain_reaches_module_body,
+  parse_production_emitted_identity_optional
+}
+
+// THE CARRIER PREDICATE THE UNIT-MODELING AND LIFECYCLE-CARRIER LENSES SHARE. Both fold every
+// TypeNode's Authored children through member_edge_type_node and refuse a child that is not a
+// binder. A module shell, a marked module body, and a namespace-graft spine are TypeNode Conj
+// containers whose Authored members are modules and declarations, not record fields; judging them
+// as payloads is the member_not_a_binder door refusal on valid modules (compile_door_cause_ownership
+// member_not_a_binder row). Production identity Present covers the shell and the marked body;
+// the spine is the remaining unmarked single-Named-Conj chain that ends at that body
+// (namespace_graft_spine_chain_reaches_module_body — shape alone would misread an inline nested
+// record, so the body mark is the discriminator).
+
+fn node_is_module_surface_or_namespace_container(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: _ } => true
+    Absent => namespace_graft_spine_chain_reaches_module_body(node: node)
+  }
+}

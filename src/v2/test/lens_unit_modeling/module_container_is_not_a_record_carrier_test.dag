@@ -1,0 +1,159 @@
+module v2.test.lens_unit_modeling.module_container_is_not_a_record_carrier
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.compile {
+  CompileLensSubtree,
+  required_lenses_at_grain,
+  run_required_lens_gates_on_subtree
+}
+import v2.compiler.infer { InferredTree }
+import v2.extdeps.languages.dag {
+  dag_grammar_atom,
+  dag_named_edge,
+  namespace_graft_namespace_body_node
+}
+import v2.lens.lifecycle_carrier { lifecycle_carrier_gate }
+import v2.lens.unit_modeling { unit_modeling_gate }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node {
+  Atom,
+  Authored,
+  Conj,
+  Edge,
+  Node,
+  Symbol,
+  TypeNode
+}
+import v2.test.lens_common.infer_fixture {
+  claim_inferred_facts,
+  claim_inferred_tree
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data mc_source: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data mc_marked_body: Node = namespace_graft_namespace_body_node(edges: [], source: mc_source)
+
+data mc_inner_segment: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Authored { name: ^x },
+      target: mc_marked_body
+    }
+  ],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data mc_spine: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Authored { name: ^extdeps },
+      target: mc_inner_segment
+    }
+  ],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data mc_module_shell: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    dag_named_edge(
+      name: ^grammar_production_identity_node_projection,
+      target: dag_grammar_atom(id: ^dag_surface_module)
+    ),
+    dag_named_edge(
+      name: ^grammar_production_captured_node_projection,
+      target: mc_spine
+    )
+  ],
+  occurrence_id: OccurrenceSynthetic
+}
+
+fn mc_shell_tree() -> InferredTree {
+  claim_inferred_tree(
+    root: mc_module_shell,
+    facts: claim_inferred_facts(
+      type_symbol: ^mc_shell_type_sym,
+      algebra_symbol: ^mc_shell_algebra_sym,
+      descent_symbol: ^mc_shell_descent_sym
+    )
+  )
+}
+
+data mc_text_atom: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^Text } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data mc_malformed_field_root: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Authored { name: ^x },
+      target: mc_text_atom
+    }
+  ],
+  occurrence_id: OccurrenceSynthetic
+}
+
+fn mc_malformed_field_tree() -> InferredTree {
+  claim_inferred_tree(
+    root: mc_malformed_field_root,
+    facts: claim_inferred_facts(
+      type_symbol: ^mc_malformed_type_sym,
+      algebra_symbol: ^mc_malformed_algebra_sym,
+      descent_symbol: ^mc_malformed_descent_sym
+    )
+  )
+}
+
+test fn a_module_shell_is_not_refused_as_member_not_a_binder() -> Bool {
+  match unit_modeling_gate(node: mc_module_shell) {
+    Accepted { value: _, diagnostics: _ } =>
+      match lifecycle_carrier_gate(node: mc_module_shell) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn a_namespace_spine_is_not_refused_as_member_not_a_binder() -> Bool {
+  match unit_modeling_gate(node: mc_spine) {
+    Accepted { value: _, diagnostics: _ } =>
+      match lifecycle_carrier_gate(node: mc_spine) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn a_grafted_module_tree_clears_the_subtree_roster_of_member_not_a_binder() -> Bool {
+  match run_required_lens_gates_on_subtree(
+    inferred: mc_shell_tree(),
+    lenses: required_lenses_at_grain(grain: CompileLensSubtree)
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: d } => d.head.reason != ^member_not_a_binder
+  }
+}
+
+test fn a_hand_built_field_is_still_member_not_a_binder_on_the_subtree_roster() -> Bool {
+  match run_required_lens_gates_on_subtree(
+    inferred: mc_malformed_field_tree(),
+    lenses: required_lenses_at_grain(grain: CompileLensSubtree)
+  ) {
+    Rejected { diagnostics: d } => d.head.reason == ^member_not_a_binder
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}

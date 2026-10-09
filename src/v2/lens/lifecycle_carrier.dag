@@ -24,6 +24,7 @@ import v2.std.node {
   symbol_lexeme,
   StructuralLabel,
 }
+import v2.lens.common.record_field_carrier { node_is_module_surface_or_namespace_container }
 import v2.std.node_query { edge_field_type_name, member_edge_type_node, member_not_a_binder_diagnostic }
 import std.optional {
   Absent,
@@ -130,12 +131,16 @@ fn field_lifecycle_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> 
 }
 
 fn carrier_first_lifecycle_violation(carrier: Node) -> Optional<Diagnostic> {
-  match carrier.kind {
-    TypeNode { connective: _ } =>
-      fold(carrier.children, init: optional_absent(), f: fn(acc, edge) {
-        optional_prefer_first_present(left: acc, right: field_lifecycle_violation(carrier: carrier, edge: edge))
-      })
-    ComputationNode { behavior: _ } => Absent
+  if node_is_module_surface_or_namespace_container(node: carrier) {
+    optional_absent()
+  } else {
+    match carrier.kind {
+      TypeNode { connective: _ } =>
+        fold(carrier.children, init: optional_absent(), f: fn(acc, edge) {
+          optional_prefer_first_present(left: acc, right: field_lifecycle_violation(carrier: carrier, edge: edge))
+        })
+      ComputationNode { behavior: _ } => Absent
+    }
   }
 }
 

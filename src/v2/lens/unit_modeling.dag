@@ -6,6 +6,7 @@ import v2.lens.common.construction_justification { ConstructionJustification, Wa
 import std.disposition { SingleAuthority }
 
 import v2.std.witness { Holds }
+import v2.lens.common.record_field_carrier { node_is_module_surface_or_namespace_container }
 import v2.std.node_query { edge_field_type_name, member_edge_type_node, member_not_a_binder_diagnostic }
 import v2.std.diagnostic { node_locus, outcome_accepted, outcome_rejected }
 import std.optional { optional_absent, optional_present, optional_prefer_first_present }
@@ -114,12 +115,16 @@ fn field_unit_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> {
 }
 
 fn carrier_first_unit_violation(carrier: Node) -> Optional<Diagnostic> {
-  match carrier.kind {
-    TypeNode { connective: _ } =>
-      fold(carrier.children, init: optional_absent(), f: fn(acc, edge) {
-        optional_prefer_first_present(left: acc, right: field_unit_violation(carrier: carrier, edge: edge))
-      })
-    ComputationNode { behavior: _ } => Absent
+  if node_is_module_surface_or_namespace_container(node: carrier) {
+    optional_absent()
+  } else {
+    match carrier.kind {
+      TypeNode { connective: _ } =>
+        fold(carrier.children, init: optional_absent(), f: fn(acc, edge) {
+          optional_prefer_first_present(left: acc, right: field_unit_violation(carrier: carrier, edge: edge))
+        })
+      ComputationNode { behavior: _ } => Absent
+    }
   }
 }
 

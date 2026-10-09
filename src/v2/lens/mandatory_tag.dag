@@ -58,6 +58,13 @@ import v2.extdeps.languages.dag {
 // supersedes the host module parse (the dissolution trigger named by the deleted cli_run.rs
 // scaffold block).
 //
+// DOOR-GRAIN CONTROLS ARE AUTHORABLE ONCE THE SUBTREE ROSTER STOPS REFUSING MODULE
+// CONTAINERS (v2.lens.common.record_field_carrier; gunbc#13513). A grafted module tree is no
+// longer refused as member_not_a_binder before this root-grain gate runs, so a RED/GREEN pair
+// through compile_source_root_ingest_with_admission / validate_then_compile can name this
+// lens's reasons. The production callers remain the ones below; native-eval prepare still
+// does not owe this gate per module.
+//
 // NATIVE-EVAL PREPARE DOES NOT OWE THIS GATE PER MODULE (valiant-ram-872, DESIGN section 6b).
 // CompileLensRoot is a compile-door obligation: the single gate surface is
 // validate_then_compile (v2.compiler.compile required_lens_grain_note). Its production
