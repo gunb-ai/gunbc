@@ -3654,19 +3654,12 @@ jobs:
     environment: mtjade1-arrival
     timeout-minutes: 25
     if: github.event.inputs.mode == 'arrival_converge'
-  printer:
-    runs-on: [self-hosted, linux, arm64, srv1]
-    needs: [build]
-    environment: printer-lan
-    timeout-minutes: 35
-    if: github.event.inputs.mode == 'printer'
     permissions:
       contents: read
       actions: read
       id-token: write
     concurrency:
       group: gunbc-host-mutation-srv1
-      group: printer-${{ inputs.printer }}
       cancel-in-progress: false
     steps:
       - name: Checkout (the event sha only; no dispatch input selects these bytes)
@@ -3780,6 +3773,104 @@ jobs:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
           FLEET_CONVERGE_ARRIVAL_SUBJECT: ${{ github.event.inputs.arrival_subject }}
+        timeout-minutes: 5
+  printer:
+    runs-on: [self-hosted, linux, arm64, srv1]
+    needs: [build]
+    environment: printer-lan
+    timeout-minutes: 35
+    if: github.event.inputs.mode == 'printer'
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    concurrency:
+      group: printer-${{ inputs.printer }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout (the event sha only; no dispatch input selects these bytes)
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - name: Download release-bins artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: release-bins
+          path: ${{ runner.temp }}/release-bins-download
+        timeout-minutes: 10
+      - name: Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)
+        id: release_bins
+        run: |
+          set -e
+          ROOT=$('git' 'rev-parse' '--show-toplevel')
+          '[' '-n' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerKeyMissing::the build job published no release-bins key'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.preimage'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.manifest'; exit 1)
+          '[' '-f' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' ']' || ('echo' '::error title=release-bins ConsumerFileMissing::the release-bins artifact is missing release-bins.tgz'; exit 1)
+          'sha256sum' "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' > "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out'
+          DOWNLOADED_DIGEST=$('cut' '-d' ' ' '-f' '1' "$RUNNER_TEMP"'/DOWNLOADED_DIGEST.out')
+          '[' 'release-bins-'"$DOWNLOADED_DIGEST" '=' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerPreimageKeyMismatch::the downloaded preimage does not hash to the build job'\''s key'; exit 1)
+          OBJECT_FORMAT=$('git' '-C' "$ROOT" 'rev-parse' '--show-object-format')
+          SOURCE_TREE=$('git' '-C' "$ROOT" 'rev-parse' 'HEAD^{tree}')
+          '[' '-n' "$OBJECT_FORMAT" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input OBJECT_FORMAT read back empty, so the key would not name the build; refusing to key'; exit 1)
+          '[' '-n' "$SOURCE_TREE" ']' || ('echo' '::error title=release-bins AxisValueUnread::the key input SOURCE_TREE read back empty, so the key would not name the build; refusing to key'; exit 1)
+          SOURCE_CLOSURE='tree:'"$OBJECT_FORMAT"':'"$SOURCE_TREE"
+          'grep' '-qxF' 'source_closure='"$SOURCE_CLOSURE" "$RUNNER_TEMP"'/release-bins-download/release-bins.preimage' || ('echo' '::error title=release-bins ConsumerSourceTreeMismatch::the pack was keyed on a different source tree than this job'\''s checkout'; exit 1)
+          'printf' '%s' 'claim_executor
+          gunbc
+          discover_source_root_ingest
+          claim_batch
+          interp_recorded_fixture_witness
+          v1_src_dag_parse
+          auth_declared_but_unwired_witness
+          bootstrap_witness
+          dag_collect_fingerprint_witness
+          diagnostics_witness
+          effects_rest_transport_witness
+          infer_semantics_witness
+          parse_witness
+          cssl_assemble
+          namespace_structural_root_exposure_generated_witness
+          codex_app_server_stdio_session
+          ' > "$RUNNER_TEMP"'/release-bins.roster'
+          'tar' '-tzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' > "$RUNNER_TEMP"'/pack-listing.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/pack-listing.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins PackListingNotRoster::the downloaded pack'\''s archive listing is not exactly the roster (an extra, duplicate, directory or escaping entry)'; exit 1)
+          'cut' '-c' '67-' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest' > "$RUNNER_TEMP"'/manifest-names.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/manifest-names.out' "$RUNNER_TEMP"'/release-bins.roster' || ('echo' '::error title=release-bins ManifestRosterMismatch::the downloaded manifest does not name exactly the gunbc.ci_release_bins roster in order'; exit 1)
+          if 'grep' '-qvE' '^[0-9a-f]{64}  [A-Za-z0-9_]+$' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest'; then ('echo' '::error title=release-bins ManifestMalformed::the downloaded manifest has a line that is not one well-formed sha256 record for a roster member'; exit 1); fi
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          'mkdir' '-p' "$RUNNER_TEMP"'/release-bins-check'
+          'tar' '-xzf' "$RUNNER_TEMP"'/release-bins-download/release-bins.tgz' '-C' "$RUNNER_TEMP"'/release-bins-check' '--no-same-owner'
+          'printf' '%s' 'claim_executor:regular file:1
+          gunbc:regular file:1
+          discover_source_root_ingest:regular file:1
+          claim_batch:regular file:1
+          interp_recorded_fixture_witness:regular file:1
+          v1_src_dag_parse:regular file:1
+          auth_declared_but_unwired_witness:regular file:1
+          bootstrap_witness:regular file:1
+          dag_collect_fingerprint_witness:regular file:1
+          diagnostics_witness:regular file:1
+          effects_rest_transport_witness:regular file:1
+          infer_semantics_witness:regular file:1
+          parse_witness:regular file:1
+          cssl_assemble:regular file:1
+          namespace_structural_root_exposure_generated_witness:regular file:1
+          codex_app_server_stdio_session:regular file:1
+          ' > "$RUNNER_TEMP"'/member-types.expected'
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'stat' '-c' '%n:%F:%h' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session') > "$RUNNER_TEMP"'/member-types.out'
+          'cmp' '-s' "$RUNNER_TEMP"'/member-types.out' "$RUNNER_TEMP"'/member-types.expected' || ('diff' "$RUNNER_TEMP"'/member-types.expected' "$RUNNER_TEMP"'/member-types.out' || ':' 'no-op'; ('echo' '::error title=release-bins MemberNotRegularFile::the downloaded pack has a member that is not a self-contained regular file (a link, special file or hard-link dependency; the report above names it)'; exit 1))
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'find' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' '-maxdepth' '0' '!' '-perm' '-u+x') > "$RUNNER_TEMP"'/member-nonexec.out'
+          '[' '!' '-s' "$RUNNER_TEMP"'/member-nonexec.out' ']' || ('cat' "$RUNNER_TEMP"'/member-nonexec.out'; ('echo' '::error title=release-bins MemberNotExecutable::the downloaded pack has a member that is not executable (listed above)'; exit 1))
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'sha256sum' '--strict' '--quiet' '-c' "$RUNNER_TEMP"'/release-bins-download/release-bins.manifest') || ('echo' '::error title=release-bins MemberDigestMismatch::the downloaded member bytes do not match the manifest under strict checking; refusing before any member is promoted or run'; exit 1)
+          'mkdir' '-p' "$ROOT"'/target/release'
+          ('cd' "$ROOT"'/target/release' && 'rm' '-f' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session')
+          ('cd' "$RUNNER_TEMP"'/release-bins-check' && 'cp' '-p' 'claim_executor' 'gunbc' 'discover_source_root_ingest' 'claim_batch' 'interp_recorded_fixture_witness' 'v1_src_dag_parse' 'auth_declared_but_unwired_witness' 'bootstrap_witness' 'dag_collect_fingerprint_witness' 'diagnostics_witness' 'effects_rest_transport_witness' 'infer_semantics_witness' 'parse_witness' 'cssl_assemble' 'namespace_structural_root_exposure_generated_witness' 'codex_app_server_stdio_session' "$ROOT"'/target/release/')
+          'rm' '-rf' "$RUNNER_TEMP"'/release-bins-check'
+          "$ROOT"'/target/release/claim_executor' '--verify-build-artifacts' "$ROOT"'/target/release/claim_executor' "$ROOT"'/target/release/gunbc' "$ROOT"'/target/release/discover_source_root_ingest' "$ROOT"'/target/release/claim_batch' "$ROOT"'/target/release/interp_recorded_fixture_witness' "$ROOT"'/target/release/v1_src_dag_parse' "$ROOT"'/target/release/auth_declared_but_unwired_witness' "$ROOT"'/target/release/bootstrap_witness' "$ROOT"'/target/release/dag_collect_fingerprint_witness' "$ROOT"'/target/release/diagnostics_witness' "$ROOT"'/target/release/effects_rest_transport_witness' "$ROOT"'/target/release/infer_semantics_witness' "$ROOT"'/target/release/parse_witness' "$ROOT"'/target/release/cssl_assemble' "$ROOT"'/target/release/namespace_structural_root_exposure_generated_witness' "$ROOT"'/target/release/codex_app_server_stdio_session'
+        env:
+          RELEASE_BINS_KEY: ${{ needs.build.outputs.release_bins_key }}
         timeout-minutes: 5
       - name: WIF auth (dedicated printer credential reader)
         id: wif_auth
