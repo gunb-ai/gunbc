@@ -5626,7 +5626,8 @@ pub(crate) fn floor_stream_enabled() -> bool {
 pub struct RequiredFloorNominalSubjectSeeds {
     pub required_gate_prefixes: Vec<String>,
     pub required_gate_authored_modules: Vec<String>,
-    pub(crate) local_repo_wet_schedule_rows: Vec<LocalRepoWetScheduledRow>,
+    /// Entry modules of `local_repo_wet_schedule` only — seed identities, not fabricated schedule rows.
+    pub(crate) local_repo_wet_seed_modules: Vec<String>,
 }
 
 /// THE LANE'S SCHEDULE IS DECODED HERE, IN THE POLICY CLOSURE, AND NOT LATER -- because its
@@ -5680,20 +5681,27 @@ fn required_floor_nominal_subject_seeds_from_policy_source(
     let required_gate_authored_modules =
         dag_fn_string_list_literal(&policy_src, "required_gate_authored_modules")?;
     let wet_src = corpus_module_source(corpus, "v2.workflow.local_repo_wet_terminal")?;
-    let local_repo_wet_schedule_rows = wet_entry_module_stubs(&wet_src)?;
+    let local_repo_wet_seed_modules = wet_schedule_seed_modules(&wet_src)?;
     Ok(RequiredFloorNominalSubjectSeeds {
         required_gate_prefixes,
         required_gate_authored_modules,
-        local_repo_wet_schedule_rows,
+        local_repo_wet_seed_modules,
     })
 }
 
 /// Project the policy view from the ONE prepared gate subject. `claim_scope_for` refuses
 /// `EntryModuleOutsidePreparedSubject` if `v2.workflow.required_floor` is not in the graph.
-/// There is no second prepare and no fallback.
+/// There is no second prepare and no fallback. The evalled wet schedule rows are returned
+/// beside the seed lists so the wet lane does not run on bootstrap stubs.
 pub fn required_floor_nominal_subject_seeds_from_prepared(
     prepared: &crate::cli_run::PreparedRepository,
-) -> Result<RequiredFloorNominalSubjectSeeds, String> {
+) -> Result<
+    (
+        RequiredFloorNominalSubjectSeeds,
+        Vec<LocalRepoWetScheduledRow>,
+    ),
+    String,
+> {
     let policy_scope = claim_scope_for(prepared, REQUIRED_FLOOR_POLICY_MODULE)?;
     let policy_frame = evaluation_frame(
         &policy_scope,
@@ -5709,8 +5717,8 @@ pub fn required_floor_nominal_subject_seeds_from_prepared(
         &policy_frame,
         "v2.workflow.required_floor.required_gate_authored_modules",
     )?;
-    let local_repo_wet_schedule_rows = local_repo_wet_schedule(&policy_frame)?;
-    for row in &local_repo_wet_schedule_rows {
+    let wet_rows = local_repo_wet_schedule(&policy_frame)?;
+    for row in &wet_rows {
         if !prepared
             .graph
             .modules
@@ -5724,11 +5732,21 @@ pub fn required_floor_nominal_subject_seeds_from_prepared(
             ));
         }
     }
-    Ok(RequiredFloorNominalSubjectSeeds {
-        required_gate_prefixes,
-        required_gate_authored_modules,
-        local_repo_wet_schedule_rows,
-    })
+    let mut local_repo_wet_seed_modules: Vec<String> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for row in &wet_rows {
+        if seen.insert(row.entry_module.clone()) {
+            local_repo_wet_seed_modules.push(row.entry_module.clone());
+        }
+    }
+    Ok((
+        RequiredFloorNominalSubjectSeeds {
+            required_gate_prefixes,
+            required_gate_authored_modules,
+            local_repo_wet_seed_modules,
+        },
+        wet_rows,
+    ))
 }
 
 fn corpus_module_source(
@@ -5758,12 +5776,6 @@ fn dag_fn_body<'a>(source: &'a str, fn_name: &str) -> Result<&'a str, String> {
             "REQUIRED-FLOOR REFUSAL cause=PolicyRosterNotAListLiteral fn={fn_name} — no function body"
         )
     })?;
-    let sig = &after[..sig_end];
-    if !sig.contains("List<String>") {
-        return Err(format!(
-            "REQUIRED-FLOOR REFUSAL cause=PolicyRosterNotAListLiteral fn={fn_name} — signature is not List<String>"
-        ));
-    }
     let body_start = fn_at + sig_end + 1;
     let rest = &source[body_start..];
     let mut depth = 1i32;
@@ -5821,6 +5833,22 @@ fn dag_fn_body<'a>(source: &'a str, fn_name: &str) -> Result<&'a str, String> {
 }
 
 fn dag_fn_string_list_literal(source: &str, fn_name: &str) -> Result<Vec<String>, String> {
+    let needle = format!("fn {fn_name}(");
+    let fn_at = source.find(&needle).ok_or_else(|| {
+        format!(
+            "REQUIRED-FLOOR REFUSAL cause=PolicyRosterNotAListLiteral fn={fn_name} — no function"
+        )
+    })?;
+    let sig_end = source[fn_at..].find('{').ok_or_else(|| {
+        format!(
+            "REQUIRED-FLOOR REFUSAL cause=PolicyRosterNotAListLiteral fn={fn_name} — no function body"
+        )
+    })?;
+    if !source[fn_at..fn_at + sig_end].contains("List<String>") {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=PolicyRosterNotAListLiteral fn={fn_name} — signature is not List<String>"
+        ));
+    }
     let body = dag_fn_body(source, fn_name)?;
     let brack = body.find('[').ok_or_else(|| {
         format!(
@@ -5897,40 +5925,54 @@ fn dag_fn_string_list_literal(source: &str, fn_name: &str) -> Result<Vec<String>
     ))
 }
 
-fn wet_entry_module_stubs(wet_source: &str) -> Result<Vec<LocalRepoWetScheduledRow>, String> {
-    let mut rows = Vec::new();
+fn wet_schedule_seed_modules(wet_source: &str) -> Result<Vec<String>, String> {
+    let body = dag_fn_body(wet_source, "local_repo_wet_schedule")?;
+    let mut modules = Vec::new();
     let mut seen = std::collections::HashSet::new();
     let key = "module_path: \"";
-    let mut rest = wet_source;
-    while let Some(at) = rest.find(key) {
-        let after = &rest[at + key.len()..];
-        let Some(end) = after.find('"') else {
-            return Err(
-                "REQUIRED-FLOOR REFUSAL cause=PolicyRosterNotAListLiteral fn=local_repo_wet_schedule \
-                 — unclosed module_path string"
-                    .to_string(),
-            );
-        };
-        let module = &after[..end];
-        if seen.insert(module.to_string()) {
-            rows.push(LocalRepoWetScheduledRow {
-                identity: String::new(),
-                entry: String::new(),
-                entry_module: module.to_string(),
-                function: String::new(),
-                premise: None,
-            });
+    let rest = body;
+    let mut line_comment = false;
+    let mut i = 0;
+    let bytes = rest.as_bytes();
+    while i < rest.len() {
+        if line_comment {
+            if rest.as_bytes()[i] == b'\n' {
+                line_comment = false;
+            }
+            i += 1;
+            continue;
         }
-        rest = &after[end + 1..];
+        if i + 1 < bytes.len() && bytes[i] == b'/' && bytes[i + 1] == b'/' {
+            line_comment = true;
+            i += 2;
+            continue;
+        }
+        if rest[i..].starts_with(key) {
+            let after = &rest[i + key.len()..];
+            let Some(end) = after.find('"') else {
+                return Err(
+                    "REQUIRED-FLOOR REFUSAL cause=PolicyRosterNotAListLiteral fn=local_repo_wet_schedule \
+                     — unclosed module_path string"
+                        .to_string(),
+                );
+            };
+            let module = &after[..end];
+            if seen.insert(module.to_string()) {
+                modules.push(module.to_string());
+            }
+            i += key.len() + end + 1;
+            continue;
+        }
+        i += 1;
     }
-    if rows.is_empty() {
+    if modules.is_empty() {
         return Err(
             "REQUIRED-FLOOR REFUSAL cause=PolicyRosterNotAListLiteral fn=local_repo_wet_schedule \
              — no module_path string literals"
                 .to_string(),
         );
     }
-    Ok(rows)
+    Ok(modules)
 }
 
 fn policy_roster_identity_join(
@@ -5957,23 +5999,16 @@ fn policy_roster_identity_join(
 /// they are matched by a different rule.
 pub(crate) fn required_floor_nominal_closure_module_seeds(
     required_gate_authored_modules: &[String],
-    local_repo_wet_schedule_rows: &[LocalRepoWetScheduledRow],
+    local_repo_wet_seed_modules: &[String],
 ) -> Vec<String> {
     REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES
         .iter()
         .map(|m| m.to_string())
         .chain(required_gate_authored_modules.iter().cloned())
-        .chain(
-            local_repo_wet_schedule_rows
-                .iter()
-                .map(|row| row.entry_module.clone()),
-        )
-        .chain(
-            local_repo_wet_schedule_rows
-                .iter()
-                .any(|row| row.premise.is_some())
-                .then(|| LOCAL_REPO_WET_PREMISE_READBACK_MODULE.to_string()),
-        )
+        .chain(local_repo_wet_seed_modules.iter().cloned())
+        .chain(std::iter::once(
+            LOCAL_REPO_WET_PREMISE_READBACK_MODULE.to_string(),
+        ))
         .collect()
 }
 
@@ -8744,7 +8779,7 @@ pub fn run_required_floor(
     let RequiredFloorNominalSubjectSeeds {
         required_gate_prefixes,
         required_gate_authored_modules,
-        mut local_repo_wet_schedule_rows,
+        local_repo_wet_seed_modules,
     } = required_floor_nominal_subject_seeds_from_corpus(&floor_corpus, &gate_entry_index)?;
     // THE FLOOR'S OWN AUTHORITIES ARE ALWAYS IN THE SUBJECT: the floor evaluates its rosters
     // (expected red, route gap, cost debt, the gate itself) in a frame over the prepared graph,
@@ -9093,7 +9128,7 @@ pub fn run_required_floor(
     };
     let closure_module_seeds: Vec<String> = required_floor_nominal_closure_module_seeds(
         &required_gate_authored_modules,
-        &local_repo_wet_schedule_rows,
+        &local_repo_wet_seed_modules,
     )
     .into_iter()
     .chain(checker_module_seeds)
@@ -9128,7 +9163,8 @@ pub fn run_required_floor(
         )),
     )?;
     drop(gate_entry_index);
-    let projected = required_floor_nominal_subject_seeds_from_prepared(&prepared)?;
+    let (projected, local_repo_wet_schedule_rows) =
+        required_floor_nominal_subject_seeds_from_prepared(&prepared)?;
     policy_roster_identity_join(
         &required_gate_prefixes,
         &projected.required_gate_prefixes,
@@ -9139,17 +9175,11 @@ pub fn run_required_floor(
         &projected.required_gate_authored_modules,
         "required_gate_authored_modules",
     )?;
-    let boot_wet: Vec<String> = local_repo_wet_schedule_rows
-        .iter()
-        .map(|r| r.entry_module.clone())
-        .collect();
-    let proj_wet: Vec<String> = projected
-        .local_repo_wet_schedule_rows
-        .iter()
-        .map(|r| r.entry_module.clone())
-        .collect();
-    policy_roster_identity_join(&boot_wet, &proj_wet, "local_repo_wet_schedule.entry_module")?;
-    local_repo_wet_schedule_rows = projected.local_repo_wet_schedule_rows;
+    policy_roster_identity_join(
+        &local_repo_wet_seed_modules,
+        &projected.local_repo_wet_seed_modules,
+        "local_repo_wet_schedule.entry_module",
+    )?;
     floor_seam("prepared-subject-warm");
     floor_retained_census("prepared-subject-warm", Some(&prepared.graph));
     // THE FULL INDEX THE DISCOVERY AUTHORITY WILL JUDGE, captured here because the prepared
@@ -19721,9 +19751,9 @@ mod floor_base_tree_tests {
                 )
             })
             .expect("wet source");
-        let stubs = super::wet_entry_module_stubs(&wet).expect("wet stubs");
+        let stubs = super::wet_schedule_seed_modules(&wet).expect("wet seeds");
         assert!(
-            stubs.iter().any(|r| r.entry_module.contains("test.claim.")),
+            stubs.iter().any(|m| m.contains("test.claim.")),
             "wet extract dropped every test.claim member: {stubs:?}"
         );
         let computed = concat!(
@@ -19733,6 +19763,16 @@ mod floor_base_tree_tests {
         let err = super::dag_fn_string_list_literal(computed, "required_gate_prefixes")
             .expect_err("computed body must refuse");
         assert!(err.contains("PolicyRosterNotAListLiteral"), "{err}");
+        let wet_scoped = concat!(
+            "fn local_repo_wet_schedule() -> List<WetScheduledClaim> {\n",
+            "  [ WetScheduledClaim { identity: WitnessIdentity { module_path: \"in.schedule\", function: \"f\" } } ]\n",
+            "}\n",
+            "fn local_repo_wet_premise_roster() -> List<WetPremisedClaim> {\n",
+            "  [ WetPremisedClaim { identity: WitnessIdentity { module_path: \"only.premise\", function: \"g\" } } ]\n",
+            "}\n",
+        );
+        let scoped = super::wet_schedule_seed_modules(wet_scoped).expect("scoped wet");
+        assert_eq!(scoped, vec!["in.schedule".to_string()]);
     }
 
     #[test]
@@ -19759,7 +19799,7 @@ mod floor_base_tree_tests {
             .expect("bootstrap seeds");
         let module_seeds = super::required_floor_nominal_closure_module_seeds(
             &boot.required_gate_authored_modules,
-            &boot.local_repo_wet_schedule_rows,
+            &boot.local_repo_wet_seed_modules,
         );
         let (prepared, _) = crate::cli_run::prepare_repository_from_corpus(
             &corpus,
@@ -19767,7 +19807,7 @@ mod floor_base_tree_tests {
             Some((index.as_ref(), &boot.required_gate_prefixes, &module_seeds)),
         )
         .expect("one gate prepare");
-        let projected = super::required_floor_nominal_subject_seeds_from_prepared(&prepared)
+        let (projected, _) = super::required_floor_nominal_subject_seeds_from_prepared(&prepared)
             .expect("project policy");
         super::policy_roster_identity_join(
             &boot.required_gate_prefixes,
@@ -19781,18 +19821,12 @@ mod floor_base_tree_tests {
             "required_gate_authored_modules",
         )
         .expect("authored join");
-        let boot_wet: Vec<String> = boot
-            .local_repo_wet_schedule_rows
-            .iter()
-            .map(|r| r.entry_module.clone())
-            .collect();
-        let proj_wet: Vec<String> = projected
-            .local_repo_wet_schedule_rows
-            .iter()
-            .map(|r| r.entry_module.clone())
-            .collect();
-        super::policy_roster_identity_join(&boot_wet, &proj_wet, "wet_entry_module")
-            .expect("wet join");
+        super::policy_roster_identity_join(
+            &boot.local_repo_wet_seed_modules,
+            &projected.local_repo_wet_seed_modules,
+            "wet_entry_module",
+        )
+        .expect("wet join");
         let scope =
             crate::cli_run::claim_scope_for(&prepared, super::super::REQUIRED_FLOOR_POLICY_MODULE)
                 .expect("policy in gate");

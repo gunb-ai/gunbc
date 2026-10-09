@@ -2833,7 +2833,7 @@ fn run_typed_graph_exclusive_bytes_floor_subject() -> InvocationOutcome {
             cli_run::required_floor_nominal_subject_seeds_from_corpus(&corpus, &gate_entry_index)?;
         let module_seeds = cli_run::required_floor_nominal_closure_module_seeds(
             &seeds.required_gate_authored_modules,
-            &seeds.local_repo_wet_schedule_rows,
+            &seeds.local_repo_wet_seed_modules,
         );
         // THE FLOOR'S OWN SUBJECT, COMPILED AS ITS STRICT PREPARE COMPILES IT -- before the prepared
         // repository drops the typecheck caches -- because the floor's peak is inside that compile,
