@@ -10,6 +10,9 @@ import gunbc.ensure { EnsureObserveOnly }
 import gunbc.deployment_risk {
   DeploymentId,
   DeploymentRiskClass,
+  ProdRoleSelection,
+  NoProdRole,
+  ProdRoleHeldBy,
   deployment_risk_class,
   prod_role_selection,
   srv1_daily_workspace_deployment,
@@ -273,6 +276,30 @@ type DashboardAdmittedRevisionSource {
 // THE INSTANCE'S RISK CLASS, derived through the one switchable row. Nothing else may answer it.
 fn dashboard_instance_risk_class(instance: HostDashboardInstance) -> DeploymentRiskClass {
   deployment_risk_class(selection: prod_role_selection, deployment: instance.deployment)
+}
+
+// THE INSTANCE THAT REALIZES A DeploymentId IN THIS REPOSITORY'S PUBLIC BUILT-IN SET. Role-following
+// singletons (broker owner, fabric placement) resolve the prod holder through this fold and the
+// selection, never by spelling srv1_live. An id this roster does not carry is Absent -- it is not
+// guessed from a constructor name.
+fn dashboard_instance_for_deployment(deployment: DeploymentId) -> HostDashboardInstance? {
+  public_builtin_dashboard_instances()
+    |> filter(i => i.deployment == deployment)
+    |> first
+}
+
+// THE DASHBOARD INSTANCE THAT HOLDS THE PROD ROLE UNDER A SELECTION, or Absent when the role is off
+// or names a deployment this roster does not realize. Parameterized so a fixture can move the role
+// without editing the live row (deployment-risk D2 RED).
+fn prod_role_holder_dashboard_instance(selection: ProdRoleSelection) -> HostDashboardInstance? {
+  match selection {
+    NoProdRole => none
+    ProdRoleHeldBy { deployment: d } => dashboard_instance_for_deployment(deployment: d)
+  }
+}
+
+fn prod_role_holder_dashboard_instance_from_row() -> HostDashboardInstance? {
+  prod_role_holder_dashboard_instance(selection: prod_role_selection)
 }
 
 // The fleet's authority, unchanged: origin advertises refs/fleet/desired. Named here rather than

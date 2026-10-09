@@ -21,6 +21,7 @@ import extdeps.tailscale.identity { TailnetIdentity }
 import extdeps.network.address { IpV4, ip_address_is_loopback }
 import extdeps.network.ipv4 { parse_ipv4_address, Ipv4Parsed, Ipv4ParseFailed }
 import gunbc.srv1_dashboard_bind { srv1_dashboard_listen_host }
+import gunbc.roadmap_dashboard_instance { prod_role_holder_dashboard_instance_from_row }
 import extdeps.crypto.mac { MacKey, MacKeyId, MacSuite, HmacSha256, MacVerification, mac_verify, mac_key_material_hex_length }
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, serialize_json, json_object, json_kv, json_string, json_bool }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject, parse_json_document, json_object_unique_member }
@@ -191,7 +192,14 @@ fn approval_identity_trust_for(listen_host: NonEmptyStr) -> IdentityTrustStandin
   }
 }
 
-data approval_identity_trust: IdentityTrustStanding = approval_identity_trust_for(listen_host: srv1_dashboard_listen_host)
+fn approval_identity_trust_listen_host() -> NonEmptyStr {
+  match prod_role_holder_dashboard_instance_from_row() {
+    Present { value: holder } => holder.listen_host
+    Absent => srv1_dashboard_listen_host
+  }
+}
+
+data approval_identity_trust: IdentityTrustStanding = approval_identity_trust_for(listen_host: approval_identity_trust_listen_host())
 
 // ── the store ──────────────────────────────────────────────────────────────────────────────────
 

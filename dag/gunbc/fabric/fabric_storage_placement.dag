@@ -5,8 +5,14 @@ import gunbc.fabric_storage_address { fabric_storage_route_prefix, fabric_storag
 import std.types { String, NonEmptyStr, FilePath, Int, Bool, Port, List }
 import product.host_identity { HostIdentity }
 import gunbc.fleet_intent_network { fleet_intent_network }
-import gunbc.fleet_host_identity { operator_host_srv1 }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_fabric_storage_root, srv1_live_dashboard_instance, dashboard_instance_child }
+import gunbc.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  dashboard_instance_fabric_storage_root,
+  dashboard_instance_child,
+  prod_role_holder_dashboard_instance,
+  srv1_live_dashboard_instance,
+}
+import gunbc.deployment_risk { ProdRoleSelection, prod_role_selection }
 import std.effect_grant { Read, Write, Execute }
 import extdeps.tailscale.serve { tailscale_serve_unix_proxy_peer }
 import gunbc.ownership { Ensured }
@@ -67,19 +73,37 @@ data fabric_storage_door_proxy_peer: NonEmptyStr = tailscale_serve_unix_proxy_pe
 
 
 // The store root is the placed instance's fabric DB root -- one authority with the deployment that
-// creates it (gunbc.roadmap_dashboard_instance dashboard_instance_fabric_storage_root).
+// creates it (gunbc.roadmap_dashboard_instance dashboard_instance_fabric_storage_root). Placement
+// follows the prod-role holder. Door and store-root PATH helpers still need a HostDashboardInstance
+// when the live row is NoProdRole; that arm names srv1_live only as a path constructor residual
+// (DESIGN 3b stated divergence). The placement decision itself is Unplaced there and never treats
+// that residual as ownership.
+fn fabric_storage_placed_instance_under(selection: ProdRoleSelection) -> HostDashboardInstance? {
+  prod_role_holder_dashboard_instance(selection: selection)
+}
+
 fn fabric_storage_placed_instance() -> HostDashboardInstance {
-  srv1_live_dashboard_instance()
+  match fabric_storage_placed_instance_under(selection: prod_role_selection) {
+    Present { value: i } => i
+    Absent => srv1_live_dashboard_instance()
+  }
 }
 
 fn fabric_storage_store_root() -> NonEmptyStr {
   dashboard_instance_fabric_storage_root(instance: fabric_storage_placed_instance()) as String as NonEmptyStr
 }
 
+fn fabric_storage_placed_on_under(selection: ProdRoleSelection, instance: HostDashboardInstance) -> Bool {
+  match fabric_storage_placed_instance_under(selection: selection) {
+    Absent => false
+    Present { value: holder } => (instance.instance_id as String) == (holder.instance_id as String)
+  }
+}
+
 // WHETHER AN INSTANCE HOLDS THE PLACEMENT: the deployment owns the store root and the endpoint only
 // there. Identity is the instance's own id, not a path comparison.
 fn fabric_storage_placed_on(instance: HostDashboardInstance) -> Bool {
-  (instance.instance_id as String) == (fabric_storage_placed_instance().instance_id as String)
+  fabric_storage_placed_on_under(selection: prod_role_selection, instance: instance)
 }
 
 fn fabric_storage_endpoint_for(host: HostIdentity) -> NonEmptyStr? {
@@ -89,11 +113,23 @@ fn fabric_storage_endpoint_for(host: HostIdentity) -> NonEmptyStr? {
   }
 }
 
-fn fabric_storage_placement() -> FabricStoragePlacement {
-  match fabric_storage_endpoint_for(host: operator_host_srv1) {
+fn fabric_storage_placement_under(selection: ProdRoleSelection) -> FabricStoragePlacement {
+  match fabric_storage_placed_instance_under(selection: selection) {
     Absent => FabricStorageUnplaced
-    Present { value: e } => FabricStoragePlaced { host: operator_host_srv1, store_root: fabric_storage_store_root(), endpoint: e }
+    Present { value: instance } =>
+      match fabric_storage_endpoint_for(host: instance.host_identity as HostIdentity) {
+        Absent => FabricStorageUnplaced
+        Present { value: e } => FabricStoragePlaced {
+          host: instance.host_identity as HostIdentity,
+          store_root: dashboard_instance_fabric_storage_root(instance: instance) as String as NonEmptyStr,
+          endpoint: e,
+        }
+      }
   }
+}
+
+fn fabric_storage_placement() -> FabricStoragePlacement {
+  fabric_storage_placement_under(selection: prod_role_selection)
 }
 
 // ── WHO WRITES THE STORE, AND SO WHAT ITS DIRECTORIES ARE ────────────────────────────────────────

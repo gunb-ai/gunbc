@@ -6,6 +6,7 @@ import gunbc.host_layout { belt_spawn_workdir_env_var }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   srv1_live_dashboard_instance,
+  prod_role_holder_dashboard_instance_from_row,
   DashboardInstanceLookup,
   DashboardInstanceResolved,
   DashboardInstanceRootUnknown,
@@ -320,7 +321,10 @@ fn dispatch_preflight_json_for_instance(instance: HostDashboardInstance) -> Stri
 }
 
 fn dispatch_preflight_json() -> String {
-  dispatch_preflight_json_for_instance(instance: srv1_live_dashboard_instance())
+  match prod_role_holder_dashboard_instance_from_row() {
+    Present { value: holder } => dispatch_preflight_json_for_instance(instance: holder)
+    Absent => dispatch_preflight_json_for_instance(instance: srv1_live_dashboard_instance())
+  }
 }
 
 fn dispatch_preflight_cli_for_instance(instance: HostDashboardInstance) -> ProcessExit {

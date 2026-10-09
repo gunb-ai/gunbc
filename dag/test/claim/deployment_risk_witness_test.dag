@@ -31,12 +31,27 @@ import gunbc.recurring_failure_mode.a_test_deployment_acts_on_the_prod_deploymen
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   dashboard_instance_risk_class,
+  dashboard_instance_for_deployment,
+  prod_role_holder_dashboard_instance,
   macbook_local_dashboard_instance,
   srv1_live_dashboard_instance,
   srv1_lab_dashboard_instance,
   srv2_preview_dashboard_instance,
   srv2_deploy_dashboard_instance,
   srv2_lab_dashboard_instance,
+}
+import gunbc.live_deploy.spec { instance_owns_the_host_approval_broker_under, instance_owns_the_host_approval_broker }
+import gunbc.fabric_storage_placement {
+  fabric_storage_placed_on_under,
+  fabric_storage_placed_on,
+  fabric_storage_placement_under,
+  FabricStoragePlaced,
+  FabricStorageUnplaced,
+}
+import gunbc.roadmap_dashboard_instance_apply {
+  dashboard_production_peer_on_host_under,
+  ProductionPeer,
+  NoProductionPeer,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -130,4 +145,64 @@ test fn exactly_one_dashboard_instance_derives_prod_risk_and_it_is_the_daily_wor
 // leave the row citing a declaration that no longer exists.
 test fn the_wrong_instance_failure_mode_row_cites_this_red() -> Bool {
   any(a_test_deployment_acts_on_the_prod_deployments_state.evidence, r => r.decl_name == "a_test_deployment_refuses_rather_than_resolving_the_prod_bindings")
+}
+
+// ── D2: a fixture assignment moves the role-following singletons ────────────────────────────────
+// THE BRIEF'S RED. Changing the selection, and nothing else, moves broker ownership and fabric
+// placement. A mutant that still compared instance_id to "srv1-live" or called
+// srv1_live_dashboard_instance() would fail the srv2 conjuncts.
+test fn a_fixture_prod_role_move_moves_the_broker_owner_and_fabric_placement() -> Bool {
+  let moved = ProdRoleHeldBy { deployment: srv2_deploy_deployment }
+  let srv2 = srv2_deploy_dashboard_instance()
+  let srv1 = srv1_live_dashboard_instance()
+  instance_owns_the_host_approval_broker_under(selection: moved, instance_id: srv2.instance_id)
+    && !instance_owns_the_host_approval_broker_under(selection: moved, instance_id: srv1.instance_id)
+    && fabric_storage_placed_on_under(selection: moved, instance: srv2)
+    && !fabric_storage_placed_on_under(selection: moved, instance: srv1)
+    && match fabric_storage_placement_under(selection: moved) {
+      FabricStoragePlaced { host: h, store_root: _, endpoint: _ } => (h as String) == (srv2.host_identity as String)
+      FabricStorageUnplaced => false
+    }
+}
+
+test fn the_live_row_still_pins_broker_and_fabric_on_the_daily_workspace() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  instance_owns_the_host_approval_broker(instance_id: live.instance_id)
+    && !instance_owns_the_host_approval_broker(instance_id: srv1_lab_dashboard_instance().instance_id)
+    && fabric_storage_placed_on(instance: live)
+    && !fabric_storage_placed_on(instance: srv2_deploy_dashboard_instance())
+}
+
+test fn no_prod_role_owns_no_broker_and_places_no_fabric_store() -> Bool {
+  !instance_owns_the_host_approval_broker_under(
+    selection: NoProdRole,
+    instance_id: srv1_live_dashboard_instance().instance_id,
+  )
+    && !fabric_storage_placed_on_under(selection: NoProdRole, instance: srv1_live_dashboard_instance())
+    && match fabric_storage_placement_under(selection: NoProdRole) {
+      FabricStorageUnplaced => true
+      FabricStoragePlaced { host: _, store_root: _, endpoint: _ } => false
+    }
+    && match prod_role_holder_dashboard_instance(selection: NoProdRole) {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
+test fn a_fixture_role_move_makes_srv1_lab_unpeered_from_the_new_prod_host() -> Bool {
+  let moved = ProdRoleHeldBy { deployment: srv2_deploy_deployment }
+  match dashboard_production_peer_on_host_under(
+    selection: moved,
+    host: srv1_lab_dashboard_instance().host_identity,
+  ) {
+    NoProductionPeer { host: h } => (h as String) == (srv1_lab_dashboard_instance().host_identity as String)
+    ProductionPeer { instance: _ } => false
+  }
+}
+
+test fn dashboard_instance_for_deployment_answers_all_six_constructors() -> Bool {
+  all(dashboard_instances(), i => match dashboard_instance_for_deployment(deployment: i.deployment) {
+    Present { value: found } => found.instance_id == i.instance_id
+    Absent => false
+  })
 }

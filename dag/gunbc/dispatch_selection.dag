@@ -66,6 +66,7 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_provider_state_root,
   dashboard_instance_provider_executable,
   srv1_live_dashboard_instance,
+  prod_role_holder_dashboard_instance_from_row,
   srv2_lab_dashboard_instance,
   srv2_dashboard_lab_id,
   srv2_dashboard_preview_id,
@@ -955,7 +956,10 @@ fn declared_provider_inventory_for_instance(instance: HostDashboardInstance) -> 
       ),
     }
   } else {
-    if instance.instance_id == srv1_live_dashboard_instance().instance_id {
+    if match prod_role_holder_dashboard_instance_from_row() {
+      Present { value: holder } => instance.instance_id == holder.instance_id
+      Absent => false
+    } {
       ProviderInventory {
         offers: concat(
           codex_inventory_offers_for_instance(instance: instance),

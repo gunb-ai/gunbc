@@ -3,6 +3,7 @@ module gunbc.roadmap_dashboard_instance_apply
 import std.algebra { trim }
 
 import std.types { String, NonEmptyStr, Bool, List, FilePath, GitRef, CommitSha }
+import gunbc.deployment_risk { ProdRoleSelection, prod_role_selection }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
@@ -93,6 +94,7 @@ import gunbc.roadmap_dashboard_instance {
   DashboardInstanceRefused,
   srv1_live_dashboard_instance,
   srv1_lab_dashboard_instance,
+  prod_role_holder_dashboard_instance,
   srv2_lab_dashboard_instance,
   dashboard_instance_provider_state_root,
   dashboard_instance_provider_executable,
@@ -788,6 +790,25 @@ fn dashboard_production_snapshots_equal(
 type DashboardProductionPeer
   = ProductionPeer { instance: HostDashboardInstance }
   | NoProductionPeer { host: NonEmptyStr }
+
+// Isolation and liveness compare against the prod-role holder on the SAME HOST, never against a
+// constructor named "live". A holder on another host is not a peer of this apply; NoProdRole is
+// unpeered. Same-host TestRisk applies still refuse overlapping owned paths with whoever holds prod.
+fn dashboard_production_peer_on_host_under(selection: ProdRoleSelection, host: NonEmptyStr) -> DashboardProductionPeer {
+  match prod_role_holder_dashboard_instance(selection: selection) {
+    Absent => NoProductionPeer { host: host }
+    Present { value: holder } =>
+      if (holder.host_identity as String) == (host as String) {
+        ProductionPeer { instance: holder }
+      } else {
+        NoProductionPeer { host: host }
+      }
+  }
+}
+
+fn dashboard_production_peer_on_host(host: NonEmptyStr) -> DashboardProductionPeer {
+  dashboard_production_peer_on_host_under(selection: prod_role_selection, host: host)
+}
 
 type DashboardProductionReading
   = ProductionRead { snapshot: DashboardProductionSnapshot }
@@ -1968,14 +1989,14 @@ fn srv2_deploy_ensure_roots_cli() -> ProcessExit {
 fn srv1_lab_dashboard_apply() -> DashboardInstanceApplyResult {
   dashboard_instance_apply(
     instance: srv1_lab_dashboard_instance(),
-    production: ProductionPeer { instance: srv1_live_dashboard_instance() },
+    production: dashboard_production_peer_on_host(host: srv1_lab_dashboard_instance().host_identity),
   )
 }
 
 fn srv1_lab_dashboard_preflight() -> DashboardApplyPreflightResult {
   dashboard_instance_apply_preflight(
     instance: srv1_lab_dashboard_instance(),
-    production: ProductionPeer { instance: srv1_live_dashboard_instance() },
+    production: dashboard_production_peer_on_host(host: srv1_lab_dashboard_instance().host_identity),
   )
 }
 
