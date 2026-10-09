@@ -11,6 +11,7 @@ import gunbc.oracle_oci.tenancy_usage {
   OciUsagePart, UsagePart, UsagePartRefused, oci_instance_usage, oci_volume_usage, oci_usage_part_add,
 }
 import gunbc.oracle_oci.network_ensure {
+  OciStep, OciStepReady, OciStepStopped, oci_admit_wired,
   oci_free_vcn_cidr, oci_free_subnet_cidr,
   OciNamedDecision, NamedReady, NamedCreate, NamedStop,
   oci_named_decision, oci_named_resource_of, oci_route_table_wiring, oci_subnet_wiring,
@@ -134,7 +135,7 @@ fn decide_a1(text: String) -> String {
 test fn the_a1_instance_launches_when_absent_and_holds_when_running() -> Bool {
   decide_a1(text: "[]") == "launch"
     && decide_a1(text: "[{\"id\":\"i\",\"displayName\":\"gunbc-free-a1\",\"lifecycleState\":\"TERMINATED\",\"shape\":\"VM.Standard.A1.Flex\"}]") == "launch"
-    && decide_a1(text: "[{\"id\":\"i\",\"displayName\":\"gunbc-free-a1\",\"lifecycleState\":\"RUNNING\",\"shape\":\"VM.Standard.A1.Flex\"}]") == "held"
+    && decide_a1(text: "[{\"id\":\"i\",\"displayName\":\"gunbc-free-a1\",\"lifecycleState\":\"RUNNING\",\"shape\":\"VM.Standard.A1.Flex\",\"shapeConfig\":{\"ocpus\":2.0,\"memoryInGBs\":12.0}}]") == "held"
 }
 
 // A stopped instance was stopped by someone, and a wrong-shaped namesake is not this instance. Neither
@@ -231,4 +232,20 @@ test fn an_unreadable_allocation_refuses_and_stays_refused_through_the_sum() -> 
 test fn volumes_hold_storage_until_terminated() -> Bool {
   usage_text(u: oci_volume_usage(row: one(text: "{\"id\":\"v\",\"lifecycleState\":\"AVAILABLE\",\"sizeInGBs\":50}"))) == "0/0/0/50"
     && usage_text(u: oci_volume_usage(row: one(text: "{\"id\":\"v\",\"lifecycleState\":\"TERMINATED\",\"sizeInGBs\":50}"))) == "0/0/0/0"
+}
+
+// A running A1 namesake is held only at the planned size. A different size, or a size that cannot be
+// read, stops rather than being taken as converged (side-chat review on gunbc#13351).
+test fn an_a1_namesake_is_held_only_at_the_planned_size() -> Bool {
+  decide_a1(text: "[{\"id\":\"i\",\"displayName\":\"gunbc-free-a1\",\"lifecycleState\":\"RUNNING\",\"shape\":\"VM.Standard.A1.Flex\",\"shapeConfig\":{\"ocpus\":1.0,\"memoryInGBs\":6.0}}]") == "stop"
+    && decide_a1(text: "[{\"id\":\"i\",\"displayName\":\"gunbc-free-a1\",\"lifecycleState\":\"RUNNING\",\"shape\":\"VM.Standard.A1.Flex\"}]") == "stop"
+}
+
+// One admission for found and read-back resources: wiring that disagrees stops, whichever path
+// reached it (side-chat review on gunbc#13351).
+test fn wiring_admission_stops_on_any_disagreement() -> Bool {
+  let r = oci_named_resource_of(v: one(text: "{\"id\":\"rt\",\"displayName\":\"p\",\"lifecycleState\":\"AVAILABLE\"}"))
+  let ok = match oci_admit_wired(kind: "route table", display_name: "p", resource: r, disagreement: "", how: "created and AVAILABLE on read-back") { OciStepReady { id, line } => true  OciStepStopped { line } => false }
+  let bad = match oci_admit_wired(kind: "route table", display_name: "p", resource: r, disagreement: "route table has no rule sending 0.0.0.0/0 to igw1", how: "created and AVAILABLE on read-back") { OciStepStopped { line } => true  OciStepReady { id, line } => false }
+  ok && bad
 }

@@ -15,7 +15,11 @@ import product.supplier.oracle_oci {
   OciAllowanceFit, FitsAlwaysFree, ExceedsAlwaysFree, OciAllowanceBreach,
   oci_always_free_fit, oci_always_free_fit_beside, oci_instance_shape,
 }
-import gunbc.oracle_oci.tenancy_usage { oci_tenancy_usage, TenancyUsageObserved, TenancyUsageRefused }
+import gunbc.oracle_oci.tenancy_usage {
+  oci_tenancy_usage, TenancyUsageObserved, TenancyUsageRefused,
+  OciNamesRead, OciNamesListed, OciNamesRefused, oci_names_of, oci_availability_domains,
+  OciWhole, OciWholeValue, OciWholeRefused, oci_shape_config_whole,
+}
 import gunbc.fleet_ssh_access { fleet_automation_ssh_key, operator_macbook_ssh_key }
 import gunbc.oracle_oci.api {
   OciExchange, OciAnswered, OciExchangeRefused,
@@ -129,11 +133,15 @@ fn oci_instance_live(s: OciInstanceState) -> Bool {
   }
 }
 
+// An A1.Flex instance's size is part of its identity for this converge, read exactly from its
+// shapeConfig. A micro has no shapeConfig to match, so its reads are kept but never consulted.
 type OciObservedInstance {
   id: String
   display_name: String
   state: OciInstanceState
   shape: String
+  ocpus: OciWhole
+  memory_gb: OciWhole
 }
 
 data oci_instance_required_fields: List<String> = ["id", "displayName", "lifecycleState", "shape"]
@@ -145,6 +153,31 @@ fn oci_observed_instance_of(v: JsonValue) -> OciObservedInstance {
     display_name: oci_admitted_text(row: v, key: "displayName"),
     state: oci_instance_state(raw: oci_admitted_text(row: v, key: "lifecycleState")),
     shape: oci_admitted_text(row: v, key: "shape"),
+    ocpus: oci_shape_config_whole(row: v, key: "ocpus"),
+    memory_gb: oci_shape_config_whole(row: v, key: "memoryInGBs"),
+  }
+}
+
+// PURE: whether an observed instance has the planned size. A micro's size is fixed by its shape. An
+// A1's OCPUs and memory must be read and must equal the plan's; an unreadable size is a refusal, never
+// a match (side-chat review on gunbc#13351).
+fn oci_size_disagreement(planned: OciPlannedInstance, o: OciObservedInstance) -> String {
+  match planned.size {
+    E2MicroSize => ""
+    A1FlexSize { ocpus, memory } =>
+      match o.ocpus {
+        OciWholeRefused { cause } => concat("its OCPUs are unreadable: ", cause)
+        OciWholeValue { value: got_ocpus } =>
+          match o.memory_gb {
+            OciWholeRefused { cause } => concat("its memory is unreadable: ", cause)
+            OciWholeValue { value: got_memory } =>
+              if got_ocpus == ocpus && got_memory == gigabyte_count(g: memory) {
+                ""
+              } else {
+                join(["it has ", to_string(got_ocpus), " OCPUs and ", to_string(got_memory), " GB where the plan has ", to_string(ocpus), " and ", to_string(gigabyte_count(g: memory))], "")
+              }
+          }
+      }
   }
 }
 
@@ -168,6 +201,8 @@ fn oci_instance_decision(planned: OciPlannedInstance, observed: List<OciObserved
       Present { value: o } =>
         if o.shape != shape {
           InstanceStop { line: join(["oci instance ", name, " ", o.id, " is shape ", o.shape, ", not ", shape, "; this converge does not reshape an instance"], "") }
+        } else if oci_size_disagreement(planned: planned, o: o) != "" {
+          InstanceStop { line: join(["oci instance ", name, " ", o.id, " is not the planned size (", oci_size_disagreement(planned: planned, o: o), "); this converge does not resize an instance"], "") }
         } else {
           match o.state {
             InstanceRunning => InstanceHeld { line: join(["oci instance ", name, " ", o.id, " RUNNING, converged"], "") }
@@ -188,28 +223,7 @@ fn oci_instance_decision(planned: OciPlannedInstance, observed: List<OciObserved
 
 // ── PLACEMENT FACTS, READ ─────────────────────────────────────────────────────────────────────
 
-type OciNamesRead
-  = OciNamesListed { names: List<String> }
-  | OciNamesRefused { line: String }
 
-fn oci_names_of(read: OciListRead, operation: String, key: String) -> OciNamesRead {
-  match read {
-    OciListed { items } => match oci_admit_rows(operation: operation, rows: items, keys: [key]) {
-      OciRowRefused { cause } => OciNamesRefused { line: cause as String }
-      OciRowsAdmitted { rows } => OciNamesListed { names: map(rows, r => oci_admitted_text(row: r, key: key)) }
-    }
-    OciListInaccessible { status, body } => OciNamesRefused { line: join([operation, " refused by OCI (", to_string(status), "): ", body], "") }
-    OciListRefused { cause } => OciNamesRefused { line: join([operation, " refused: ", cause as String], "") }
-  }
-}
-
-fn oci_availability_domains() -> OciNamesRead uses net: Network {
-  oci_names_of(
-    read: oci_list(operation: "ListAvailabilityDomains", host: oci_identity_host, path_and_query: join(["/20160918/availabilityDomains?compartmentId=", oci_tenancy_ocid as String], "") as NonEmptyStr),
-    operation: "ListAvailabilityDomains",
-    key: "name",
-  )
-}
 
 // THREE ANSWERS, NOT TWO (review 76366). A refused ListShapes read is not "this domain lacks the
 // shape": collapsing it would report a confident fact about Oracle's catalog when the real cause was a

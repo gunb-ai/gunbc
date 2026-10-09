@@ -14,6 +14,7 @@ import extdeps.languages.json.number {
 }
 import extdeps.cloud.oracle_oci { VmStandardA1Flex, VmStandardE21Micro, oci_shape_wire_name }
 import product.supplier.oracle_oci { OciOtherUsage }
+import extdeps.uri { uri_percent_encode_component, UriPercentComponentEncoded, UriPercentComponentRefused }
 import gunbc.oracle_oci.api {
   OciListRead, OciListed, OciListInaccessible, OciListRefused,
   OciRowsAdmitted, OciRowRefused, oci_admit_rows, oci_admitted_text,
@@ -27,7 +28,8 @@ import gunbc.oracle_oci.api {
 // converge launches anything, it reads what is already there, in the root compartment and in every
 // active compartment beneath it:
 //   - live instances: each E2.1.Micro counts one micro, each A1.Flex adds its shapeConfig OCPUs and memory;
-//   - boot volumes that are not terminated, including those left behind by terminated instances;
+//   - boot volumes that are not terminated, including those left behind by terminated instances, read
+//     per availability domain;
 //   - block volumes that are not terminated.
 // The plan's not-yet-launched members are then fitted beside that total. An instance that is stopped
 // is counted, because it still holds its allocation and its boot volume.
@@ -155,11 +157,56 @@ fn oci_rows_usage(operation: String, read: OciListRead, keys: List<String>, each
   }
 }
 
+// ── NAMES, AND THE AVAILABILITY DOMAINS ───────────────────────────────────────────────────────
+//
+// One admitted text field from every row of a list, or the list's refusal. The availability domains
+// are read here because both this module (boot volumes are domain-local) and
+// gunbc.oracle_oci.instance_ensure (micro placement, A1 retry) need them, and this module is the one
+// both can import.
+type OciNamesRead
+  = OciNamesListed { names: List<String> }
+  | OciNamesRefused { line: String }
+
+fn oci_names_of(read: OciListRead, operation: String, key: String) -> OciNamesRead {
+  match read {
+    OciListed { items } => match oci_admit_rows(operation: operation, rows: items, keys: [key]) {
+      OciRowRefused { cause } => OciNamesRefused { line: cause as String }
+      OciRowsAdmitted { rows } => OciNamesListed { names: map(rows, r => oci_admitted_text(row: r, key: key)) }
+    }
+    OciListInaccessible { status, body } => OciNamesRefused { line: join([operation, " refused by OCI (", to_string(status), "): ", body], "") }
+    OciListRefused { cause } => OciNamesRefused { line: join([operation, " refused: ", cause as String], "") }
+  }
+}
+
+fn oci_availability_domains() -> OciNamesRead uses net: Network {
+  oci_names_of(
+    read: oci_list(operation: "ListAvailabilityDomains", host: oci_identity_host, path_and_query: join(["/20160918/availabilityDomains?compartmentId=", oci_tenancy_ocid as String], "") as NonEmptyStr),
+    operation: "ListAvailabilityDomains",
+    key: "name",
+  )
+}
+
 // ── THE EFFECTFUL HALF ────────────────────────────────────────────────────────────────────────
 
-fn oci_compartment_usage(compartment: String) -> OciUsagePart uses net: Network {
+// BOOT VOLUMES ARE LISTED PER AVAILABILITY DOMAIN (review 78198). Oracle's Listing Boot Volumes page
+// says to "specify the availabilityDomain and compartmentId attributes", while its SDK marks the
+// domain optional. A per-domain read is correct under either reading: it cannot hard-fail on a missing
+// parameter, and it cannot silently undercount domains a domain-less list leaves out. Every domain's
+// read must answer, and one refusal refuses the compartment's usage.
+fn oci_boot_volume_usage(compartment: String, domains: List<String>) -> OciUsagePart uses net: Network {
+  fold(domains, init: oci_usage_zero, f: (acc, d) => oci_usage_part_add(a: acc, b: oci_boot_volume_usage_in(compartment: compartment, domain: d)))
+}
+
+fn oci_boot_volume_usage_in(compartment: String, domain: String) -> OciUsagePart uses net: Network {
+  match uri_percent_encode_component(value: domain as NonEmptyStr) {
+    UriPercentComponentRefused { cause } => UsagePartRefused { line: join(["ListBootVolumes for ", domain, " not sent: the domain name does not percent-encode"], "") }
+    UriPercentComponentEncoded(wire) => oci_rows_usage(operation: join(["ListBootVolumes in ", domain], ""), read: oci_list(operation: "ListBootVolumes", host: oci_iaas_host, path_and_query: join(["/20160918/bootVolumes?availabilityDomain=", wire as String, "&compartmentId=", compartment], "") as NonEmptyStr), keys: ["id", "lifecycleState"], each: r => oci_volume_usage(row: r))
+  }
+}
+
+fn oci_compartment_usage(compartment: String, domains: List<String>) -> OciUsagePart uses net: Network {
   let instances = oci_rows_usage(operation: "ListInstances", read: oci_list(operation: "ListInstances", host: oci_iaas_host, path_and_query: join(["/20160918/instances?compartmentId=", compartment], "") as NonEmptyStr), keys: ["id", "lifecycleState", "shape"], each: r => oci_instance_usage(row: r))
-  let boot = oci_rows_usage(operation: "ListBootVolumes", read: oci_list(operation: "ListBootVolumes", host: oci_iaas_host, path_and_query: join(["/20160918/bootVolumes?compartmentId=", compartment], "") as NonEmptyStr), keys: ["id", "lifecycleState"], each: r => oci_volume_usage(row: r))
+  let boot = oci_boot_volume_usage(compartment: compartment, domains: domains)
   let block = oci_rows_usage(operation: "ListVolumes", read: oci_list(operation: "ListVolumes", host: oci_iaas_host, path_and_query: join(["/20160918/volumes?compartmentId=", compartment], "") as NonEmptyStr), keys: ["id", "lifecycleState"], each: r => oci_volume_usage(row: r))
   oci_usage_part_add(a: oci_usage_part_add(a: instances, b: boot), b: block)
 }
@@ -187,9 +234,12 @@ fn oci_tenancy_usage() -> OciTenancyUsageRead uses net: Network {
     OciListInaccessible { status, body } => TenancyUsageRefused { line: join(["tenancy usage not observed: ListCompartments refused by OCI (", to_string(status), "): ", body], "") }
     OciListed { items } => match oci_admit_rows(operation: "ListCompartments", rows: items, keys: ["id"]) {
       OciRowRefused { cause } => TenancyUsageRefused { line: concat("tenancy usage not observed: ", cause as String) }
-      OciRowsAdmitted { rows } => {
-        let ids = concat([oci_tenancy_ocid as String], map(rows, r => oci_admitted_text(row: r, key: "id")))
-        oci_usage_of_part(part: fold(ids, init: oci_usage_zero, f: (acc, c) => oci_usage_part_add(a: acc, b: oci_compartment_usage(compartment: c))), compartments: ids.length())
+      OciRowsAdmitted { rows } => match oci_availability_domains() {
+        OciNamesRefused { line } => TenancyUsageRefused { line: concat("tenancy usage not observed: ", line) }
+        OciNamesListed { names: domains } => {
+          let ids = concat([oci_tenancy_ocid as String], map(rows, r => oci_admitted_text(row: r, key: "id")))
+          oci_usage_of_part(part: fold(ids, init: oci_usage_zero, f: (acc, c) => oci_usage_part_add(a: acc, b: oci_compartment_usage(compartment: c, domains: domains))), compartments: ids.length())
+        }
       }
     }
   }

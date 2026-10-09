@@ -124,8 +124,20 @@ fn oci_named_decision_over(kind: String, display_name: String, resources: List<O
   }
 }
 
-// A found resource is admitted only if its wiring is what this converge would have created. wired
+// A resource is admitted only if its wiring is what this converge would have created, whether it was
+// found or read back after a create: a create answered 200 is not evidence of the wiring it was asked
+// for (side-chat review on gunbc#13351). wired
 // returns the empty string when it agrees, and the disagreement otherwise.
+// PURE: the one admission both paths take, a found resource and one read back after a create. A
+// disagreement stops the chain at this resource, and nothing is edited.
+fn oci_admit_wired(kind: String, display_name: String, resource: OciNamedResource, disagreement: String, how: String) -> OciStep {
+  if disagreement == "" {
+    OciStepReady { id: resource.id as NonEmptyStr, line: join(["oci ", kind, " ", display_name, " ", resource.id, " ", how], "") }
+  } else {
+    OciStepStopped { line: join(["oci ", kind, " ", display_name, " ", resource.id, " is wired differently, which this converge does not edit or admit: ", disagreement], "") }
+  }
+}
+
 fn oci_ensure_named(
   kind: String,
   display_name: String,
@@ -136,14 +148,7 @@ fn oci_ensure_named(
 ) -> OciStep uses net: Network {
   match oci_named_decision(kind: kind, display_name: display_name, read: oci_list(operation: join(["List ", kind], ""), host: oci_iaas_host, path_and_query: list_path as NonEmptyStr)) {
     NamedStop { line } => OciStepStopped { line: line }
-    NamedReady { resource } => {
-      let disagreement = wired(resource)
-      if disagreement == "" {
-        OciStepReady { id: resource.id as NonEmptyStr, line: join(["oci ", kind, " ", display_name, " ", resource.id, " converged"], "") }
-      } else {
-        OciStepStopped { line: join(["oci ", kind, " ", display_name, " ", resource.id, " exists and is wired differently, which this converge does not edit: ", disagreement], "") }
-      }
-    }
+    NamedReady { resource } => oci_admit_wired(kind: kind, display_name: display_name, resource: resource, disagreement: wired(resource), how: "converged")
     NamedCreate =>
       match oci_signed_exchange(shape: OciPostJson { text: create_body }, host: oci_iaas_host, path_and_query: create_path) {
         OciExchangeRefused { cause } => OciStepStopped { line: join(["oci ", kind, " ", display_name, " create refused before an answer: ", cause as String], "") }
@@ -152,7 +157,7 @@ fn oci_ensure_named(
             OciStepStopped { line: join(["oci ", kind, " ", display_name, " create answered ", to_string(status), ": ", body], "") }
           } else {
             match oci_named_decision(kind: kind, display_name: display_name, read: oci_list(operation: join(["List ", kind], ""), host: oci_iaas_host, path_and_query: list_path as NonEmptyStr)) {
-              NamedReady { resource } => OciStepReady { id: resource.id as NonEmptyStr, line: join(["oci ", kind, " ", display_name, " ", resource.id, " created and AVAILABLE on read-back"], "") }
+              NamedReady { resource } => oci_admit_wired(kind: kind, display_name: display_name, resource: resource, disagreement: wired(resource), how: "created and AVAILABLE on read-back")
               NamedCreate => OciStepStopped { line: join(["oci ", kind, " ", display_name, " create answered 200 and the read-back does not list it yet; run again"], "") }
               NamedStop { line } => OciStepStopped { line: concat("(read-back after create) ", line) }
             }
