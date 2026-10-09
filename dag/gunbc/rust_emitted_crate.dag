@@ -4,7 +4,7 @@ import std.types { Bool, String }
 
 // WHAT AN EMITTED RUST CLOSURE ASKS OF ITS CARGO WORKSPACE, AS A FACT THE EMISSION RETURNS. The
 // emitter decides the crate name its main.rs paths through and the external crates its rendered
-// code links; the crate partition (v2.workflow.emitted_crate_workspace) decides the layout those
+// code links; the crate partition (gunbc.emitted_crate_workspace) decides the layout those
 // facts are realized in. Before this module the emitter rendered both into one Cargo.toml, so the
 // single-package layout was baked into the emission; now the emission states what it needs and
 // owns no manifest.

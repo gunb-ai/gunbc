@@ -286,7 +286,7 @@ fn type_declaration_use_census_label() -> Label {
 }
 
 // THE EMITTED CLOSURE AS A MULTI-CRATE WORKSPACE (Pkg7e). The seed emits `v2.compiler.compile`'s
-// closure, `v2.workflow.emitted_crate_workspace` `emitted_workspace_plan` partitions it into crate
+// closure, `gunbc.emitted_crate_workspace` `emitted_workspace_plan` partitions it into crate
 // rows from the derived module DAG, the emission's returned edges and the transitive unit
 // dependencies, `v1.compiler.stage0_crates` renders those rows with the one partition renderer,
 // and cargo builds the workspace -- the POSITIVE CONTROL. In the same invocation one derived

@@ -54,8 +54,9 @@ pub use crate::gunbc_rust_decl_type_overlay::rust_decl_type_container_overlay_is
 pub use crate::gunbc_rust_emitted_crate::{EmittedCrateDependencyDemand, EmittedRustCrate};
 use crate::gunbc_rust_emitted_edge::EmittedEdgeProvenance::{ReexportFacade, RuntimePrelude};
 pub use crate::gunbc_rust_emitted_edge::{
-    declared_import_edge, emitted_edge_target_module, rust_module_emit_filename,
-    rust_prelude_emitted_edges, semantic_source_reference_edge, service_runtime_surface_edge,
+    declared_import_edge, emitted_edge_target_module, inline_path_reference_edge,
+    rust_module_emit_filename, rust_prelude_emitted_edges, semantic_source_reference_edge,
+    service_runtime_surface_edge,
 };
 pub use crate::gunbc_rust_emitted_edge::{EmittedEdge, EmittedEdgeProvenance};
 pub use crate::gunbc_rust_source_type_bindings::rust_host_option_carrier_declarations;
@@ -7289,17 +7290,145 @@ pub fn emit_rust_selected(
             emitted_files.clone(),
             Rc::new(vec![population_manifest.clone()]),
         );
+        let module_files_with_tests =
+            v1_rt::concat(all_mod_files.clone(), compiler_tests_file.clone());
+        let module_basenames = module_files_with_tests.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, f: Rc<TextFile>| {
+                v1_rt::rc_map_insert(acc, rust_emitted_module_basename(f.path.clone()), true)
+            },
+        );
+        let inline_edges = Rc::new({
+            let mut __result = Vec::new();
+            for f in module_files_with_tests.iter().cloned() {
+                __result.extend(
+                    (*emitted_inline_path_edges(f.clone(), module_basenames.clone()))
+                        .iter()
+                        .cloned(),
+                );
+            }
+            __result
+        });
         Rc::new(EmitResult {
             files: files.clone(),
             diagnostics: module_refusals.clone(),
-            emitted_edges: Rc::new({
+            emitted_edges: v1_rt::concat(
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for e in published_module_emissions.iter().cloned() {
+                        __result.extend((*e.emitted_edges.clone()).iter().cloned());
+                    }
+                    __result
+                }),
+                inline_edges.clone(),
+            ),
+            rust_crates: Rc::new(vec![rust_crate.clone()]),
+        })
+    }
+}
+
+pub fn rust_emitted_module_basename(path: String) -> String {
+    v1_rt::replace(
+        v1_rt::replace(path.clone(), rust_source_root(), "".to_string()),
+        rust_source_ext(),
+        "".to_string(),
+    )
+}
+
+pub fn rust_line_is_use_declaration(line: String) -> bool {
+    ((v1_rt::starts_with(line.clone(), "use ".to_string())
+        || v1_rt::starts_with(line.clone(), "pub use ".to_string()))
+        || v1_rt::starts_with(line.clone(), "pub(crate) use ".to_string()))
+}
+
+pub fn emitted_inline_path_edges(
+    file: Rc<TextFile>,
+    module_basenames: Rc<HashMap<String, bool>>,
+) -> Rc<Vec<Rc<EmittedEdge>>> {
+    {
+        let from = rust_emitted_module_basename(file.path.clone());
+        let code = rust_code_outside_string_literals(
+            Rc::new({
                 let mut __result = Vec::new();
-                for e in published_module_emissions.iter().cloned() {
-                    __result.extend((*e.emitted_edges.clone()).iter().cloned());
+                for line in Rc::new(
+                    file.content
+                        .clone()
+                        .split(&"\n".to_string())
+                        .map(|s| s.to_string())
+                        .collect::<Vec<_>>(),
+                )
+                .iter()
+                .cloned()
+                {
+                    if {
+                        let t = crate::std_algebra::trim(line.clone());
+                        (!v1_rt::starts_with(t.clone(), "//".to_string())
+                            && !rust_line_is_use_declaration(t.clone()))
+                    } {
+                        __result.push(line);
+                    }
                 }
                 __result
-            }),
-            rust_crates: Rc::new(vec![rust_crate.clone()]),
+            })
+            .join(&"\n".to_string()),
+        );
+        let targets = Rc::new({
+            let mut __result = Vec::new();
+            for t in Rc::new({
+                let mut __result = Vec::new();
+                for t in rust_identifier_tokens(v1_rt::replace(
+                    code.clone(),
+                    "crate::".to_string(),
+                    " @crate@".to_string(),
+                ))
+                .iter()
+                .cloned()
+                {
+                    if v1_rt::starts_with(t.clone(), "@crate@".to_string()) {
+                        __result.push(t);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.push(v1_rt::replace(
+                    t.clone(),
+                    "@crate@".to_string(),
+                    "".to_string(),
+                ));
+            }
+            __result
+        });
+        Rc::new({
+            let mut __result = Vec::new();
+            for t in Rc::new({
+                let mut __result = Vec::new();
+                for t in crate::v1_compiler_emit_core_support::unique_strings(targets.clone())
+                    .iter()
+                    .cloned()
+                {
+                    if ((t.clone() != from.clone())
+                        && crate::v1_compiler_infer_types::emit_map_has(
+                            module_basenames.clone(),
+                            t.clone(),
+                        ))
+                    {
+                        __result.push(t);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.push(crate::gunbc_rust_emitted_edge::inline_path_reference_edge(
+                    from.clone(),
+                    t.clone(),
+                ));
+            }
+            __result
         })
     }
 }
@@ -10536,7 +10665,7 @@ v1_rt::concat(block_lines.clone(), fallback.clone())
         let qualified_lines =
             qualified_type_reference_use_lines(qualified_rows.clone(), registry.clone());
         let this_module_filename =
-            crate::gunbc_rust_emitted_edge::module_to_filename(this_module_name.clone());
+            crate::gunbc_rust_emitted_edge::rust_module_emit_filename(this_module_name.clone());
         Rc::new(ReferenceDerivedUseLinePlan {
             lines: v1_rt::concat(
                 lines.clone(),
@@ -11064,7 +11193,7 @@ pub fn emit_module_full(
             module_index.clone(),
             typed_module.items.clone(),
             Some(scope.type_env.clone()),
-            crate::gunbc_rust_emitted_edge::module_to_filename(this_module_name.clone()),
+            crate::gunbc_rust_emitted_edge::rust_module_emit_filename(this_module_name.clone()),
         );
         let imports_str = rendered_imports.text.clone();
         let dag_import_lines = if (imports_str.clone() == "".to_string()) {
@@ -11127,6 +11256,9 @@ pub fn emit_module_full(
             v1_rt::concat("\n".to_string(), merged_imports.clone())
         };
         let this_mod_filename = crate::gunbc_rust_emitted_edge::module_to_filename(
+            crate::v1_compiler_infer_env::authored_name(scope.type_env.clone(), m.clone()),
+        );
+        let this_mod_endpoint = crate::gunbc_rust_emitted_edge::rust_module_emit_filename(
             crate::v1_compiler_infer_env::authored_name(scope.type_env.clone(), m.clone()),
         );
         let all_svc_names = Rc::new({
@@ -11340,10 +11472,10 @@ pub fn emit_module_full(
                 v1_rt::concat(
                     v1_rt::concat(
                         crate::gunbc_rust_emitted_edge::rust_prelude_emitted_edges(
-                            this_mod_filename.clone(),
+                            this_mod_endpoint.clone(),
                         ),
                         declared_import_edges(
-                            this_mod_filename.clone(),
+                            this_mod_endpoint.clone(),
                             crate::v1_std_core::module_imports(m.clone()),
                             scope.type_env.clone().source_indices.clone(),
                             module_index.clone(),
@@ -11363,7 +11495,7 @@ pub fn emit_module_full(
                     } {
                         Rc::new(vec![
                             crate::gunbc_rust_emitted_edge::service_runtime_surface_edge(
-                                this_mod_filename.clone(),
+                                this_mod_endpoint.clone(),
                             ),
                         ])
                     } else {
@@ -11374,7 +11506,7 @@ pub fn emit_module_full(
                     v1_rt::concat(
                         v1_rt::concat(rendered_imports.edges.clone(), reference_plan.edges.clone()),
                         rust_use_line_edges(
-                            this_mod_filename.clone(),
+                            this_mod_endpoint.clone(),
                             uncovered_svc_use_lines.clone(),
                         ),
                     ),

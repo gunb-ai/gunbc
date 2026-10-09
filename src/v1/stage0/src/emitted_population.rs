@@ -33,6 +33,8 @@
 // src/extdeps_version_semver.rs
 // src/gunbc_cli_dispatch_generated.rs
 // src/gunbc_cli_dispatch_surface.rs
+// src/gunbc_crate_partition.rs
+// src/gunbc_emitted_crate_workspace.rs
 // src/gunbc_namespace_reference_derived_closure_admission.rs
 // src/gunbc_reference_derived_candidate.rs
 // src/gunbc_rust_crate_package_ident.rs
@@ -114,6 +116,7 @@
 // src/v1_compiler_emit_go.rs
 // src/v1_compiler_emit_python.rs
 // src/v1_compiler_emit_rust.rs
+// src/v1_compiler_emitted_workspace.rs
 // src/v1_compiler_expected_red_roster_join.rs
 // src/v1_compiler_frontend_observation.rs
 // src/v1_compiler_infer.rs

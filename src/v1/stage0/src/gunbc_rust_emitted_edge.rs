@@ -20,6 +20,7 @@ pub enum EmittedEdgeProvenance {
     ReexportFacade,
     SemanticSourceReference,
     DeclaredImport,
+    InlinePathReference,
     ServiceRuntimeSurface,
 }
 
@@ -120,6 +121,16 @@ pub fn declared_import_edge(from: String, to_module: String) -> Rc<EmittedEdge> 
     })
 }
 
+pub fn inline_path_reference_edge(from: String, to_module: String) -> Rc<EmittedEdge> {
+    Rc::new(EmittedEdge {
+        from: from.clone(),
+        to: Rc::new(EmittedEdgeTarget::EmittedModuleTarget {
+            module: to_module.clone(),
+        }),
+        provenance: EmittedEdgeProvenance::InlinePathReference,
+    })
+}
+
 pub fn rust_service_runtime_module() -> String {
     thread_local! {
         static CACHED: String = {
@@ -156,5 +167,7 @@ pub struct ReexportFacade;
 pub struct SemanticSourceReference;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DeclaredImport;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct InlinePathReference;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ServiceRuntimeSurface;

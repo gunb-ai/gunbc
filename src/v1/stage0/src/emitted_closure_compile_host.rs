@@ -1297,7 +1297,9 @@ pub(crate) fn run_cargo(
     }
 }
 
-/// The rust module basenames the emitted `lib.rs` declares, in its own order.
+/// The rust module basenames the emitted `lib.rs` declares, in its own order -- public or not: a
+/// private `mod` (the host shell's `#[cfg(test)] mod compiler_tests;`) is a module of the crate as
+/// much as a `pub mod` is, and an edge from it is covered by this crate.
 ///
 /// AN UNREADABLE MANIFEST IS RETURNED, NOT RENDERED AS AN EMPTY CLOSURE. An empty vector reads as
 /// `this crate declares no modules`, so a caller would answer `entry module not declared` for a
@@ -1308,8 +1310,9 @@ pub(crate) fn closure_modules(lib_rs: &Path) -> Result<Vec<String>, String> {
     Ok(content
         .lines()
         .filter_map(|line| {
-            line.trim()
-                .strip_prefix("pub mod ")
+            let line = line.trim();
+            line.strip_prefix("pub mod ")
+                .or_else(|| line.strip_prefix("mod "))
                 .and_then(|rest| rest.strip_suffix(';'))
                 .map(|m| m.trim().to_string())
         })
@@ -1557,7 +1560,7 @@ pub fn run_emit_compile_entry(
     };
 
     let crate_dir = emitted.root.clone();
-    let emitted_files = emitted.written;
+    let emitted_files = emitted.files.len();
     eprintln!(
         "emit-compile: {entry} emitted {emitted_files} file(s) into {} crate(s) under {} — cargo baseline",
         emitted.crate_count,
@@ -1800,7 +1803,7 @@ pub(crate) fn fixture_closure_rustc_verdict(
         Err(cause) => return FixtureClosureOutcome::CrateNotWritten { cause },
     };
     let crate_dir = emitted.root.clone();
-    let emitted_files = emitted.written;
+    let emitted_files = emitted.files.len();
     eprintln!(
         "fixture-closure: {rust_module} emitted {emitted_files} file(s) into {} — cargo",
         crate_dir.display()

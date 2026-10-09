@@ -16,7 +16,7 @@ import std.primitive_projection {
   primitive_identity_runtime_name, primitive_projection_row_for_declaration
 }
 import gunbc.rust_emitted_crate { EmittedRustCrate, EmittedCrateDependencyDemand }
-import gunbc.rust_emitted_edge { EmittedEdge, rust_module_emit_filename, rust_prelude_emitted_edges, emitted_edge_target_module, semantic_source_reference_edge, declared_import_edge, service_runtime_surface_edge, RuntimePrelude, ReexportFacade }
+import gunbc.rust_emitted_edge { EmittedEdge, rust_module_emit_filename, rust_prelude_emitted_edges, emitted_edge_target_module, semantic_source_reference_edge, declared_import_edge, inline_path_reference_edge, service_runtime_surface_edge, RuntimePrelude, ReexportFacade }
 import gunbc.reference_derived_candidate {
   ReferenceDerivedCandidateDisposition,
   CandidateSurvived,
@@ -3677,7 +3677,51 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
   let population_manifest = emit_emitted_population_manifest(paths: emitted_paths)
   let emitted_files = concat([lib_file, main_file], all_mod_files, compiler_tests_file, test_files)
   let files = concat(emitted_files, [population_manifest])
-  EmitResult { files: files, diagnostics: module_refusals, emitted_edges: published_module_emissions |> flat_map(e => e.emitted_edges), rust_crates: [rust_crate] }
+  let module_files_with_tests = concat(all_mod_files, compiler_tests_file)
+  let module_basenames = module_files_with_tests |> fold(init: empty_map(), f: (acc, f) => map_insert(acc, rust_emitted_module_basename(path: f.path), true))
+  let inline_edges = module_files_with_tests |> flat_map(f => emitted_inline_path_edges(file: f, module_basenames: module_basenames))
+  EmitResult {
+    files: files,
+    diagnostics: module_refusals,
+    emitted_edges: concat(published_module_emissions |> flat_map(e => e.emitted_edges), inline_edges),
+    rust_crates: [rust_crate]
+  }
+}
+
+fn rust_emitted_module_basename(path: String) -> String {
+  replace(replace(path, rust_source_root(), ""), rust_source_ext(), "")
+}
+
+fn rust_line_is_use_declaration(line: String) -> Bool {
+  starts_with(s: line, prefix: "use ") || starts_with(s: line, prefix: "pub use ") || starts_with(s: line, prefix: "pub(crate) use ")
+}
+
+// THE INLINE PATHS AN EMITTED MODULE'S CODE WRITES, RETURNED AS SOURCE EDGES. The renderers write a
+// resolved reference to another module's declaration as `crate::<module>::<item>` (emit_typed_call,
+// qualified types and values, rust_declaration_path) and return only the text, so the edge is read
+// back off the code they wrote: every `crate::<segment>` whose segment is a module of this emission.
+// That is the population rustc resolves, so a reference the source never imported -- and a
+// synthesized stub's paths -- reach the partition like any other. Comment lines and string literals
+// are not code (gunbc.recurring_failure_mode a_string_literal_attests_an_emitted_reference); use
+// declarations are excluded because they are returned with their own provenance, and the
+// reverse-edge refusal must keep judging them as emitter edges. NEXT RUNG: the renderers return the
+// edges they write (gunbc.guarantee_stall emitted_inline_crate_path_edges_unreturned_stall), and this
+// reading of the text dissolves.
+fn emitted_inline_path_edges(file: TextFile, module_basenames: Map<String, Bool>) -> List<EmittedEdge> {
+  let from = rust_emitted_module_basename(path: file.path)
+  let code = rust_code_outside_string_literals(s: file.content
+    |> split(delimiter: "\n")
+    |> filter(line => {
+      let t = trim(line)
+      !starts_with(s: t, prefix: "//") && !rust_line_is_use_declaration(line: t)
+    })
+    |> join(separator: "\n"))
+  let targets = rust_identifier_tokens(s: replace(code, "crate::", " @crate@"))
+    |> filter(t => starts_with(s: t, prefix: "@crate@"))
+    |> map(t => replace(t, "@crate@", ""))
+  unique_strings(items: targets)
+    |> filter(t => t != from && emit_map_has(m: module_basenames, key: t))
+    |> map(t => inline_path_reference_edge(from: from, to_module: t))
 }
 
 // A MODULE'S EMITTED PATH, read by the renderer and by every population-denominated aggregate that
@@ -5417,7 +5461,7 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
     let names_already_in_lines = lines |> flat_map(l => imported_names_in_use_line(line: l))
     let qualified_rows = qualified_type_reference_rows(emit_info: emit_info, names: qualified_item_emit_surface_compatibility_names(candidates: origin_candidates) |> filter(nm => emit_map_has(m: emitted_source_token_set, key: qualified_last_segment(name: nm))), this_module_name: this_module_name, already: already, names_already_in_lines: names_already_in_lines, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     let qualified_lines = qualified_type_reference_use_lines(rows: qualified_rows, registry: registry)
-    let this_module_filename = module_to_filename(name: this_module_name)
+    let this_module_filename = rust_module_emit_filename(module_name: this_module_name)
     ReferenceDerivedUseLinePlan {
       lines: concat(lines, qualified_lines |> map(l => l.text)),
       rows: concat(rows, qualified_rows),
@@ -5620,7 +5664,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     |> map(item => emit_typed_item(item: item, module_name: authored_name(env: scope.type_env, node: m), registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: scoped_data_items, module_items: wire_context_items, imports: wire_context_imports, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index))
     |> join(separator: "\n\n")
   let prelude = emit_prelude(module_name: this_module_name)
-  let rendered_imports = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index, supplement_items: typed_module.items, module_env: Present { value: scope.type_env }, from_module: module_to_filename(name: this_module_name))
+  let rendered_imports = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index, supplement_items: typed_module.items, module_env: Present { value: scope.type_env }, from_module: rust_module_emit_filename(module_name: this_module_name))
   let imports_str = rendered_imports.text
   let dag_import_lines = if imports_str == "" { [] } else { imports_str |> split(delimiter: "\n") }
   let already_imported_names = concat(
@@ -5647,6 +5691,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let merged_imports = merged_import_lines |> join(separator: "\n")
   let imports_section = if merged_imports == "" { "" } else { concat("\n", merged_imports) }
   let this_mod_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
+  let this_mod_endpoint = rust_module_emit_filename(module_name: authored_name(env: scope.type_env, node: m))
   let all_svc_names = typed_module.items |> flat_map(item =>
     match lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: authored_name(env: scope.type_env, node: m), decl_name: authored_name(env: scope.type_env, node: item) }) {
       Present { value: info } => info.service_names
@@ -5693,11 +5738,11 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     file: TextFile { path: module_emit_path, content: content },
     reference_rows: reference_plan.rows,
     emitted_edges: concat(
-      rust_prelude_emitted_edges(module: this_mod_filename),
-      declared_import_edges(from: this_mod_filename, imports: module_imports(n: m), source_indices: scope.type_env.source_indices, module_index: module_index),
-      if typed_module.items |> any(item => item.module_item_kind == ModuleItemService) { [service_runtime_surface_edge(from: this_mod_filename)] } else { [] },
+      rust_prelude_emitted_edges(module: this_mod_endpoint),
+      declared_import_edges(from: this_mod_endpoint, imports: module_imports(n: m), source_indices: scope.type_env.source_indices, module_index: module_index),
+      if typed_module.items |> any(item => item.module_item_kind == ModuleItemService) { [service_runtime_surface_edge(from: this_mod_endpoint)] } else { [] },
       rust_use_line_edges_surviving(
-        edges: concat(rendered_imports.edges, reference_plan.edges, rust_use_line_edges(from: this_mod_filename, lines: uncovered_svc_use_lines)),
+        edges: concat(rendered_imports.edges, reference_plan.edges, rust_use_line_edges(from: this_mod_endpoint, lines: uncovered_svc_use_lines)),
         final_lines: concat(merged_import_lines, uncovered_svc_imports)
       )
     ),

@@ -817,9 +817,9 @@ fn required_gate_prefixes() -> List<String> {
 // the stage0 partition rows.
 //
 // THE EMITTED-WORKSPACE PLAN'S WITNESSES (gunbc#12214, parent ruling msg_d375b91d from
-// loyal-swift-608). They run v2.workflow.emitted_crate_workspace emitted_workspace_plan_over over a
-// SUPPLIED three-module DAG and supplied edges -- the plan's RED selection, its transitive re-export
-// derivation and its ClosuresDisagree / NoDiscriminatingEdge refusals -- so the refusals keep
+// loyal-swift-608). They run gunbc.emitted_crate_workspace emitted_workspace_plan_from_emission over
+// a SUPPLIED three-module emission and its edges -- the plan's RED selection, its transitive
+// re-export derivation and its EmitterReverseEdge / NoDiscriminatingEdge refusals -- so the refusals keep
 // executing after merge (DESIGN 4b(4)). They never derive the live closure: that run, with the
 // emission and both cargo builds, stays in the author-run instrument
 // //gunbc/instruments:emitted-crate-workspace. SubstrateInputsOnly.

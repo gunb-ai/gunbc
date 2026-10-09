@@ -1,5 +1,22 @@
 module v2.std.compilers.compilation_unit
 
+import gunbc.crate_partition {
+  CompilationUnitId,
+  HandExplicit,
+  InterfaceClosureUnreachedFixpoint,
+  ModuleAssignmentLookupRejected,
+  ModuleDagEdge,
+  ModuleDagExportsLookupRejected,
+  ModuleDagTypeDefinitionsLookupRejected,
+  ModuleId,
+  PartitionFoldRefusalCause,
+  PartitionProvenance,
+  PartitionR4Refused,
+  PartitionR4ValidityVerdict,
+  PolicyDerived,
+  SccSplit,
+  list_unique_sorted_ids
+}
 
 import std.algebra { Empty }
 import std.types { NonEmptyStr, List, Bool, String, Int, brand }
@@ -31,18 +48,6 @@ import v2.std.node {
   node_synthetic,
 }
 
-type ModuleId = NonEmptyStr where brand("ModuleId")
-type CompilationUnitId = NonEmptyStr where brand("CompilationUnitId")
-
-type PartitionProvenance
-  = HandExplicit
-  | PolicyDerived { policy: DeclarationRef }
-
-type ModuleDagEdge {
-  from: ModuleId
-  to: ModuleId
-}
-
 type ModuleTypeDefinitionRow {
   identity: Symbol
   definition: Node
@@ -65,23 +70,6 @@ type CompilationUnit {
 type PartitionInterfaceClosureResult
   = PartitionInterfaceClosed { nodes: List<Node> }
   | PartitionInterfaceTruncated
-
-type PartitionFoldRefusalCause
-  = InterfaceClosureUnreachedFixpoint { unit_id: CompilationUnitId }
-  | ModuleDagExportsLookupRejected { module: ModuleId }
-  | ModuleDagTypeDefinitionsLookupRejected { module: ModuleId }
-  | ModuleAssignmentLookupRejected { module: ModuleId }
-
-type PartitionR4ValidityCause
-  = SccSplit { detail: String }
-  | UnitGraphCycle { detail: String }
-  | LinkageCycle { detail: String }
-  | ByValueTypeCycle { detail: String }
-  | PartitionInputRejected { cause: PartitionFoldRefusalCause }
-
-type PartitionR4ValidityVerdict
-  = PartitionR4Valid
-  | PartitionR4Refused { cause: PartitionR4ValidityCause }
 
 type PartitionFoldOutcome
   = PartitionFoldOk { units: List<CompilationUnit> }
@@ -183,14 +171,6 @@ data partition_r4_witness_refused_scc_split: PartitionR4ValidityVerdict = Partit
   cause: SccSplit { detail: "witness-only carrier; realization-owned predicate" }
 }
 
-fn partition_provenance_hand_explicit() -> PartitionProvenance {
-  HandExplicit
-}
-
-fn partition_provenance_policy_derived(policy: DeclarationRef) -> PartitionProvenance {
-  PolicyDerived { policy: policy }
-}
-
 fn partition_provenance_eq(left: PartitionProvenance, right: PartitionProvenance) -> Bool {
   match left {
     HandExplicit => match right {
@@ -287,30 +267,6 @@ fn list_snoc_unique_node(items: List<Node>, item: Node) -> List<Node> {
   } else {
     items |> list_push(item)
   }
-}
-
-// SORT BEFORE DEDUP, not after. `assignment |> map_values` is this function's production input
-// at all three partition folds below, and a Map has no encounter-order contract. The old fold
-// scanned the growing accumulator with `any` and only sorted its result afterward: the result was
-// canonical, but the amount of evaluator work depended on the HAMT iteration order because a
-// duplicate stopped the scan wherever its earlier copy happened to sit. Required-floor's
-// same-tree corpus A/B measured that defect directly: identical source moved this family's
-// per-claim evaluator-step counts in both directions.
-//
-// Sorting first makes equal ids adjacent. Membership is then decidable against the last kept
-// identity alone, so the work no longer depends on the unmodeled Map order and the growing
-// accumulator is not rescanned for every item. This is the same sort-then-neighbour substrate
-// pattern used by gunbc.self_host_compile_phase_frontier.deduplicate_identities; it lives here
-// because CompilationUnitId, and the partition semantics being preserved, are owned here.
-fn list_unique_sorted_ids(items: List<CompilationUnitId>) -> List<CompilationUnitId> {
-  fold(
-    items |> sort_by(id => id),
-    init: [],
-    f: (unique, item) => match unique |> last {
-      Present { value: prior } => if prior == item { unique } else { unique |> list_push(item) }
-      Absent => [item]
-    }
-  )
 }
 
 // A DETERMINISM ORDER WITH NO SEMANTIC MEANING. Its only consumer, list_unique_sorted_nodes, sorts so

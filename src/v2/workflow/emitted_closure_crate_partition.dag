@@ -1,5 +1,22 @@
 module v2.workflow.emitted_closure_crate_partition
 
+import gunbc.crate_partition {
+  crate_partition_declared_core_target,
+  ModuleDagEdge,
+  ModuleId,
+  PartitionPolicy,
+  PolicyPartitionParam,
+  ResolvePartitionOutcome
+}
+
+import gunbc.crate_partition {
+  PartitionPolicy,
+  PolicyPartitionParam,
+  ResolvePartitionOutcome,
+  ModuleDagEdge,
+  ModuleId
+}
+
 import std.types { List, String, Bool, Int, Map }
 import v2.std.algebra { any }
 import v2.workflow.compiler_closure_ingest_transport { closure_entry }
@@ -13,14 +30,8 @@ import v2.lens.module_graph {
 import v2.std.collection { empty_map, map_get, map_insert }
 import v2.std.diagnostic { Accepted, Rejected }
 import std.optional { Absent, Optional, Present }
-import v2.std.compilers.compilation_unit { ModuleDag, ModuleDagEdge, ModuleId }
-import v2.workflow.rust_crate_partition {
-  PartitionPolicy,
-  PolicyPartitionParam,
-  ResolvePartitionOutcome,
-  resolve_partition_outcome,
-  rust_crate_partition_declared_core_target
-}
+import v2.std.compilers.compilation_unit { ModuleDag }
+import v2.workflow.rust_crate_partition { resolve_partition_outcome }
 
 // THE MODULE DAG OF THE RETAINED EMITTED COMPILER CLOSURE, DERIVED -- NOT AUTHORED. The subject is
 // the closure the self-host route emits: v2.compiler.compile's, whose entry is imported from its
@@ -204,6 +215,6 @@ fn derived_policy_partition(derivation: ModuleDagDerivation, policy: PartitionPo
 fn emitted_compiler_closure_policy_partition() -> EmittedClosurePartitionOutcome {
   derived_policy_partition(
     derivation: emitted_compiler_closure_module_dag(),
-    policy: PartitionPolicy { target_crate_count: rust_crate_partition_declared_core_target }
+    policy: PartitionPolicy { target_crate_count: crate_partition_declared_core_target }
   )
 }

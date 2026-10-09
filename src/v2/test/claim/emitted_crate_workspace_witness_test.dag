@@ -1,18 +1,22 @@
 module test.claim.emitted_crate_workspace_witness
 
-import std.types { Bool, List, String }
-import v2.std.collection { empty_map }
-import v2.std.compilers.compilation_unit { ModuleDag, ModuleDagEdge, ModuleId }
-import v2.workflow.rust_crate_partition { EmitterReverseEdge }
+import std.types { Bool, Int, List, String }
+import gunbc.crate_partition { EmitterReverseEdge }
+import gunbc.rust_emitted_edge {
+  EmittedEdge,
+  declared_import_edge,
+  inline_path_reference_edge,
+  rust_prelude_emitted_edges,
+  semantic_source_reference_edge
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.workflow.emitted_crate_workspace {
+import gunbc.emitted_crate_workspace {
   EmittedWorkspacePlanned,
+  EmittedWorkspaceOutcome,
   EmittedWorkspaceRefused,
-  EmittedWorkspaceClosuresDisagree,
   EmittedWorkspaceNoDiscriminatingEdge,
   EmittedWorkspaceRedPlanned,
   EmittedWorkspaceRedRefused,
-  emitted_workspace_plan_over,
   emitted_workspace_plan_from_emission,
   emitted_workspace_build_from_emission,
   EmittedWorkspaceBuildOutcome,
@@ -25,49 +29,40 @@ import v2.workflow.emitted_crate_workspace {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// ── THE PLAN OVER A SUPPLIED CHAIN, a -> b -> c, ONE MODULE PER CRATE ─────────────────────────
+// ── THE PLAN OF AN EMITTED CHAIN, a -> b -> c, ONE MODULE PER CRATE ─────────────────────────
 //
-// The subject is v2.workflow.emitted_crate_workspace emitted_workspace_plan_over: given a module
-// DAG, the basenames the emission wrote and its returned edges, which crate rows does it
-// derive and which dependency does the RED drop. The DAG and edges are supplied, because the claim
-// is about the plan, not about the live closure; the live closure is the instrument
-// //gunbc/instruments:emitted-crate-workspace's subject, which renders these rows and builds them.
-
-fn chain_dag() -> ModuleDag {
-  ModuleDag {
-    modules: ["fx.a" as ModuleId, "fx.b" as ModuleId, "fx.c" as ModuleId],
-    edges: [
-      ModuleDagEdge { from: "fx.a" as ModuleId, to: "fx.b" as ModuleId },
-      ModuleDagEdge { from: "fx.b" as ModuleId, to: "fx.c" as ModuleId }
-    ],
-    exports: empty_map(),
-    type_definitions: empty_map()
-  }
-}
+// The subject is gunbc.emitted_crate_workspace emitted_workspace_plan_from_emission: given the
+// basenames an emission wrote and its returned edges, which crate rows does it derive and which
+// dependency does the RED drop. The emission is supplied, because the claim is about the plan; the
+// real emission reaching it is exercised by every emitted-Rust build (the v2-native-cli and
+// self-host instruments, and //gunbc/instruments:emitted-crate-workspace, which also builds the RED).
 
 fn chain_emitted_basenames() -> List<String> { ["fx_a", "fx_b", "fx_c", "v1_rt"] }
 
-// The emission's own edges for the chain: every module's prelude into the runtime and the crate
-// root, and the use-lines a names b and b names c.
-fn chain_edge_froms() -> List<String> { ["fx_a", "fx_a", "fx_b", "fx_b", "fx_c", "fx_c", "fx_a", "fx_b"] }
-fn chain_edge_tos() -> List<String> { ["v1_rt", "", "v1_rt", "", "v1_rt", "", "fx_b", "fx_c"] }
-fn chain_edge_provenances() -> List<String> {
-  ["runtime-prelude", "reexport-facade", "runtime-prelude", "reexport-facade", "runtime-prelude", "reexport-facade",
-   "semantic-source-reference", "semantic-source-reference"]
+fn chain_preludes() -> List<EmittedEdge> {
+  ["fx_a", "fx_b", "fx_c"] |> flat_map(m => rust_prelude_emitted_edges(module: m))
+}
+
+// The chain's source edges are its declared imports, and the emitter also wrote them as use-lines,
+// which is what gives the RED a path rustc must stop resolving.
+fn chain_edges() -> List<EmittedEdge> {
+  concat(chain_preludes(), [
+    declared_import_edge(from: "fx_a", to_module: "fx_b"),
+    declared_import_edge(from: "fx_b", to_module: "fx_c"),
+    semantic_source_reference_edge(from: "fx_a", to_module: "fx_b"),
+    semantic_source_reference_edge(from: "fx_b", to_module: "fx_c")
+  ])
+}
+
+fn chain_plan(target_crate_count: Int) -> EmittedWorkspaceOutcome {
+  emitted_workspace_plan_from_emission(emitted_basenames: chain_emitted_basenames(), edges: chain_edges(), target_crate_count: target_crate_count)
 }
 
 // A crate's re-exports are its TRANSITIVE dependency packages plus the runtime; the top crate
 // therefore re-exports both crates below it, and the RED drops an IRREDUNDANT edge -- one no other
 // dependency re-exports by a second road.
 test fn the_chain_plans_three_crates_plus_the_runtime_with_transitive_reexports() -> Bool {
-  match emitted_workspace_plan_over(
-    module_dag: chain_dag(),
-    emitted_basenames: chain_emitted_basenames(),
-    edge_froms: chain_edge_froms(),
-    edge_tos: chain_edge_tos(),
-    edge_provenances: chain_edge_provenances(),
-    target_crate_count: 3
-  ) {
+  match chain_plan(target_crate_count: 3) {
     EmittedWorkspacePlanned { plan: plan } =>
       plan.crate_count == 4
         && plan.module_count == 3
@@ -79,14 +74,7 @@ test fn the_chain_plans_three_crates_plus_the_runtime_with_transitive_reexports(
 }
 
 test fn the_red_drops_an_edge_the_emitter_wrote_as_a_use_line() -> Bool {
-  match emitted_workspace_plan_over(
-    module_dag: chain_dag(),
-    emitted_basenames: chain_emitted_basenames(),
-    edge_froms: chain_edge_froms(),
-    edge_tos: chain_edge_tos(),
-    edge_provenances: chain_edge_provenances(),
-    target_crate_count: 3
-  ) {
+  match chain_plan(target_crate_count: 3) {
     EmittedWorkspacePlanned { plan: plan } =>
       match emitted_workspace_red_over(plan: plan) {
         EmittedWorkspaceRedPlanned { red: red, red_rows: red_rows } =>
@@ -104,14 +92,7 @@ test fn the_red_drops_an_edge_the_emitter_wrote_as_a_use_line() -> Bool {
 // partitioner subsumes the single-package case. Nothing crosses a crate boundary, so the
 // instrument's RED is not authorable and only `emitted_workspace_red_over` refuses.
 test fn a_single_crate_plan_is_a_layout_with_the_runtime_crate() -> Bool {
-  match emitted_workspace_plan_over(
-    module_dag: chain_dag(),
-    emitted_basenames: chain_emitted_basenames(),
-    edge_froms: chain_edge_froms(),
-    edge_tos: chain_edge_tos(),
-    edge_provenances: chain_edge_provenances(),
-    target_crate_count: 1
-  ) {
+  match chain_plan(target_crate_count: 1) {
     EmittedWorkspacePlanned { plan: plan } =>
       plan.crate_count == 2
         && plan.rows |> any(r => r.package_name == emitted_workspace_runtime_package)
@@ -121,14 +102,7 @@ test fn a_single_crate_plan_is_a_layout_with_the_runtime_crate() -> Bool {
 }
 
 test fn a_single_crate_plan_has_no_red_for_want_of_a_discriminating_edge() -> Bool {
-  match emitted_workspace_plan_over(
-    module_dag: chain_dag(),
-    emitted_basenames: chain_emitted_basenames(),
-    edge_froms: chain_edge_froms(),
-    edge_tos: chain_edge_tos(),
-    edge_provenances: chain_edge_provenances(),
-    target_crate_count: 1
-  ) {
+  match chain_plan(target_crate_count: 1) {
     EmittedWorkspacePlanned { plan: plan } =>
       match emitted_workspace_red_over(plan: plan) {
         EmittedWorkspaceRedRefused { cause: EmittedWorkspaceNoDiscriminatingEdge } => true
@@ -138,56 +112,23 @@ test fn a_single_crate_plan_has_no_red_for_want_of_a_discriminating_edge() -> Bo
   }
 }
 
-test fn a_dag_module_the_emission_did_not_produce_refuses_by_name() -> Bool {
-  match emitted_workspace_plan_over(
-    module_dag: chain_dag(),
-    emitted_basenames: ["fx_a", "fx_b", "v1_rt"],
-    edge_froms: [],
-    edge_tos: [],
-    edge_provenances: [],
-    target_crate_count: 3
-  ) {
-    EmittedWorkspaceRefused { cause: EmittedWorkspaceClosuresDisagree { not_emitted: n, outside_dag: o } } =>
-      n == ["fx.c"] && (o |> count) == 0
-    _ => false
-  }
-}
-
-test fn an_emitted_module_outside_the_dag_refuses_by_name() -> Bool {
-  match emitted_workspace_plan_over(
-    module_dag: chain_dag(),
-    emitted_basenames: ["fx_a", "fx_b", "fx_c", "v1_rt", "fx_stray"],
-    edge_froms: [],
-    edge_tos: [],
-    edge_provenances: [],
-    target_crate_count: 3
-  ) {
-    EmittedWorkspaceRefused { cause: EmittedWorkspaceClosuresDisagree { not_emitted: n, outside_dag: o } } =>
-      (n |> count) == 0 && o == ["fx_stray"]
-    _ => false
-  }
-}
-
 // ── THE PRODUCTION PLAN, FROM THE EMISSION ALONE ─────────────────────────────────────────────
 //
-// emitted_workspace_plan_from_emission reads no corpus: the DAG's nodes are the emitted basenames
-// and its source edges are the DeclaredImport edges. The chain's imports a -> b and b -> c arrive
-// only as declared imports here (no surviving use-line), which is the inline-path case the
-// declared edge exists for.
+// The DAG's nodes are the emitted basenames and its source edges are the DeclaredImport and
+// InlinePathReference edges. Here the chain's dependencies arrive only as source edges (no
+// surviving use-line), which is the case those edges exist for.
 
-fn emission_edge_froms() -> List<String> { ["fx_a", "fx_a", "fx_b", "fx_b", "fx_c", "fx_c", "fx_a", "fx_b"] }
-fn emission_edge_tos() -> List<String> { ["v1_rt", "", "v1_rt", "", "v1_rt", "", "fx_b", "fx_c"] }
-fn emission_edge_provenances() -> List<String> {
-  ["runtime-prelude", "reexport-facade", "runtime-prelude", "reexport-facade", "runtime-prelude", "reexport-facade",
-   "declared-import", "declared-import"]
+fn emission_edges() -> List<EmittedEdge> {
+  concat(chain_preludes(), [
+    declared_import_edge(from: "fx_a", to_module: "fx_b"),
+    declared_import_edge(from: "fx_b", to_module: "fx_c")
+  ])
 }
 
 test fn the_emission_alone_plans_the_chain_by_its_declared_imports() -> Bool {
   match emitted_workspace_plan_from_emission(
     emitted_basenames: chain_emitted_basenames(),
-    edge_froms: emission_edge_froms(),
-    edge_tos: emission_edge_tos(),
-    edge_provenances: emission_edge_provenances(),
+    edges: emission_edges(),
     target_crate_count: 3
   ) {
     EmittedWorkspacePlanned { plan: plan } =>
@@ -204,9 +145,7 @@ test fn the_emission_alone_plans_the_chain_by_its_declared_imports() -> Bool {
 test fn an_emitter_edge_against_the_declared_imports_refuses_as_a_reverse_edge() -> Bool {
   match emitted_workspace_plan_from_emission(
     emitted_basenames: chain_emitted_basenames(),
-    edge_froms: concat(emission_edge_froms(), ["fx_c"]),
-    edge_tos: concat(emission_edge_tos(), ["fx_a"]),
-    edge_provenances: concat(emission_edge_provenances(), ["semantic-source-reference"]),
+    edges: concat(emission_edges(), [semantic_source_reference_edge(from: "fx_c", to_module: "fx_a")]),
     target_crate_count: 3
   ) {
     EmittedWorkspaceRefused { cause: EmittedWorkspaceEdgeMergeRefused { cause: EmitterReverseEdge { from: _, to: _, provenance: _ } } } => true
@@ -219,9 +158,7 @@ test fn an_emitter_edge_against_the_declared_imports_refuses_as_a_reverse_edge()
 fn chain_build(bin_name: String) -> EmittedWorkspaceBuildOutcome {
   emitted_workspace_build_from_emission(
     emitted_basenames: chain_emitted_basenames(),
-    edge_froms: emission_edge_froms(),
-    edge_tos: emission_edge_tos(),
-    edge_provenances: emission_edge_provenances(),
+    edges: emission_edges(),
     target_crate_count: 3,
     crate_name: "fx_app",
     bin_name: bin_name
@@ -245,5 +182,39 @@ test fn a_binary_named_apart_from_its_package_takes_cargos_bin_path() -> Bool {
   match chain_build(bin_name: "probe_fx") {
     EmittedWorkspaceBuildPlanned { build: build } => build.bin_source_path == "src/bin/probe_fx.rs"
     EmittedWorkspaceBuildRefused { cause: _ } => false
+  }
+}
+
+// Two modules that reach each other ONLY by inline path are a source SCC: InlinePathReference is a
+// source edge, so the pair is one component in one crate rather than an emitter edge refused as
+// reversed against the other.
+test fn modules_reaching_each_other_only_by_path_share_one_crate() -> Bool {
+  match emitted_workspace_plan_from_emission(
+    emitted_basenames: chain_emitted_basenames(),
+    edges: concat(chain_preludes(), [
+      declared_import_edge(from: "fx_a", to_module: "fx_b"),
+      inline_path_reference_edge(from: "fx_b", to_module: "fx_c"),
+      inline_path_reference_edge(from: "fx_c", to_module: "fx_b")
+    ]),
+    target_crate_count: 3
+  ) {
+    EmittedWorkspacePlanned { plan: plan } =>
+      plan.rows |> any(r => (r.modules |> any(m => m == "fx_b")) && (r.modules |> any(m => m == "fx_c")))
+    EmittedWorkspaceRefused { cause: _ } => false
+  }
+}
+
+// The same cycle closed by a USE-LINE the emitter proposed is an emitter defect, and still refuses.
+test fn a_use_line_closing_a_cycle_against_an_inline_path_refuses_as_a_reverse_edge() -> Bool {
+  match emitted_workspace_plan_from_emission(
+    emitted_basenames: chain_emitted_basenames(),
+    edges: concat(chain_preludes(), [
+      inline_path_reference_edge(from: "fx_b", to_module: "fx_c"),
+      semantic_source_reference_edge(from: "fx_c", to_module: "fx_b")
+    ]),
+    target_crate_count: 3
+  ) {
+    EmittedWorkspaceRefused { cause: EmittedWorkspaceEdgeMergeRefused { cause: EmitterReverseEdge { from: _, to: _, provenance: _ } } } => true
+    _ => false
   }
 }

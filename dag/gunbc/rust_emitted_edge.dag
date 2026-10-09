@@ -15,20 +15,24 @@ import std.types { List, String }
 
 // Only the provenances a producer emits are arms. SemanticSourceReference is a use-line the
 // emitter derives from the source: an authored import (emit_imports), a reference-derived import
-// (reference_derived_use_line_plan), or a service import (emit_module_full). Helper-carrier and
-// service/CLI runtime-surface arms land with their producers, not before them. DeclaredImport is
-// an authored import of an emitted module, returned whether or not a use-line for it survives: the
-// emitted body may still path into that module inline (`crate::<module>::`), and those inline
-// paths are not returned as edges (gunbc.guarantee_stall
-// emitted_inline_crate_path_edges_unreturned_stall), so the crate partition reads the import as a
-// structural over-approximation of the body's reach, computed as the answer. ServiceRuntimeSurface
-// is the service runtime the emitter writes into every module that renders a service: the struct's
-// `crate::dry_run::DryRunMode` field and constructor (v1.compiler.emit_rust emit_service_struct).
+// (reference_derived_use_line_plan), or a service import (emit_module_full). DeclaredImport is an
+// authored import of an emitted module, returned whether or not a use-line for it survives.
+// InlinePathReference is a `crate::<module>::` path the renderers wrote into a module's code for a
+// resolved reference -- a call to a declaration of another module, a qualified type or value --
+// including a reference the source never imported (v1.compiler.emit_rust emitted_inline_path_edges
+// reads them off the emitted code, since the renderers return text and not the edges they write:
+// gunbc.guarantee_stall emitted_inline_crate_path_edges_unreturned_stall). DeclaredImport and
+// InlinePathReference are SOURCE dependencies: the partition seeds its module DAG with them, so
+// two modules that reach each other only by reference form a legitimate SCC rather than a refused
+// reverse edge. ServiceRuntimeSurface is the service runtime the emitter writes into every module
+// that renders a service: the struct's `crate::dry_run::DryRunMode` field and constructor
+// (v1.compiler.emit_rust emit_service_struct).
 type EmittedEdgeProvenance
   = RuntimePrelude
   | ReexportFacade
   | SemanticSourceReference
   | DeclaredImport
+  | InlinePathReference
   | ServiceRuntimeSurface
 
 type EmittedEdgeTarget
@@ -44,7 +48,7 @@ type EmittedEdge {
 // THE ENDPOINT NAME. An edge row names a module by the basename of the file the emitter writes for
 // it, so the projection from a module's dotted name to that basename is this module's fact, not the
 // emitter's private one: v1.compiler.emit_rust renders files and paths with it, and a partition
-// derived over dotted module names (v2.workflow.emitted_crate_workspace) maps onto edge endpoints
+// derived over dotted module names (gunbc.emitted_crate_workspace) maps onto edge endpoints
 // with the same function. `main` renders as `main_mod` because it collides with the crate's own
 // entry file.
 fn module_to_filename(name: String) -> String {
@@ -84,6 +88,10 @@ fn semantic_source_reference_edge(from: String, to_module: String) -> EmittedEdg
 
 fn declared_import_edge(from: String, to_module: String) -> EmittedEdge {
   EmittedEdge { from: from, to: EmittedModuleTarget { module: to_module }, provenance: DeclaredImport }
+}
+
+fn inline_path_reference_edge(from: String, to_module: String) -> EmittedEdge {
+  EmittedEdge { from: from, to: EmittedModuleTarget { module: to_module }, provenance: InlinePathReference }
 }
 
 // The module the emitter writes the service runtime into (v1.compiler.emit_rust

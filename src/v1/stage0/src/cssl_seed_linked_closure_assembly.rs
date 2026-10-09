@@ -163,24 +163,41 @@ pub fn assemble_seed_linked_closure(out_dir: &Path, entry_dag: &Path) -> Result<
     let src_dir = out_dir.join("src");
     let manifest_path = src_dir.join(emitted_population_manifest_basename());
     let entry_mod = dag_entry_rust_module(entry_dag)?;
-    let entry_file = src_dir.join(format!("{entry_mod}.rs"));
 
-    if !entry_file.is_file() {
-        return Err(AssemblyError::MissingEntryFile { path: entry_file });
-    }
     if !manifest_path.is_file() {
         return Err(AssemblyError::MissingPopulationManifest {
             path: manifest_path,
         });
     }
-
-    let entry_hash_before = sha256_hex(&entry_file)?;
     let declared = declared_emitted_paths(&manifest_path)?;
     if declared.is_empty() {
         return Err(AssemblyError::EmptyPopulationManifest {
             path: manifest_path,
         });
     }
+
+    // THE ENTRY IS FOUND WHERE THE POPULATION SAYS IT IS. The workspace realization
+    // (`v1.compiler.emitted_workspace`) places module files where the partition crates include
+    // them from, and renders this manifest over those realized paths, so the manifest is the one
+    // authority for where `<entry>.rs` lives; a fixed `src/<entry>.rs` would be a second one.
+    let entry_name = format!("{entry_mod}.rs");
+    let entry_file = declared
+        .iter()
+        .find(|path| {
+            Path::new(path)
+                .file_name()
+                .map(|n| n == entry_name.as_str())
+                .unwrap_or(false)
+        })
+        .map(|path| out_dir.join(path))
+        .ok_or_else(|| AssemblyError::MissingEntryFile {
+            path: src_dir.join(&entry_name),
+        })?;
+    if !entry_file.is_file() {
+        return Err(AssemblyError::MissingEntryFile { path: entry_file });
+    }
+
+    let entry_hash_before = sha256_hex(&entry_file)?;
 
     for declared_path in declared {
         // Whole-closure default (cssl_closure_assembly_note): every declared member is
