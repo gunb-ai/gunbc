@@ -527,37 +527,13 @@ type TestClaimEvalSubject<T> {
   input: TestClaimTypedInput<T>
 }
 
-type TestClaimCacheKey<T> {
-  eval_subject: TestClaimEvalSubject<T>
-}
-
-fn test_claim_cache_key_claim_hash<T>(key: TestClaimCacheKey<T>) -> Hash {
-  test_claim_claim_hash_digest(c: key.eval_subject.claim)
-}
-
-fn test_claim_cache_key_interpretation_hash_node(key: TestClaimCacheKey<Node>) -> Hash {
-  test_claim_cache_interpretation_hash_node(subject: key.eval_subject)
-}
-
-type TestClaimCacheReceipt<T> {
-  key: TestClaimCacheKey<T>
-}
-
 type TestClaimRun<S, A> {
-  cache: TestClaimCacheReceipt<S>
+  claim: TestClaim
   verdict: Verdict<TestClaimEvalSubject<S>, A>
 }
 
-fn test_claim_cache_key_claim<T>(key: TestClaimCacheKey<T>) -> TestClaim {
-  key.eval_subject.claim
-}
-
-fn test_claim_cache_receipt_claim<T>(receipt: TestClaimCacheReceipt<T>) -> TestClaim {
-  test_claim_cache_key_claim(key: receipt.key)
-}
-
 fn test_claim_run_claim<S, A>(run: TestClaimRun<S, A>) -> TestClaim {
-  test_claim_cache_receipt_claim(receipt: run.cache)
+  run.claim
 }
 
 fn test_claim_run_verdict<S, A>(run: TestClaimRun<S, A>) -> Verdict<TestClaimEvalSubject<S>, A> {
@@ -1006,18 +982,6 @@ fn test_claim_cache_interpretation_hash_node(subject: TestClaimEvalSubject<Node>
       b: test_claim_evaluator_digest_node(input: subject.input)
     )
   )
-}
-
-fn test_claim_cache_receipt_node(subject: TestClaimEvalSubject<Node>) -> TestClaimCacheReceipt<Node> {
-  TestClaimCacheReceipt {
-    key: TestClaimCacheKey {
-      eval_subject: subject
-    }
-  }
-}
-
-fn test_claim_cache_receipt(subject: TestClaimEvalSubject<Node>) -> TestClaimCacheReceipt<Node> {
-  test_claim_cache_receipt_node(subject: subject)
 }
 
 fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
@@ -3494,7 +3458,7 @@ fn run_test_claim_runtime_evaluated(
     inputs: inputs_root_only(root: subject.input.evaluator_input)
   )
   TestClaimRun {
-    cache: test_claim_cache_receipt_node(subject: subject),
+    claim: subject.claim,
     verdict: aggregate_verdicts(
       rs: [
         run_test_claim_runtime_assert(
@@ -3517,7 +3481,7 @@ fn run_test_claim(
   match subject.claim {
     RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
       TestClaimRun {
-        cache: test_claim_cache_receipt_node(subject: subject),
+        claim: subject.claim,
         verdict: run_test_claim_round_trip_verdict_runtime(
           actual: eval_round_trip_claim_input_for_verdict(
             input: subject.input.evaluator_input
@@ -3528,7 +3492,7 @@ fn run_test_claim(
 
     StructuralEqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } =>
       TestClaimRun {
-        cache: test_claim_cache_receipt_node(subject: subject),
+        claim: subject.claim,
         verdict: run_test_claim_structural_equals_verdict(
           actual: eval_round_trip_claim_input_for_verdict(
             input: subject.input.evaluator_input

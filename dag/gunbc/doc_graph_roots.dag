@@ -528,7 +528,6 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
     primary_work: DeclarationRef { module_path: "v2.std.materialize", decl_name: "materialize", field: WholeDeclaration },
     additional_works: [
       DeclarationRef { module_path: "std.realization", decl_name: "Materialization", field: WholeDeclaration },
-      DeclarationRef { module_path: "v2.std.staging", decl_name: "cached_stage", field: WholeDeclaration },
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject materialize describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },

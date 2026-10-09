@@ -1452,21 +1452,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/compiler_materialization_witness_test.dag",
-      check_fns: [
-        "compiler_materialization_ladder_holds",
-        "compile_stage_memo_provider_preserves_catalog_retention",
-        "compile_stage_carrier_inhabits_realization",
-        "single_site_demands_are_accepted_single_recompute",
-        "compile_stage_memo_plural_reds_without_provider"
-      ],
-      kind: CorpusWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
       entry: "dag/test/claim/ci_materialization_witness_test.dag",
       check_fns: [
         "ci_ladder_holds_on_live_workflow",

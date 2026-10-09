@@ -240,7 +240,6 @@ dag/extdeps/provisioning/ubuntu_seeded_install_media_toolchain.dag
 dag/extdeps/python/python.dag
 dag/extdeps/realization/artifact_store_fs.dag
 dag/extdeps/realization/cache_purity.dag
-dag/extdeps/realization/compile_stage_memo.dag
 dag/extdeps/realization/emit_on_demand_host.dag
 dag/extdeps/realization/eval_memo.dag
 dag/extdeps/realization/frame_boundary_simulated.dag
