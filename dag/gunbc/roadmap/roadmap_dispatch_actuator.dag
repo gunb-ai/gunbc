@@ -2793,6 +2793,41 @@ fn dispatch_systemd_unit_container_plan(
   }
 }
 
+fn dispatch_tmux_session_container_plan(
+  instance: HostDashboardInstance,
+  session_name: String,
+  events_path: String,
+  pane_working_directory: String,
+  worktree_path: String,
+  provider_inner: List<String>,
+) -> DispatchSessionContainerPlan {
+  match dispatch_attempt_pipe_emission_for_instance(
+    instance: instance,
+    events_path: events_path,
+  ) {
+    PipeEmitRefused { detail } =>
+      DispatchSessionContainerUnavailable {
+        step: "tmux-event-pipe-emit" as NonEmptyStr,
+        detail: detail,
+      }
+    PipeEmitted { command } =>
+      DispatchSessionContainerReady {
+        container: dispatch_tmux_container(
+          instance: instance,
+          session_name: session_name,
+          tmux_spawn: tmux_idle_spawn_argv_for_instance(
+            instance: instance,
+            session_name: session_name,
+            worktree_path: worktree_path,
+            pane_working_directory: pane_working_directory,
+          ),
+          pipe_command: command,
+          provider_inner: provider_inner,
+        ),
+      }
+  }
+}
+
 fn dispatch_session_container_for_provider(
   provider: DispatchCliProvider,
   instance: HostDashboardInstance,
@@ -2802,8 +2837,7 @@ fn dispatch_session_container_for_provider(
   events_path: String,
   worker_log_path: String,
   pane_working_directory: String,
-  tmux_spawn: HostExecArgv,
-  pipe_command: TmuxPipeCommand,
+  worktree_path: String,
   provider_inner: List<String>,
 ) -> DispatchSessionContainerPlan {
   match provider {
@@ -2832,25 +2866,23 @@ fn dispatch_session_container_for_provider(
         unavailable_why: "headless Claude Code requires a transient unit so stream-json stdout is a unit property and the session placement grant is the cgroup bound",
       )
     CodexDispatchProvider =>
-      DispatchSessionContainerReady {
-        container: dispatch_tmux_container(
-          instance: instance,
-          session_name: session_name,
-          tmux_spawn: tmux_spawn,
-          pipe_command: pipe_command,
-          provider_inner: provider_inner,
-        ),
-      }
+      dispatch_tmux_session_container_plan(
+        instance: instance,
+        session_name: session_name,
+        events_path: events_path,
+        pane_working_directory: pane_working_directory,
+        worktree_path: worktree_path,
+        provider_inner: provider_inner,
+      )
     CursorDispatchProvider =>
-      DispatchSessionContainerReady {
-        container: dispatch_tmux_container(
-          instance: instance,
-          session_name: session_name,
-          tmux_spawn: tmux_spawn,
-          pipe_command: pipe_command,
-          provider_inner: provider_inner,
-        ),
-      }
+      dispatch_tmux_session_container_plan(
+        instance: instance,
+        session_name: session_name,
+        events_path: events_path,
+        pane_working_directory: pane_working_directory,
+        worktree_path: worktree_path,
+        provider_inner: provider_inner,
+      )
   }
 }
 
@@ -3308,69 +3340,47 @@ fn dispatch_spawn_commands_for_resolved_instance(
     node_id: node.node,
     attempt_key: attempt_key,
   )
-  let tmux = tmux_idle_spawn_argv_for_instance(
-    instance: instance,
-    session_name: session_name,
-    worktree_path: worktree_path,
-    pane_working_directory: dispatch_pane_working_directory(
-      provider: provider,
-      instance: instance,
-      worktree_path: worktree_path,
-    ),
-  )
   let events_path = dispatch_attempt_events_path_for_instance(
     instance: instance,
     node_id: node.node,
     attempt_key: attempt_key,
   )
-  match dispatch_attempt_pipe_emission_for_instance(
+  match dispatch_session_container_for_provider(
+    provider: provider,
     instance: instance,
+    node_id: node.node,
+    attempt_key: attempt_key,
+    session_name: session_name,
     events_path: events_path,
+    worker_log_path: dispatch_attempt_worker_log_path_for_instance(
+      instance: instance,
+      node_id: node.node,
+      attempt_key: attempt_key,
+    ),
+    pane_working_directory: dispatch_pane_working_directory(
+      provider: provider,
+      instance: instance,
+      worktree_path: worktree_path,
+    ),
+    worktree_path: worktree_path,
+    provider_inner: provider_inner,
   ) {
-    PipeEmitRefused { detail } =>
-      DispatchSpawnRefused {
-        step: "tmux-event-pipe-emit" as NonEmptyStr,
-        detail: detail,
+    DispatchSessionContainerUnavailable { step: st, detail: d } =>
+      DispatchSpawnRefused { step: st, detail: d }
+    DispatchSessionContainerReady { container: c } =>
+      DispatchSpawnReady {
+        commands: DispatchSpawnCommands {
+          worktree_add: worktree,
+          attempt_state_prepare: state_prepare,
+          attempt_current_pointer: attempt_current_pointer_argv_for_instance(
+            instance: instance,
+            node_id: node.node,
+            attempt_key: attempt_key,
+          ),
+          session_container: c,
+        },
       }
-    PipeEmitted { command } =>
-      match dispatch_session_container_for_provider(
-        provider: provider,
-        instance: instance,
-        node_id: node.node,
-        attempt_key: attempt_key,
-        session_name: session_name,
-        events_path: events_path,
-        worker_log_path: dispatch_attempt_worker_log_path_for_instance(
-          instance: instance,
-          node_id: node.node,
-          attempt_key: attempt_key,
-        ),
-        pane_working_directory: dispatch_pane_working_directory(
-          provider: provider,
-          instance: instance,
-          worktree_path: worktree_path,
-        ),
-        tmux_spawn: tmux,
-        pipe_command: command,
-        provider_inner: provider_inner,
-      ) {
-        DispatchSessionContainerUnavailable { step: st, detail: d } =>
-          DispatchSpawnRefused { step: st, detail: d }
-        DispatchSessionContainerReady { container: c } =>
-          DispatchSpawnReady {
-            commands: DispatchSpawnCommands {
-              worktree_add: worktree,
-              attempt_state_prepare: state_prepare,
-              attempt_current_pointer: attempt_current_pointer_argv_for_instance(
-                instance: instance,
-                node_id: node.node,
-                attempt_key: attempt_key,
-              ),
-              session_container: c,
-            },
-          }
-      }
-    }
+  }
     }
   }
       }
