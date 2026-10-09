@@ -147,6 +147,7 @@ import v2.std.node {
   well_formed,
 }
 import v2.std.node_query {
+  arrow_constant_member_codomain,
   FieldProjection,
   field_projection_edge_base_optional,
   field_projection_optional,
@@ -2498,15 +2499,54 @@ fn eval_interpret_node(
             Present { value: projection } =>
               eval_field_projection(node: node, projection: projection, args: args)
             Absent =>
-              eval_type_node_atom(
-                node: node,
-                interpretation: interpretation,
-                environment: environment
-              )
+              match eval_constant_member_body(node: node, facts: facts) {
+                Present { value: body } =>
+                  eval_runtime_node(
+                    node: body,
+                    tree: tree,
+                    interpretation: interpretation,
+                    environment: environment,
+                    runtime: runtime,
+                    effect_io: effect_io
+                  )
+                Absent =>
+                  eval_type_node_atom(
+                    node: node,
+                    interpretation: interpretation,
+                    environment: environment
+                  )
+              }
           }
       }
     }
   )
+}
+
+// A REFERENCE TO A `data` CONSTANT EVALUATES TO THE CONSTANT'S VALUE: the body of the nullary Arrow body
+// lowering realizes it as, evaluated as the nullary application the seed performs at every reference
+// (v1.compiler.emit_rust emits a data item as a nullary fn and calls it). The declaration is the
+// denotation infer recorded beside the reference, and it is a constant exactly when its Arrow carries
+// v2.std.node ConstantMemberEdge -- the same reader (v2.std.node_query arrow_constant_member_codomain)
+// infer typed the reference by, so a reference infer typed at T is the one eval applies, and every other
+// value-position declaration reference keeps the binding-miss refusal in eval_type_node_atom. The empty
+// domain binds nothing, so the body runs in the environment of the reference.
+fn eval_constant_member_body(node: Node, facts: InferredFacts) -> Optional<Node> {
+  match declaration_reference_path_optional(node: node) {
+    Absent => Absent
+    Present { value: _ } =>
+      match facts.denotation {
+        Absent => Absent
+        Present { value: declaration } =>
+          match arrow_constant_member_codomain(arrow: declaration) {
+            Absent => Absent
+            Present { value: _ } =>
+              match find_arrow_body_child(root: declaration) {
+                Accepted { value: body, diagnostics: _ } => Present { value: body }
+                Rejected { diagnostics: _ } => Absent
+              }
+          }
+      }
+  }
 }
 
 // A FIELD PROJECTION SELECTS A FIELD FROM THE RECEIVER'S VALUE, and refuses on anything else. Without

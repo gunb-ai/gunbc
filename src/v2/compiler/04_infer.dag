@@ -70,7 +70,7 @@ import std.optional {
   optional_present
 }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional }
-import v2.std.node_query { BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, declared_field_from_edge, find_labeled_child }
+import v2.std.node_query { BinderParts, arrow_constant_member_codomain, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, declared_field_from_edge, find_labeled_child }
 import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_member_formal }
@@ -1445,7 +1445,7 @@ fn infer_declaration_reference_facts_indexed(
                 o: infer_facts_denoting(
                   o: inferred_facts_from_derived_type(
                     node: n,
-                    derived_type: callable,
+                    derived_type: infer_reference_value_type(callable: callable),
                     descent: Holds { value: descent_proof }
                   ),
                   declaration: declared
@@ -1455,6 +1455,18 @@ fn infer_declaration_reference_facts_indexed(
               )
           }
       }
+}
+
+// A REFERENCE TO A `data` CONSTANT USES ITS VALUE, so it is typed at the constant's declared type, the
+// codomain of the Arrow body lowering realizes it as (v2.std.node_query arrow_constant_member_codomain
+// reads the ConstantMemberEdge marker that arm writes). Any other callable -- a nullary fn included --
+// denotes its function and is typed as the Arrow, exactly as before. The denotation recorded beside
+// either is the declaration, so eval applies the constant through the same declaration infer typed.
+fn infer_reference_value_type(callable: Node) -> Node {
+  match arrow_constant_member_codomain(arrow: callable) {
+    Present { value: declared_type } => declared_type
+    Absent => callable
+  }
 }
 
 // THE DENOTATION IS RECORDED HERE AND NOWHERE ELSE, because here is where the GUARDED reader answered.

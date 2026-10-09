@@ -20,6 +20,7 @@ import std.types { Map, List }
 import v2.std.node {
   Instantiation,
   BinderTypeEdge,
+  ConstantMemberEdge,
   BinderDefaultEdge,
   core_edge,
   Cardinality,
@@ -864,6 +865,22 @@ fn nullary_inhabitant_by_discriminant<T>(
         at: at,
         reason: ^coproduct_nullary_inhabitant_duplicate
       ))
+  }
+}
+
+// THE VALUE TYPE A REFERENCE TO A `data` CONSTANT DENOTES: the declared codomain of an Arrow that
+// carries v2.std.node ConstantMemberEdge, or Absent for any other node (an unmarked Arrow, including a
+// nullary fn, denotes its function). The one reader of the marker; infer types the reference by it and
+// eval applies the constant by it, so the two cannot disagree on which Arrows are constants.
+fn arrow_constant_member_codomain(arrow: Node) -> Optional<Node> {
+  match arrow.kind {
+    TypeNode { connective: Arrow } =>
+      if fold(arrow.children, init: false, f: fn(acc, e) { acc || edge_is_core(e: e, marker: ConstantMemberEdge) }) {
+        list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1)
+      } else {
+        Absent
+      }
+    _ => Absent
   }
 }
 

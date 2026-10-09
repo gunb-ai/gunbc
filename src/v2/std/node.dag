@@ -157,6 +157,15 @@ type StructuralEdgeLabel
 // in the scope enclosing the match, so no pattern binder reaches the rest
 // (v2.compiler.resolve resolve_match_arm_admitted, its one consumer). It adds no behavior kind;
 // a marked Bind anywhere else is a malformed tree.
+//
+// ConstantMemberEdge: A NULLARY ARROW THAT IS A `data` CONSTANT. A named edge (targeting an empty
+// Conj, as MatchArmScopeExitEdge is) on the Arrow body lowering builds for `data x: T = e`
+// (v2.compiler.body_lowering_fold body_lower_data_decl_to_member, its one producer). The Arrow is the
+// same member a nullary `fn x() -> T` lowers to; the marker is the one fact that differs: a reference
+// to a marked Arrow USES ITS VALUE, so it is typed at the Arrow's declared codomain T
+// (v2.compiler.infer infer_declaration_reference_facts_indexed) and evaluates to the value of the
+// nullary application (v2.compiler.eval), while a reference to an unmarked Arrow denotes the function.
+// It adds no behavior kind; a marker on anything but a nullary Arrow is a malformed tree.
 type CoreEdgeLabel
   = ArrowBodyEdge
   | ArrowSignatureOrderEdge
@@ -186,6 +195,7 @@ type CoreEdgeLabel
   | MapLiteralEntryEdge
   | MapLiteralEntriesEdge
   | MatchArmScopeExitEdge
+  | ConstantMemberEdge
 
 fn core_edge_label(marker: CoreEdgeLabel) -> EdgeLabel {
   StructuralLabel { label: CoreMarker { marker: marker } }
@@ -250,6 +260,7 @@ fn core_edge_labels() -> List<CoreEdgeLabel> {
     MapLiteralEntryEdge,
     MapLiteralEntriesEdge,
     MatchArmScopeExitEdge,
+    ConstantMemberEdge,
   ]
 }
 
@@ -285,6 +296,7 @@ fn core_edge_label_canonical_symbol(marker: CoreEdgeLabel) -> Symbol {
     MapLiteralEntryEdge => ^core_map_literal_entry_edge
     MapLiteralEntriesEdge => ^core_map_literal_entries_edge
     MatchArmScopeExitEdge => ^core_match_arm_scope_exit_edge
+    ConstantMemberEdge => ^core_constant_member_edge
   }
 }
 type Edge {
