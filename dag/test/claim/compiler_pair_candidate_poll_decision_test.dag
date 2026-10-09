@@ -1,0 +1,39 @@
+module test.claim.compiler_pair_candidate_poll_decision
+
+import std.types { Bool }
+import gunbc.fleet_desired_candidate {
+  candidate_poll_decide, ArtifactsEmpty, ArtifactsPresent, RunInFlight, RunCompleted,
+  CandidatePresent, CandidateUnavailable, CandidatePending,
+}
+
+// THE CANDIDATE POLL'S DECISION, OVER SUPPLIED OBSERVATION SEQUENCES. The subject is
+// gunbc.fleet_desired_candidate candidate_poll_decide: what the poll concludes from its reads in
+// order. The race it must survive is an upload between an empty artifact read and the read that
+// sees the run completed. Before completion triggered one more artifact read, that sequence
+// concluded absence, so a base compiler that existed was refused as BaseCompilerUnavailable.
+// The emitted poll consumes the same transition (poll_statements -> poll_after ->
+// candidate_poll_step), so the shell the floor runs is derived from this decision.
+
+// The interleaving: the run uploaded between the empty read and the completed status. PRESENT.
+test fn an_artifact_uploaded_as_the_run_completes_is_present_not_absent() -> Bool {
+  match candidate_poll_decide(observations: [ArtifactsEmpty, RunCompleted, ArtifactsPresent]) {
+    CandidatePresent => true
+    _ => false
+  }
+}
+
+// The absent arm: the read after completion is empty too, so it is absence.
+test fn a_run_completed_with_no_artifact_after_the_reread_is_absent() -> Bool {
+  match candidate_poll_decide(observations: [ArtifactsEmpty, RunCompleted, ArtifactsEmpty]) {
+    CandidateUnavailable => true
+    _ => false
+  }
+}
+
+// A run still in flight when the polls run out is pending, never absence.
+test fn a_run_still_in_flight_is_pending_not_absent() -> Bool {
+  match candidate_poll_decide(observations: [ArtifactsEmpty, RunInFlight, ArtifactsEmpty]) {
+    CandidatePending => true
+    _ => false
+  }
+}

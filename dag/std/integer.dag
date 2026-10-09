@@ -2,11 +2,11 @@ module std.integer
 import std.optional { Absent, Present }
 
 import std.algebra { AbelianGroup, GroupCompletion }
-import std.nat { Nat }
+import std.nat { Nat, DecimalDigit, D0, D1, D2, D3, D4, D5, D6, D7, D8, D9, decimal_digit_value, decimal_digit_glyph }
 import std.machine_constraints { Compose, MachineWidth, PointerWidth }
 import std.measure { bit_width, bit_width_count, bits_per_byte }
 import std.induction { int_pow_bounded }
-import std.types { gt_zero, List }
+import std.types { gt_zero, List, String }
 
 type Int8 = Compose<Int, MachineWidth<8>>
 type Int16 = Compose<Int, MachineWidth<16>>
@@ -235,5 +235,75 @@ fn uint8_channel_inclusive_max_value_derived() -> Int? {
   match int_pow_bounded(base: 2, exp: uint8_channel_bit_width_int()) {
     Present { value: two_pow } => Present { value: two_pow - 1 }
     Absent => none
+  }
+}
+
+// THE UNITS DIGIT OF A MACHINE INTEGER'S MAGNITUDE, for EVERY Int. A value of ten or more steps
+// down by ten and a value below minus nine steps up by ten (neither step changes the units digit of
+// the magnitude), a value in minus nine to minus one is negated (no overflow: its magnitude is at
+// most nine), so the selection below receives exactly 0..9 and its final arm is the digit 9, never
+// a default for an out-of-range value. Selection is by the one value table, std.nat
+// decimal_digit_value, so no second table of digit values exists.
+fn decimal_digit_of_units(value: Int) -> DecimalDigit {
+  if value >= 10 {
+    decimal_digit_of_units(value: value - 10)
+  } else if value < -9 {
+    decimal_digit_of_units(value: value + 10)
+  } else if value < 0 {
+    decimal_digit_of_reduced_units(value: 0 - value)
+  } else {
+    decimal_digit_of_reduced_units(value: value)
+  }
+}
+
+fn decimal_digit_of_reduced_units(value: Int) -> DecimalDigit {
+  if decimal_digit_value(d: D0) == value {
+    D0
+  } else if decimal_digit_value(d: D1) == value {
+    D1
+  } else if decimal_digit_value(d: D2) == value {
+    D2
+  } else if decimal_digit_value(d: D3) == value {
+    D3
+  } else if decimal_digit_value(d: D4) == value {
+    D4
+  } else if decimal_digit_value(d: D5) == value {
+    D5
+  } else if decimal_digit_value(d: D6) == value {
+    D6
+  } else if decimal_digit_value(d: D7) == value {
+    D7
+  } else if decimal_digit_value(d: D8) == value {
+    D8
+  } else {
+    D9
+  }
+}
+
+// MACHINE INTEGER TO DECIMAL TEXT. Int realizes as the host integer, so host division and
+// remainder are its declared operations (std.operator_realization HostOperator); the digit glyph
+// comes from the one table in std.nat. It moved here from v2.std.integer so a seed-emitted dag
+// module can name it (DESIGN section 3: a fact's home is its layer).
+// EXACT AND LOSSLESS: the canonical decimal spelling (a leading "-" only for negatives, no leading
+// zeros) is injective over Int, so this is the declared conversion an interpolation hole over an
+// Int names (DESIGN section 4: no implicit stringify).
+fn int_to_decimal_string(value: Int) -> String {
+  if value < 0 {
+    concat("-", int_digits_to_decimal_string(value: value))
+  } else {
+    int_digits_to_decimal_string(value: value)
+  }
+}
+
+// The digits of an Int's magnitude WITHOUT negating it: the minimum host integer has no
+// representable negation, so the recursion divides the signed value by ten and reads each units
+// digit through decimal_digit_of_units, which answers for either sign of remainder.
+fn int_digits_to_decimal_string(value: Int) -> String {
+  let rest = value / 10
+  let digit = decimal_digit_glyph(d: decimal_digit_of_units(value: value - (rest * 10)))
+  if rest == 0 {
+    digit
+  } else {
+    concat(int_digits_to_decimal_string(value: rest), digit)
   }
 }

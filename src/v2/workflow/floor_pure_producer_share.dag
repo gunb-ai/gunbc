@@ -798,7 +798,25 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // steps each against the 72300 new-witness budget). That run names exactly these nine.
 // Twelve more were added from probe 37238532455, for the sixteen rows gunbc#13187 added to the hand
 // roster (v2.test.claim.compiler.generic_formal_instantiation): all twelve claims of the module.
+// One more was added from gunbc#13308's own floor run 37270043819 (head dc9a7079), which measured it
+// COMPLETED-OVER-COST-REQUIREMENT as a single-claim demander: v2.test.claim.native_census.infer_cascade
+// census_infer_provider_cascade_is_one_root_with_fan_out_one_holds, the one real-route inhabitance
+// claim; assemble + resolve + infer of the cascade fixture. Its module's other controls supply values
+// at the folds they judge (DESIGN section 3 witness rule) and are not members. Trigger: assemble + infer
+// of a one-module fixture under the per-claim budget.
 // Re-derive with that probe; do not extend by hand.
+// gunbc#13320 (XL-2): its ONE real-path inhabitance claim, kept per the DESIGN section 3 witness rule (every
+// other claim in the module supplies its input; sharp-raven-357 approved this member). Over the 72,300
+// new-witness budget on its floor run at a2485f0 by the pipeline's per-claim fixed
+// cost of assembling and inferring a one-module fixture, not the test's own work. Trigger: assemble plus infer
+// of a one-module fixture runs under the per-claim budget (gunbc.recurring_failure_mode
+// shared_precondition_re_derived_once_per_claim_frame).
+// gunbc#13307 (XL-2): its ONE real-path inhabitance claim, kept per the DESIGN section 3 witness rule (every
+// other claim in the module supplies its input; sharp-raven-357 approved this member). Over the 72,300
+// new-witness budget on that PR's floor run 37240332005 (886,357 steps) by the pipeline's per-claim fixed cost
+// of assembling and inferring a one-module fixture, not the test's own work. Trigger: assemble plus infer of a
+// one-module fixture runs under the per-claim budget (gunbc.recurring_failure_mode
+// shared_precondition_re_derived_once_per_claim_frame).
 //
 // THE xl2 MEMBERS (test.claim.namespace_xl2_rehearsal_census) were the bundle `xl2_control_runs`,
 // declined as BundleOfDisjointProjections on floor run 37194676016: each reads its own rehearsal
@@ -822,12 +840,32 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // without removing the last real execution (DESIGN section 3, the pairing obligation). These two were
 // written in the change itself rather than read from a probe pair, because the change and the
 // roster's deletion met only at the merge; re-derive them with the probe like every other member.
+// One more for gunbc#13325, from floor run 37247019357 (930,914 eval steps): the ONE real-path
+// inhabitance claim of v2.test.claim.compiler.declared_return_result, whose other five claims supply
+// their inputs at the result-type interface (DESIGN section 3). Its fixture program, drr_route_source,
+// has no other demander, so derived sharing cannot cover it.
 // gunbc#13207 (XL-2 collection concat): its ONE real-path inhabitance claim, kept per the DESIGN section 3
 // witness rule (every other claim in the module supplies its input; sharp-raven-357 approved this member).
 // Measured on that PR's floor run 37238836376: 902,997 eval steps against the 72,300 new-witness budget -- the
 // pipeline's per-claim fixed cost of assembling and inferring a one-module fixture, not the test's own work.
 // Trigger: assemble plus infer of a one-module fixture runs under the per-claim budget
 // (gunbc.recurring_failure_mode shared_precondition_re_derived_once_per_claim_frame).
+// gunbc#13511 (kernel-value join): the ONE real-path inhabitance of v2.test.claim.compiler.generic_closure_outcome_construct_probe,
+// gbo_a_kernel_literal_inhabits_an_alias_of_the_corpus_int_holds (red with the join deleted and with input-only recognition). Its own-frame eval steps are
+// re-derived by claim_batch --hermetic --entry src/v2/test/claim/compiler/generic_closure_outcome_construct_probe_test.dag
+// --functions gbo_a_kernel_literal_inhabits_an_alias_of_the_corpus_int_holds (receipt: BuildBuddy a63835e8, pinned
+// 46da0c8fa0; red with the join deleted, BuildBuddy 50c58a76, and with input-only recognition, BuildBuddy 2002ea86).
+// Trigger: shared_precondition_re_derived_once_per_claim_frame, as above.
+// gunbc#13621 (a data reference uses its value): its ONE real-path inhabitance claim,
+// drv_a_data_reference_is_typed_at_its_declared_type_and_evaluates_to_its_value, kept per the DESIGN section 3
+// witness rule (the module's other six claims supply their input; sharp-raven-357 approved this member). Measured
+// by that PR's required floor (claim_executor --required-ci --required-lane witnesses) on run 37941635939 at
+// 315f7ec8: 86,566 eval steps against the 72,300 new-witness budget, after the fixture was reduced to one
+// constant, one fn and one call, assembled once (a served shared fill) and inferred once. The residual is the
+// one inference, which the floor cannot share or net because an inferred tree is not a portable served value
+// (cross-claim-share-store-declined cause=ServeCacheValueNotPortable). Trigger: the served-value tier admits
+// an InferredTree as a portable value, SUFFICIENT FOR a one-claim inference fixture to be netted like an
+// assembly -- or the shared_precondition_re_derived_once_per_claim_frame trigger above, whichever lands first.
 data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
     module: "v2.test.claim.body_lowering_data_literal_door",
@@ -839,6 +877,30 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     module: "v2.test.claim.body_lowering_unrecognised_lowered_shape",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_passed_through_atom_leaves_the_fold_sealed", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.compiler.literal_elaboration",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "lel_route_runs_on_the_real_path", standing: ActiveFillDebt },
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.compiler.collection_count_realization",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "ccc_route_runs_on_the_real_path", standing: ActiveFillDebt },
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.compiler.declared_return_result",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "drr_the_real_route_judges_a_projected_generic_call_result", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.compiler.generic_closure_outcome_construct_probe",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "gbo_a_kernel_literal_inhabits_an_alias_of_the_corpus_int_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
@@ -855,6 +917,12 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
       SingleClaimFillDebtClaim { claim: "xl2_two_failures_in_one_module_are_two_rows_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "xl2_duplicated_path_is_withheld_not_chosen_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "xl2_nested_reference_is_residual_after_the_strip_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.compiler.data_reference_value",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "drv_a_data_reference_is_typed_at_its_declared_type_and_evaluates_to_its_value", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
@@ -924,6 +992,12 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
       SingleClaimFillDebtClaim { claim: "ccr_declared_any_stays_an_ordinary_call", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "ccr_map_undeclared_field_refuses_at_the_field", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "ccr_piped_map_head_binds_its_row", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.native_census.infer_cascade",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "census_infer_provider_cascade_is_one_root_with_fan_out_one_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
@@ -1432,7 +1506,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   },
   SingleClaimFillDebtModule {
-    module: "v2.test.claim.parse.pattern_and_let_sugar",
+    module: "test.claim.parse_test_pattern_and_let_sugar",
     claims: [
       SingleClaimFillDebtClaim { claim: "a_bare_assignment_lowers_identically_to_let_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_generic_pattern_refuses_at_its_generic_params_holds", standing: ActiveFillDebt },

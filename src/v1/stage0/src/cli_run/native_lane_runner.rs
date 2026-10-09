@@ -884,10 +884,9 @@ fn materialize_malformed_specimen(workspace: &Path) -> Result<String, String> {
 /// census run's only consumed output.
 struct NativeFileRefusalObserved {
     path: String,
-    /// The FIRST diagnostic of the file's chain -- often an advisory that rode along (the
-    /// grammar-construction residue `parse_grammar_choice_overlap_residue` heads every file,
-    /// clean ones included). Carried so the summary can show it AS the head, beside the cause,
-    /// rather than leaving a reader to mistake it for one.
+    /// The FIRST diagnostic of the file's chain -- possibly a non-fatal advisory that
+    /// `rejected_with_pending` prepended. Carried so the summary can show it AS the head, beside
+    /// the cause, rather than leaving a reader to mistake it for one.
     head_reason: String,
     fatal_reason: String,
     /// Where the FATAL link points, rendered from the row's `chain`
@@ -2065,8 +2064,7 @@ struct CliRefusalRendering {
 ///
 /// `v2.cli.compile_cli` renders `REFUSED: the closure did not emit; diagnostic chain: <links> |
 /// FATAL AT <locus>`, and `diagnostics_fatal` folds the chain to its LAST link -- that module's
-/// annotation states why: the head answers `parse_grammar_choice_overlap_residue` for every entry
-/// tried, a grammar-global ADVISORY that is never the fatal.
+/// annotation states why: a head can be a non-fatal advisory, and the fatal is the last link.
 ///
 /// EVERY LINK IS NOW LOCATED, AND THIS DECODER DID NOT KNOW THAT. gunbc#11965/#11985 moved the chain
 /// to `lens_verdict_diagnostics_located_chain_text`, so a link is
@@ -3082,19 +3080,60 @@ pub fn run_v2_native_frontier(
 /// carries the terminal marker's counts and decides nothing about them.
 pub struct NativeCensusRun {
     pub cause_groups: u64,
+    pub roots: u64,
     pub file_refusals: u64,
     pub residual_rows: u64,
     pub modules: u64,
     pub advised_files: u64,
+    pub inferred: u64,
+    pub infer_refused: u64,
+    pub type_census: TypeCensusVerdictWord,
 }
 
-/// `gunbc test //gunbc/instruments:v2-native-census`: the emitted compiler's `census-resolve` verb
-/// over the given roots. The child's stdout -- one `file_refusal`, `accepted_file_advisories`, `census_residual` and
-/// `cause_group` line per row, then the terminal -- is relayed whole, because those rows ARE the
+/// THE TYPE CENSUS'S VERDICT AS THE TERMINAL CARRIES IT: one of the three words the rendered main
+/// writes from `std.compiler_entry` `NativeClaimTerminal`, and nothing else. Any other value refuses
+/// rather than being copied into the receipt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypeCensusVerdictWord {
+    Held,
+    NotHeld,
+    NoObservation,
+}
+
+impl TypeCensusVerdictWord {
+    fn decode(word: &str) -> Option<Self> {
+        match word {
+            "held" => Some(Self::Held),
+            "not_held" => Some(Self::NotHeld),
+            "no_observation" => Some(Self::NoObservation),
+            _ => None,
+        }
+    }
+
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Held => "held",
+            Self::NotHeld => "not_held",
+            Self::NoObservation => "no_observation",
+        }
+    }
+}
+
+/// `gunbc test //gunbc/instruments:v2-native-census`: the emitted compiler's `census-infer` verb
+/// over the given roots (census part 2: front-end, resolve and infer refusals in one carrier, one
+/// walk shared with the type-declaration census). The child's stdout -- one `file_refusal`,
+/// `accepted_file_advisories`, `census_residual`, `cause_group` and `census_root` line per row, the
+/// type census's own lines, then the terminal -- is relayed whole, because those rows ARE the
 /// census; only the terminal is decoded, and every field it must carry is required, none defaulted.
+/// The child's exit status is the TYPE census's verdict, a different fact, so it is carried in the
+/// terminal's `type_census` field and never read as this census's standing.
 pub fn run_v2_native_census(source_roots: &[String]) -> Result<NativeCensusRun, String> {
+    eprintln!(
+        "{}",
+        host_memory_budget_receipt_line(&crate::memory_governor::read_host_budget_resolution())
+    );
     let preparation = prepare_emitted_compiler(source_roots)?;
-    let mut args = vec!["census-resolve".to_string()];
+    let mut args = vec!["census-infer".to_string()];
     args.extend(source_roots.iter().cloned());
     let mut command = Command::new(&preparation.binary_path);
     command.args(&args);
@@ -3108,6 +3147,41 @@ pub fn run_v2_native_census(source_roots: &[String]) -> Result<NativeCensusRun, 
         format!("V2-NATIVE-CENSUS REFUSAL cause=NativeRunStdoutNotUtf8 — {cause}")
     })?;
     decode_native_census_output(&stdout, output.status.code())
+}
+
+/// WHERE THE RUN'S MEMORY BUDGET CAME FROM, IN THE RECEIPT. A whole-tree census is admitted against a
+/// declared demand (`gunbc.instrument_dispatch_workflow` `instrument_dispatch_memory_demands`), and
+/// the budget this process actually runs under is a separate fact. A receipt that does not say
+/// which source answered cannot tell an observed cgroup bound from an operator's unverified
+/// declaration, or from no bound at all. The line renders the one typed resolution
+/// (`memory_governor::read_host_budget_resolution`) and adds no precedence of its own.
+fn host_memory_budget_receipt_line(
+    resolution: &crate::memory_governor::HostBudgetResolution,
+) -> String {
+    use crate::memory_governor::HostBudgetResolution;
+    match resolution {
+        HostBudgetResolution::Resolved {
+            effective_bytes,
+            requested_bytes,
+            observation,
+        } => format!(
+            "[v2-native-census] host_memory_budget source=observed observed_by=\"{}\" \
+             bounds_this_process={} effective_bytes={effective_bytes} declared_bytes={}",
+            observation.source.label(),
+            observation.source.bounds_this_process(),
+            requested_bytes.map_or("none".to_string(), |b| b.to_string())
+        ),
+        HostBudgetResolution::DeclaredUnverified {
+            requested_bytes,
+            reason,
+        } => format!(
+            "[v2-native-census] host_memory_budget source=declared_unverified \
+             declared_bytes={requested_bytes} reason=\"{reason}\""
+        ),
+        HostBudgetResolution::Unreadable { reason } => {
+            format!("[v2-native-census] host_memory_budget source=unreadable reason=\"{reason}\"")
+        }
+    }
 }
 
 /// THE CHILD'S STREAMS, RELAYED AS IT WRITES THEM AND STILL COLLECTED WHOLE. `Command::output()`
@@ -3152,7 +3226,7 @@ fn run_relaying_as_it_runs(mut command: Command) -> std::io::Result<std::process
     })
 }
 
-/// The census-resolve stdout, decoded. Only the terminal's counts are carried out, but the
+/// The census-infer stdout, decoded. Only the terminal's counts are carried out, but the
 /// advisory population is checked against its rows: `advised_files` is required, and a count the
 /// printed `accepted_file_advisories` rows do not match refuses, so a receipt saved from this
 /// stdout cannot claim an advisory population it does not carry.
@@ -3171,7 +3245,7 @@ fn decode_native_census_output(stdout: &str, exit: Option<i32>) -> Result<Native
             )
         })?;
     if terminal.get("_terminal").and_then(|t| t.as_str()) != Some("complete")
-        || terminal.get("mode").and_then(|m| m.as_str()) != Some("census-resolve")
+        || terminal.get("mode").and_then(|m| m.as_str()) != Some("census-infer")
     {
         return Err(format!(
             "V2-NATIVE-CENSUS REFUSAL cause=TerminalNotComplete — {terminal}"
@@ -3196,12 +3270,29 @@ fn decode_native_census_output(stdout: &str, exit: Option<i32>) -> Result<Native
     }
     advised_files_agree(advised_files, &advisory_rows)
         .map_err(|c| format!("V2-NATIVE-CENSUS REFUSAL cause=AdvisoryRowsDisagree — {c}"))?;
+    let type_census = terminal
+        .get("type_census")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            format!("V2-NATIVE-CENSUS REFUSAL cause=TerminalFieldMissing — no type_census: {terminal}")
+        })
+        .and_then(|word| {
+            TypeCensusVerdictWord::decode(word).ok_or_else(|| {
+                format!(
+                    "V2-NATIVE-CENSUS REFUSAL cause=TypeCensusWordUnknown — {word:?} is not held, not_held or no_observation: {terminal}"
+                )
+            })
+        })?;
     Ok(NativeCensusRun {
         cause_groups: need_u64("cause_groups")?,
+        roots: need_u64("roots")?,
         file_refusals: need_u64("file_refusals")?,
         residual_rows: need_u64("residual_rows")?,
         modules: need_u64("modules")?,
         advised_files,
+        inferred: need_u64("inferred")?,
+        infer_refused: need_u64("infer_refused")?,
+        type_census,
     })
 }
 
@@ -3452,15 +3543,10 @@ mod tests {
             fatal_at: at.to_string(),
         };
         let summary = native_file_refusal_summary(&[
-            row(
-                "a.dag",
-                "parse_grammar_choice_overlap_residue",
-                "parse_g0_tokens_remain",
-                "12:5",
-            ),
+            row("a.dag", "advisory_head_x", "parse_g0_tokens_remain", "12:5"),
             row(
                 "b.dag",
-                "parse_grammar_choice_overlap_residue",
+                "advisory_head_x",
                 "body_lowering_reason_x",
                 "<unresolved-node>",
             ),
@@ -3483,13 +3569,13 @@ mod tests {
             summary.contains("fatal_cause 1x body_lowering_reason_x"),
             "{summary}"
         );
-        assert!(!summary.contains("fatal_cause 2x parse_grammar_choice_overlap_residue"));
+        assert!(!summary.contains("fatal_cause 2x advisory_head_x"));
         // EVERY SUPPLIED FILE, EXACTLY ONCE, AS ITS WHOLE LINE. Asserting a and c alone let a
         // rendering that dropped b pass (review on #13005); the expected line is derived per row,
         // so the head appears only where it differs from the cause.
         let expected = [
-            "  refused a.dag at=12:5 fatal=parse_g0_tokens_remain head(advisory)=parse_grammar_choice_overlap_residue",
-            "  refused b.dag at=<unresolved-node> fatal=body_lowering_reason_x head(advisory)=parse_grammar_choice_overlap_residue",
+            "  refused a.dag at=12:5 fatal=parse_g0_tokens_remain head(advisory)=advisory_head_x",
+            "  refused b.dag at=<unresolved-node> fatal=body_lowering_reason_x head(advisory)=advisory_head_x",
             "  refused c.dag at=<whole-file> fatal=parse_g0_tokens_remain",
         ];
         assert_eq!(
@@ -3802,15 +3888,12 @@ mod tests {
     fn a_file_refusal_row_decodes_its_fatal_line_and_byte_column() {
         let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":1,\"advised_files\":0,\"admitted\":false,\"summary\":\"s\",\"frontier\":\"held\"}";
         let located = format!(
-            "{{\"file_refusal\":{{\"path\":\"a.dag\",\"module\":{{\"_variant\":\"Absent\"}},\"chain\":{{\"head\":{{\"reason\":\"parse_grammar_choice_overlap_residue\",\"at\":{{\"_variant\":\"FileRefusalAtInvariant\",\"invariant\":\"grammar_choice_overlap\"}}}},\"tail\":[{{\"reason\":\"parse_g0_tokens_remain\",\"at\":{{\"_variant\":\"FileRefusalAtLine\",\"line\":12,\"byte_column\":{{\"value\":5}}}}}}]}}}}}}\n{marker}\n"
+            "{{\"file_refusal\":{{\"path\":\"a.dag\",\"module\":{{\"_variant\":\"Absent\"}},\"chain\":{{\"head\":{{\"reason\":\"advisory_head_x\",\"at\":{{\"_variant\":\"FileRefusalAtInvariant\",\"invariant\":\"grammar_choice_overlap\"}}}},\"tail\":[{{\"reason\":\"parse_g0_tokens_remain\",\"at\":{{\"_variant\":\"FileRefusalAtLine\",\"line\":12,\"byte_column\":{{\"value\":5}}}}}}]}}}}}}\n{marker}\n"
         );
         let parsed = parse_native_run_output(&located).expect("a located row parses");
         assert_eq!(parsed.file_refusals[0].fatal_at, "12:5");
         // Both reasons are DERIVED from the chain: the head link's and the last link's.
-        assert_eq!(
-            parsed.file_refusals[0].head_reason,
-            "parse_grammar_choice_overlap_residue"
-        );
+        assert_eq!(parsed.file_refusals[0].head_reason, "advisory_head_x");
         assert_eq!(
             parsed.file_refusals[0].fatal_reason,
             "parse_g0_tokens_remain"
@@ -3872,27 +3955,51 @@ mod tests {
     }
 
     #[test]
-    fn census_resolve_advisory_rows_reach_the_receipt() {
-        let terminal = "{\"_terminal\":\"complete\",\"mode\":\"census-resolve\",\"modules\":3,\
-                        \"file_refusals\":0,\"advised_files\":1,\"residual_rows\":0,\"cause_groups\":0}\n";
+    fn census_infer_advisory_rows_reach_the_receipt() {
+        let terminal = "{\"_terminal\":\"complete\",\"mode\":\"census-infer\",\"modules\":3,\
+                        \"file_refusals\":0,\"advised_files\":1,\"residual_rows\":0,\"cause_groups\":0,\
+                        \"roots\":0,\"inferred\":3,\"infer_refused\":0,\"type_census\":\"held\"}\n";
         let with_row = format!(
             "{{\"accepted_file_advisories\":{{\"path\":\"a.dag\",\"head\":\"r\",\"tail\":[]}}}}\n{terminal}"
         );
         let run = decode_native_census_output(&with_row, Some(0)).expect("rows match the count");
         assert_eq!(run.advised_files, 1);
-        // DISCRIMINATING: the same terminal without its row -- the receipt census-resolve wrote
+        // DISCRIMINATING: the same terminal without its row -- the receipt the census verb wrote
         // before it printed advisories -- refuses rather than carrying a count with no population.
         let cause = decode_native_census_output(terminal, Some(0))
             .err()
             .expect("must refuse");
         assert!(cause.contains("AdvisoryRowsDisagree"), "got: {cause}");
         // And a terminal with no advised_files at all (the old verb's marker) refuses too.
-        let old = "{\"_terminal\":\"complete\",\"mode\":\"census-resolve\",\"modules\":3,\
+        let old = "{\"_terminal\":\"complete\",\"mode\":\"census-infer\",\"modules\":3,\
                    \"file_refusals\":0,\"residual_rows\":0,\"cause_groups\":0}\n";
         let cause = decode_native_census_output(old, Some(0))
             .err()
             .expect("must refuse");
         assert!(cause.contains("no advised_files"), "got: {cause}");
+        // DISCRIMINATING: a census-resolve terminal is part 1's grain, not this census, and refuses.
+        let resolve_grain = terminal.replace("census-infer", "census-resolve");
+        let with_row = format!(
+            "{{\"accepted_file_advisories\":{{\"path\":\"a.dag\",\"head\":\"r\",\"tail\":[]}}}}\n{resolve_grain}"
+        );
+        let cause = decode_native_census_output(&with_row, Some(0))
+            .err()
+            .expect("must refuse");
+        assert!(cause.contains("TerminalNotComplete"), "got: {cause}");
+        // DISCRIMINATING: a type_census word outside the three the main writes refuses.
+        let odd = with_row
+            .replace("census-resolve", "census-infer")
+            .replace("\"held\"", "\"hold\"");
+        let cause = decode_native_census_output(&odd, Some(0))
+            .err()
+            .expect("must refuse");
+        assert!(cause.contains("TypeCensusWordUnknown"), "got: {cause}");
+        let run = decode_native_census_output(
+            &with_row.replace("census-resolve", "census-infer"),
+            Some(0),
+        )
+        .expect("a known word decodes");
+        assert_eq!(run.type_census, TypeCensusVerdictWord::Held);
         // A malformed row refuses here exactly as it does under `census`: one decoder.
         let malformed =
             format!("{{\"accepted_file_advisories\":{{\"path\":\"a.dag\"}}}}\n{terminal}");
@@ -3900,6 +4007,46 @@ mod tests {
             .err()
             .expect("must refuse");
         assert!(cause.contains("AdvisoryRowMalformed"), "got: {cause}");
+    }
+
+    /// THE THREE BUDGET SOURCES RENDER AS THREE DIFFERENT RECEIPT WORDS: a declared ceiling is never
+    /// printed as an observed one, and an unreadable budget never as a number.
+    #[test]
+    fn host_memory_budget_receipt_line_names_its_source() {
+        use crate::memory_governor::{
+            HostBudgetObservation, HostBudgetResolution, HostBudgetSource,
+        };
+        let observed = host_memory_budget_receipt_line(&HostBudgetResolution::Resolved {
+            effective_bytes: 7,
+            requested_bytes: None,
+            observation: HostBudgetObservation {
+                source: HostBudgetSource::CgroupMemoryMax {
+                    cgroup_dir: "/x".to_string(),
+                },
+                bytes: 7,
+            },
+        });
+        assert!(observed.contains("source=observed"), "got: {observed}");
+        assert!(
+            observed.contains("cgroup memory.max (/x)"),
+            "got: {observed}"
+        );
+        let declared = host_memory_budget_receipt_line(&HostBudgetResolution::DeclaredUnverified {
+            requested_bytes: 9,
+            reason: "no cgroup".to_string(),
+        });
+        assert!(
+            declared.contains("source=declared_unverified declared_bytes=9"),
+            "got: {declared}"
+        );
+        let unreadable = host_memory_budget_receipt_line(&HostBudgetResolution::Unreadable {
+            reason: "none".to_string(),
+        });
+        assert!(
+            unreadable.contains("source=unreadable"),
+            "got: {unreadable}"
+        );
+        assert!(!unreadable.contains("bytes="), "got: {unreadable}");
     }
 
     /// THE MARKER'S COUNT AND THE ROWS MUST AGREE. A run that reports more advised files than it
@@ -4423,9 +4570,11 @@ mod run_relaying_as_it_runs_tests {
     // same counts as the same bytes decoded directly.
     #[test]
     fn a_relayed_census_stdout_decodes_to_the_same_verdict() {
-        let out = "{\"accepted_file_advisories\":{\"path\":\"a.dag\",\"head\":\"r\",\"tail\":[]}}\n\
-                   {\"_terminal\":\"complete\",\"mode\":\"census-resolve\",\"modules\":3,\
-                   \"file_refusals\":0,\"advised_files\":1,\"residual_rows\":0,\"cause_groups\":0}\n";
+        let out =
+            "{\"accepted_file_advisories\":{\"path\":\"a.dag\",\"head\":\"r\",\"tail\":[]}}\n\
+                   {\"_terminal\":\"complete\",\"mode\":\"census-infer\",\"modules\":3,\
+                   \"file_refusals\":0,\"advised_files\":1,\"residual_rows\":0,\"cause_groups\":0,\
+                   \"roots\":0,\"inferred\":3,\"infer_refused\":0,\"type_census\":\"held\"}\n";
         let mut c = Command::new("printf");
         c.arg("%s").arg(out);
         let relayed = run_relaying_as_it_runs(c).expect("spawn");

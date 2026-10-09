@@ -3,7 +3,7 @@ module gunbc.fleet_release_bins_key
 import std.types { String, List, Bool, Int, list_length }
 import std.measure { Second, second, second_count, seconds_per_day }
 import v2.std.node { Node }
-import v2.std.diagnostic { Outcome, Accepted, Rejected, outcome_accepted }
+import v2.std.diagnostic { Outcome, Accepted, Rejected, NonEmptyDiagnostics, outcome_accepted, diagnostics_reason_lexemes }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import extdeps.shell.exec { TransportScript, transport_script_seal }
 import std.optional { Present, Absent }
@@ -337,9 +337,11 @@ type ReleaseBinsRefusal
   | BuildDiagnosticsMissing { file: String }
   | SidecarMissing { file: String }
   | ConsumerProductKindMismatch { kind: String }
+  | ScriptEmissionRefused { script: String, reasons: String }
 
 fn release_bins_refusal_name(refusal: ReleaseBinsRefusal) -> String {
   match refusal {
+    ScriptEmissionRefused { script: _, reasons: _ } => "ScriptEmissionRefused"
     AddressFamilyNotAdmitted => "AddressFamilyNotAdmitted"
     SourceTreeDirty => "SourceTreeDirty"
     AxisValueUnread { variable: _ } => "AxisValueUnread"
@@ -373,6 +375,7 @@ fn release_bins_refusal_name(refusal: ReleaseBinsRefusal) -> String {
 
 fn release_bins_refusal_message(refusal: ReleaseBinsRefusal) -> String {
   match refusal {
+    ScriptEmissionRefused { script: sc, reasons: rs } => join(["REFUSED ", sc, ": v2.workflow.bash_emit refused its statements (", rs, ")"], "")
     AddressFamilyNotAdmitted => "std.materialization_provider no longer admits sha256 at CrossRunScope; the release-bins address has no admitted family"
     AxisValueUnread { variable: v } => join(["the key input ", v, " read back empty, so the key would not name the build; refusing to key"], "")
     SourceTreeDirty => "tracked files differ from HEAD, so HEAD^\{tree} does not name the build input; refusing to key"
@@ -561,9 +564,16 @@ fn stage_statement() -> Node {
 
 // The source closure: the committed tree, qualified by the repository's object format.
 fn source_closure_statements() -> List<Node> {
+  source_closure_statements_of(tree_of: lit(t: "HEAD^\{tree}"))
+}
+
+// The source closure of any revision the job holds: `tree_of` is the rev-parse argument naming its
+// tree. The checkout's own closure is the HEAD case; the floor's base compiler is checked against
+// the base revision's (gunbc.compiler_gate_workflow, cli_run::base_facts).
+fn source_closure_statements_of(tree_of: Node) -> List<Node> {
   [
     assign_sub(name: "OBJECT_FORMAT", body: cmd(ws: [lit(t: "git"), lit(t: "-C"), var(n: "ROOT"), lit(t: "rev-parse"), lit(t: "--show-object-format")])),
-    assign_sub(name: "SOURCE_TREE", body: cmd(ws: [lit(t: "git"), lit(t: "-C"), var(n: "ROOT"), lit(t: "rev-parse"), lit(t: "HEAD^\{tree}")])),
+    assign_sub(name: "SOURCE_TREE", body: cmd(ws: [lit(t: "git"), lit(t: "-C"), var(n: "ROOT"), lit(t: "rev-parse"), tree_of])),
     read_nonempty(variable: "OBJECT_FORMAT"),
     read_nonempty(variable: "SOURCE_TREE"),
     bash_build_assign(name: "SOURCE_CLOSURE", value: words(ws: [
@@ -823,14 +833,22 @@ fn release_bins_member_checks(site: ReleaseBinsVerifySite, dir: Node, product: R
 }
 
 fn release_bins_promote_all(dir: Node, product: ReleaseBinsProduct) -> List<Node> {
+  release_bins_promote_all_to(dir: dir, product: product, destination: rooted(file: "target/release"))
+}
+
+fn release_bins_promote_all_to(dir: Node, product: ReleaseBinsProduct, destination: Node) -> List<Node> {
   concat([
-    cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), rooted(file: "target/release")]),
-    in_dir(dir: rooted(file: "target/release"), command: cmd(ws: concat([lit(t: "rm"), lit(t: "-f")], release_bins_roster_words(product: product)))),
-    in_dir(dir: dir, command: cmd(ws: concat(concat([lit(t: "cp"), lit(t: "-p")], release_bins_roster_words(product: product)), [rooted(file: "target/release/")]))),
-  ], map(product.sidecars, f => in_dir(dir: dir, command: cmd(ws: [lit(t: "cp"), lit(t: "-p"), lit(t: f), rooted(file: "target/release/")]))))
+    cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), destination]),
+    in_dir(dir: destination, command: cmd(ws: concat([lit(t: "rm"), lit(t: "-f")], release_bins_roster_words(product: product)))),
+    in_dir(dir: dir, command: cmd(ws: concat(concat([lit(t: "cp"), lit(t: "-p")], release_bins_roster_words(product: product)), [words(ws: [destination, lit(t: "/")])]))),
+  ], map(product.sidecars, f => in_dir(dir: dir, command: cmd(ws: [lit(t: "cp"), lit(t: "-p"), lit(t: f), words(ws: [destination, lit(t: "/")])]))))
 }
 
 fn release_bins_verify_pack(site: ReleaseBinsVerifySite, archive: Node, manifest: Node, dir: Node, product: ReleaseBinsProduct) -> List<Node> {
+  release_bins_verify_pack_into(site: site, archive: archive, manifest: manifest, dir: dir, product: product, destination: rooted(file: "target/release"))
+}
+
+fn release_bins_verify_pack_into(site: ReleaseBinsVerifySite, archive: Node, manifest: Node, dir: Node, product: ReleaseBinsProduct, destination: Node) -> List<Node> {
   seq(parts: [
     [
       roster_file_statement(product: product),
@@ -856,7 +874,7 @@ fn release_bins_verify_pack(site: ReleaseBinsVerifySite, archive: Node, manifest
         r: MemberDigestMismatch { site: site },
       ),
     ],
-    release_bins_promote_all(dir: dir, product: product),
+    release_bins_promote_all_to(dir: dir, product: product, destination: destination),
     [cmd(ws: [lit(t: "rm"), lit(t: "-rf"), dir])],
   ])
 }
@@ -1264,12 +1282,17 @@ data release_bins_pack_object_name: String = "pack.tar"
 // artifact name, and fleet-desired downloads it by the same row. One spelling for both ends.
 data compiler_pair_candidate_artifact_name: String = "compiler-pair-candidate"
 
-// THE CANDIDATE'S RETENTION IS A DURATION (std.measure Second), not a day count: fleet-desired runs on
-// the landing it follows, so one day covers it. GitHub's upload-artifact takes whole days, so the
-// emitter converts at that boundary (compiler_pair_candidate_retention_whole_days); the duration is
-// authored as whole days and test.claim.long.fleet_release_bins_key_witness holds that it stays one.
+// THE CANDIDATE'S RETENTION IS A DURATION (std.measure Second), not a day count. Two consumers read
+// it: fleet-desired, on the landing it follows (hours), and the required floor, which judges a pull
+// request's base facts with the BASE revision's own compiler (cli_run::base_facts) -- the candidate
+// of the merge-queue run that landed that base. So retention bounds how far behind main a branch
+// may be and still be judged: a base older than this refuses BaseCompilerUnavailable until main is
+// merged in. Seven days, operator decision 2026-10-06 (about 130 candidates of ~22 MB a day, ~20 GB
+// standing). GitHub's upload-artifact takes whole days, so the emitter converts at that boundary
+// (compiler_pair_candidate_retention_whole_days), and test.claim.long.fleet_release_bins_key_witness
+// holds the emitted count.
 fn compiler_pair_candidate_retention() -> Second {
-  second(count: 1 * seconds_per_day())
+  second(count: 7 * seconds_per_day())
 }
 
 fn compiler_pair_candidate_retention_whole_days() -> Int {
@@ -1301,6 +1324,17 @@ data release_bins_canonical_dir: String = "canonical-pack"
 fn canonical(file: String) -> Node { temp(file: join([release_bins_canonical_dir, "/", file], "")) }
 
 fn release_bins_canonical_consumer_statements(product: ReleaseBinsProduct) -> List<Node> {
+  release_bins_canonical_consumer_statements_at(product: product, tree_of: lit(t: "HEAD^\{tree}"), destination: rooted(file: "target/release"))
+}
+
+// THE CANONICAL CONSUMER AT ANY REVISION, INTO ANY DIRECTORY. fleet-desired verifies the pack as the
+// checkout's own compiler pair and promotes it over target/release. The required floor verifies the
+// BASE revision's pack against the base's tree and installs it beside, never over, the head's
+// binaries (cli_run::base_facts). The verification is the same statements: kind, source closure,
+// every member's digest, then the executor's --verify-build-artifacts over what was installed.
+// Soundness rests on that CONTENT check, never on which run produced the pack or whether that run
+// finished.
+fn release_bins_canonical_consumer_statements_at(product: ReleaseBinsProduct, tree_of: Node, destination: Node) -> List<Node> {
   seq(parts: [
     [
       root_statement(),
@@ -1315,30 +1349,50 @@ fn release_bins_canonical_consumer_statements(product: ReleaseBinsProduct) -> Li
         r: ConsumerProductKindMismatch { kind: product.kind },
       ),
     ],
-    source_closure_statements(),
+    source_closure_statements_of(tree_of: tree_of),
     [
       or_refuse(
         check: cmd(ws: [lit(t: "grep"), lit(t: "-qxF"), words(ws: [lit(t: "source_closure="), var(n: "SOURCE_CLOSURE")]), canonical(file: release_bins_preimage_name)]),
         r: ConsumerSourceTreeMismatch,
       ),
     ],
-    release_bins_verify_pack(
+    release_bins_verify_pack_into(
       site: ConsumerSite,
       archive: canonical(file: ci_release_bins_archive_name),
       manifest: canonical(file: release_bins_manifest_name),
       dir: temp(file: "canonical-check"),
       product: product,
+      destination: destination,
     ),
     [
       cmd(ws: concat(
         [rooted(file: "target/release/claim_executor"), lit(t: "--verify-build-artifacts")],
-        map(product.roster, m => rooted(file: join(["target/release/", m], ""))),
+        map(product.roster, m => words(ws: [destination, lit(t: join(["/", m], ""))])),
       )),
       cmd(ws: [lit(t: "echo"), lit(t: join(["release-bins: canonical ", product.kind, " pack verified and promoted"], ""))]),
     ],
   ])
 }
 
+// THE REQUIRED FLOOR'S BASE COMPILER (cli_run::base_facts). The fetch step put the BASE revision's
+// candidate at $FABRIC_BLOB_OUT and its commit in $GUNBC_BASE_COMPILER_REVISION; this verifies it as
+// that revision's canonical compiler pair -- the same statements fleet-desired runs, keyed to the
+// base's tree instead of the checkout's -- installs it beside the head's binaries, and only then
+// names the executable to claim_executor.
+data release_bins_base_compiler_dir: String = "base-compiler"
+
+fn release_bins_base_compiler_statements(product: ReleaseBinsProduct) -> List<Node> {
+  concat(
+    release_bins_canonical_consumer_statements_at(
+      product: product,
+      tree_of: words(ws: [var(n: "GUNBC_BASE_COMPILER_REVISION"), lit(t: "^\{tree}")]),
+      destination: temp(file: release_bins_base_compiler_dir),
+    ),
+    [append_line(file_var: "GITHUB_ENV", line: words(ws: [lit(t: "GUNBC_BASE_COMPILER="), temp(file: join([release_bins_base_compiler_dir, "/claim_executor"], ""))]))],
+  )
+}
+
+fn release_bins_base_compiler_script_for(product: ReleaseBinsProduct) -> String { release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_base_compiler_statements(product: product))) }
 fn release_bins_canonical_address_script_for(product: ReleaseBinsProduct) -> String { release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_canonical_address_statements(product: product))) }
 fn release_bins_pack_object_script() -> String { release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_pack_object_statements())) }
 fn release_bins_canonical_consumer_script_for(product: ReleaseBinsProduct) -> String { release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_canonical_consumer_statements(product: product))) }
@@ -1415,10 +1469,23 @@ fn release_bins_joined(parts: List<Outcome<String>>) -> Outcome<String> {
   })
 }
 
+// A REFUSED RUNNER IS A REFUSING STEP, NEVER AN EMPTY ONE. Its text is the ScriptEmissionRefused
+// refusal built from nodes and emitted through bash_emit like every other statement. The last arm is
+// reached only if the emitter refuses that fixed refusal statement too: its text is a marker that is
+// not shell, so the step cannot run and the committed-workflow drift gate goes red.
+data script_emission_refusal_unemittable_marker: String = "__GUNBC_SCRIPT_EMISSION_REFUSAL_UNEMITTABLE__"
+
+fn script_emission_refused_text(script: String, diagnostics: NonEmptyDiagnostics) -> String {
+  match release_bins_emitted(statements: [refuse(r: ScriptEmissionRefused { script: script, reasons: diagnostics_reason_lexemes(diagnostics: diagnostics) })]) {
+    Accepted { value: v, diagnostics: _ } => v
+    Rejected { diagnostics: _ } => script_emission_refusal_unemittable_marker
+  }
+}
+
 fn release_bins_script_text(outcome: Outcome<String>) -> String {
   match outcome {
     Accepted { value: v, diagnostics: _ } => v
-    Rejected { diagnostics: _ } => ""
+    Rejected { diagnostics: ds } => script_emission_refused_text(script: "gunbc.fleet_release_bins_key release_bins_script_text", diagnostics: ds)
   }
 }
 

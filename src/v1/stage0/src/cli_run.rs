@@ -84,6 +84,7 @@ use crate::v1_std_core::{
 use serde::Serialize;
 
 mod active_workset;
+pub mod base_facts;
 mod census_heads;
 mod checker_dependency;
 pub use checker_dependency::write_checker_inputs_record;

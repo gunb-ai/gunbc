@@ -2,8 +2,8 @@ module v2.test.claim.parse.parse_g0_tokens_remain_furthest_locus
 
 import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_parse }
 import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_lex }
+import v2.compiler.program_assembly { dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
 import v2.std.diagnostic {
   Accepted,
   ByteRange,
@@ -122,7 +122,7 @@ test fn tokens_remain_item_level_failure_stays_at_the_item_start() -> Bool {
 }
 
 fn rbracket_start(src: String) -> Int {
-  match tokenize(text: src, file: ^furthest_locus_probe, rules: dag_lex()) {
+  match tokenize_prepared(text: src, file: ^furthest_locus_probe, prepared: dag_prepared_lex()) {
     Rejected { diagnostics: _ } => -1
     Accepted { value: ts, diagnostics: _ } =>
       fold(ts.all, init: -1, f: fn(acc, t) { if t.lexeme == "]" { t.start } else { acc } })

@@ -141,9 +141,9 @@ fn emit_complement_eval_bool_false(value: RuntimeValue) -> Bool {
 fn emit_complement_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      if id == ^dag_complement_lit_true {
+      if id == ^dag_token_kw_true {
         outcome_accepted(value: emit_complement_eval_octet_value(n: 1))
-      } else if id == ^dag_complement_lit_false {
+      } else if id == ^dag_token_kw_false {
         outcome_accepted(value: emit_complement_eval_octet_value(n: 0))
       } else {
         outcome_rejected(

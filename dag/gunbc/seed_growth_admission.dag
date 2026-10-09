@@ -13,6 +13,7 @@ import gunbc.claim_scope_fixture_seed_growth { claim_scope_fixture_seed_growth_j
 import gunbc.scope_rank_view_seed_growth { scope_rank_view_seed_growth_justification }
 import gunbc.floor_teardown_attribution_seed_growth { floor_teardown_attribution_seed_growth_justification }
 import gunbc.anonymous_record_resolution_seed_growth { anonymous_record_resolution_seed_growth_justification }
+import gunbc.base_facts_seed_growth { base_facts_seed_growth_justification }
 import gunbc.closure_edge_demand_seed_growth { closure_edge_demand_seed_growth_justification }
 import gunbc.reference_closure_binder_seed_growth { reference_closure_binder_seed_growth_justification }
 import gunbc.bare_reference_scanner_admission { bare_reference_scanner_seed_growth_justification }
@@ -279,6 +280,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     claim_scope_fixture_seed_growth_justification,
     evaluation_store_address_census_seed_growth_justification,
     anonymous_record_resolution_seed_growth_justification,
+    base_facts_seed_growth_justification,
     floor_non_verdict_seed_growth_justification,
     floor_route_gap_seed_growth_justification,
     floor_cgroup_stat_beat_seed_growth_justification,

@@ -1,4 +1,4 @@
-module v2.test.parse.else_less_if_value_category
+module test.claim.parse_test_else_less_if_value_category
 
 import v2.compiler.body_lowering_fold {
   body_lower_admitted_guard_optional,
@@ -6,9 +6,9 @@ import v2.compiler.body_lowering_fold {
   body_lower_if_expr
 }
 import v2.compiler.parse { PreparedModeled, PreparedVoidGrammar, parse_production_prepared }
-import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_lex, parse_production_emitted_identity_optional }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }
 import v2.std.diagnostic { Accepted, DeclarationLocus, InvariantPortLocus, Locus, NodeLocus, Rejected, SourcePortLocus, Textual, diagnostics_fatal }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol }

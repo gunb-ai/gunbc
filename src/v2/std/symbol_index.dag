@@ -695,5 +695,3 @@ fn symbol_index_lexical_lookup(
     )
   )
 }
-
-

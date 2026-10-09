@@ -15,7 +15,6 @@ import v2.std.collection {
 }
 import std.optional {
   Absent,
-  Optional,
   Present,
   optional_absent,
   optional_present
@@ -53,6 +52,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
   StructuralLabel,
+  symbol_intern_lexeme,
 }
 import v2.std.node_shape { stamp_node_shape_synthetic, type_shape }
 import v2.std.compilers.target_model {
@@ -64,6 +64,7 @@ import v2.std.compilers.target_model {
   concrete_syntax_token_to_node,
 }
 import v2.std.text { String }
+import std.integer { int_to_decimal_string }
 
 type FormalTerminal {
   identity: Symbol
@@ -74,7 +75,7 @@ type FormalNonterminal {
 }
 
 type FormalGrammarSymbol
-  = FormalTerminalOccurrence { terminal: FormalTerminal, binding: Optional<Symbol> }
+  = FormalTerminalOccurrence { terminal: FormalTerminal, binding: std.optional.Optional<Symbol> }
   | FormalNonterminalOccurrence { nonterminal: FormalNonterminal }
   | FormalNestedNonterminalOccurrence { nonterminal: FormalNonterminal, unit: Symbol }
 
@@ -241,6 +242,116 @@ type GrammarExpr
   | RefuseOnMatch { element: GrammarExpr, reason: ParseRefusalReason }
   | AfterLineBreak { element: GrammarExpr }
   | NotPredicate { element: GrammarExpr }
+  | InfixTable { operand: GrammarExpr, continuation_guard: GrammarExpr, operators: List<InfixOperatorRow> }
+
+// AN OPERATOR TABLE, READ BY PRECEDENCE CLIMBING: ONE TREE NODE PER OPERATOR APPLICATION.
+// `InfixTable { operand, continuation_guard, operators }` matches an operand followed by any number
+// of `operator operand` continuations, and states WHICH operands each operator binds by the rows'
+// binding powers rather than by nesting one grammar level per precedence. A tower of levels --
+// `level = sequence(next_level, repeat(sequence(op, next_level)))`, once per precedence -- states
+// the same language, but every operand then walks every level and the parse stamps an empty
+// continuation at each, so the tree carries one node per LEVEL per operand that no reader wants and
+// the lowering had to strip again (docs/plans/precedence-climbing-tree-contract.md). Here an operand
+// with no operator after it is captured as itself, and each operator consumed is ONE application
+// node with three projections (grammar_infix_left / _operator / _right).
+//
+// The rows are an index, never an ordered alternative: each row names ONE token class, and grammar
+// validation refuses a table that names a class twice (v2.compiler.parse
+// grammar_infix_tables_well_formed), so selecting a row is a lookup and no choice exists to overlap.
+// `continuation_guard` is a zero-width predicate run at every continuation point before the
+// operator is read -- the place a layout refusal such as the dag newline-minus guard stands.
+// A higher binding_power binds tighter. InfixLeft folds `a - b - c` as `(a - b) - c`;
+// InfixNonAssociative refuses a second operator of the same binding power
+// (NonAssociativeOperatorChain), so `a < b < c` is describable source no accepted tree contains.
+type InfixAssociativity = InfixLeft | InfixNonAssociative
+
+type InfixOperatorRow {
+  token_class: Symbol
+  binding_power: Int
+  associativity: InfixAssociativity
+}
+
+fn grammar_expr_infix_table(
+  operand: GrammarExpr,
+  continuation_guard: GrammarExpr,
+  operators: List<InfixOperatorRow>
+) -> GrammarExpr {
+  InfixTable { operand: operand, continuation_guard: continuation_guard, operators: operators }
+}
+
+fn grammar_infix_row_lookup(rows: List<InfixOperatorRow>, token_class: Symbol) -> Optional<InfixOperatorRow> {
+  match list_head(xs: rows) {
+    HeadAbsent => optional_absent()
+    HeadFound { value: row } =>
+      if grammar_infix_row_class(row: row) == token_class {
+        optional_present(value: row)
+      } else {
+        match list_tail(xs: rows) {
+          TailAbsent => optional_absent()
+          TailFound { tail: rest } => grammar_infix_row_lookup(rows: rest, token_class: token_class)
+        }
+      }
+  }
+}
+
+// Projectors at a typed parameter (gunbc.recurring_failure_mode.list_head_bound_record_element_stays_t).
+fn grammar_infix_row_class(row: InfixOperatorRow) -> Symbol { row.token_class }
+fn grammar_infix_row_binding_power(row: InfixOperatorRow) -> Int { row.binding_power }
+
+// The minimum binding power an operand on each side of an application of `row` must carry: a
+// left-associative left operand may repeat the row's own power, nothing else may.
+fn grammar_infix_left_min_power(row: InfixOperatorRow) -> Int {
+  match row.associativity {
+    InfixLeft => row.binding_power
+    InfixNonAssociative => row.binding_power + 1
+  }
+}
+
+fn grammar_infix_right_min_power(row: InfixOperatorRow) -> Int {
+  row.binding_power + 1
+}
+
+fn grammar_infix_operator_choice(rows: List<InfixOperatorRow>) -> Optional<GrammarExpr> {
+  match list_head(xs: rows) {
+    HeadAbsent => optional_absent()
+    HeadFound { value: row } =>
+      let here = grammar_expr_terminal(token_class: grammar_infix_row_class(row: row))
+      match list_tail(xs: rows) {
+        TailAbsent => optional_present(value: here)
+        TailFound { tail: rest } =>
+          match grammar_infix_operator_choice(rows: rest) {
+            Absent => optional_present(value: here)
+            Present { value: others } => optional_present(value: Choice { left: here, right: others })
+          }
+      }
+  }
+}
+
+// THE STRING LANGUAGE A TABLE ACCEPTS, AS AN ORDINARY EXPRESSION, for the analyses that read only
+// the language and never the tree: nullability, FIRST and k-token lookahead. Precedence decides
+// which operands an operator binds, never which token strings are admitted, so the language is
+// `operand (guard operator operand)*` -- an over-approximation by exactly the non-associative chains
+// the table refuses, which is the conservative side for an overlap proof. It is DERIVED from the
+// table and never parsed, emitted or stamped: the tree contract is the table's own.
+fn grammar_infix_table_language(
+  operand: GrammarExpr,
+  continuation_guard: GrammarExpr,
+  operators: List<InfixOperatorRow>
+) -> GrammarExpr {
+  match grammar_infix_operator_choice(rows: operators) {
+    Absent => operand
+    Present { value: ops } =>
+      Sequence {
+        left: operand,
+        right: Repeat {
+          element: Sequence {
+            left: continuation_guard,
+            right: Sequence { left: ops, right: operand }
+          }
+        }
+      }
+  }
+}
 
 // A PRODUCTION WHOSE MATCH IS A REFUSAL. `RefuseOnMatch { element, reason }` parses `element` and,
 // where it MATCHES, refuses the whole parse with `reason`, located at the first token of the match:
@@ -286,7 +397,7 @@ fn grammar_expr_expect(element: GrammarExpr, reason: ParseRefusalReason) -> Gram
 }
 
 fn grammar_expr_optional(element: GrammarExpr) -> GrammarExpr {
-  Optional { element: element }
+  v2.std.grammar.Optional { element: element }
 }
 
 fn grammar_expr_terminal(token_class: Symbol) -> GrammarExpr {
@@ -337,6 +448,7 @@ type GrammarExprFold<R> {
   refuse_on_match: fn(R, ParseRefusalReason) -> R
   after_line_break: fn(R) -> R
   not_predicate: fn(R) -> R
+  infix_table: fn(R, R, List<InfixOperatorRow>) -> R
 }
 
 fn fold_grammar_expr<R>(expr: GrammarExpr, algebra: GrammarExprFold<R>) -> R {
@@ -356,7 +468,7 @@ fn fold_grammar_expr<R>(expr: GrammarExpr, algebra: GrammarExprFold<R>) -> R {
         fold_grammar_expr(expr: left, algebra: algebra),
         fold_grammar_expr(expr: right, algebra: algebra)
       )
-    Optional { element: element } =>
+    v2.std.grammar.Optional { element: element } =>
       algebra.optional(fold_grammar_expr(expr: element, algebra: algebra))
     Repeat { element: element } =>
       algebra.repeat(fold_grammar_expr(expr: element, algebra: algebra))
@@ -368,6 +480,12 @@ fn fold_grammar_expr<R>(expr: GrammarExpr, algebra: GrammarExprFold<R>) -> R {
       algebra.after_line_break(fold_grammar_expr(expr: element, algebra: algebra))
     NotPredicate { element: element } =>
       algebra.not_predicate(fold_grammar_expr(expr: element, algebra: algebra))
+    InfixTable { operand: operand, continuation_guard: guard, operators: operators } =>
+      algebra.infix_table(
+        fold_grammar_expr(expr: operand, algebra: algebra),
+        fold_grammar_expr(expr: guard, algebra: algebra),
+        operators
+      )
   }
 }
 
@@ -540,7 +658,7 @@ fn formal_terminal_to_node(terminal: FormalTerminal) -> Node {
 }
 }
 
-fn formal_terminal_occurrence_to_node(terminal: FormalTerminal, binding: Optional<Symbol>) -> Node {
+fn formal_terminal_occurrence_to_node(terminal: FormalTerminal, binding: std.optional.Optional<Symbol>) -> Node {
   match binding {
     Present { value: binding } =>
       Node {
@@ -1149,7 +1267,7 @@ fn grammar_nested_block_edge(unit: Symbol, edges: List<Edge>) -> Edge {
   }
 }
 
-fn grammar_terminal_occurrence_to_token_edge(terminal: FormalTerminal, binding: Optional<Symbol>) -> Edge {
+fn grammar_terminal_occurrence_to_token_edge(terminal: FormalTerminal, binding: std.optional.Optional<Symbol>) -> Edge {
   match binding {
     Present { value: binding } =>
       Edge {
@@ -1634,7 +1752,7 @@ fn formal_symbol_list_insert(xs: List<Symbol>, item: Symbol) -> List<Symbol> {
 // does slot i want" by rescanning the rhs from the start for every i made resolving one node of N
 // slots O(N^2) -- the term under every long grammar row (an N-item orchestration sequence
 // measured superlinear through it).
-fn formal_production_slot_nonterminals(production: FormalProduction) -> List<Optional<Symbol>> {
+fn formal_production_slot_nonterminals(production: FormalProduction) -> List<std.optional.Optional<Symbol>> {
   fold_list(
     xs: production.rhs,
     empty: Empty,
@@ -1655,7 +1773,7 @@ fn formal_production_slot_nonterminals(production: FormalProduction) -> List<Opt
 }
 
 // The lhs set the current slot is asked for: each candidate's next slot entry, in candidate order.
-fn formal_slot_cursor_heads_asked(cursors: List<List<Optional<Symbol>>>) -> List<Symbol> {
+fn formal_slot_cursor_heads_asked(cursors: List<List<std.optional.Optional<Symbol>>>) -> List<Symbol> {
   fold_list(
     xs: cursors,
     empty: Empty,
@@ -1669,7 +1787,7 @@ fn formal_slot_cursor_heads_asked(cursors: List<List<Optional<Symbol>>>) -> List
   )
 }
 
-fn formal_slot_cursors_advanced(cursors: List<List<Optional<Symbol>>>) -> List<List<Optional<Symbol>>> {
+fn formal_slot_cursors_advanced(cursors: List<List<std.optional.Optional<Symbol>>>) -> List<List<std.optional.Optional<Symbol>>> {
   fold_list(
     xs: cursors,
     empty: Empty,
@@ -1678,7 +1796,7 @@ fn formal_slot_cursors_advanced(cursors: List<List<Optional<Symbol>>>) -> List<L
 }
 
 type SlotResolutionScan {
-  cursors: List<List<Optional<Symbol>>>
+  cursors: List<List<std.optional.Optional<Symbol>>>
   slots: List<EmittedProductionResolution>
 }
 
@@ -2443,9 +2561,59 @@ fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
         grammar_expr_node(children: [
           grammar_named_edge(name: ^grammar_not_predicate_element_node_projection, target: element_node)
         ])
+      },
+      infix_table: fn(operand_node, guard_node, operators) {
+        grammar_expr_node(children: [
+          grammar_named_edge(name: ^grammar_infix_table_operand_node_projection, target: operand_node),
+          grammar_named_edge(name: ^grammar_infix_table_guard_node_projection, target: guard_node),
+          grammar_named_edge(
+            name: ^grammar_infix_table_operators_node_projection,
+            target: grammar_infix_rows_node(rows: operators)
+          )
+        ])
       }
     }
   )
+}
+
+fn grammar_infix_associativity_symbol(associativity: InfixAssociativity) -> Symbol {
+  match associativity {
+    InfixLeft => ^grammar_infix_left_associative
+    InfixNonAssociative => ^grammar_infix_non_associative
+  }
+}
+
+// The rows as a right-folded spine, as a repeat's capture is: a Conj's labels are unique, so a list
+// cannot be one Conj with a repeated label.
+fn grammar_infix_rows_node(rows: List<InfixOperatorRow>) -> Node {
+  match list_head(xs: rows) {
+    HeadAbsent => grammar_expr_node(children: [])
+    HeadFound { value: row } =>
+      grammar_expr_node(children: [
+        grammar_named_edge(name: ^grammar_sequence_left_node_projection, target: grammar_infix_row_node(row: row)),
+        grammar_named_edge(
+          name: ^grammar_sequence_right_node_projection,
+          target: match list_tail(xs: rows) {
+            TailAbsent => grammar_expr_node(children: [])
+            TailFound { tail: rest } => grammar_infix_rows_node(rows: rest)
+          }
+        )
+      ])
+  }
+}
+
+fn grammar_infix_row_node(row: InfixOperatorRow) -> Node {
+    grammar_expr_node(children: [
+      grammar_named_edge(name: ^grammar_terminal_token_class_node_projection, target: grammar_atom(identity: row.token_class)),
+      grammar_named_edge(
+        name: ^grammar_infix_binding_power_node_projection,
+        target: grammar_atom(identity: symbol_intern_lexeme(lexeme: int_to_decimal_string(value: row.binding_power)))
+      ),
+      grammar_named_edge(
+        name: ^grammar_infix_associativity_node_projection,
+        target: grammar_atom(identity: grammar_infix_associativity_symbol(associativity: row.associativity))
+      )
+    ])
 }
 
 fn grammar_production_to_node(production: GrammarProduction) -> Node {
@@ -3524,12 +3692,77 @@ fn grammar_emit_expr(index: GrammarEmitIndex, expr: GrammarExpr, node: Node) -> 
     Nonterminal { production: p } => grammar_emit_production_capture(index: index, expected: p, node: node)
     Sequence { left: l, right: r } => grammar_emit_sequence(index: index, left: l, right: r, node: node)
     Choice { left: l, right: r } => grammar_emit_choice(index: index, left: l, right: r, node: node)
-    Optional { element: e } => grammar_emit_optional(index: index, element: e, node: node)
+    v2.std.grammar.Optional { element: e } => grammar_emit_optional(index: index, element: e, node: node)
     Repeat { element: e } => grammar_emit_repeat(index: index, element: e, node: node)
     Expect { element: e, reason: _ } => grammar_emit_expr(index: index, expr: e, node: node)
     RefuseOnMatch { element: _, reason: _ } => grammar_emit_mismatch(reason: ^grammar_emit_refuse_on_match_derives_no_tree, at: node)
     AfterLineBreak { element: e } => grammar_emit_after_line_break(index: index, element: e, node: node)
     NotPredicate { element: _ } => GrammarEmitWalked { terminals: [] }
+    InfixTable { operand: operand, continuation_guard: _, operators: operators } =>
+      grammar_emit_infix(index: index, operand: operand, operators: operators, node: node, min_power: 0)
+  }
+}
+
+// THE INVERSE OF v2.compiler.parse parse_expr_infix_table. A node carrying the operator projection is
+// one application: its left side, the operator's terminal, its right side. Any other node is an
+// operand. An application whose operator no row names, or whose binding power is below what its
+// position admits -- `a - (b - c)` stamped without its parentheses, or a non-associative operator
+// directly under another of the same power -- REFUSES: emitting it would write text that reads back
+// as a different tree, and a parse tree never needs a parenthesis inserted, because a grouping is an
+// operand of its own. The continuation guard is a predicate, so it emits nothing.
+fn grammar_emit_infix(
+  index: GrammarEmitIndex,
+  operand: GrammarExpr,
+  operators: List<InfixOperatorRow>,
+  node: Node,
+  min_power: Int
+) -> GrammarEmitWalk {
+  match named_child_lookup(root: node, name: ^grammar_infix_operator_node_projection) {
+    NamedChildMissing => grammar_emit_expr(index: index, expr: operand, node: node)
+    NamedChildAmbiguous => grammar_emit_projection_ambiguous(at: node)
+    NamedChildFound { target: op } =>
+      match node_atom_identity_optional(node: op) {
+        Absent => GrammarEmitRefused { diagnostic: grammar_emit_diagnostic(reason: ^grammar_emit_infix_operator_unknown, at: op) }
+        Present { value: token_class } =>
+          match grammar_infix_row_lookup(rows: operators, token_class: token_class) {
+            Absent => GrammarEmitRefused { diagnostic: grammar_emit_diagnostic(reason: ^grammar_emit_infix_operator_unknown, at: op) }
+            Present { value: row } =>
+              if grammar_infix_row_binding_power(row: row) < min_power {
+                GrammarEmitRefused { diagnostic: grammar_emit_diagnostic(reason: ^grammar_emit_infix_binding_violated, at: node) }
+              } else {
+                grammar_emit_infix_application(index: index, operand: operand, operators: operators, node: node, op: op, row: row)
+              }
+          }
+      }
+  }
+}
+
+fn grammar_emit_infix_application(
+  index: GrammarEmitIndex,
+  operand: GrammarExpr,
+  operators: List<InfixOperatorRow>,
+  node: Node,
+  op: Node,
+  row: InfixOperatorRow
+) -> GrammarEmitWalk {
+  match named_child_lookup(root: node, name: ^grammar_infix_left_node_projection) {
+    NamedChildMissing => GrammarEmitRefused { diagnostic: grammar_emit_diagnostic(reason: ^grammar_emit_infix_shape_mismatch, at: node) }
+    NamedChildAmbiguous => grammar_emit_projection_ambiguous(at: node)
+    NamedChildFound { target: left } =>
+      match named_child_lookup(root: node, name: ^grammar_infix_right_node_projection) {
+        NamedChildMissing => GrammarEmitRefused { diagnostic: grammar_emit_diagnostic(reason: ^grammar_emit_infix_shape_mismatch, at: node) }
+        NamedChildAmbiguous => grammar_emit_projection_ambiguous(at: node)
+        NamedChildFound { target: right } =>
+          match grammar_emit_infix(index: index, operand: operand, operators: operators, node: left, min_power: grammar_infix_left_min_power(row: row)) {
+            GrammarEmitWalked { terminals: l } =>
+              grammar_emit_concat(
+                left: list_snoc_item(xs: l, item: GrammarEmitClassTerminal { token_class: grammar_infix_row_class(row: row), captured: op }),
+                right: grammar_emit_infix(index: index, operand: operand, operators: operators, node: right, min_power: grammar_infix_right_min_power(row: row))
+              )
+            GrammarEmitArmMismatch { diagnostic: d } => GrammarEmitArmMismatch { diagnostic: d }
+            GrammarEmitRefused { diagnostic: d } => GrammarEmitRefused { diagnostic: d }
+          }
+      }
   }
 }
 

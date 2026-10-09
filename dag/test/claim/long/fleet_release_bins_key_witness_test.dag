@@ -494,7 +494,7 @@ test fn release_bins_RED_partial_print_then_failing_producer_publishes_no_key() 
 }
 
 // The candidate's retention is a duration authored in whole days; the emitted retention-days is that
-// duration converted at the GitHub boundary, and it is the one day fleet-desired needs.
-test fn the_candidate_retention_is_whole_days_and_emits_one_day() -> Bool {
-  compiler_pair_candidate_retention_is_whole_days() && compiler_pair_candidate_retention_whole_days() == 1
+// duration converted at the GitHub boundary: the seven days the floor's base compiler lookup needs.
+test fn the_candidate_retention_is_whole_days_and_emits_seven_days() -> Bool {
+  compiler_pair_candidate_retention_is_whole_days() && compiler_pair_candidate_retention_whole_days() == 7
 }

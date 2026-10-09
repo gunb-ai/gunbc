@@ -1,12 +1,6 @@
 module v2.compiler.parse
 
 import std.types { List }
-import v2.compiler.parse_diagnostic {
-  NonEmptyParseStageDiagnostics,
-  non_empty_parse_stage_diagnostics_from_overlap_roster,
-  parse_overlap_residue_stage_diagnostic_at,
-  parse_stage_diagnostic_core
-}
 import std.optional {
   Absent,
   Optional,
@@ -29,13 +23,12 @@ import v2.std.diagnostic {
   Textual,
   Unavailable,
   UserInputBoundary,
-  diagnostics_merge,
   diagnostics_singleton,
   node_locus,
   outcome_accepted,
+  declaration_locus,
   invariant_port_locus,
   port_refusal_locus,
-  rejected_with_pending,
   source_port_locus
 }
 import v2.std.grammar_choice_ambiguity { GrammarChoiceAmbiguityRow }
@@ -108,7 +101,7 @@ import v2.std.compilers.lexing {
   token_stream_remaining_count,
   token_stream_layout,
 }
-import v2.std.parse_refusal_reason { LayoutUnknownWithoutSource, ParseRefusalReason, TokenStartsNotIncreasing, parse_refusal_reason_symbol }
+import v2.std.parse_refusal_reason { LayoutUnknownWithoutSource, NonAssociativeOperatorChain, ParseRefusalReason, TokenStartsNotIncreasing, parse_refusal_reason_symbol }
 import v2.std.grammar {
   AfterLineBreak,
   Choice,
@@ -121,6 +114,10 @@ import v2.std.grammar {
   GrammarExprFold,
   GrammarProduction,
   GrammarRoot,
+  InfixLeft,
+  InfixNonAssociative,
+  InfixOperatorRow,
+  InfixTable,
   ModeledGrammar,
   Nonterminal,
   ParseTree,
@@ -135,6 +132,10 @@ import v2.std.grammar {
   StampLexeme,
   fold_grammar_expr,
   grammar_empty_node,
+  grammar_infix_right_min_power,
+  grammar_infix_row_binding_power,
+  grammar_infix_row_class,
+  grammar_infix_table_language,
   grammar_named_edge,
   grammar_to_node
 }
@@ -304,7 +305,6 @@ type ParseTable = ParseTableRealization
 type PreparedModeledGrammar {
   validated: ValidatedGrammarRoot
   analysis: GrammarFirstAnalysis
-  overlap_residue_stage: Optional<NonEmptyParseStageDiagnostics>
 }
 
 type PreparedGrammar
@@ -436,6 +436,14 @@ fn parse_grammar_duplicate_production_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: ^parse_grammar_duplicate_production,
     at: port_refusal_locus(at: at, port: ^parse_stage_locus_port, invariant: ^parse_grammar_duplicate_production),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn parse_grammar_infix_operator_duplicate_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: ^parse_grammar_infix_operator_duplicate,
+    at: port_refusal_locus(at: at, port: ^parse_stage_locus_port, invariant: ^parse_grammar_infix_operator_duplicate),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -837,6 +845,36 @@ fn parse_stamp_derived_conj(
   }
 }
 
+// ONE OPERATOR APPLICATION (v2.std.grammar InfixTable): its left operand, the operator's terminal and
+// its right operand, under one minted id derived from the three.
+fn parse_stamp_infix_application(
+  left: Node,
+  operator: Node,
+  right: Node,
+  prov: ParseProvenanceState
+) -> ParseStampResult {
+  let minted = alloc_occurrence_id(alloc: prov.alloc)
+  let from = parse_minted_id_list(nodes: [left, operator, right])
+  let event = DerivedBy { producer: ^parse_stage_producer, from: from }
+  let index = span_index_record(index: prov.index, id: minted.id, event: event)
+  ParseStampResult {
+    node: node_with_occurrence_id(
+      kind: TypeNode { connective: Conj },
+      children: [
+        grammar_named_edge(name: ^grammar_infix_left_node_projection, target: left),
+        grammar_named_edge(name: ^grammar_infix_operator_node_projection, target: operator),
+        grammar_named_edge(name: ^grammar_infix_right_node_projection, target: right)
+      ],
+      occurrence_id: node_occurrence_identity_minted(id: minted.id)
+    ),
+    prov: ParseProvenanceState {
+      alloc: minted.alloc,
+      index: index,
+      frame: list_snoc_item(xs: prov.frame, item: FrameMinted { id: minted.id })
+    }
+  }
+}
+
 fn parse_stamp_derived_repeat(
   acc_nodes: List<Node>,
   prov: ParseProvenanceState
@@ -858,9 +896,10 @@ fn parse_stamp_derived_repeat(
 }
 
 // THE PARSE TREE'S PROJECTION EDGES, AS A CLOSED ROSTER OWNED BY THEIR PRODUCER. A parse tree
-// carries exactly four Named edges that are parse-projection structure rather than authored
+// carries exactly seven Named edges that are parse-projection structure rather than authored
 // program data: the production identity and captured pair stamped by parse_wrap_production_captured,
-// and the sequence left/right pair stamped by the sequence and list spines. Every later stage that
+// the sequence left/right pair stamped by the sequence and list spines, and the left/operator/right
+// triple of one operator application stamped by parse_stamp_infix_application. Every later stage that
 // must see through projection structure (namespace_graft, name_resolve, symbol_index_fill) asks
 // THIS predicate. It was a lexeme-suffix test on "_node_projection" before, and a suffix is a
 // heuristic (DESIGN section 4): an authored fn or data declaration whose name ends in
@@ -873,6 +912,9 @@ fn parse_tree_projection_edge(name: Symbol) -> Bool {
     || (name == ^grammar_production_captured_node_projection)
     || (name == ^grammar_sequence_left_node_projection)
     || (name == ^grammar_sequence_right_node_projection)
+    || (name == ^grammar_infix_left_node_projection)
+    || (name == ^grammar_infix_operator_node_projection)
+    || (name == ^grammar_infix_right_node_projection)
 }
 
 fn parse_wrap_production_captured(
@@ -995,7 +1037,8 @@ fn expr_is_nullable_given_set(expr: GrammarExpr, nullable_set: List<Symbol>) -> 
       expect: fn(element_nullable, _reason) { element_nullable },
       refuse_on_match: fn(element_nullable, _reason) { element_nullable },
       after_line_break: fn(element_nullable) { element_nullable },
-      not_predicate: fn(_) { true }
+      not_predicate: fn(_) { true },
+      infix_table: fn(operand_nullable, _guard, _operators) { operand_nullable }
     }
   )
 }
@@ -1281,8 +1324,24 @@ fn expr_first_fold(
       expect: fn(element, _reason) { element },
       refuse_on_match: fn(element, _reason) { element },
       after_line_break: fn(element) { element },
-      not_predicate: fn(_element) { expr_first_fold_predicate() }
+      not_predicate: fn(_element) { expr_first_fold_predicate() },
+      infix_table: fn(operand, _guard, operators) { expr_first_fold_infix(operand: operand, operators: operators) }
     }
+  )
+}
+
+// A table is its operand followed by any number of `guard operator operand` continuations; the guard
+// is a predicate, so a continuation begins with one of the rows' operator classes.
+fn expr_first_fold_infix(operand: GrammarExprFirstFold, operators: List<InfixOperatorRow>) -> GrammarExprFirstFold {
+  expr_first_fold_sequence(
+    left: operand,
+    right: expr_first_fold_repeat(
+      element: fold_list(
+        xs: operators,
+        empty: GrammarExprFirstFold { terminals: grammar_empty_terminal_list(), nullable: false },
+        cons: fn(acc, row) { expr_first_fold_choice(left: acc, right: expr_first_fold_terminal(token_class: grammar_infix_row_class(row: row))) }
+      )
+    )
   )
 }
 
@@ -1419,6 +1478,12 @@ type PreparedGrammarExpr
   | PreparedRefuseOnMatch { element: PreparedGrammarExpr, reason: ParseRefusalReason }
   | PreparedAfterLineBreak { element: PreparedGrammarExpr }
   | PreparedNotPredicate { element: PreparedGrammarExpr, first: GrammarExprFirstFold }
+  | PreparedInfixTable {
+      operand: PreparedGrammarExpr
+      continuation_guard: PreparedGrammarExpr
+      operators: Map<Symbol, InfixOperatorRow>
+      first: GrammarExprFirstFold
+    }
 
 type PreparedExprFold {
   tree: PreparedGrammarExpr
@@ -1465,6 +1530,7 @@ fn flatten_choice_exprs(expr: GrammarExpr) -> List<GrammarExpr> {
     RefuseOnMatch { element: _, reason: _ } => Cons { head: expr, tail: std.algebra.Empty }
     AfterLineBreak { element: _ } => Cons { head: expr, tail: std.algebra.Empty }
     NotPredicate { element: _ } => Cons { head: expr, tail: std.algebra.Empty }
+    InfixTable { operand: _, continuation_guard: _, operators: _ } => Cons { head: expr, tail: std.algebra.Empty }
   }
 }
 
@@ -1507,6 +1573,7 @@ fn prepared_prefix_atom_eq(left: PreparedGrammarExpr, right: PreparedGrammarExpr
         PreparedRefuseOnMatch { element: _, reason: _ } => false
         PreparedAfterLineBreak { element: _ } => false
         PreparedNotPredicate { element: _, first: _ } => false
+        PreparedInfixTable { operand: _, continuation_guard: _, operators: _, first: _ } => false
       }
     PreparedLiteralTerminal { token_class: lc, lexeme: lw } =>
       match right {
@@ -1524,6 +1591,7 @@ fn prepared_prefix_atom_eq(left: PreparedGrammarExpr, right: PreparedGrammarExpr
         PreparedRefuseOnMatch { element: _, reason: _ } => false
         PreparedAfterLineBreak { element: _ } => false
         PreparedNotPredicate { element: _, first: _ } => false
+        PreparedInfixTable { operand: _, continuation_guard: _, operators: _, first: _ } => false
       }
     PreparedNonterminal { production: lp } =>
       match right {
@@ -1538,6 +1606,7 @@ fn prepared_prefix_atom_eq(left: PreparedGrammarExpr, right: PreparedGrammarExpr
         PreparedRefuseOnMatch { element: _, reason: _ } => false
         PreparedAfterLineBreak { element: _ } => false
         PreparedNotPredicate { element: _, first: _ } => false
+        PreparedInfixTable { operand: _, continuation_guard: _, operators: _, first: _ } => false
       }
     PreparedSequence { left: _, right: _ } => false
     PreparedChoice { plan: _, first: _ } => false
@@ -1547,6 +1616,7 @@ fn prepared_prefix_atom_eq(left: PreparedGrammarExpr, right: PreparedGrammarExpr
     PreparedRefuseOnMatch { element: _, reason: _ } => false
     PreparedAfterLineBreak { element: _ } => false
     PreparedNotPredicate { element: _, first: _ } => false
+    PreparedInfixTable { operand: _, continuation_guard: _, operators: _, first: _ } => false
   }
 }
 
@@ -1565,6 +1635,7 @@ fn prepared_sequence_left_atom(expr: PreparedGrammarExpr) -> Optional<PreparedGr
         PreparedRefuseOnMatch { element: _, reason: _ } => optional_absent()
         PreparedAfterLineBreak { element: _ } => optional_absent()
         PreparedNotPredicate { element: _, first: _ } => optional_absent()
+        PreparedInfixTable { operand: _, continuation_guard: _, operators: _, first: _ } => optional_absent()
       }
     PreparedTerminal { token_class: _, stamp: _ } => optional_absent()
     PreparedLiteralTerminal { token_class: _, lexeme: _ } => optional_absent()
@@ -1576,6 +1647,7 @@ fn prepared_sequence_left_atom(expr: PreparedGrammarExpr) -> Optional<PreparedGr
     PreparedRefuseOnMatch { element: _, reason: _ } => optional_absent()
     PreparedAfterLineBreak { element: _ } => optional_absent()
     PreparedNotPredicate { element: _, first: _ } => optional_absent()
+    PreparedInfixTable { operand: _, continuation_guard: _, operators: _, first: _ } => optional_absent()
   }
 }
 
@@ -1708,6 +1780,7 @@ fn prepared_terminal_prefix(expr: PreparedGrammarExpr, need: Int) -> Optional<Li
           PreparedRefuseOnMatch { element: _, reason: _ } => optional_absent()
           PreparedAfterLineBreak { element: _ } => optional_absent()
           PreparedNotPredicate { element: _, first: _ } => optional_absent()
+          PreparedInfixTable { operand: _, continuation_guard: _, operators: _, first: _ } => optional_absent()
         }
       PreparedNonterminal { production: _ } => optional_absent()
       PreparedChoice { plan: _, first: _ } => optional_absent()
@@ -1717,6 +1790,7 @@ fn prepared_terminal_prefix(expr: PreparedGrammarExpr, need: Int) -> Optional<Li
       PreparedRefuseOnMatch { element: _, reason: _ } => optional_absent()
       PreparedAfterLineBreak { element: _ } => optional_absent()
       PreparedNotPredicate { element: _, first: _ } => optional_absent()
+      PreparedInfixTable { operand: _, continuation_guard: _, operators: _, first: _ } => optional_absent()
     }
   }
 }
@@ -1839,6 +1913,7 @@ fn choice_shared_prefix_suffixes_from(
         PreparedRefuseOnMatch { element: _, reason: _ } => optional_absent()
         PreparedAfterLineBreak { element: _ } => optional_absent()
         PreparedNotPredicate { element: _, first: _ } => optional_absent()
+        PreparedInfixTable { operand: _, continuation_guard: _, operators: _, first: _ } => optional_absent()
       }
   }
 }
@@ -1876,6 +1951,7 @@ fn expr_first_fold_from_prepared(
     PreparedAfterLineBreak { element: element } =>
       expr_first_fold_from_prepared(expr: element, nullable_set: nullable_set, first_rows: first_rows)
     PreparedNotPredicate { element: _, first: _ } => expr_first_fold_predicate()
+    PreparedInfixTable { operand: _, continuation_guard: _, operators: _, first: first } => first
   }
 }
 
@@ -2064,6 +2140,14 @@ fn lookahead_prefixes(
     AfterLineBreak { element: element } =>
       lookahead_prefixes(expr: element, depth: depth, head_keys: head_keys, visiting: visiting, ctx: ctx)
     NotPredicate { element: _ } => lookahead_empty_only()
+    InfixTable { operand: operand, continuation_guard: guard, operators: operators } =>
+      lookahead_prefixes(
+        expr: grammar_infix_table_language(operand: operand, continuation_guard: guard, operators: operators),
+        depth: depth,
+        head_keys: head_keys,
+        visiting: visiting,
+        ctx: ctx
+      )
   }
 }
 
@@ -2130,6 +2214,7 @@ fn lookahead_leading_guard(expr: GrammarExpr) -> Optional<GrammarExpr> {
     Expect { element: _, reason: _ } => Absent
     RefuseOnMatch { element: _, reason: _ } => Absent
     AfterLineBreak { element: _ } => Absent
+    InfixTable { operand: _, continuation_guard: _, operators: _ } => Absent
   }
 }
 
@@ -2342,6 +2427,7 @@ fn lookahead_guard_strings(expr: GrammarExpr, visiting: List<Symbol>, ctx: Looka
     RefuseOnMatch { element: _, reason: _ } => Absent
     AfterLineBreak { element: _ } => Absent
     NotPredicate { element: _ } => Absent
+    InfixTable { operand: _, continuation_guard: _, operators: _ } => Absent
   }
 }
 
@@ -2377,6 +2463,7 @@ fn lookahead_guard_token_set(expr: GrammarExpr, visiting: List<Symbol>, ctx: Loo
     RefuseOnMatch { element: _, reason: _ } => Absent
     AfterLineBreak { element: _ } => Absent
     NotPredicate { element: _ } => Absent
+    InfixTable { operand: _, continuation_guard: _, operators: _ } => Absent
   }
 }
 
@@ -2637,6 +2724,7 @@ fn lookahead_leading_guard_length(expr: GrammarExpr, ctx: LookaheadContext) -> I
     RefuseOnMatch { element: _, reason: _ } => 0
     AfterLineBreak { element: _ } => 0
     NotPredicate { element: _ } => 0
+    InfixTable { operand: _, continuation_guard: _, operators: _ } => 0
   }
 }
 
@@ -2982,6 +3070,8 @@ fn compile_choice_plan(
   }
 }
 
+// An operator table's rows become an index keyed by token class, so selecting the operator at a
+// continuation is one lookup; no Choice is prepared and no choice-site residue can arise.
 fn prepare_grammar_expr(
   expr: GrammarExpr,
   nullable_set: List<Symbol>,
@@ -3094,6 +3184,24 @@ fn prepare_grammar_expr(
         first: expr_first_fold_predicate(),
         residue: element_prepared.residue
       }
+    InfixTable { operand: operand, continuation_guard: guard, operators: operators } =>
+      let operand_prepared = prepare_grammar_expr(expr: operand, nullable_set: nullable_set, first_rows: first_rows, productions: productions, production: production, token_dispatch: token_dispatch)
+      let guard_prepared = prepare_grammar_expr(expr: guard, nullable_set: nullable_set, first_rows: first_rows, productions: productions, production: production, token_dispatch: token_dispatch)
+      let first = expr_first_fold_infix(operand: operand_prepared.first, operators: operators)
+      PreparedExprFold {
+        tree: PreparedInfixTable {
+          operand: operand_prepared.tree,
+          continuation_guard: guard_prepared.tree,
+          operators: fold_list(
+            xs: operators,
+            empty: empty_map(),
+            cons: fn(acc, row) { map_insert(m: acc, key: grammar_infix_row_class(row: row), value: row) }
+          ),
+          first: first
+        },
+        first: first,
+        residue: list_append(left: operand_prepared.residue, right: guard_prepared.residue)
+      }
   }
 }
 
@@ -3199,52 +3307,31 @@ fn grammar_choice_ambiguity_count(root: GrammarRoot) -> Int {
   length(xs: grammar_choice_ambiguity_roster(root: root))
 }
 
-fn parse_grammar_choice_ambiguity_diagnostic(at: Locus, count: Int) -> Diagnostic {
+// A grammar choice whose alternatives overlap is refused AT THE PRODUCTION that owns the choice.
+// There is no accepting arm: an ordered choice resolved by authoring order is a reading the grammar
+// does not declare, so a grammar carrying one is not a grammar the parser may run.
+fn parse_grammar_choice_ambiguity_row_diagnostic(row: GrammarChoiceAmbiguityRow) -> Diagnostic {
   Diagnostic {
     reason: ^parse_grammar_choice_ambiguity,
-    at: port_refusal_locus(at: at, port: ^parse_stage_locus_port, invariant: ^parse_grammar_choice_ambiguity),
-    correction: match count > 0 {
-      true => Unavailable { reason: ExternalContractUnknown }
-      false => Unavailable { reason: UserInputBoundary }
-    }
+    at: declaration_locus(declaration: Cons { head: row.production, tail: std.algebra.Empty }),
+    correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn parse_grammar_choice_ambiguity_row_diagnostic(at: Locus, row: GrammarChoiceAmbiguityRow) -> Diagnostic {
-  let overlap_count = length(xs: row.overlap_terminals)
-  parse_grammar_choice_ambiguity_diagnostic(
-    at: at,
-    count: if row.both_nullable && overlap_count == 0 { 1 } else { overlap_count }
-  )
-}
-
-fn grammar_choice_ambiguity_row_diagnostic_list(
-  at: Locus,
-  roster: List<GrammarChoiceAmbiguityRow>
-) -> List<Diagnostic> {
-  fold_list(
-    xs: roster,
-    empty: std.algebra.Empty,
-    cons: fn(acc, row) {
-      list_snoc_item(
-        xs: acc,
-        item: parse_grammar_choice_ambiguity_row_diagnostic(at: at, row: row)
-      )
-    }
-  )
-}
-
 fn grammar_choice_ambiguity_rejection_diagnostics(
-  at: Locus,
-  roster: List<GrammarChoiceAmbiguityRow>
+  first: GrammarChoiceAmbiguityRow,
+  rest: List<GrammarChoiceAmbiguityRow>
 ) -> NonEmptyDiagnostics {
-  parse_diags_to_non_empty(
-    diags: grammar_choice_ambiguity_row_diagnostic_list(at: at, roster: roster),
-    default: parse_grammar_choice_ambiguity_diagnostic(
-      at: at,
-      count: length(xs: roster)
+  NonEmptyDiagnostics {
+    head: parse_grammar_choice_ambiguity_row_diagnostic(row: first),
+    tail: fold_list(
+      xs: rest,
+      empty: std.algebra.Empty,
+      cons: fn(acc, row) {
+        list_snoc_item(xs: acc, item: parse_grammar_choice_ambiguity_row_diagnostic(row: row))
+      }
     )
-  )
+  }
 }
 
 fn grammar_empty_corner_list() -> List<Symbol> {
@@ -3312,7 +3399,8 @@ fn expr_corner_nullable_fold(expr: GrammarExpr, nullable_set: List<Symbol>) -> G
       expect: fn(element, _reason) { element },
       refuse_on_match: fn(element, _reason) { element },
       after_line_break: fn(element) { element },
-      not_predicate: expr_corner_fold_optional
+      not_predicate: expr_corner_fold_optional,
+      infix_table: fn(operand, _guard, _operators) { operand }
     }
   )
 }
@@ -3479,7 +3567,8 @@ fn expr_has_undefined_nonterminal(expr: GrammarExpr, root: GrammarRoot) -> Bool 
       expect: fn(element_undef, _reason) { element_undef },
       refuse_on_match: fn(element_undef, _reason) { element_undef },
       after_line_break: fn(element_undef) { element_undef },
-      not_predicate: fn(element_undef) { element_undef }
+      not_predicate: fn(element_undef) { element_undef },
+      infix_table: fn(operand_undef, guard_undef, _operators) { operand_undef || guard_undef }
     }
   )
 }
@@ -3493,6 +3582,37 @@ fn grammar_has_undefined_nonterminals(root: GrammarRoot) -> Bool {
         predicate: fn(p) { expr_has_undefined_nonterminal(expr: p.expression, root: root) }
       )
   }
+}
+
+// AN OPERATOR TABLE NAMES EACH TOKEN CLASS ONCE (v2.std.grammar InfixTable). Its rows are an index
+// keyed by class, so a class named twice would be two answers for one lookup -- the overlap an
+// ordered choice would carry, here refused where the grammar is validated rather than resolved by
+// row order. With every class distinct the rows are disjoint by construction, and the table holds no
+// Choice for the overlap roster to inspect.
+fn grammar_infix_tables_well_formed(expr: GrammarExpr) -> Bool {
+  fold_grammar_expr(
+    expr: expr,
+    algebra: GrammarExprFold {
+      terminal: fn(_, _) { true },
+      literal_terminal: fn(_, _) { true },
+      nonterminal: fn(_) { true },
+      sequence: fn(l, r) { l && r },
+      choice: fn(l, r) { l && r },
+      optional: fn(e) { e },
+      repeat: fn(e) { e },
+      expect: fn(e, _reason) { e },
+      refuse_on_match: fn(e, _reason) { e },
+      after_line_break: fn(e) { e },
+      not_predicate: fn(e) { e },
+      infix_table: fn(operand, guard, operators) {
+        operand && guard && unique(xs: operators, eq: fn(a, b) { grammar_infix_row_class(row: a) == grammar_infix_row_class(row: b) })
+      }
+    }
+  )
+}
+
+fn grammar_has_malformed_infix_table(root: GrammarRoot) -> Bool {
+  fold_list(xs: root.productions, empty: false, cons: fn(acc, p) { acc || !grammar_infix_tables_well_formed(expr: p.expression) })
 }
 
 fn grammar_has_duplicate_productions(root: GrammarRoot) -> Bool {
@@ -3526,40 +3646,6 @@ fn parse_diags_to_non_empty(diags: List<Diagnostic>, default: Diagnostic) -> Non
   }
 }
 
-fn grammar_nullable_ambiguity_rows(roster: List<GrammarChoiceAmbiguityRow>) -> List<GrammarChoiceAmbiguityRow> {
-  filter(xs: roster, predicate: fn(row) { row.both_nullable })
-}
-
-fn parse_grammar_choice_overlap_residue_diagnostic(at: Locus, row: GrammarChoiceAmbiguityRow) -> Diagnostic {
-  parse_stage_diagnostic_core(
-    d: parse_overlap_residue_stage_diagnostic_at(at: at, row: row)
-  )
-}
-
-fn diagnostics_from_diagnostic_list(items: List<Diagnostic>) -> Diagnostics {
-  match list_at_optional(xs: items, index: 0) {
-    Absent => None
-    Present { value: first } =>
-      match list_tail(xs: items) {
-        TailAbsent => Some { diagnostics: NonEmptyDiagnostics { head: first, tail: std.algebra.Empty } }
-        TailFound { tail: rest } =>
-          Some { diagnostics: NonEmptyDiagnostics { head: first, tail: rest } }
-      }
-  }
-}
-
-fn grammar_overlap_residue_diagnostics(at: Locus, roster: List<GrammarChoiceAmbiguityRow>) -> Diagnostics {
-  diagnostics_from_diagnostic_list(
-    items: fold_list(
-      xs: roster,
-      empty: std.algebra.Empty,
-      cons: fn(acc, row) {
-        list_snoc_item(xs: acc, item: parse_grammar_choice_overlap_residue_diagnostic(at: at, row: row))
-      }
-    )
-  )
-}
-
 // ONE nullable fixpoint for the whole preparation. The left-recursion check and the FIRST analysis
 // both need the nullable set, and computing it here rather than inside each of them is the
 // difference between one fixpoint per preparation and three.
@@ -3569,30 +3655,25 @@ fn grammar_validate_and_analyze(root: GrammarRoot, at: Locus) -> Outcome<Prepare
   } else {
     if grammar_has_duplicate_productions(root: root) {
       Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_duplicate_production_diagnostic(at: at)) }
+    } else if grammar_has_malformed_infix_table(root: root) {
+      Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_infix_operator_duplicate_diagnostic(at: at)) }
     } else {
       let nullable_set = compute_nullable_set(root: root)
       if grammar_has_left_recursion_given(root: root, nullable_set: nullable_set) {
         Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_left_recursive_diagnostic(at: at)) }
       } else {
         let analysis = compute_grammar_first_analysis_given(root: root, nullable_set: nullable_set)
-        let ambiguity_roster = grammar_choice_ambiguity_roster_from_analysis(root: root, analysis: analysis)
-        let nullable_rows = grammar_nullable_ambiguity_rows(roster: ambiguity_roster)
-        if !is_empty(xs: nullable_rows) {
-          Rejected {
-            diagnostics: grammar_choice_ambiguity_rejection_diagnostics(at: at, roster: nullable_rows)
-          }
-        } else {
-          Accepted {
-            value: PreparedModeledGrammar {
-              validated: ValidatedGrammarRoot { root: root },
-              analysis: analysis,
-              overlap_residue_stage: non_empty_parse_stage_diagnostics_from_overlap_roster(
-                at: at,
-                roster: ambiguity_roster
-              )
-            },
-            diagnostics: grammar_overlap_residue_diagnostics(at: at, roster: ambiguity_roster)
-          }
+        match grammar_choice_ambiguity_roster_from_analysis(root: root, analysis: analysis) {
+          Cons { head: first, tail: rest } =>
+            Rejected { diagnostics: grammar_choice_ambiguity_rejection_diagnostics(first: first, rest: rest) }
+          Empty =>
+            Accepted {
+              value: PreparedModeledGrammar {
+                validated: ValidatedGrammarRoot { root: root },
+                analysis: analysis
+              },
+              diagnostics: None
+            }
         }
       }
     }
@@ -3602,8 +3683,8 @@ fn grammar_validate_and_analyze(root: GrammarRoot, at: Locus) -> Outcome<Prepare
 fn grammar_validate_for_parse(root: GrammarRoot, at: Locus) -> Outcome<ValidatedGrammarRoot> {
   match grammar_validate_and_analyze(root: root, at: at) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: modeled, diagnostics: residue } =>
-      Accepted { value: modeled.validated, diagnostics: residue }
+    Accepted { value: modeled, diagnostics: _ } =>
+      Accepted { value: modeled.validated, diagnostics: None }
   }
 }
 
@@ -4483,6 +4564,171 @@ fn parse_expr_dispatch(
         table: table,
         prov: prov
       )
+    PreparedInfixTable { operand: operand, continuation_guard: guard, operators: operators, first: _ } =>
+      parse_expr_infix_climb(
+        table_expr: PreparedInfixClimb { operand: operand, continuation_guard: guard, operators: operators },
+        min_power: 0,
+        tokens: tokens,
+        all_tokens: all_tokens,
+        root: root,
+        table: table,
+        prov: prov
+      )
+  }
+}
+
+// PRECEDENCE CLIMBING (v2.std.grammar InfixTable). One operand is parsed; then, at each continuation,
+// the guard runs, the next token's class is LOOKED UP among the rows, and an operator whose binding
+// power reaches `min_power` is consumed and its right operand climbed at the power the row's
+// associativity demands. An operand with no operator after it returns as itself: nothing is attempted
+// or stamped for the precedence levels it does not use. Where an operator was consumed and its right
+// operand fails, the continuation is abandoned BEFORE the operator, with the input, capture and
+// provenance it had, exactly as a Repeat abandons an element that fails.
+type PreparedInfixClimb {
+  operand: PreparedGrammarExpr
+  continuation_guard: PreparedGrammarExpr
+  operators: Map<Symbol, InfixOperatorRow>
+}
+
+fn parse_expr_infix_climb(
+  table_expr: PreparedInfixClimb,
+  min_power: Int,
+  tokens: List<Token>,
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  match parse_expr_with_first(expr: table_expr.operand, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov) {
+    ParseExprRejected { diagnostics: diags, table: table1 } => ParseExprRejected { diagnostics: diags, table: table1 }
+    ParseExprAccepted { remaining: rest, captured: lhs, diagnostics: diags, prov: prov1, table: table1 } =>
+      parse_expr_infix_continue(
+        table_expr: table_expr,
+        min_power: min_power,
+        chained_power: optional_absent(),
+        lhs: lhs,
+        diagnostics: diags,
+        tokens: rest,
+        all_tokens: all_tokens,
+        root: root,
+        table: table1,
+        prov: prov1
+      )
+  }
+}
+
+// `chained_power` is the binding power of a NON-ASSOCIATIVE operator just applied at this level: a
+// second operator of that power refuses with NonAssociativeOperatorChain at the second operator.
+fn parse_expr_infix_continue(
+  table_expr: PreparedInfixClimb,
+  min_power: Int,
+  chained_power: Optional<Int>,
+  lhs: Node,
+  diagnostics: List<Diagnostic>,
+  tokens: List<Token>,
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  match parse_expr_with_first(expr: table_expr.continuation_guard, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov) {
+    ParseExprRejected { diagnostics: _, table: guarded } =>
+      ParseExprAccepted { remaining: tokens, captured: lhs, diagnostics: diagnostics, prov: prov, table: guarded }
+    ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _, table: guarded } =>
+      match parse_infix_row_at(operators: table_expr.operators, tokens: tokens) {
+        Absent => ParseExprAccepted { remaining: tokens, captured: lhs, diagnostics: diagnostics, prov: prov, table: guarded }
+        Present { value: row } =>
+          if grammar_infix_row_binding_power(row: row) < min_power {
+            ParseExprAccepted { remaining: tokens, captured: lhs, diagnostics: diagnostics, prov: prov, table: guarded }
+          } else if parse_infix_chains(chained_power: chained_power, row: row) {
+            ParseExprRejected {
+              diagnostics: [],
+              table: parse_table_join_refusal(
+                table: guarded,
+                refusal: optional_present(value: parse_refusal_at(reason: NonAssociativeOperatorChain, tokens: tokens, all_tokens: all_tokens))
+              )
+            }
+          } else {
+            parse_expr_infix_apply(
+              table_expr: table_expr,
+              min_power: min_power,
+              row: row,
+              lhs: lhs,
+              diagnostics: diagnostics,
+              tokens: tokens,
+              all_tokens: all_tokens,
+              root: root,
+              table: guarded,
+              prov: prov
+            )
+          }
+      }
+  }
+}
+
+fn parse_infix_row_at(operators: Map<Symbol, InfixOperatorRow>, tokens: List<Token>) -> Optional<InfixOperatorRow> {
+  match parse_token_first(tokens: tokens) {
+    Absent => optional_absent()
+    Present { value: tok } => map_lookup(m: operators, key: tok.class)
+  }
+}
+
+fn parse_infix_chains(chained_power: Optional<Int>, row: InfixOperatorRow) -> Bool {
+  match chained_power {
+    Absent => false
+    Present { value: power } => power == grammar_infix_row_binding_power(row: row)
+  }
+}
+
+fn parse_infix_chained_after(row: InfixOperatorRow) -> Optional<Int> {
+  match row.associativity {
+    InfixLeft => optional_absent()
+    InfixNonAssociative => optional_present(value: grammar_infix_row_binding_power(row: row))
+  }
+}
+
+fn parse_expr_infix_apply(
+  table_expr: PreparedInfixClimb,
+  min_power: Int,
+  row: InfixOperatorRow,
+  lhs: Node,
+  diagnostics: List<Diagnostic>,
+  tokens: List<Token>,
+  all_tokens: List<Token>,
+  root: GrammarRoot,
+  table: ParseTable,
+  prov: ParseProvenanceState
+) -> ParseExprResult {
+  match parse_expr_terminal(token_class: grammar_infix_row_class(row: row), stamp: StampClass, tokens: tokens, table: table, prov: prov) {
+    ParseExprRejected { diagnostics: _, table: table1 } =>
+      ParseExprAccepted { remaining: tokens, captured: lhs, diagnostics: diagnostics, prov: prov, table: table1 }
+    ParseExprAccepted { remaining: after_operator, captured: operator, diagnostics: _, prov: prov1, table: table1 } =>
+      match parse_expr_infix_climb(
+        table_expr: table_expr,
+        min_power: grammar_infix_right_min_power(row: row),
+        tokens: after_operator,
+        all_tokens: all_tokens,
+        root: root,
+        table: table1,
+        prov: prov1
+      ) {
+        ParseExprRejected { diagnostics: _, table: table2 } =>
+          ParseExprAccepted { remaining: tokens, captured: lhs, diagnostics: diagnostics, prov: prov, table: table2 }
+        ParseExprAccepted { remaining: rest, captured: rhs, diagnostics: rhs_diags, prov: prov2, table: table2 } =>
+          let stamped = parse_stamp_infix_application(left: lhs, operator: operator, right: rhs, prov: prov2)
+          parse_expr_infix_continue(
+            table_expr: table_expr,
+            min_power: min_power,
+            chained_power: parse_infix_chained_after(row: row),
+            lhs: stamped.node,
+            diagnostics: list_append(left: diagnostics, right: rhs_diags),
+            tokens: rest,
+            all_tokens: all_tokens,
+            root: root,
+            table: table2,
+            prov: stamped.prov
+          )
+      }
   }
 }
 
@@ -4714,10 +4960,10 @@ fn prepare_grammar(grammar: ParseGrammar) -> Outcome<PreparedGrammar> {
       ModeledGrammar { root: root } =>
         match grammar_validate_and_analyze(root: root, at: at) {
           Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-          Accepted { value: modeled, diagnostics: validation_residue } =>
+          Accepted { value: modeled, diagnostics: _ } =>
             Accepted {
               value: PreparedModeled { modeled: modeled },
-              diagnostics: validation_residue
+              diagnostics: None
             }
         }
     }
@@ -4726,31 +4972,14 @@ fn prepare_grammar(grammar: ParseGrammar) -> Outcome<PreparedGrammar> {
   }
 }
 
-fn overlap_residue_stage_from_prepared(prepared: PreparedGrammar) -> Optional<NonEmptyParseStageDiagnostics> {
-  match prepared {
-    PreparedVoidGrammar => optional_absent()
-    PreparedModeled { modeled: modeled } => modeled.overlap_residue_stage
-  }
-}
-
-fn overlap_residue_stage_from_parse_grammar(grammar: ParseGrammar) -> Optional<NonEmptyParseStageDiagnostics> {
-  match prepare_grammar(grammar: grammar) {
-    Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: prepared, diagnostics: _ } =>
-      overlap_residue_stage_from_prepared(prepared: prepared)
-  }
-}
-
 // The unseeded door: one file, its own isolated occurrence scope.
 fn parse_module_prepared(
   tokens: TokenStream,
-  prepared: PreparedGrammar,
-  validation_residue: Diagnostics
+  prepared: PreparedGrammar
 ) -> Outcome<ParseArtifact> {
   parse_module_prepared_seeded(
     tokens: tokens,
     prepared: prepared,
-    validation_residue: validation_residue,
     seed: occurrence_id_allocator_initial()
   )
 }
@@ -4763,7 +4992,6 @@ fn parse_module_prepared(
 fn parse_module_prepared_seeded(
   tokens: TokenStream,
   prepared: PreparedGrammar,
-  validation_residue: Diagnostics,
   seed: OccurrenceIdAllocator
 ) -> Outcome<ParseArtifact> {
   let ntok = token_stream_remaining_count(stream: tokens)
@@ -4772,7 +5000,7 @@ fn parse_module_prepared_seeded(
       if ntok == 0 {
         Accepted {
           value: ParseArtifact { tree: grammar_to_node(grammar: VoidGrammar), span_index: span_index_empty(), alloc: seed },
-          diagnostics: validation_residue
+          diagnostics: None
         }
       } else {
         Rejected {
@@ -4782,32 +5010,22 @@ fn parse_module_prepared_seeded(
         }
       }
     PreparedModeled { modeled: modeled } =>
-      match parse_production_prepared_seeded(
+      parse_production_prepared_seeded(
         tokens: token_stream_remaining(stream: tokens),
         validated: modeled.validated,
         analysis: modeled.analysis,
         production_name: modeled.validated.root.start,
         seed: seed,
         layout: token_stream_layout(stream: tokens)
-      ) {
-        Accepted { value: artifact, diagnostics: parse_diags } =>
-          Accepted {
-            value: artifact,
-            diagnostics: diagnostics_merge(outer: validation_residue, inner: parse_diags)
-          }
-        Rejected { diagnostics: parse_rejected } =>
-          Rejected {
-            diagnostics: rejected_with_pending(pending: validation_residue, rejected: parse_rejected)
-          }
-      }
+      )
   }
 }
 
 fn parse_module(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseArtifact> {
   match prepare_grammar(grammar: grammar) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-    Accepted { value: prepared, diagnostics: validation_residue } =>
-      parse_module_prepared(tokens: tokens, prepared: prepared, validation_residue: validation_residue)
+    Accepted { value: prepared, diagnostics: _ } =>
+      parse_module_prepared(tokens: tokens, prepared: prepared)
   }
 }
 

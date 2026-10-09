@@ -4,7 +4,7 @@ import std.types { List }
 import v2.std.algebra { bag_eq, fold_list }
 import std.algebra { FreeMonoid, Monoid, Semigroup, list_append, list_snoc_item, freemonoid_empty }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Node, Symbol, symbol_lexeme }
 
 type Extent
   = WholeFile
@@ -55,6 +55,12 @@ type NonEmptyDiagnostics {
 }
 
 data non_empty_diagnostics_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "migrate_when_host_emit_names_free_semigroup — NonEmptyDiagnostics is FreeSemigroup<Diagnostic> by shape (one required Diagnostic plus a list of Diagnostic). It is not an Option alias: that host-emit mapping is Diagnostics -> Option<NonEmptyDiagnostics> via v1.compiler.emit_rust render_rust_diagnostics_carrier_applied, which hardcodes the type name NonEmptyDiagnostics as the Option inner. Dissolve into std.algebra FreeSemigroup<Diagnostic> when that renderer names FreeSemigroup rather than this monomorph; until then a second pair carrier remains.")
+
+// A refusal's reasons by name, in order. A producer whose consumer seam is String-typed cannot hand
+// the refusal on as data, so the text it hands on instead must still name what refused and why.
+fn diagnostics_reason_lexemes(diagnostics: NonEmptyDiagnostics) -> String {
+  join(map(concat([diagnostics.head], diagnostics.tail), d => symbol_lexeme(sym: d.reason)), ", ")
+}
 
 type Diagnostics
   = None

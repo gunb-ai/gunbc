@@ -16,6 +16,7 @@ import v2.std.compilers.lexing {
   AnnotationRule,
   BlockCommentTextChar,
   DigitChar,
+  EmptyPattern,
   HexDigitChar,
   IdentContinueChar,
   IdentStartChar,

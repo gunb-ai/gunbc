@@ -1,4 +1,4 @@
-module v2.test.claim.parse.declaration_choice_route
+module test.claim.parse_test_declaration_choice_route
 
 import v2.compiler.body_lowering_fold {
   BodyLowerTypedParam,
@@ -43,7 +43,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // header and items are not this claim's subject (DESIGN section 3, a witness discriminates at one
 // interface) -- and asserts the ROUTE each former alternative took, read by the real reader where one
 // exists. The real module path still parses every one of these forms in the corpus. The `test`
-// marker's half of the family is held in v2.test.claim.parse.test_marker_channel.
+// marker's half of the family is held in test.claim.parse_test_marker_channel.
 
 // One fragment parsed at one production of the real prepared grammar.
 fn route_parse_at(text: String, production: Symbol) -> Outcome<Node> {
