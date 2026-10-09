@@ -1286,10 +1286,13 @@ fn repository_convergence_readback_command(
 // unit's own journal, unreachable from this refusal (DESIGN 5 — a stopped, typed, but unlocated
 // line, the same gap #7038 closed for gunbc-roadmap.service's async ServiceNotReady). This restart
 // THE RESTART IS A SINGLE TYPED PRIVILEGED ARGV — the restart argv itself (systemctl restart)
-// is the operation; diagnosis is captured separately in the realization layer via
-// gunbc.systemctl_status_read (UnitStatusCapture: exit code and stdout as structured data),
-// not as appended shell text. This eliminates ||, &&, ;, set -e, 2>/dev/null shell control words
-// from the rendered step surface.
+// is the operation. The synchronous restart failure diagnosis is NOT captured in this step
+// (the poll-based readiness capture runs only after successful deployment). This is a known
+// gap (#7038): the failure surfaces as "control process exited with error code" without the
+// unit-status tail. A proper fix requires realization-layer failure handling (host_effect_realize
+// to invoke systemctl_status_read on restart failure) or a typed composite operation. This step
+// eliminates ||, &&, ;, set -e, 2>/dev/null shell control words from the rendered step surface,
+// satisfying the witness; diagnosis capture is tracked separately.
 fn tree_sync_restart_step_with_diagnosis(spec: DeploymentSpec) -> PipelineStep {
   deploy_effect(inv: systemctl_restart_effect(unit: spec.names.tree_sync_unit_name))
 }
@@ -1307,8 +1310,8 @@ fn tree_sync_restart_step_with_diagnosis(spec: DeploymentSpec) -> PipelineStep {
 // and the teardown cannot disagree about the flags — which is the property the upstream `off` form
 // actually requires.
 fn tailscale_serve_apply_step(spec: DeploymentSpec) -> PipelineStep {
-  deploy_raw(command: shell_command_text_of_argv(
-    argv: sudo_elevate_argv(command: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: spec.names.tailscale_serve_endpoint))),
+  deploy_raw(command: shell_privileged_command_text_of_argv(
+    argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: spec.names.tailscale_serve_endpoint)),
   ))
 }
 
@@ -1326,8 +1329,8 @@ fn tailscale_serve_mapping_apply_steps(spec: DeploymentSpec) -> List<PipelineSte
 }
 
 fn tailscale_serve_teardown_step(spec: DeploymentSpec) -> PipelineStep {
-  deploy_raw(command: shell_command_text_of_argv(
-    argv: sudo_elevate_argv(command: concat(["tailscale"], tailscale_serve_off_argv(endpoint: spec.names.tailscale_serve_endpoint))),
+  deploy_raw(command: shell_privileged_command_text_of_argv(
+    argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: spec.names.tailscale_serve_endpoint)),
   ))
 }
 
