@@ -124,7 +124,7 @@ import v1.compiler.infer_method {
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.coercion { provenance_realizes_natively }
-import v1.compiler.infer_env {
+import v1.compiler.infer_env { overlay_skips_kernel_name,
   text_representation_by_identity, text_crossing_by_identity, host_text_into_structural_sequence, text_representations_cross, text_representation_is_text_arm, text_representation_is_unidentified,
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
@@ -189,7 +189,7 @@ import v1.compiler.infer_sigs {
 }
 import v1.compiler.infer_emit_info {
   TypeRepr, StructRepr, EnumRepr,
-  TypeSummary, EmitGraphInfo, EmitInfoBuildState,
+  TypeSummary, EmitGraphInfo, EmitInfoBuildState, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared, TypeSummaryQuestion, QuestionDecided, QuestionNameAmbiguous, QuestionNotDeclared, type_summary_lookup, empty_type_summary_index, is_enum_in_summaries,
   empty_emit_graph_info, empty_type_env, lookup_emit_type_summary,
   build_struct_field_summaries, build_enum_field_summaries,
   add_emit_item_summary, derive_variant_to_enum, close_fn_fields, empty_type_decl_index, type_decl_index_with_qualified_names
@@ -746,7 +746,7 @@ fn variant_reference_inferred_node(expected: Node?, name: String, owner_name: St
 
 // THE IDENTITY OF AN ARM WHOSE OWNER IS A KERNEL MINT. A mint that a
 // gunbc.structural_realization_bindings kernel_mint_declaration_rows row binds to a corpus
-// declaration answers with THAT declaration (the kernel Optional is v2.std.optional Optional), so
+// declaration answers with THAT declaration (the kernel Optional is std.optional Optional), so
 // the arm has one identity whether it was reached through `T?` or through an import. A mint with
 // no row is a kernel type or it is unrecovered, as before.
 fn kernel_mint_parent_identity(minted_name: String) -> VariantParentIdentity {
@@ -7263,7 +7263,7 @@ fn validate_cast(source_inferred: InferredNode?, target_name: String, span: Sour
 // with the absence intact, so it is left to validate_cast.
 //
 // WAS `source_name == "Optional"`, and a BARE-SPELLING comparison is the defect: authored
-// names reach here qualified as often as not, so a source typed `v2.std.optional.Optional`
+// names reach here qualified as often as not, so a source typed `std.optional.Optional`
 // was not recognised as optional at all and its cast escaped OptionalCastNotEliminated
 // entirely. qualified_last_segment is the authority this file already uses for exactly this
 // question (nominal_call_arg_brand_mismatch, is_set_collection); asking it here is using the
@@ -15007,6 +15007,15 @@ fn transparent_alias_identity_agrees(index: SymbolIndex, left: String, right: St
     }
 }
 
+// A MODULE'S NAMED IMPORTS, leaf -> the module it is imported from, read from its import nodes: the
+// import half of v1.compiler.infer_env bare_occurrence_binding.
+fn file_named_imports_of(module_node: Node, source_indices: Map<String, NewlineIndex>) -> Map<String, String> {
+  module_imports(n: module_node) |> filter(imp => !import_is_all(n: imp)) |> fold(init: empty_map(), f: (acc, imp) =>
+    let from_module = import_module_path_at(imp: imp, source_indices: source_indices)
+    import_specific_names_at(n: imp, source_indices: source_indices) |> fold(init: acc, f: (inner, name) => map_insert(inner, name, from_module))
+  )
+}
+
 fn build_symbol_index_census_raw_nodes(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
   let corpus_variant_counts = corpus_disj_variant_name_counts_nodes(module_nodes: module_nodes, source_indices: source_indices)
   let corpus_item_counts = corpus_item_name_counts_nodes(module_nodes: module_nodes, source_indices: source_indices)
@@ -15036,7 +15045,11 @@ fn build_symbol_index_census_raw_nodes(module_nodes: List<Node>, source_indices:
     services: folded.services,
     transparent_alias_rep: transparent_alias_representatives(
       module_nodes: module_nodes, source_indices: source_indices, item_counts: corpus_item_counts),
-    type_head_exposures: type_head_exposure_census(module_nodes: module_nodes, source_indices: source_indices)
+    type_head_exposures: type_head_exposure_census(module_nodes: module_nodes, source_indices: source_indices),
+    file_modules: module_nodes |> fold(init: empty_map(), f: (acc, module_node) =>
+      map_insert(acc, module_node.span.file, authored_name_at(source_indices: source_indices, node: module_node))),
+    module_named_imports: module_nodes |> fold(init: empty_map(), f: (acc, module_node) =>
+      map_insert(acc, authored_name_at(source_indices: source_indices, node: module_node), file_named_imports_of(module_node: module_node, source_indices: source_indices)))
   }
 }
 
@@ -15246,7 +15259,7 @@ fn census_bare_fill_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Ma
       Absent => acc
     }
   )
-  SymbolIndex { entries: index.entries, global_bare: global2, services: services2, transparent_alias_rep: index.transparent_alias_rep, type_head_exposures: index.type_head_exposures }
+  SymbolIndex { entries: index.entries, global_bare: global2, services: services2, transparent_alias_rep: index.transparent_alias_rep, type_head_exposures: index.type_head_exposures, file_modules: index.file_modules, module_named_imports: index.module_named_imports }
 }
 
 fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
@@ -15265,7 +15278,7 @@ fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, 
     }
   )
   let fill = census_bare_fill_with_resolved_fn_sigs(index: index, source_indices: source_indices)
-  SymbolIndex { entries: entries2, global_bare: fill.global_bare, services: fill.services, transparent_alias_rep: fill.transparent_alias_rep, type_head_exposures: fill.type_head_exposures }
+  SymbolIndex { entries: entries2, global_bare: fill.global_bare, services: fill.services, transparent_alias_rep: fill.transparent_alias_rep, type_head_exposures: fill.type_head_exposures, file_modules: fill.file_modules, module_named_imports: fill.module_named_imports }
 }
 
 fn build_symbol_index_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
@@ -15305,7 +15318,9 @@ fn symbol_index_with_bare_fill(closure: SymbolIndex, tree: SymbolIndex) -> Symbo
   SymbolIndex {
     entries: closure.entries, global_bare: global2, services: services2,
     transparent_alias_rep: map_merge(tree.transparent_alias_rep, closure.transparent_alias_rep),
-    type_head_exposures: map_merge(tree.type_head_exposures, closure.type_head_exposures)
+    type_head_exposures: map_merge(tree.type_head_exposures, closure.type_head_exposures),
+    file_modules: map_merge(tree.file_modules, closure.file_modules),
+    module_named_imports: map_merge(tree.module_named_imports, closure.module_named_imports)
   }
 }
 
@@ -15344,20 +15359,14 @@ fn symbol_index_with_qualified_fill(closure: SymbolIndex, fill: SymbolIndex) -> 
   SymbolIndex {
     entries: entries2, global_bare: closure.global_bare, services: closure.services,
     transparent_alias_rep: map_merge(fill.transparent_alias_rep, closure.transparent_alias_rep),
-    type_head_exposures: map_merge(fill.type_head_exposures, closure.type_head_exposures)
+    type_head_exposures: map_merge(fill.type_head_exposures, closure.type_head_exposures),
+    file_modules: map_merge(fill.file_modules, closure.file_modules),
+    module_named_imports: map_merge(fill.module_named_imports, closure.module_named_imports)
   }
 }
 
 data direct_import_export_precedence_note: String = "Direct-selected exports beat transitive leaks (2026-07-16, the #6663 x #6686 main-red). The ancestry union folds each direct import's WHOLE flattened cache (its own exports AND everything it inherited), so a later import's transitively-leaked homonym could overlay an earlier import's OWN export that this module's import statement explicitly selects - import v2.std.algebra { Monoid } lost 'Monoid' to dag-root std.algebra riding v2.std.node's ancestry via std.types, and #6663's field-presence wall read the wrong shape at 28 sites. This overlay re-applies, in import order, each direct import's OWN export surface (interface.env.str_bindings - locals only, never its ancestry) restricted to the names the import statement makes visible (specific_names; is_all = the parent's whole local surface, type-variable names filtered per the std.types precedent). Winner semantics: direct-selected vs transitive leak = direct wins (lexical nearest-wins, the containment ruling one hop out - the sanctioned 1c universe is own declarations UNION direct import lists); direct vs direct = unchanged import-order overlay-wins (the ledgered peer-fork ruling, 2026-07-11: later import wins, conflict stays LEDGERED on binding_forks); leak vs leak = unchanged union winner; KERNEL names are never overridden (overlay_skips_kernel_name: kernel_type_set, the container_type_arity names List/Set/Map/Witness, plus Unit/Optional/Present/Absent) - the kernel scope layer stays positionally above imports per the same ruling, because builtin typing (first, skip, string ops) grounds on kernel identities and the v2 substrate models of those concepts (v2.std.collection List=FreeMonoid, Optional; v2.std.text String) are the known dual-representation debt, resolved corpus-wide by kernel-wins today. KERNEL INSTALLATION IS INDEPENDENT OF IMPORT CARDINALITY (build_ancestry_precedence, 2026-08-31): the kernel overlay applies unconditionally over the import union and both type-env builders consume the one producer - the former shape skipped the overlay when a module had exactly one import, so kernel identity won or lost by ancestry occupancy (a leak-dependent regime: identical imports, different realizations). Full precedence, nearest first: locals > kernel > direct-selected > transitive union. The fork LEDGER is untouched - rows still record every union conflict; this layer only corrects which binding serves lookups. DISSOLVES WHEN namespace Rule-1 lands (containment tree is the naming authority; imports become parse errors) - the union leak itself disappears and this overlay with it. Receipt: direct_import_precedence_over_transitive_leak_test (green arm = selected name resolves the selected module's shape regardless of import order; red control = the field wall still refuses the true shape's missing fields, with that arm's modules placed so the homonym is census-UNAMBIGUOUS by containment (realleaf under the consumer's own parent, leakleaf under a sibling parent) - a census-ambiguous name stands the wall down BY DESIGN (presence_check_census_gate_note), so without that placement the control asserts a diagnostic the gate exists to suppress and silently measures the gate instead of the overlay; ledger arm = the fork row is still recorded)."
 
-fn overlay_skips_kernel_name(name: String) -> Bool {
-  is_kernel_type(name: name)
-    || is_container_type(name: name)
-    || name == "Unit"
-    || name == "Optional"
-    || name == "Present"
-    || name == "Absent"
-}
 
 fn overlay_direct_import_exports(ancestry_str_bindings: Map<String, TypeBinding>, resolved_imports: List<ResolvedImport>, parent_index: Map<String, TypedModule>) -> Map<String, TypeBinding> {
   fold(resolved_imports, init: ancestry_str_bindings, f: (acc, imp) =>
@@ -15421,7 +15430,7 @@ fn build_ancestry_precedence(resolved_imports: List<ResolvedImport>, parent_inde
 
 // THE SEED'S ONE MINT OF THE OPTIONAL COPRODUCT. `T?` resolves to this node in every kernel scope
 // this module builds; it was written out three times, once per builder. It is a mint and not the
-// declaration: a module that uses `T?` need not hold v2.std.optional in its closure. Which
+// declaration: a module that uses `T?` need not hold std.optional in its closure. Which
 // declaration it stands for is gunbc.structural_realization_bindings kernel_mint_declaration_rows,
 // and kernel_mint_shape_diagnostics refuses if the two stop agreeing.
 fn kernel_optional_type_node() -> Node {
@@ -17363,16 +17372,12 @@ type EnumVariantShapeSets {
   positional_payload: Set<String>
 }
 
-fn enum_variant_shape_sets_for_item(acc: EnumVariantShapeSets, item: Node, si: Map<String, NewlineIndex>, type_summaries: Map<String, TypeSummary>) -> EnumVariantShapeSets {
+fn enum_variant_shape_sets_for_item(acc: EnumVariantShapeSets, item: Node, si: Map<String, NewlineIndex>, type_summaries: TypeSummaryIndex) -> EnumVariantShapeSets {
   let item_name = authored_name_at(source_indices: si, node: item)
-  let is_enum = match map_get(type_summaries, item_name) {
-    Present { value: summary } => match summary.repr {
-      EnumRepr { unit_only: _ } => true
-      _ => false
-    }
-    Absent => false
-  }
-  if is_enum {
+  if match is_enum_in_summaries(type_summaries: type_summaries, type_name: item_name) {
+    QuestionDecided { value: v } => v
+    _ => false
+  } {
     item.children |> fold(init: acc, f: (vacc, variant) =>
       let qualified = concat(item_name, "::", authored_name_at(source_indices: si, node: variant))
       let is_positional_payload = variant_has_positional_payload_shape(variant: variant, source_indices: si)
@@ -17388,7 +17393,7 @@ fn enum_variant_shape_sets_for_item(acc: EnumVariantShapeSets, item: Node, si: M
   } else { acc }
 }
 
-fn build_enum_variant_shape_sets(modules: List<TypedModule>, type_summaries: Map<String, TypeSummary>) -> EnumVariantShapeSets {
+fn build_enum_variant_shape_sets(modules: List<TypedModule>, type_summaries: TypeSummaryIndex) -> EnumVariantShapeSets {
   modules |> fold(init: EnumVariantShapeSets { fielded: empty_set(), positional_payload: empty_set() }, f: (acc, m) =>
     m.items |> fold(init: acc, f: (inner, item) =>
       enum_variant_shape_sets_for_item(acc: inner, item: item, si: m.type_env.source_indices, type_summaries: type_summaries)
@@ -17472,7 +17477,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
     Absent => empty_symbol_index()
   }
   let init = EmitInfoBuildState {
-    type_summaries: empty_map(),
+    type_summaries: empty_type_summary_index(),
     type_decl_items: type_decl_index_with_qualified_names(index: empty_type_decl_index(), qualified_names: qualified_names),
     fn_decl_items: empty_map(),
     structural_alias_fn_surface_names: empty_map(),

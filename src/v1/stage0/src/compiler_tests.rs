@@ -4332,8 +4332,23 @@ mod compiler_tests {
             )
         );
         assert!(
-            crate::v1_compiler_emit_rust::is_grounded_coproduct_native_alias(
+            crate::v1_compiler_emit_rust::declaration_is_grounded_coproduct_native_alias(
+                "v2.std.diagnostic".to_string(),
                 "Diagnostics".to_string()
+            )
+        );
+        // The host option is a DECLARATION, not a name: the kernel optional's declaration is it, and a
+        // coproduct another module declares as Optional is not.
+        assert!(
+            crate::v1_compiler_emit_rust::declaration_is_grounded_coproduct_native_alias(
+                "std.optional".to_string(),
+                "Optional".to_string()
+            )
+        );
+        assert!(
+            !crate::v1_compiler_emit_rust::declaration_is_grounded_coproduct_native_alias(
+                "gunbc.instruments.native_emission_controls_optional_collision".to_string(),
+                "Optional".to_string()
             )
         );
         let empty_shared = std::rc::Rc::new(im::OrdSet::new());
@@ -5353,7 +5368,7 @@ mod compiler_tests {
     // A QUALIFIED REFERENCE IS NOT DECIDED BY THE LOCAL DECLARER. hom.local declares its own Slot
     // and ALSO names no.such.module.Slot, which resolve cannot bind, so the reference reaches the
     // emitter unstamped while two modules declare Slot. The referencing-module arm
-    // (v1.compiler.infer_emit_info type_decl_referencing_module_declarer) would pick the LOCAL Slot:
+    // (v1.compiler.infer_emit_info type_decl_occurrence_binding) would pick the LOCAL Slot:
     // the wrong-declarer class itself. It is admitted only for a bare spelling, so this refuses.
     // THE CONTROL is the same module without the second declarer: the spelling names a sole
     // declarer, and nothing refuses.
@@ -5385,6 +5400,154 @@ mod compiler_tests {
             control.contains("pub struct Odd<K: Clone>")
                 && !control.contains("more than one module of this closure declares"),
             "a sole declarer resolves by spelling:\n{control}"
+        );
+    }
+
+    // A SAME-LEAF TYPE ANYWHERE MUST NOT CHANGE ANOTHER MODULE'S EMISSION. hom.user returns the kernel
+    // optional's Absent; hom.edge declares an unrelated enum that also has an Absent variant. With the
+    // leaf-keyed type summaries, adding hom.coll (a coproduct it declares as Optional) replaced the
+    // kernel Optional's summary, so Absent stopped being an Optional variant and hom.user emitted
+    // Rc::new(Lookup::Absent) where it had emitted None. Keyed by declaration, both summaries stand:
+    // hom.user's file is byte-identical with and without hom.coll, and its Absent is the host None.
+    #[test]
+    fn same_leaf_type_elsewhere_leaves_other_modules_emission_unchanged() {
+        use crate::v1_compiler_compile::SourceFile;
+        let src = |path: &str, content: &str| {
+            std::rc::Rc::new(SourceFile {
+                path: path.to_string(),
+                content: content.to_string(),
+            })
+        };
+        let optional = || {
+            src(
+                "fixtures/same_leaf_optional/optional.dag",
+                "module std.optional\n\ntype Optional<T>\n  = Present { value: T }\n  | Absent\n",
+            )
+        };
+        let edge = || {
+            src(
+                "fixtures/same_leaf_optional/edge.dag",
+                "module hom.edge\n\ntype Lookup\n  = Found { at: Int }\n  | Absent\n",
+            )
+        };
+        let user = || {
+            src("fixtures/same_leaf_optional/user.dag", "module hom.user\nimport std.optional { Optional, Present, Absent }\n\nfn nothing_here(x: Int) -> Optional<Int> {\n  Absent\n}\n")
+        };
+        let coll = || {
+            src("fixtures/same_leaf_optional/coll.dag", "module hom.coll\n\ntype Optional\n  = CollisionWrapped { value: Int }\n  | CollisionEmpty\n")
+        };
+        let emitted_user = |sources: Vec<std::rc::Rc<SourceFile>>| -> String {
+            let result = crate::v1_compiler_compile::compile_sources(
+                std::rc::Rc::new(sources.into()),
+                crate::v1_compiler_artifact::RenderTarget::Rust,
+            );
+            result
+                .files
+                .iter()
+                .find(|f| f.path.contains("hom_user"))
+                .map(|f| f.content.clone())
+                .unwrap_or_default()
+        };
+        let without = emitted_user(vec![optional(), edge(), user()]);
+        let with = emitted_user(vec![optional(), edge(), user(), coll()]);
+        assert!(
+            without.contains("None") && !without.contains("Lookup::Absent"),
+            "the control: hom.user's Absent is the host None:\n{without}"
+        );
+        assert_eq!(
+            with, without,
+            "adding a same-leaf Optional elsewhere changed hom.user's emission"
+        );
+    }
+
+    // AN UNSTAMPED BARE `Optional` FOLLOWS THE TYPECHECKER'S lookup_binding ORDER: own file, then
+    // the file's named import (followed through re-exports), then the kernel
+    // (v1.compiler.infer_env bare_occurrence_binding). The member references of a coproduct body reach
+    // the emitter from the type environment's copy with no Node.declaration, so the census route is
+    // the emitter's own decision. THE RED is the importer: with the kernel ahead of the named import
+    // (the order direct_import_export_precedence_note states) its payload routes kernel_mint to
+    // std.optional, measured on gunbc#13454 at 57551c4b. The control keeps a module that names
+    // Optional without importing it on the kernel arm.
+    #[test]
+    fn unstamped_bare_optional_follows_the_lookup_binding_order() {
+        use crate::v1_compiler_compile::SourceFile;
+        let sources = vec![
+            std::rc::Rc::new(SourceFile { path: "fixtures/kernel_shadow/optional.dag".to_string(), content: "module std.optional\n\ntype Optional<T>\n  = Present { value: T }\n  | Absent\n".to_string() }),
+            std::rc::Rc::new(SourceFile { path: "fixtures/kernel_shadow/collision.dag".to_string(), content: "module hom.collision\n\ntype Optional\n  = CollisionWrapped { value: Int }\n  | CollisionEmpty\n".to_string() }),
+            std::rc::Rc::new(SourceFile { path: "fixtures/kernel_shadow/importer.dag".to_string(), content: "module hom.importer\n\nimport hom.collision { Optional }\n\ntype HeldChoice\n  = HeldOptional { held: Optional }\n  | HeldNothing\n".to_string() }),
+            std::rc::Rc::new(SourceFile { path: "fixtures/kernel_shadow/plain.dag".to_string(), content: "module hom.plain\n\ntype PlainChoice\n  = PlainHeld { held: Optional<Int> }\n  | PlainNothing\n".to_string() }),
+            std::rc::Rc::new(SourceFile { path: "fixtures/kernel_shadow/user.dag".to_string(), content: "module hom.user\n\nimport hom.importer { HeldChoice }\nimport hom.plain { PlainChoice }\n\nfn pick(h: HeldChoice, p: PlainChoice) -> Int {\n  1\n}\n".to_string() }),
+        ];
+        let receipt = crate::v1_tests_claim_carrier_realization_census::typed_census_from_sources(
+            std::rc::Rc::new(sources.into()),
+        );
+        assert!(!receipt.starts_with("REFUSED"), "{receipt}");
+        let routes = |enclosing: &str| -> Vec<String> {
+            receipt
+                .lines()
+                .skip(1)
+                .map(|l| l.split('\t').collect::<Vec<_>>())
+                .filter(|c| c[1] == enclosing && c[2] == "declaration_field" && c[3] == "Optional")
+                .map(|c| c[13].to_string())
+                .collect()
+        };
+        let held = routes("HeldChoice");
+        assert!(
+            !held.is_empty()
+                && held
+                    .iter()
+                    .all(|r| r == "referencing_module_import:Resolved:hom.collision.Optional"),
+            "the imported Optional must route to the import, never the kernel mint:\n{receipt}"
+        );
+        let plain = routes("PlainChoice");
+        assert!(
+            !plain.is_empty()
+                && plain
+                    .iter()
+                    .all(|r| r == "kernel_mint:Resolved:std.optional.Optional"),
+            "an unimported Optional is the kernel's:\n{receipt}"
+        );
+        assert!(!receipt.contains("LeafAmbiguous:Optional"), "{receipt}");
+    }
+
+    // A COPRODUCT NAMED Optional EMITS AS ITS OWN ENUM. still-raven-321's fixture,
+    // fixtures/native_emission_controls_optional_collision.dag, is a non-kernel declaration that shares
+    // the kernel mint's leaf. Host-Option is decided by declaration (v1.compiler.emit_rust
+    // declaration_owns_host_option over gunbc.structural_realization_bindings kernel_mint_declaration_rows),
+    // so its positions name its own enum. THE RED is the leaf rule this replaced: every position rendered
+    // as Option<..> and the variants were never emitted (E0425 cannot find CollisionWrapped). The fixture
+    // lives outside the source roots, because a second Optional in the accepted corpus is a leaf-name fork,
+    // so it is compiled here, from its file, beside a kernel std.optional. Its one import line names a
+    // kernel type and is dropped so the pair compiles standalone.
+    #[test]
+    fn a_coproduct_named_optional_emits_as_its_own_enum() {
+        use crate::v1_compiler_compile::SourceFile;
+        let collision = read_dag("fixtures/native_emission_controls_optional_collision.dag")
+            .replace("import std.types { Int }\n", "");
+        let sources = vec![
+            std::rc::Rc::new(SourceFile { path: "fixtures/kernel_shadow/optional.dag".to_string(), content: "module std.optional\n\ntype Optional<T>\n  = Present { value: T }\n  | Absent\n".to_string() }),
+            std::rc::Rc::new(SourceFile { path: "fixtures/native_emission_controls_optional_collision.dag".to_string(), content: collision }),
+        ];
+        let result = crate::v1_compiler_compile::compile_sources(
+            std::rc::Rc::new(sources.into()),
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        let emitted = result
+            .files
+            .iter()
+            .find(|f| {
+                f.path
+                    .contains("native_emission_controls_optional_collision")
+            })
+            .map(|f| f.content.clone())
+            .unwrap_or_default();
+        assert!(
+            emitted.contains("pub enum Optional") && emitted.contains("CollisionWrapped"),
+            "the collision coproduct must emit as its own enum:\n{emitted}"
+        );
+        assert!(
+            !emitted.contains("Option<") && !emitted.contains("compile_error!"),
+            "no position of the collision coproduct may realize as the host Option:\n{emitted}"
         );
     }
 
