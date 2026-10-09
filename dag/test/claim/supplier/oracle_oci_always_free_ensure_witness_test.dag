@@ -12,6 +12,7 @@ import gunbc.oracle_oci.tenancy_usage {
 }
 import gunbc.oracle_oci.network_ensure {
   OciStep, OciStepReady, OciStepStopped, oci_admit_wired,
+  oci_vcn_wiring, oci_igw_wiring, oci_access_disagreement,
   oci_free_vcn_cidr, oci_free_subnet_cidr,
   OciNamedDecision, NamedReady, NamedCreate, NamedStop,
   oci_named_decision, oci_named_resource_of, oci_route_table_wiring, oci_subnet_wiring,
@@ -21,6 +22,7 @@ import gunbc.oracle_oci.instance_ensure {
   oci_instance_decision, oci_observed_instance_of, oci_free_plan, oci_launch_body,
   oci_query_value, OciQueryEncoded, OciQueryRefused, oci_out_of_host_capacity, oci_free_authorized_keys,
   oci_select_offering, oci_domain_answer, DomainOffers, DomainLacks, DomainReadRefused,
+  oci_attachments_disagreement, oci_definitive_non_creation,
   CandidateDomains, CandidateDomainsRefused,
 }
 import product.supplier.oracle_oci { FitsAlwaysFree, ExceedsAlwaysFree, oci_always_free_fit }
@@ -115,8 +117,8 @@ test fn a_route_table_is_admitted_only_if_it_reaches_this_gateway() -> Bool {
 }
 
 test fn a_subnet_is_admitted_only_on_this_route_table() -> Bool {
-  let s = oci_named_resource_of(v: one(text: "{\"id\":\"sn\",\"displayName\":\"p\",\"lifecycleState\":\"AVAILABLE\",\"routeTableId\":\"rt1\"}"))
-  oci_subnet_wiring(r: s, route_table: "rt1") == "" && oci_subnet_wiring(r: s, route_table: "rt2") != ""
+  let s = oci_named_resource_of(v: one(text: "{\"id\":\"sn\",\"displayName\":\"p\",\"lifecycleState\":\"AVAILABLE\",\"vcnId\":\"v1\",\"routeTableId\":\"rt1\",\"cidrBlock\":\"10.0.0.0/24\",\"prohibitPublicIpOnVnic\":false}"))
+  oci_subnet_wiring(r: s, vcn: "v1", route_table: "rt1") == "" && oci_subnet_wiring(r: s, vcn: "v1", route_table: "rt2") != ""
 }
 
 // ── INSTANCES ─────────────────────────────────────────────────────────────────────────────────
@@ -141,7 +143,7 @@ test fn the_a1_instance_launches_when_absent_and_holds_when_running() -> Bool {
 // A stopped instance was stopped by someone, and a wrong-shaped namesake is not this instance. Neither
 // is started, reshaped or replaced.
 test fn a_stopped_or_wrong_shaped_namesake_stops_rather_than_launching() -> Bool {
-  decide_a1(text: "[{\"id\":\"i\",\"displayName\":\"gunbc-free-a1\",\"lifecycleState\":\"STOPPED\",\"shape\":\"VM.Standard.A1.Flex\"}]") == "stop"
+  decide_a1(text: "[{\"id\":\"i\",\"displayName\":\"gunbc-free-a1\",\"lifecycleState\":\"STOPPED\",\"shape\":\"VM.Standard.A1.Flex\",\"shapeConfig\":{\"ocpus\":2.0,\"memoryInGBs\":12.0}}]") == "stop"
     && decide_a1(text: "[{\"id\":\"i\",\"displayName\":\"gunbc-free-a1\",\"lifecycleState\":\"RUNNING\",\"shape\":\"VM.Standard.E2.1.Micro\"}]") == "stop"
 }
 
@@ -248,4 +250,49 @@ test fn wiring_admission_stops_on_any_disagreement() -> Bool {
   let ok = match oci_admit_wired(kind: "route table", display_name: "p", resource: r, disagreement: "", how: "created and AVAILABLE on read-back") { OciStepReady { id, line } => true  OciStepStopped { line } => false }
   let bad = match oci_admit_wired(kind: "route table", display_name: "p", resource: r, disagreement: "route table has no rule sending 0.0.0.0/0 to igw1", how: "created and AVAILABLE on read-back") { OciStepStopped { line } => true  OciStepReady { id, line } => false }
   ok && bad
+}
+
+// The network is admitted on what it claims to provide: a disabled gateway, a private subnet, a subnet
+// with another range, and a VCN without the planned range each stop, where only the route table was
+// checked before (side-chat review and review 78205 on gunbc#13351).
+test fn the_network_is_admitted_on_enabled_public_planned_properties() -> Bool {
+  let igw_on = oci_named_resource_of(v: one(text: "{\"id\":\"g\",\"displayName\":\"p\",\"lifecycleState\":\"AVAILABLE\",\"vcnId\":\"v1\",\"isEnabled\":true}"))
+  let igw_off = oci_named_resource_of(v: one(text: "{\"id\":\"g\",\"displayName\":\"p\",\"lifecycleState\":\"AVAILABLE\",\"vcnId\":\"v1\",\"isEnabled\":false}"))
+  let private = oci_named_resource_of(v: one(text: "{\"id\":\"sn\",\"displayName\":\"p\",\"lifecycleState\":\"AVAILABLE\",\"vcnId\":\"v1\",\"routeTableId\":\"rt1\",\"cidrBlock\":\"10.0.0.0/24\",\"prohibitPublicIpOnVnic\":true}"))
+  let other_range = oci_named_resource_of(v: one(text: "{\"id\":\"sn\",\"displayName\":\"p\",\"lifecycleState\":\"AVAILABLE\",\"vcnId\":\"v1\",\"routeTableId\":\"rt1\",\"cidrBlock\":\"10.0.9.0/24\",\"prohibitPublicIpOnVnic\":false}"))
+  let vcn_ok = oci_named_resource_of(v: one(text: "{\"id\":\"v1\",\"displayName\":\"p\",\"lifecycleState\":\"AVAILABLE\",\"cidrBlocks\":[\"10.0.0.0/16\"]}"))
+  let vcn_other = oci_named_resource_of(v: one(text: "{\"id\":\"v1\",\"displayName\":\"p\",\"lifecycleState\":\"AVAILABLE\",\"cidrBlocks\":[\"192.168.0.0/16\"]}"))
+  oci_igw_wiring(r: igw_on, vcn: "v1") == "" && oci_igw_wiring(r: igw_off, vcn: "v1") != ""
+    && oci_subnet_wiring(r: private, vcn: "v1", route_table: "rt1") != ""
+    && oci_subnet_wiring(r: other_range, vcn: "v1", route_table: "rt1") != ""
+    && oci_vcn_wiring(r: vcn_ok) == "" && oci_vcn_wiring(r: vcn_other) != ""
+}
+
+// Access rules are read, not assumed: SSH ingress from anywhere plus all egress admits; a list without
+// the SSH rule, or a named list that was not read, stops.
+test fn subnet_access_rules_are_admitted_only_when_read_and_sufficient() -> Bool {
+  let good = one(text: "{\"id\":\"sl1\",\"ingressSecurityRules\":[{\"protocol\":\"6\",\"source\":\"0.0.0.0/0\",\"tcpOptions\":{\"destinationPortRange\":{\"min\":22,\"max\":22}}}],\"egressSecurityRules\":[{\"protocol\":\"all\",\"destination\":\"0.0.0.0/0\"}]}")
+  let no_ssh = one(text: "{\"id\":\"sl1\",\"ingressSecurityRules\":[{\"protocol\":\"6\",\"source\":\"0.0.0.0/0\",\"tcpOptions\":{\"destinationPortRange\":{\"min\":443,\"max\":443}}}],\"egressSecurityRules\":[{\"protocol\":\"all\",\"destination\":\"0.0.0.0/0\"}]}")
+  let subnet = one(text: "{\"id\":\"sn\",\"securityListIds\":[\"sl1\"]}")
+  oci_access_disagreement(subnet_row: subnet, lists: [good]) == ""
+    && oci_access_disagreement(subnet_row: subnet, lists: [no_ssh]) != ""
+    && oci_access_disagreement(subnet_row: subnet, lists: []) != ""
+}
+
+// A held instance must be attached to the selected subnet: an otherwise identical instance on another
+// subnet, or with no attached VNIC, stops (side-chat review on gunbc#13351).
+test fn a_held_instance_must_be_attached_to_the_selected_subnet() -> Bool {
+  oci_attachments_disagreement(rows: json_items(text: "[{\"id\":\"a\",\"lifecycleState\":\"ATTACHED\",\"subnetId\":\"sn1\"}]"), subnet: "sn1") == ""
+    && oci_attachments_disagreement(rows: json_items(text: "[{\"id\":\"a\",\"lifecycleState\":\"ATTACHED\",\"subnetId\":\"sn2\"}]"), subnet: "sn1") != ""
+    && oci_attachments_disagreement(rows: json_items(text: "[{\"id\":\"a\",\"lifecycleState\":\"DETACHED\",\"subnetId\":\"sn1\"}]"), subnet: "sn1") != ""
+}
+
+// Only a definitive non-creation clears a launch record: a 4xx other than 409 and 429, or out of host
+// capacity. A 5xx, a throttle or a conflict keeps it, so the next run re-sends the same request.
+test fn only_a_definitive_non_creation_releases_the_launch_record() -> Bool {
+  oci_definitive_non_creation(status: 400, body: "{}")
+    && oci_definitive_non_creation(status: 500, body: "{\"message\":\"Out of host capacity.\"}")
+    && !oci_definitive_non_creation(status: 409, body: "{}")
+    && !oci_definitive_non_creation(status: 429, body: "{}")
+    && !oci_definitive_non_creation(status: 503, body: "{}")
 }

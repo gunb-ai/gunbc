@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.resources { Network }
 import std.measure { Gigabyte, gigabyte, measure_add }
-import std.decimal { ExactDecimal }
+import std.decimal { ExactDecimal, decimal_pow10 }
 import std.optional { Absent, Present }
 import extdeps.languages.json.emit { JsonValue }
 import extdeps.languages.json.parse { json_member_presence, JsonMemberValue, JsonMemberMissing, JsonMemberNull, JsonMemberUnreadable }
@@ -55,12 +55,8 @@ type OciWhole
   = OciWholeValue { value: Int }
   | OciWholeRefused { cause: String }
 
-fn oci_power_of_ten(n: Int) -> Int {
-  if n <= 0 { 1 } else { 10 * oci_power_of_ten(n: n - 1) }
-}
-
 fn oci_whole_of(d: ExactDecimal) -> OciWhole {
-  let scale = oci_power_of_ten(n: d.fraction_digits)
+  let scale = decimal_pow10(exponent: d.fraction_digits)
   if d.units % scale == 0 { OciWholeValue { value: d.units / scale } } else { OciWholeRefused { cause: "is not a whole number" } }
 }
 
