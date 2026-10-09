@@ -1482,12 +1482,39 @@ pub fn resolved_graph_memo_keys_for_test(index: &MultiEntryIndex) -> Vec<String>
     index.resolved_graph_memo.borrow().keys().cloned().collect()
 }
 
+/// Empty caches over an already-indexed `source_files` map. Recorded as
+/// `ScratchCachesOverExistingSet` so the sharing control can count it without treating it as a
+/// second `NameSetIndex` (`MultiEntryIndexBuiltTwiceForOneNameSet` remains two name-set indexes).
+#[track_caller]
+pub(crate) fn new_multi_entry_index_scratch_over(
+    source_files: ModuleSourceIndex,
+    source_roots: &[String],
+) -> MultiEntryIndex {
+    record_multi_entry_index_site(
+        std::panic::Location::caller(),
+        &source_files,
+        MultiEntryIndexBuildKind::ScratchCachesOverExistingSet,
+    );
+    multi_entry_index_shell_body(source_files, source_roots)
+}
+
 #[track_caller]
 pub(crate) fn new_multi_entry_index_shell(
     source_files: ModuleSourceIndex,
     source_roots: &[String],
 ) -> MultiEntryIndex {
-    record_multi_entry_index_site(std::panic::Location::caller(), &source_files);
+    record_multi_entry_index_site(
+        std::panic::Location::caller(),
+        &source_files,
+        MultiEntryIndexBuildKind::NameSetIndex,
+    );
+    multi_entry_index_shell_body(source_files, source_roots)
+}
+
+fn multi_entry_index_shell_body(
+    source_files: ModuleSourceIndex,
+    source_roots: &[String],
+) -> MultiEntryIndex {
     MultiEntryIndex {
         generation: next_index_generation(),
         source_files,
@@ -1515,6 +1542,7 @@ pub(crate) fn new_multi_entry_index_shell(
         pool_bare_census: RefCell::new(None),
         entry_closure_sources: RefCell::new(HashMap::new()),
         both_closure_edges: RefCell::new(None),
+        scratch_underlay: RefCell::new(None),
         closure_name_censuses: RefCell::new(HashMap::new()),
         bare_reference_admission: RefCell::new(HashMap::new()),
         pool_module_names: std::cell::OnceCell::new(),
