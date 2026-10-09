@@ -62,7 +62,7 @@ pub enum Commands {
         #[arg(long)]
         claim_run: bool,
         /// Named argument for the entry function, repeatable: `--arg name=value`.
-        /// Values enter as String; a missing `=` refuses rather than guessing.
+        /// Bound against the parameter's resolved type identity: kernel String, Int, and Bool, and std.types NonEmptyStr (String where string_non_empty). Other types refuse.
         #[arg(long = "arg")]
         args: Vec<String>,
     },
