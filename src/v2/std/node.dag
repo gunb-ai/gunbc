@@ -840,10 +840,15 @@ data arrow_signature_order_label: EdgeLabel = StructuralLabel { label: CoreMarke
 // (v2.std.symbol_index symbol_index_declares_resource_at) or that repeats one. Like the other two it is
 // metadata to every value reader: v2.compiler.infer and v2.std.type_binder node_inferred_subtree_nodes
 // skip every arrow_named_edge_is_contract edge.
+// THE FOURTH, ConstantMemberEdge: what a `data` Arrow promises about its USE -- a reference to it is the
+// value of its nullary application, not the function. Its target is an empty Conj and carries no
+// vocabulary, so v2.std.arrow_contract has nothing to check on it; like the other three it is metadata to
+// every value reader, and it is read only by v2.std.node_query arrow_constant_member_codomain.
 fn arrow_named_edge_is_contract(e: Edge) -> Bool {
   edge_is_core(e: e, marker: ArrowEffectClaimsEdge)
     || edge_is_core(e: e, marker: ArrowExecutionModeClaimEdge)
     || edge_is_core(e: e, marker: ArrowResourceRequirementsEdge)
+    || edge_is_core(e: e, marker: ConstantMemberEdge)
 }
 
 
