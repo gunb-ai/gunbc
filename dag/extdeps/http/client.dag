@@ -248,31 +248,29 @@ service http.Client {
   operation PostJsonFromFile {
     requires Network
     input { url: NonEmptyStr, request_body_file: NonEmptyStr, max_seconds: NonEmptyStr }
-    output { body: String }
+    output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
-    transport rest {
-      method: POST,
-      path: "{url}",
-      headers: { "Content-Type": "application/json" },
-      body: { from_file: request_body_file }
+    transport shell {
+      argv: ["curl", "-fsS", "--max-time", "{max_seconds}", "-X", "POST", "-H", "Content-Type: application/json", "--data", "@{request_body_file}", "{url}"]
     }
-    response {
-      2xx => String
+    exit {
+      0 => Unit
+      nonzero => String "http client POST JSON from file failed"
+    }
+    mock_response {
+      0 => { body: "", success: false } "hermetic: no live HTTP endpoint; the POST from file refuses rather than fabricate a body"
     }
   }
 
   operation PostFormFromFile {
     input { url: NonEmptyStr, request_body_file: NonEmptyStr, max_seconds: NonEmptyStr }
-    output { body: String }
-    readonly
-    transport rest {
-      method: POST,
-      path: "{url}",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: { from_file: request_body_file }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["curl", "-fsS", "--max-time", "{max_seconds}", "-X", "POST", "-H", "Content-Type: application/x-www-form-urlencoded", "--data", "@{request_body_file}", "{url}"]
     }
-    response {
-      2xx => String
+    exit {
+      0 => Unit
+      nonzero => String "http client POST form from file failed"
     }
     mock_response {
       0 => { body: "", success: false } "hermetic: no live token endpoint; the code exchange refuses rather than fabricate a response"
@@ -283,12 +281,12 @@ service http.Client {
     requires Network
     input { url: NonEmptyStr, destination: NonEmptyStr }
     output { success: Bool }
-    transport rest {
-      method: GET,
-      path: "{url}"
+    transport shell {
+      argv: ["curl", "-fsS", "-o", "{destination}", "{url}"]
     }
-    response {
-      2xx => String
+    exit {
+      0 => Unit
+      nonzero => String "http client download failed"
     }
   }
 
