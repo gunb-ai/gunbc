@@ -2091,6 +2091,32 @@ fn infer_declared_type_mentions_free_formal(declared: Node, instances: List<Type
   }
 }
 
+fn infer_type_mentions_unfixed_param(
+  declared: Node,
+  instances: List<TypeVariableInstance>,
+  type_params: List<Symbol>
+) -> Bool {
+  match declared.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      fold(type_params, init: false, f: fn(acc, p) {
+        acc || ((p == id) && match type_variable_instance_lookup(instances: instances, binder: id) {
+          Present { value: _ } => false
+          Absent => true
+        })
+      })
+    TypeNode { connective: _ } =>
+      any(
+        xs: node_positional_child_targets(node: declared),
+        predicate: fn(c) { infer_type_mentions_unfixed_param(declared: c, instances: instances, type_params: type_params) }
+      )
+    ComputationNode { behavior: _ } =>
+      any(
+        xs: node_positional_child_targets(node: declared),
+        predicate: fn(c) { infer_type_mentions_unfixed_param(declared: c, instances: instances, type_params: type_params) }
+      )
+  }
+}
+
 // Substitution descends through the arguments: a compound declared type
 // (`Box<T>`, `FreeMonoid<T>`) is not held with a formal riding inside it -- an argument no
 // instance binds leaves the whole declared type unheld, and the read falls through to the facts
@@ -7194,7 +7220,8 @@ fn infer_application_actual_child_frame(parent: Node, frame: InferFrame, acc: In
               actual: edge.target,
               instances: acc.application_instances,
               pairs: acc.application_pairs,
-              idx: idx
+              idx: idx,
+              type_params: infer_application_type_params(node: parent, entries: acc.entries)
             ) {
               Absent => frame.binder_types
               Present { value: rows } => infer_append_binder_types(xs: frame.binder_types, ys: rows)
@@ -7209,7 +7236,8 @@ fn infer_application_lambda_expected_binder_types(
   actual: Node,
   instances: List<TypeVariableInstance>,
   pairs: Optional<List<InhabitanceFormalArg>>,
-  idx: Int
+  idx: Int,
+  type_params: List<Symbol>
 ) -> Optional<List<InferBinderType>> {
   match infer_operator_arrow(operator: actual) {
     Absent => optional_absent()
@@ -7226,10 +7254,27 @@ fn infer_application_lambda_expected_binder_types(
               ) {
                 Absent => optional_absent()
                 Present { value: expected } =>
-                  if infer_declared_type_mentions_free_formal(declared: expected, instances: instances) {
-                    optional_absent()
-                  } else {
-                    infer_lambda_domain_binder_types(lambda: lambda, expected: expected)
+                  match infer_operator_arrow(operator: expected) {
+                    Absent => optional_absent()
+                    Present { value: _ } =>
+                      match infer_expected_domain_types(expected: expected) {
+                        Absent => optional_absent()
+                        Present { value: types } =>
+                          if any(
+                            xs: types,
+                            predicate: fn(t) {
+                              infer_type_mentions_unfixed_param(
+                                declared: t,
+                                instances: instances,
+                                type_params: type_params
+                              )
+                            }
+                          ) {
+                            optional_absent()
+                          } else {
+                            infer_lambda_domain_binder_types(lambda: lambda, expected: expected)
+                          }
+                      }
                   }
               }
           }
