@@ -166,7 +166,7 @@ jobs:
         with:
           components: rustfmt
           cache: false
-          rustflags: "-D warnings --remap-path-prefix=${{ github.workspace }}=."
+          rustflags: "-D warnings --remap-path-prefix=${{ github.workspace }}=. --remap-path-prefix=${{ runner.temp }}/cargo=/cargo --remap-path-prefix=${{ runner.temp }}/rustup=/rustup"
         env:
           HOME: ${{ runner.temp }}
       - name: Derive native-cache root (rustc-version segment; after setup-rust-toolchain)
@@ -2562,7 +2562,7 @@ jobs:
         with:
           components: rustfmt
           cache: false
-          rustflags: "-D warnings --remap-path-prefix=${{ github.workspace }}=."
+          rustflags: "-D warnings --remap-path-prefix=${{ github.workspace }}=. --remap-path-prefix=${{ runner.temp }}/cargo=/cargo --remap-path-prefix=${{ runner.temp }}/rustup=/rustup"
         env:
           HOME: ${{ runner.temp }}
       - name: Derive native-cache root (rustc-version segment; after setup-rust-toolchain)

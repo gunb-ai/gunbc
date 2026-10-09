@@ -36,16 +36,19 @@ fn repo_self_warning_denial_rustflags() -> String {
   join(repo_self_warning_denial, " ")
 }
 
-// SEED PATH REMAP FOR BYTE-IDENTICAL RELEASE BINARIES ACROSS CHECKOUT ROOTS. Native product
-// producer_compiler is the SHA-256 of the running gunbc; without remap, rustc embeds the
-// runner's absolute checkout and two hosts of one tree cannot HIT. The FROM side is GitHub's
-// workspace expression so each job remaps its own root to `.`. Warning denial is still the
-// policy row; this function only concatenates the seed-build flag the generator must set.
+// SEED PATH REMAP FOR BYTE-IDENTICAL RELEASE BINARIES ACROSS CHECKOUT ROOTS AND
+// PER-SLOT TOOLCHAIN HOMES. Native product producer_compiler is the SHA-256 of the
+// running gunbc; rustc embeds panic/debuginfo paths from the checkout, CARGO_HOME
+// (registry sources) and RUSTUP_HOME (sysroot). CI isolates those homes under
+// runner.temp per slot, so they must remap too. Measured: two checkouts with two
+// CARGO_HOMEs, remapped to `.` and `/cargo`, produced identical gunbc SHA-256.
 fn repo_self_seed_build_rustflags() -> String {
   join(
     [
       repo_self_warning_denial_rustflags(),
-      " --remap-path-prefix=${{ github.workspace }}=."
+      " --remap-path-prefix=${{ github.workspace }}=.",
+      " --remap-path-prefix=${{ runner.temp }}/cargo=/cargo",
+      " --remap-path-prefix=${{ runner.temp }}/rustup=/rustup"
     ],
     ""
   )
