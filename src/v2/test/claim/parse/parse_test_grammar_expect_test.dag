@@ -17,6 +17,7 @@ import v2.std.diagnostic {
   diagnostics_fatal
 }
 import v2.std.grammar {
+  InfixTable,
   AfterLineBreak,
   Choice,
   Expect,
@@ -158,7 +159,8 @@ fn ge_wrap_all(expr: GrammarExpr) -> GrammarExpr {
       expect: fn(e, reason) { Expect { element: Expect { element: e, reason: reason }, reason: FnExpressionBodyMissingAfterEq } },
       refuse_on_match: fn(e, reason) { Expect { element: RefuseOnMatch { element: e, reason: reason }, reason: FnExpressionBodyMissingAfterEq } },
       after_line_break: fn(e) { Expect { element: AfterLineBreak { element: e }, reason: FnExpressionBodyMissingAfterEq } },
-      not_predicate: fn(e) { Expect { element: NotPredicate { element: e }, reason: FnExpressionBodyMissingAfterEq } }
+      not_predicate: fn(e) { Expect { element: NotPredicate { element: e }, reason: FnExpressionBodyMissingAfterEq } },
+      infix_table: fn(operand, guard, operators) { Expect { element: InfixTable { operand: operand, continuation_guard: guard, operators: operators }, reason: FnExpressionBodyMissingAfterEq } }
     }
   )
 }
