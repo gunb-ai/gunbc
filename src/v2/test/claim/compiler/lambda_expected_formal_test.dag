@@ -6,8 +6,10 @@ import v2.compiler.resolve { ResolvedTree }
 import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { ComputationNode, Edge, Node, Symbol, Transform }
-import v2.std.collection { List }
-import std.algebra { Cons, Empty }
+import v2.std.collection { List, list_at_optional }
+import v2.std.algebra { fold }
+import std.algebra { Cons, Empty, list_snoc_item }
+import std.optional { Absent, Present }
 import std.types { Bool, String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -65,42 +67,51 @@ test fn lef_repeated_actual_second_formal_is_judged_holds() -> Bool {
 
 // SUPPLIED TREE: the callee edge and the actual edge share one Node. Positional index, not
 // target equality, must still judge that actual at Int; a function does not inhabit Int.
-fn lef_rewrite_child_edges(xs: List<Edge>) -> List<Edge> {
-  match xs {
-    Empty => Empty
-    Cons { head: e, tail: rest } =>
-      Cons {
-        head: Edge { label: e.label, target: lef_share_callee_as_actual(n: e.target) },
-        tail: lef_rewrite_child_edges(xs: rest)
-      }
-  }
-}
-
 fn lef_lambda_then_value_terminal_reason() -> Symbol {
   lef_infer_terminal(src: lef_lambda_then_value_src)
+}
+
+fn lef_rewrite_child_edges(xs: List<Edge>) -> List<Edge> {
+  fold(xs, init: [], f: fn(acc, e) {
+    list_snoc_item(xs: acc, item: Edge { label: e.label, target: lef_share_callee_as_actual(n: e.target) })
+  })
 }
 
 fn lef_share_callee_as_actual(n: Node) -> Node {
   let children = lef_rewrite_child_edges(xs: n.children)
   match n.kind {
     ComputationNode { behavior: Transform } =>
-      match children {
-        Cons { head: callee, tail: Cons { head: actual, tail: rest } } =>
-          Node {
-            kind: n.kind,
-            occurrence_id: n.occurrence_id,
-            children: Cons {
-              head: callee,
-              tail: Cons {
-                head: Edge { label: actual.label, target: callee.target },
-                tail: rest
+      match list_at_optional(xs: children, index: 0) {
+        Present { value: callee } =>
+          match list_at_optional(xs: children, index: 1) {
+            Present { value: actual } =>
+              Node {
+                kind: n.kind,
+                occurrence_id: n.occurrence_id,
+                children: lef_splice_shared_actual(xs: children, callee: callee, actual: actual)
               }
-            }
+            Absent => Node { kind: n.kind, occurrence_id: n.occurrence_id, children: children }
           }
-        _ => Node { kind: n.kind, occurrence_id: n.occurrence_id, children: children }
+        Absent => Node { kind: n.kind, occurrence_id: n.occurrence_id, children: children }
       }
     _ => Node { kind: n.kind, occurrence_id: n.occurrence_id, children: children }
   }
+}
+
+fn lef_splice_shared_actual(xs: List<Edge>, callee: Edge, actual: Edge) -> List<Edge> {
+  fold(xs, init: [], f: fn(acc, e) {
+    match list_at_optional(xs: acc, index: 0) {
+      Absent => list_snoc_item(xs: acc, item: e)
+      Present { value: _ } =>
+        match list_at_optional(xs: acc, index: 1) {
+          Absent => list_snoc_item(
+            xs: acc,
+            item: Edge { label: actual.label, target: callee.target }
+          )
+          Present { value: _ } => list_snoc_item(xs: acc, item: e)
+        }
+    }
+  })
 }
 
 test fn lef_shared_callee_actual_is_judged_holds() -> Bool {
