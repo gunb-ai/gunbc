@@ -1,0 +1,108 @@
+module test.claim.provider_guest_incarnation_witness
+
+import std.types { Bool, Int, List, String }
+import std.measure { kibibyte }
+import extdeps.toolchain.types { Aarch64 }
+import product.host_identity { HostIdentity }
+import product.fabric.isolation {
+  IsolationGuarantee, DedicatedKernel, FreshWritableRoot, PrivateProcessNamespace, PrivateUserNamespace,
+  PrivateNetworkNamespace, AttemptScopedSecrets, DefaultDenyEgress,
+}
+import gunbc.fleet_host_identity { operator_host_183527, operator_host_3dde7f, operator_host_srv1 }
+import gunbc.fleet_enrollment { enrollment_for_host }
+import gunbc.hetzner_cloud_acquisition { hetzner_cax41_hel1_1_acquisition }
+import gunbc.host_control_route { HostControlled, HostControlRefused, ProviderApiControlRoute, BmcControlRoute, enrolled_host_control }
+import gunbc.provider_guest_adoption {
+  ProviderGuestAdoption, GuestObservationRead, GuestObserved, GuestObservation, GuestAdoptionRefused, adopt_provider_guest,
+}
+import gunbc.runner.runner_isolation_admission { GeneralCiWorkload }
+import gunbc.runner.provider_guest_incarnation {
+  ProviderRebuildReceipt, IncarnationStanding, IncarnationEstablished, IncarnationRefused,
+  IncarnationRebuildForAnotherResource, IncarnationAdmitted, IncarnationAdmissionRefused,
+  provider_guest_incarnation, incarnation_offer, admit_incarnation_work, excuse_covers,
+  provider_guest_isolation_excuses, provider_guest_egress_excuse,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE OBSERVATION IS SUPPLIED; everything else is the production route: the enrolled CAX guest, its
+// control route, and its adoption over that observation.
+fn cax41_read() -> GuestObservationRead {
+  GuestObserved { observation: GuestObservation {
+    kernel_hostname: "ubuntu-32gb-nbg1-1", architecture: Aarch64, online_cpus: 16,
+    mem_total: kibibyte(count: 32011264), kvm_device_present: false,
+  } }
+}
+
+fn incarnation_of(host: HostIdentity, rebuilt_from_hel: Bool) -> IncarnationStanding? {
+  match enrollment_for_host(host: host) {
+    Absent => none
+    Present { value: intent } => match enrolled_host_control(intent: intent) {
+      HostControlRefused { refusal: _ } => none
+      HostControlled { controlled: c } => {
+        let adoption = adopt_provider_guest(intent: intent, read: cax41_read())
+        let acquisition = match c.route {
+          ProviderApiControlRoute { route: _, acquisition: a } => if rebuilt_from_hel { hetzner_cax41_hel1_1_acquisition } else { a }
+          BmcControlRoute { binding: _ } => hetzner_cax41_hel1_1_acquisition
+        }
+        Present { value: provider_guest_incarnation(
+          controlled: c,
+          rebuild: ProviderRebuildReceipt { acquisition: acquisition, image: "ubuntu-24.04", action_id: "fixture-action-1", finished_at: "2026-10-09T00:00:00Z" },
+          adoption: adoption,
+        ) }
+      }
+    }
+  }
+}
+
+fn same_set(a: List<IsolationGuarantee>, b: List<IsolationGuarantee>) -> Bool {
+  count(a) == count(b) && (a |> all(x => (filter(b, y => y == x) |> count) == 1))
+}
+
+// INHABITANCE, ASSERTING THE ROUTE: the enrolled nbg1 guest, controlled through its acquisition,
+// rebuilt and adopted, earns exactly the five guarantees a whole fresh guest can, and withholds the
+// two it cannot yet.
+test fn a_rebuilt_cax_guest_earns_five_guarantees_and_withholds_two() -> Bool {
+  match incarnation_of(host: operator_host_183527, rebuilt_from_hel: false) {
+    Present { value: IncarnationEstablished { incarnation: i } } =>
+      same_set(a: incarnation_offer(incarnation: i).evidenced, b: [DedicatedKernel, FreshWritableRoot, PrivateProcessNamespace, PrivateUserNamespace, PrivateNetworkNamespace])
+        && same_set(a: incarnation_offer(incarnation: i).withheld, b: [AttemptScopedSecrets, DefaultDenyEgress])
+    _ => false
+  }
+}
+
+// THE DROP EXCUSES EGRESS AND NOTHING ELSE: general CI on that incarnation is still refused, now for
+// AttemptScopedSecrets alone, which only a launch that places one attempt's registration can earn.
+// Without the excuse the same work is refused for egress too, so the excuse is what moved it.
+test fn general_ci_is_refused_only_for_attempt_secrets_under_the_egress_excuse() -> Bool {
+  match incarnation_of(host: operator_host_183527, rebuilt_from_hel: false) {
+    Present { value: IncarnationEstablished { incarnation: i } } =>
+      match admit_incarnation_work(incarnation: i, work: GeneralCiWorkload, excuses: provider_guest_isolation_excuses) {
+        IncarnationAdmissionRefused { missing: m } => same_set(a: m, b: [AttemptScopedSecrets])
+        IncarnationAdmitted { excused: _ } => false
+      }
+      && match admit_incarnation_work(incarnation: i, work: GeneralCiWorkload, excuses: []) {
+        IncarnationAdmissionRefused { missing: m } => same_set(a: m, b: [AttemptScopedSecrets, DefaultDenyEgress])
+        IncarnationAdmitted { excused: _ } => false
+      }
+    _ => false
+  }
+}
+
+// RED: A REBUILD OF ANOTHER SERVER DOES NOT MAKE THIS ONE FRESH.
+test fn a_rebuild_of_another_resource_establishes_nothing() -> Bool {
+  match incarnation_of(host: operator_host_183527, rebuilt_from_hel: true) {
+    Present { value: IncarnationRefused { refusal: IncarnationRebuildForAnotherResource { controlled: c, rebuilt: r } } } =>
+      (c as String) == "169308819" && (r as String) == "169308796"
+    _ => false
+  }
+}
+
+// THE EXCUSE IS SCOPED TO ITS GUARANTEE AND ITS HOSTS: not to an owned host, not to another guarantee.
+test fn the_egress_excuse_covers_only_egress_on_the_two_guests() -> Bool {
+  excuse_covers(excuse: provider_guest_egress_excuse, host: operator_host_183527, g: DefaultDenyEgress)
+    && excuse_covers(excuse: provider_guest_egress_excuse, host: operator_host_3dde7f, g: DefaultDenyEgress)
+    && !excuse_covers(excuse: provider_guest_egress_excuse, host: operator_host_srv1, g: DefaultDenyEgress)
+    && !excuse_covers(excuse: provider_guest_egress_excuse, host: operator_host_183527, g: AttemptScopedSecrets)
+}

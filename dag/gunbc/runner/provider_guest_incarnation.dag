@@ -1,0 +1,153 @@
+module gunbc.runner.provider_guest_incarnation
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref }
+import product.host_identity { HostIdentity }
+import product.fabric.isolation {
+  IsolationGuarantee, IsolationProfile, DedicatedKernel, FreshWritableRoot, PrivateProcessNamespace,
+  PrivateUserNamespace, PrivateNetworkNamespace, AttemptScopedSecrets, DefaultDenyEgress,
+  unsatisfied_isolation_guarantees,
+}
+import gunbc.provider_acquisition { ProviderResourceAcquisition }
+import gunbc.fleet_host_identity { operator_host_183527, operator_host_3dde7f }
+import gunbc.host_control_route { ControlledHost, ProviderApiControlRoute, BmcControlRoute }
+import gunbc.provider_guest_adoption { ProviderGuestAdoption, GuestAdopted, GuestAdoptionRefused, GuestAdoptionRefusal }
+import gunbc.runner.runner_isolation_admission {
+  SandboxOffer, DedicatedKernelSandboxProvider, RunnerWorkProvenance, runner_work_isolation_requirement,
+  offer_profile,
+}
+
+// A PROVIDER GUEST AS ONE JOB'S SANDBOX. A rented guest cannot run the fleet's microVMs (its provider
+// forbids nested virtualization), so the guest itself is the boundary: the provider's hypervisor
+// sits beneath the job's kernel, and a rebuild from the provider's image before every job is what
+// makes the guest fresh. The guest is never released between jobs -- release is an acquisition
+// decision (gunbc.provider_acquisition), and the provider may not refill it.
+//
+// THE OFFER IS DERIVED PER INCARNATION, NEVER AUTHORED PER HOST. A guest that was not rebuilt for this
+// attempt has earned nothing, whatever its class could do: the class is capable of a dedicated
+// kernel, and only an incarnation with its receipts has one (gunbc.runner.runner_isolation_admission
+// distinguishes the two for the same reason).
+
+// THE PROVIDER'S OWN RECORD THAT THE GUEST WAS REBUILT FROM ITS IMAGE: the provider's action id for a
+// rebuild of exactly this acquired resource, read back as finished successfully. PRODUCER FRONTIER:
+// the Hetzner Cloud rebuild exchange (POST /v1/servers/{id}/actions/rebuild, then GET
+// /v1/actions/{id} until status success) lands with the controller-driven reset loop; until then no
+// incarnation can be built, so every guest offer below stays unbuilt rather than assumed.
+type ProviderRebuildReceipt {
+  acquisition: ProviderResourceAcquisition
+  image: NonEmptyStr
+  action_id: NonEmptyStr
+  finished_at: NonEmptyStr
+}
+
+// ONE INCARNATION: the controlled guest, the rebuild that made it fresh, and the adoption observed
+// over SSH after that rebuild. sole_constructor, minted only by provider_guest_incarnation below,
+// which joins the three on the same resource -- so an adoption of one server cannot certify another
+// server's rebuild.
+type ProviderGuestIncarnation sole_constructor {
+  host: HostIdentity
+  rebuild: ProviderRebuildReceipt
+  adoption: ProviderGuestAdoption
+}
+
+type IncarnationRefusal
+  = IncarnationHostNotProviderControlled { host: HostIdentity }
+  | IncarnationRebuildForAnotherResource { controlled: NonEmptyStr, rebuilt: NonEmptyStr }
+  | IncarnationGuestNotAdopted { cause: GuestAdoptionRefusal }
+  | IncarnationAdoptionForAnotherResource { rebuilt: NonEmptyStr, adopted: NonEmptyStr }
+
+type IncarnationStanding
+  = IncarnationEstablished { incarnation: ProviderGuestIncarnation }
+  | IncarnationRefused { refusal: IncarnationRefusal }
+
+fn provider_guest_incarnation(
+  controlled: ControlledHost,
+  rebuild: ProviderRebuildReceipt,
+  adoption: ProviderGuestAdoption,
+) -> IncarnationStanding {
+  match controlled.route {
+    BmcControlRoute { binding: _ } => IncarnationRefused { refusal: IncarnationHostNotProviderControlled { host: controlled.host } }
+    ProviderApiControlRoute { route: _, acquisition: held } =>
+      if (held.resource_id as String) != (rebuild.acquisition.resource_id as String) {
+        IncarnationRefused { refusal: IncarnationRebuildForAnotherResource { controlled: held.resource_id, rebuilt: rebuild.acquisition.resource_id } }
+      } else { match adoption {
+        GuestAdoptionRefused { host: _, cause: c } => IncarnationRefused { refusal: IncarnationGuestNotAdopted { cause: c } }
+        GuestAdopted { host: _, resource_id: adopted, observation: _, execution: _ } =>
+          if (adopted as String) != (rebuild.acquisition.resource_id as String) {
+            IncarnationRefused { refusal: IncarnationAdoptionForAnotherResource { rebuilt: rebuild.acquisition.resource_id, adopted: adopted } }
+          } else {
+            IncarnationEstablished { incarnation: ProviderGuestIncarnation { host: controlled.host, rebuild: rebuild, adoption: adoption } }
+          }
+      } }
+  }
+}
+
+// WHAT AN ESTABLISHED INCARNATION HAS EARNED, each guarantee on its own grounds:
+//   DedicatedKernel   -- the job runs on the guest's kernel, with the provider's hypervisor beneath it
+//                        and the controller's credentials outside it; the adoption is the observation.
+//   FreshWritableRoot -- the provider's finished rebuild of this resource from its image.
+//   PrivateProcessNamespace, PrivateUserNamespace, PrivateNetworkNamespace -- the whole guest, its
+//                        process table, users and network stack, belongs to one attempt between two
+//                        rebuilds; nothing of another attempt or of the fleet's control plane shares
+//                        them. (The microVM path withholds PrivateNetworkNamespace because its VMM
+//                        runs in the HOST's namespace; a provider guest has no such host of ours.)
+// WITHHELD, with reasons in the offer's standing:
+//   AttemptScopedSecrets   -- earned at launch, when only this attempt's JIT registration is placed;
+//                             that launch does not exist yet.
+//   DefaultDenyEgress      -- the guest has open internet (gunbc.rung_drop provider_guest_ci_egress_unfiltered).
+fn incarnation_offer(incarnation: ProviderGuestIncarnation) -> SandboxOffer {
+  SandboxOffer {
+    provider_class: DedicatedKernelSandboxProvider,
+    evidenced: [DedicatedKernel, FreshWritableRoot, PrivateProcessNamespace, PrivateUserNamespace, PrivateNetworkNamespace],
+    withheld: [AttemptScopedSecrets, DefaultDenyEgress],
+    standing: join([
+      "provider guest ", incarnation.host as String,
+      " rebuilt from ", incarnation.rebuild.image as String,
+      " by provider action ", incarnation.rebuild.action_id as String,
+      "; AttemptScopedSecrets is earned at launch, DefaultDenyEgress is not provided",
+    ], "") as NonEmptyStr,
+  }
+}
+
+// ── admission, with the declared excuse ─────────────────────────────────────────────────────────
+
+// A GUARANTEE THE ADMISSION MAY EXCUSE, AND ONLY FOR THE HOSTS ITS DECLARED DROP NAMES. The excuse
+// cites the drop row, so it cannot outlive the drop's declaration silently: removing the row breaks
+// the reference, and the drop's trigger is what retires it.
+type IsolationExcuse {
+  guarantee: IsolationGuarantee
+  hosts: List<HostIdentity>
+  drop: DeclarationRef
+}
+
+data provider_guest_egress_excuse: IsolationExcuse = IsolationExcuse {
+  guarantee: DefaultDenyEgress,
+  hosts: [operator_host_183527, operator_host_3dde7f],
+  drop: decl_ref(module_path: "gunbc.rung_drop.provider_guest_ci_egress_unfiltered", decl_name: "provider_guest_ci_egress_unfiltered"),
+}
+
+data provider_guest_isolation_excuses: List<IsolationExcuse> = [provider_guest_egress_excuse]
+
+fn excuse_covers(excuse: IsolationExcuse, host: HostIdentity, g: IsolationGuarantee) -> Bool {
+  excuse.guarantee == g && (filter(excuse.hosts, h => (h as String) == (host as String)) |> count) > 0
+}
+
+type IncarnationAdmission
+  = IncarnationAdmitted { excused: List<IsolationGuarantee> }
+  | IncarnationAdmissionRefused { missing: List<IsolationGuarantee> }
+
+// THE WORK'S REQUIREMENT AGAINST WHAT THIS INCARNATION EARNED. Missing guarantees refuse by name;
+// one is excused only when an excuse names exactly that guarantee AND this host. The excused set is
+// carried on the admission, so a launch records which drop it ran under.
+fn admit_incarnation_work(incarnation: ProviderGuestIncarnation, work: RunnerWorkProvenance, excuses: List<IsolationExcuse>) -> IncarnationAdmission {
+  let missing = unsatisfied_isolation_guarantees(
+    required: runner_work_isolation_requirement(p: work),
+    provided: offer_profile(o: incarnation_offer(incarnation: incarnation)),
+  )
+  let unexcused = filter(missing, g => (filter(excuses, e => excuse_covers(excuse: e, host: incarnation.host, g: g)) |> count) == 0)
+  if (unexcused |> count) == 0 {
+    IncarnationAdmitted { excused: missing }
+  } else {
+    IncarnationAdmissionRefused { missing: unexcused }
+  }
+}
