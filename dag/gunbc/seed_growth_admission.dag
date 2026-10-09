@@ -97,6 +97,7 @@ import gunbc.data_eval_counters_seed_growth { data_eval_counters_seed_growth_jus
 import gunbc.param_binder_seed_growth { param_binder_seed_growth_justification }
 import gunbc.process_lifecycle_seed_growth { process_lifecycle_seed_growth_justification }
 import gunbc.run_arg_typed_bind_seed_growth { run_arg_typed_bind_seed_growth_justification }
+import gunbc.rust_shell_stderr_capture_seed_growth { rust_shell_stderr_capture_seed_growth_justification }
 import gunbc.rust_item_host_observation {
   ItemDeclarationRefProjection,
   LiveHandRustObservation,
@@ -385,7 +386,8 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     value_drop_binding_adaptation_seed_growth_justification,
     process_lifecycle_seed_growth_justification,
     native_product_cache_seed_growth_justification,
-    run_arg_typed_bind_seed_growth_justification
+    run_arg_typed_bind_seed_growth_justification,
+    rust_shell_stderr_capture_seed_growth_justification
   ]
 }
 

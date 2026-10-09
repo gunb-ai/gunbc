@@ -18165,7 +18165,7 @@ fn dispatch_shell(
             let (budget, source) = crate::memory_governor::read_host_budget_bytes();
             Some(budget.ok_or_else(|| InterpError::TypeError {
                 msg: format!(
-                    "WitnessStderrCaptureCompleteBudgetUnreadable: Complete stderr capture requires the active GUNBC_MEMORY_BUDGET_BYTES authority ({source})"
+                    "WitnessStderrCaptureCompleteBudgetUnreadable: Complete stderr capture requires the active host budget authority ({source})"
                 ),
             })? as usize)
         }
