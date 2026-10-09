@@ -837,6 +837,11 @@ pub enum CompilerDiagnostic {
         identities: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
+    NativeEffectRealizationRefused {
+        entry: String,
+        refusals: Rc<Vec<String>>,
+        span: Rc<SourceSpan>,
+    },
     EffectSummaryIncompleteAtFunctionValue {
         caller: String,
         span: Rc<SourceSpan>,
@@ -887,6 +892,11 @@ pub enum CompilerDiagnostic {
     },
     EqualityOptionalityMismatch {
         optional_side: String,
+        span: Rc<SourceSpan>,
+    },
+    EqualityAgainstPresentOnListRead {
+        list_read: String,
+        operator: String,
         span: Rc<SourceSpan>,
     },
     TypeArgumentArityMismatch {
@@ -1078,6 +1088,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::EffectfulSelfRecursionUnrealized { span: s, .. } => s.clone(),
         CompilerDiagnostic::ModuleFilenameCollision { span: s, .. } => s.clone(),
         CompilerDiagnostic::EmittedSymbolCollision { span: s, .. } => s.clone(),
+        CompilerDiagnostic::NativeEffectRealizationRefused { span: s, .. } => s.clone(),
         CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { span: s, .. } => s.clone(),
         CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { span: s, .. } => s.clone(),
@@ -1088,6 +1099,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::EqualityOnFunctionMember { span: s, .. } => s.clone(),
         CompilerDiagnostic::EqualityMemberUnjudgeable { span: s, .. } => s.clone(),
         CompilerDiagnostic::EqualityOptionalityMismatch { span: s, .. } => s.clone(),
+        CompilerDiagnostic::EqualityAgainstPresentOnListRead { span: s, .. } => s.clone(),
         CompilerDiagnostic::TypeArgumentArityMismatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::TypeArgumentKindMismatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::TypeParameterInValuePosition { span: s, .. } => s.clone(),
@@ -1160,6 +1172,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::EffectfulSelfRecursionUnrealized { name: n, .. } => v1_rt::concat(v1_rt::concat("effectful declaration '".to_string(), n.clone()), "' calls itself outside tail position: the Rust realization lowers tail calls to a loop, but non-tail async recursion has no realization. Put the recursive call in tail position or move it into a pure helper.".to_string()),
     CompilerDiagnostic::ModuleFilenameCollision { filename: f, modules: ms, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("module filename collision: ".to_string(), ((ms.clone().len() as i64)).to_string()), " modules render one emitted file name '".to_string()), f.clone()), "': ".to_string()), ms.clone().join(&", ".to_string())), " — module_to_filename maps '.' to '_', so these names are indistinguishable at the emitted path; rename one module segment".to_string()),
     CompilerDiagnostic::EmittedSymbolCollision { symbol: s, identities: ids, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("emitted symbol collision: ".to_string(), ((ids.clone().len() as i64)).to_string()), " authored identities render one emitted symbol '".to_string()), s.clone()), "': ".to_string()), ids.clone().join(&", ".to_string())), " — two authored identities one emitted scope cannot hold apart (an undotted service with a type's name, a type spelled with `__`, dotted services differing only in first-letter case or in a segment's leading or trailing `_`); rename one".to_string()),
+    CompilerDiagnostic::NativeEffectRealizationRefused { entry: e, refusals: rs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("native effect realization refused for entry '".to_string(), e.clone()), "': ".to_string()), rs.clone().join(&"; ".to_string())), " (v1.compiler.emit NativeEffectRealizationAdmission: the rendered main binds only admitted handlers, so an unadmitted effect refuses here rather than failing to build or link)".to_string()),
     CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { caller: c, .. } => v1_rt::concat(v1_rt::concat("effect summary incomplete: ".to_string(), c.clone()), " calls through a function value, whose callee is chosen at runtime, so its effects are unknown rather than empty — the caller's summary is a lower bound, not the answer".to_string()),
     CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding { caller: c, name: n, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("effect summary incomplete: ".to_string(), c.clone()), " calls the local binding '".to_string()), n.clone()), "', whose effects this pass cannot join through the registry, so the caller's summary is a lower bound rather than the answer".to_string()),
     CompilerDiagnostic::CallArgumentNameUnknown { callee: c, argument: a, declared: ds, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': no parameter named '".to_string()), a.clone()), "' (declared: [".to_string()), ds.clone().join(&", ".to_string())), "])".to_string()),
@@ -1170,6 +1183,11 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::EqualityOnFunctionMember { type_name: t, member: m, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("equality is not defined for '".to_string(), t.clone()), "': member '".to_string()), m.clone()), "' is function-valued, and function equality has no denotation — compare a declared identity for this type instead of '=='".to_string()),
     CompilerDiagnostic::EqualityMemberUnjudgeable { type_name: t, member: m, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("equality admission for '".to_string(), t.clone()), "' cannot be judged: ".to_string()), m.clone()), " — '==' is refused rather than admitted on an unjudged member".to_string()),
     CompilerDiagnostic::EqualityOptionalityMismatch { optional_side: side, .. } => v1_rt::concat(v1_rt::concat("'==' compares an optional value with a required one (the ".to_string(), side.clone()), " operand is optional): no declared coercion lifts T into T?, so the comparison has no single meaning -- match on the optional".to_string()),
+    CompilerDiagnostic::EqualityAgainstPresentOnListRead { list_read: r, operator: o, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("'".to_string(), o.clone()), "' against Present { .. } on the result of '".to_string()), r.clone()), "' has no single meaning on every route (the interpreter returns the bare element, the emitted program a real optional, so the comparison is wrong or a runtime error on one route) -- match on the optional instead: match <read> { Present { value: v } => v ".to_string()), o.clone()), " .., Absent => ".to_string()), if (o.clone() == "==".to_string()) {
+        "false".to_string()
+    } else {
+        "true".to_string()
+    }), " }".to_string()),
     CompilerDiagnostic::TypeArgumentArityMismatch { type_name: t, supplied: s, declared: d, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type argument arity mismatch applying '".to_string(), t.clone()), "': ".to_string()), (s.clone()).to_string()), " type argument(s) supplied, ".to_string()), (d.clone()).to_string()), " type parameter(s) declared".to_string()),
     CompilerDiagnostic::TypeArgumentKindMismatch { type_name: t, param_name: p, kind_name: k, supplied: sup, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type argument does not inhabit the declared kind applying '".to_string(), t.clone()), "': parameter '".to_string()), p.clone()), "' is declared '".to_string()), k.clone()), "', and '".to_string()), sup.clone()), "' is not one of its inhabitants".to_string()),
     CompilerDiagnostic::TypeParameterInValuePosition { name: n, .. } => v1_rt::concat(v1_rt::concat("'".to_string(), n.clone()), "' is a type parameter, not a value: a name bound as a type may not stand in an expression position".to_string()),
@@ -1448,6 +1466,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
+    CompilerDiagnostic::NativeEffectRealizationRefused { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
     CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityNonError,
     gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
@@ -1485,6 +1507,10 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
     CompilerDiagnostic::EqualityOptionalityMismatch { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityError,
+    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::EqualityAgainstPresentOnListRead { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
@@ -2221,7 +2247,7 @@ pub fn param_node_type_expr(n: Rc<Node>) -> Rc<Node> {
 
 pub fn param_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
     if ((n.children.clone().len() as i64) > 1) {
-        n.children.clone().get((1) as usize).cloned()
+        n.children.clone().iter().cloned().skip(1 as usize).next()
     } else {
         std::option::Option::None
     }
@@ -2298,7 +2324,7 @@ pub fn field_node_cardinality(n: Rc<Node>) -> Cardinality {
 
 pub fn field_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
     if ((n.children.clone().len() as i64) > 1) {
-        n.children.clone().get((1) as usize).cloned()
+        n.children.clone().iter().cloned().skip(1 as usize).next()
     } else {
         std::option::Option::None
     }
@@ -2570,8 +2596,10 @@ pub fn expr_child_at(texpr: Rc<Node>, index: i64, role: String) -> Rc<Node> {
     match texpr
         .children
         .clone()
-        .get((index.clone()) as usize)
+        .iter()
         .cloned()
+        .skip(index.clone() as usize)
+        .next()
     {
         Some(v) => v.clone(),
         std::option::Option::None => make_expr_error_node(
@@ -2829,7 +2857,13 @@ pub fn if_then_branch(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn if_else_branch(texpr: Rc<Node>) -> Option<Rc<Node>> {
-    texpr.children.clone().get((2) as usize).cloned()
+    texpr
+        .children
+        .clone()
+        .iter()
+        .cloned()
+        .skip(2 as usize)
+        .next()
 }
 
 pub fn match_scrutinee(texpr: Rc<Node>) -> Rc<Node> {
@@ -2837,7 +2871,15 @@ pub fn match_scrutinee(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn match_arm_nodes(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
-    Rc::new(v1_rt::list_skip(&texpr.children.clone(), 1))
+    Rc::new(
+        texpr
+            .children
+            .clone()
+            .iter()
+            .cloned()
+            .skip(1 as usize)
+            .collect::<Vec<_>>(),
+    )
 }
 
 pub fn binop_left(texpr: Rc<Node>) -> Rc<Node> {
@@ -2937,7 +2979,15 @@ pub fn method_receiver(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn method_arg_nodes(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
-    Rc::new(v1_rt::list_skip(&texpr.children.clone(), 1))
+    Rc::new(
+        texpr
+            .children
+            .clone()
+            .iter()
+            .cloned()
+            .skip(1 as usize)
+            .collect::<Vec<_>>(),
+    )
 }
 
 pub fn expr_method_name_at(
@@ -2967,9 +3017,17 @@ pub fn lambda_param_names_at(
 ) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for n in Rc::new(v1_rt::list_skip(&texpr.children.clone(), 1))
-            .iter()
-            .cloned()
+        for n in Rc::new(
+            texpr
+                .children
+                .clone()
+                .iter()
+                .cloned()
+                .skip(1 as usize)
+                .collect::<Vec<_>>(),
+        )
+        .iter()
+        .cloned()
         {
             __result.push(authored_name_at(source_indices.clone(), n.clone()));
         }
@@ -2982,7 +3040,13 @@ pub fn let_value(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn let_body(texpr: Rc<Node>) -> Option<Rc<Node>> {
-    texpr.children.clone().get((1) as usize).cloned()
+    texpr
+        .children
+        .clone()
+        .iter()
+        .cloned()
+        .skip(1 as usize)
+        .next()
 }
 
 pub fn let_binding_name_at(
@@ -5069,8 +5133,10 @@ pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> LineCol {
             match index
                 .offsets
                 .clone()
-                .get((v1_rt::int_sub(line.clone(), 2)) as usize)
+                .iter()
                 .cloned()
+                .skip(v1_rt::int_sub(line.clone(), 2) as usize)
+                .next()
             {
                 Some(o) => v1_rt::int_add(o.clone(), 1),
                 std::option::Option::None => 0,
@@ -5093,8 +5159,10 @@ pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
             match index
                 .offsets
                 .clone()
-                .get((v1_rt::int_sub(line.clone(), 2)) as usize)
+                .iter()
                 .cloned()
+                .skip(v1_rt::int_sub(line.clone(), 2) as usize)
+                .next()
             {
                 Some(o) => v1_rt::int_add(o.clone(), 1),
                 std::option::Option::None => src_len.clone(),
@@ -5103,8 +5171,10 @@ pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
         let line_end = match index
             .offsets
             .clone()
-            .get((v1_rt::int_sub(line.clone(), 1)) as usize)
+            .iter()
             .cloned()
+            .skip(v1_rt::int_sub(line.clone(), 1) as usize)
+            .next()
         {
             Some(o) => o.clone(),
             std::option::Option::None => src_len.clone(),

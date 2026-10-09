@@ -9,6 +9,11 @@ use self::FileResultChannel::*;
 use self::FileVerb::*;
 use self::FuncBodyShape::*;
 use self::JsonFragmentsAccum::*;
+use self::NativeEffectContract::*;
+use self::NativeEffectHandler::*;
+use self::NativeEffectRealizationAdmission::*;
+use self::NativeEffectResolution::*;
+use self::NativeEffectUnavailableCause::*;
 use self::ShellEmissionRefusal::*;
 use self::ShellResultChannel::*;
 use self::TargetEmissionMode::*;
@@ -21,6 +26,17 @@ pub use crate::std_coercion::TypeDeclarationProvenance;
 use crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent;
 pub use crate::std_coercion::TypeRealizationDecision;
 use crate::std_coercion::TypeRealizationDecision::*;
+use crate::std_compiler_entry::CompilerEntryDriver::{
+    DirectIngestDriver, NativeClaimDriver, NativeCliDriver, NativeServeDriver,
+    RetainedHostCliKernel, SourceRootEvalDriver,
+};
+use crate::std_compiler_entry::NativeEffectClass::{NativeEffectDeclaration, NativeOutgoingHttp};
+use crate::std_compiler_entry::NativeEffectScope::{NativeAdmitAllExcept, NativeAdmitOnly};
+pub use crate::std_compiler_entry::{
+    CompilerEntryDriver, NativeEffectClass, NativeEffectDenominator, NativeEffectScope,
+};
+pub use crate::std_decl_ref::decl_ref;
+pub use crate::std_decl_ref::DeclarationRef;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 pub use crate::std_occurrence_identity::occurrence_id_eq;
@@ -840,12 +856,16 @@ pub fn order_typed_call_args_from_semantics(
             for app in plan.iter().cloned() {
                 __result.extend(
                     (*match app.matched_argument_index.clone() {
-                        Some(argument_index) => {
-                            match args.clone().get((argument_index.clone()) as usize).cloned() {
-                                Some(arg) => Rc::new(vec![arg.clone()]),
-                                std::option::Option::None => Rc::new(vec![]),
-                            }
-                        }
+                        Some(argument_index) => match args
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(argument_index.clone() as usize)
+                            .next()
+                        {
+                            Some(arg) => Rc::new(vec![arg.clone()]),
+                            std::option::Option::None => Rc::new(vec![]),
+                        },
                         std::option::Option::None => Rc::new(vec![]),
                     })
                     .iter()
@@ -891,7 +911,7 @@ pub fn has_nested_records_node(
                     source_indices.clone(),
                 );
                 if is_map.clone() {
-                    match n.children.clone().get((1) as usize).cloned() {
+                    match n.children.clone().iter().cloned().skip(1 as usize).next() {
                         Some(val_child) => {
                             let __tco_0 =
                                 crate::v1_compiler_infer_types::child_type_node(val_child.clone());
@@ -1020,6 +1040,64 @@ pub fn emit_data_fields_json(
             )
         },
     )
+}
+
+pub fn emit_declared_optional_row_json(
+    value: Rc<Node>,
+    inner_type_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    variant_wire: Rc<HashMap<String, Rc<DataVariantWireSpelling>>>,
+) -> Rc<EmitterOutcome> {
+    match (*value.expr_data.clone()).clone() {
+        ExprData::ExprLiteral { ref value, .. }
+            if matches!(value.as_ref(), LiteralValue::LitNull) =>
+        {
+            let LiteralValue::LitNull = value.as_ref() else {
+                unreachable!()
+            };
+            Rc::new(EmitterOutcome::Emitted {
+                json: "null".to_string(),
+            })
+        }
+        ExprData::ExprRecordLit {
+            parent_enum: pe, ..
+        } => match pe.clone() {
+            Some(parent) => {
+                if (crate::v1_std_core::qualified_last_segment(parent.clone())
+                    == crate::v1_std_core::qualified_last_segment(inner_type_name.clone()))
+                {
+                    Rc::new(EmitterOutcome::Refused {
+    reason: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("a data row declared ".to_string(), inner_type_name.clone()), "? is initialized with a bare ".to_string()), inner_type_name.clone()), " literal: no declared coercion lifts T into T? (DESIGN 4, 2026-09-26), so spell it Present { value: .. } or none".to_string()),
+})
+                } else {
+                    match value.children.clone().first().cloned() {
+                        std::option::Option::None => Rc::new(EmitterOutcome::Emitted {
+                            json: "null".to_string(),
+                        }),
+                        Some(payload_field) => {
+                            if ((value.children.clone().len() as i64) == 1) {
+                                emit_data_value_json(
+                                    crate::v1_std_core::field_init_node_value(
+                                        payload_field.clone(),
+                                    ),
+                                    source_indices.clone(),
+                                    variant_wire.clone(),
+                                )
+                            } else {
+                                Rc::new(EmitterOutcome::Refused {
+    reason: v1_rt::concat(v1_rt::concat("an optional row's present literal carries ".to_string(), crate::v1_compiler_emit_core_support::to_string((value.children.clone().len() as i64))), " fields; the option's present arm carries exactly its payload".to_string()),
+})
+                            }
+                        }
+                    }
+                }
+            }
+            std::option::Option::None => {
+                emit_data_value_json(value.clone(), source_indices.clone(), variant_wire.clone())
+            }
+        },
+        _ => emit_data_value_json(value.clone(), source_indices.clone(), variant_wire.clone()),
+    }
 }
 
 pub fn emit_data_value_json(
@@ -1960,26 +2038,29 @@ pub fn render_node_type(
                             }
                             std::option::Option::None => "_".to_string(),
                         };
-                        let second_child = match n.children.clone().get((1) as usize).cloned() {
-                            Some(c) => {
-                                if (c.inferred.clone() != std::option::Option::None) {
-                                    render_node_type(
-                                        crate::v1_compiler_infer_types::resolved_type(c.clone()),
-                                        target.clone(),
-                                        shared_types.clone(),
-                                        source_indices.clone(),
-                                    )
-                                } else {
-                                    render_node_type(
-                                        c.clone(),
-                                        target.clone(),
-                                        shared_types.clone(),
-                                        source_indices.clone(),
-                                    )
+                        let second_child =
+                            match n.children.clone().iter().cloned().skip(1 as usize).next() {
+                                Some(c) => {
+                                    if (c.inferred.clone() != std::option::Option::None) {
+                                        render_node_type(
+                                            crate::v1_compiler_infer_types::resolved_type(
+                                                c.clone(),
+                                            ),
+                                            target.clone(),
+                                            shared_types.clone(),
+                                            source_indices.clone(),
+                                        )
+                                    } else {
+                                        render_node_type(
+                                            c.clone(),
+                                            target.clone(),
+                                            shared_types.clone(),
+                                            source_indices.clone(),
+                                        )
+                                    }
                                 }
-                            }
-                            std::option::Option::None => "_".to_string(),
-                        };
+                                std::option::Option::None => "_".to_string(),
+                            };
                         let tuple_str = render_tuple_parts(
                             Rc::new(vec![first_child.clone(), second_child.clone()]),
                             target.clone(),
@@ -2137,7 +2218,7 @@ pub fn render_node_type(
                     ),
                     std::option::Option::None => "_".to_string(),
                 };
-                let v = match n.children.clone().get((1) as usize).cloned() {
+                let v = match n.children.clone().iter().cloned().skip(1 as usize).next() {
                     Some(vn) => render_node_type(
                         crate::v1_compiler_infer_types::child_type_node(vn.clone()),
                         target.clone(),
@@ -2264,7 +2345,7 @@ pub fn render_tuple_parts(parts: Rc<Vec<String>>, target: RenderTarget) -> Strin
         if ((parts.clone().len() as i64) > 0) {
             if ((parts.clone().len() as i64) == 2) {
                 match parts.clone().first().cloned() {
-                    Some(p0) => match parts.clone().get((1) as usize).cloned() {
+                    Some(p0) => match parts.clone().iter().cloned().skip(1 as usize).next() {
                         Some(p1) => crate::v1_compiler_emit_core_support::apply_type_template2(
                             ts.pair_template.clone(),
                             p0.clone(),
@@ -3070,6 +3151,531 @@ pub fn bind_operation_transport(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum NativeEffectContract {
+    NativeServiceEffect {
+        declaration: Rc<DeclarationRef>,
+    },
+    NativeResourceEffect {
+        binding: String,
+        declaration: Rc<DeclarationRef>,
+    },
+}
+impl NativeEffectContract {
+    pub fn declaration(&self) -> Rc<DeclarationRef> {
+        match self {
+            NativeEffectContract::NativeServiceEffect {
+                declaration: __val, ..
+            } => __val.clone(),
+            NativeEffectContract::NativeResourceEffect {
+                declaration: __val, ..
+            } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum NativeEffectHandler {
+    NativeTransportHandler { transports: Rc<Vec<TransportKind>> },
+    NativeCapabilityToken,
+}
+impl NativeEffectHandler {
+    pub fn transports(&self) -> Rc<Vec<TransportKind>> {
+        match self {
+            NativeEffectHandler::NativeTransportHandler {
+                transports: __val, ..
+            } => __val.clone(),
+            NativeEffectHandler::NativeCapabilityToken => panic!("no transports on unit variant"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum NativeEffectUnavailableCause {
+    NativeOperationBindingRefused {
+        operation: String,
+        refusal: Rc<TransportBindingRefusal>,
+    },
+    NativeResourceTraitHasNoImplementor {
+        capability_count: i64,
+    },
+    NativeEffectDeclarationAbsent,
+    NativeEffectDeclarationAmbiguous {
+        candidates: i64,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum NativeEffectRealizationAdmission {
+    NativeEffectHandlerBound {
+        effect_contract: Rc<NativeEffectContract>,
+        handler_identity: Rc<NativeEffectHandler>,
+    },
+    NativeEffectOutsideProductionDenominator {
+        effect_contract: Rc<NativeEffectContract>,
+        denominator: Rc<NativeEffectDenominator>,
+    },
+    NativeEffectRealizationUnavailable {
+        effect_contract: Rc<NativeEffectContract>,
+        cause: Rc<NativeEffectUnavailableCause>,
+    },
+}
+impl NativeEffectRealizationAdmission {
+    pub fn effect_contract(&self) -> Rc<NativeEffectContract> {
+        match self {
+            NativeEffectRealizationAdmission::NativeEffectHandlerBound {
+                effect_contract: __val,
+                ..
+            } => __val.clone(),
+            NativeEffectRealizationAdmission::NativeEffectOutsideProductionDenominator {
+                effect_contract: __val,
+                ..
+            } => __val.clone(),
+            NativeEffectRealizationAdmission::NativeEffectRealizationUnavailable {
+                effect_contract: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NativeEffectDeclSite {
+    pub item: Rc<Node>,
+    pub module_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum NativeEffectResolution {
+    NativeEffectResolved {
+        site: Rc<NativeEffectDeclSite>,
+    },
+    NativeEffectUnresolved {
+        cause: Rc<NativeEffectUnavailableCause>,
+    },
+}
+
+pub fn native_effect_resolution(
+    sites: Rc<Vec<Rc<NativeEffectDeclSite>>>,
+) -> Rc<NativeEffectResolution> {
+    match sites.clone().first().cloned() {
+        std::option::Option::None => Rc::new(NativeEffectResolution::NativeEffectUnresolved {
+            cause: Rc::new(NativeEffectUnavailableCause::NativeEffectDeclarationAbsent),
+        }),
+        Some(site) => {
+            if ((sites.clone().len() as i64) == 1) {
+                Rc::new(NativeEffectResolution::NativeEffectResolved { site: site.clone() })
+            } else {
+                Rc::new(NativeEffectResolution::NativeEffectUnresolved {
+                    cause: Rc::new(
+                        NativeEffectUnavailableCause::NativeEffectDeclarationAmbiguous {
+                            candidates: (sites.clone().len() as i64),
+                        },
+                    ),
+                })
+            }
+        }
+    }
+}
+
+pub fn native_effect_class_matches(
+    class: Rc<NativeEffectClass>,
+    declaration: Rc<DeclarationRef>,
+    transports: Rc<Vec<TransportKind>>,
+) -> bool {
+    match (*class.clone()).clone() {
+        NativeEffectClass::NativeEffectDeclaration { declaration: d, .. } => {
+            ((d.module_path.clone() == declaration.module_path.clone())
+                && (d.decl_name.clone() == declaration.decl_name.clone()))
+        }
+        NativeEffectClass::NativeOutgoingHttp => {
+            let mut __found = false;
+            for t in transports.iter().cloned() {
+                if (t.clone() == TransportKind::RestTransport) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+    }
+}
+
+pub fn native_effect_outside_denominator(
+    denominator: Rc<NativeEffectDenominator>,
+    declaration: Rc<DeclarationRef>,
+    transports: Rc<Vec<TransportKind>>,
+) -> bool {
+    match (*denominator.scope.clone()).clone() {
+        NativeEffectScope::NativeAdmitAllExcept { excluded: xs, .. } => {
+            let mut __found = false;
+            for x in xs.iter().cloned() {
+                if native_effect_class_matches(x.clone(), declaration.clone(), transports.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+        NativeEffectScope::NativeAdmitOnly { admitted: xs, .. } => {
+            ({
+                let mut __found = false;
+                for x in xs.iter().cloned() {
+                    if native_effect_class_matches(
+                        x.clone(),
+                        declaration.clone(),
+                        transports.clone(),
+                    ) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } == false)
+        }
+    }
+}
+
+pub fn bound_operation_transport_kind(bound: Rc<BoundOperation>) -> Option<TransportKind> {
+    match (*bound.clone()).clone() {
+        BoundOperation::RestBound { transport: _, .. } => Some(TransportKind::RestTransport),
+        BoundOperation::ShellBound { .. } => Some(TransportKind::ShellTransport),
+        BoundOperation::FileBound { .. } => Some(TransportKind::FileTransport),
+        BoundOperation::LocalBound => Some(TransportKind::LocalTransport),
+        BoundOperation::BindingRefused { cause: _, .. } => std::option::Option::None,
+    }
+}
+
+pub fn native_transport_kinds_insert(
+    kinds: Rc<Vec<TransportKind>>,
+    kind: TransportKind,
+) -> Rc<Vec<TransportKind>> {
+    if {
+        let mut __found = false;
+        for k in kinds.iter().cloned() {
+            if (k.clone() == kind.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    } {
+        kinds.clone()
+    } else {
+        v1_rt::concat(kinds.clone(), Rc::new(vec![kind.clone()]))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct BoundOperationAt {
+    pub operation: String,
+    pub bound: Rc<BoundOperation>,
+}
+
+pub fn native_service_bound_operations(
+    svc: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<BoundOperationAt>>> {
+    {
+        let fallback = service_fallback_transport(svc.clone());
+        Rc::new({
+            let mut __result = Vec::new();
+            for op in svc.children.clone().iter().cloned() {
+                __result.push(Rc::new(BoundOperationAt {
+                    operation: crate::v1_std_core::authored_name_at(
+                        source_indices.clone(),
+                        op.clone(),
+                    ),
+                    bound: bind_operation_transport(
+                        effective_operation_transport(op.clone(), fallback.clone()),
+                        op.clone(),
+                        source_indices.clone(),
+                    ),
+                }));
+            }
+            __result
+        })
+    }
+}
+
+pub fn admit_native_service_effect(
+    service: String,
+    resolution: Rc<NativeEffectResolution>,
+    denominator: Rc<NativeEffectDenominator>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<NativeEffectRealizationAdmission> {
+    match (*resolution.clone()).clone() {
+        NativeEffectResolution::NativeEffectUnresolved { cause: cz, .. } => Rc::new(
+            NativeEffectRealizationAdmission::NativeEffectRealizationUnavailable {
+                effect_contract: Rc::new(NativeEffectContract::NativeServiceEffect {
+                    declaration: crate::std_decl_ref::decl_ref(
+                        "<unresolved>".to_string(),
+                        service.clone(),
+                    ),
+                }),
+                cause: cz.clone(),
+            },
+        ),
+        NativeEffectResolution::NativeEffectResolved { site: site, .. } => {
+            let declaration =
+                crate::std_decl_ref::decl_ref(site.module_name.clone(), service.clone());
+            let contract = Rc::new(NativeEffectContract::NativeServiceEffect {
+                declaration: declaration.clone(),
+            });
+            let bounds = native_service_bound_operations(site.item.clone(), source_indices.clone());
+            let transports = bounds.iter().cloned().fold(
+                Rc::new(vec![]),
+                |acc: Rc<Vec<TransportKind>>, b: Rc<BoundOperationAt>| {
+                    match bound_operation_transport_kind(b.bound.clone()) {
+                        Some(k) => native_transport_kinds_insert(acc.clone(), k.clone()),
+                        std::option::Option::None => acc.clone(),
+                    }
+                },
+            );
+            if native_effect_outside_denominator(
+                denominator.clone(),
+                declaration.clone(),
+                transports.clone(),
+            ) {
+                Rc::new(
+                    NativeEffectRealizationAdmission::NativeEffectOutsideProductionDenominator {
+                        effect_contract: contract.clone(),
+                        denominator: denominator.clone(),
+                    },
+                )
+            } else {
+                match Rc::new({
+                    let mut __result = Vec::new();
+                    for b in bounds.iter().cloned() {
+                        if (bound_operation_transport_kind(b.bound.clone())
+                            == std::option::Option::None)
+                        {
+                            __result.push(b);
+                        }
+                    }
+                    __result
+                })
+                .first()
+                .cloned()
+                {
+                    Some(r) => match (*r.bound.clone()).clone() {
+                        BoundOperation::BindingRefused { cause: cz, .. } => Rc::new(
+                            NativeEffectRealizationAdmission::NativeEffectRealizationUnavailable {
+                                effect_contract: contract.clone(),
+                                cause: Rc::new(
+                                    NativeEffectUnavailableCause::NativeOperationBindingRefused {
+                                        operation: r.operation.clone(),
+                                        refusal: cz.clone(),
+                                    },
+                                ),
+                            },
+                        ),
+                        _ => Rc::new(
+                            NativeEffectRealizationAdmission::NativeEffectRealizationUnavailable {
+                                effect_contract: contract.clone(),
+                                cause: Rc::new(
+                                    NativeEffectUnavailableCause::NativeEffectDeclarationAbsent,
+                                ),
+                            },
+                        ),
+                    },
+                    std::option::Option::None => {
+                        Rc::new(NativeEffectRealizationAdmission::NativeEffectHandlerBound {
+                            effect_contract: contract.clone(),
+                            handler_identity: Rc::new(
+                                NativeEffectHandler::NativeTransportHandler {
+                                    transports: transports.clone(),
+                                },
+                            ),
+                        })
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn admit_native_resource_effect(
+    binding: String,
+    resource: String,
+    resolution: Rc<NativeEffectResolution>,
+    denominator: Rc<NativeEffectDenominator>,
+) -> Rc<NativeEffectRealizationAdmission> {
+    match (*resolution.clone()).clone() {
+        NativeEffectResolution::NativeEffectUnresolved { cause: cz, .. } => Rc::new(
+            NativeEffectRealizationAdmission::NativeEffectRealizationUnavailable {
+                effect_contract: Rc::new(NativeEffectContract::NativeResourceEffect {
+                    binding: binding.clone(),
+                    declaration: crate::std_decl_ref::decl_ref(
+                        "<unresolved>".to_string(),
+                        resource.clone(),
+                    ),
+                }),
+                cause: cz.clone(),
+            },
+        ),
+        NativeEffectResolution::NativeEffectResolved { site: site, .. } => {
+            let declaration =
+                crate::std_decl_ref::decl_ref(site.module_name.clone(), resource.clone());
+            let contract = Rc::new(NativeEffectContract::NativeResourceEffect {
+                binding: binding.clone(),
+                declaration: declaration.clone(),
+            });
+            let capability_count = (site.item.clone().children.clone().len() as i64);
+            if native_effect_outside_denominator(
+                denominator.clone(),
+                declaration.clone(),
+                Rc::new(vec![]),
+            ) {
+                Rc::new(
+                    NativeEffectRealizationAdmission::NativeEffectOutsideProductionDenominator {
+                        effect_contract: contract.clone(),
+                        denominator: denominator.clone(),
+                    },
+                )
+            } else {
+                if (capability_count.clone() == 0) {
+                    Rc::new(NativeEffectRealizationAdmission::NativeEffectHandlerBound {
+                        effect_contract: contract.clone(),
+                        handler_identity: Rc::new(NativeEffectHandler::NativeCapabilityToken),
+                    })
+                } else {
+                    Rc::new(
+                        NativeEffectRealizationAdmission::NativeEffectRealizationUnavailable {
+                            effect_contract: contract.clone(),
+                            cause: Rc::new(
+                                NativeEffectUnavailableCause::NativeResourceTraitHasNoImplementor {
+                                    capability_count: capability_count.clone(),
+                                },
+                            ),
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+pub fn native_declaration_label(d: Rc<DeclarationRef>) -> String {
+    v1_rt::concat(
+        d.module_path.clone(),
+        v1_rt::concat(" ".to_string(), d.decl_name.clone()),
+    )
+}
+
+pub fn native_effect_contract_label(c: Rc<NativeEffectContract>) -> String {
+    match (*c.clone()).clone() {
+        NativeEffectContract::NativeServiceEffect { declaration: d, .. } => {
+            v1_rt::concat("service ".to_string(), native_declaration_label(d.clone()))
+        }
+        NativeEffectContract::NativeResourceEffect {
+            binding: b,
+            declaration: d,
+            ..
+        } => v1_rt::concat(
+            "resource ".to_string(),
+            v1_rt::concat(
+                native_declaration_label(d.clone()),
+                v1_rt::concat(
+                    " (uses ".to_string(),
+                    v1_rt::concat(b.clone(), ")".to_string()),
+                ),
+            ),
+        ),
+    }
+}
+
+pub fn native_route_label(route: CompilerEntryDriver) -> String {
+    match route.clone() {
+        CompilerEntryDriver::NativeCliDriver => "NativeCliDriver".to_string(),
+        CompilerEntryDriver::NativeClaimDriver => "NativeClaimDriver".to_string(),
+        CompilerEntryDriver::NativeServeDriver => "NativeServeDriver".to_string(),
+        CompilerEntryDriver::SourceRootEvalDriver => "SourceRootEvalDriver".to_string(),
+        CompilerEntryDriver::DirectIngestDriver => "DirectIngestDriver".to_string(),
+        CompilerEntryDriver::RetainedHostCliKernel => "RetainedHostCliKernel".to_string(),
+    }
+}
+
+pub fn native_effect_admission_refusal(a: Rc<NativeEffectRealizationAdmission>) -> Option<String> {
+    match (*a.clone()).clone() {
+        NativeEffectRealizationAdmission::NativeEffectHandlerBound { .. } => {
+            std::option::Option::None
+        }
+        NativeEffectRealizationAdmission::NativeEffectOutsideProductionDenominator {
+            effect_contract: c,
+            denominator: d,
+            ..
+        } => Some(v1_rt::concat(
+            native_effect_contract_label(c.clone()),
+            v1_rt::concat(
+                " is outside the ".to_string(),
+                v1_rt::concat(
+                    native_route_label(d.route.clone()),
+                    v1_rt::concat(
+                        " denominator (ruling: ".to_string(),
+                        v1_rt::concat(native_declaration_label(d.ruling.clone()), ")".to_string()),
+                    ),
+                ),
+            ),
+        )),
+        NativeEffectRealizationAdmission::NativeEffectRealizationUnavailable {
+            effect_contract: c,
+            cause: cz,
+            ..
+        } => Some(v1_rt::concat(
+            native_effect_contract_label(c.clone()),
+            v1_rt::concat(
+                " has no native realization: ".to_string(),
+                native_effect_unavailable_fact(cz.clone()),
+            ),
+        )),
+    }
+}
+
+pub fn native_effect_unavailable_fact(cause: Rc<NativeEffectUnavailableCause>) -> String {
+    match (*cause.clone()).clone() {
+        NativeEffectUnavailableCause::NativeOperationBindingRefused {
+            operation: op,
+            refusal: r,
+            ..
+        } => v1_rt::concat(
+            "operation '".to_string(),
+            v1_rt::concat(
+                op.clone(),
+                v1_rt::concat(
+                    "' binds no transport: ".to_string(),
+                    transport_binding_refusal_fact(r.clone()),
+                ),
+            ),
+        ),
+        NativeEffectUnavailableCause::NativeResourceTraitHasNoImplementor {
+            capability_count: n,
+            ..
+        } => v1_rt::concat(
+            "it is a resource trait with ".to_string(),
+            v1_rt::concat(
+                crate::v1_compiler_emit_core_support::to_string(n.clone()),
+                " capabilities and no native implementor".to_string(),
+            ),
+        ),
+        NativeEffectUnavailableCause::NativeEffectDeclarationAbsent => {
+            "its declaration is not in the emitted closure".to_string()
+        }
+        NativeEffectUnavailableCause::NativeEffectDeclarationAmbiguous {
+            candidates: n, ..
+        } => v1_rt::concat(
+            crate::v1_compiler_emit_core_support::to_string(n.clone()),
+            " declarations in the closure carry its name, so which one it demands is not decided"
+                .to_string(),
+        ),
+    }
+}
+
 pub fn emit_unified_transport_dispatch(
     bound: Rc<BoundOperation>,
     op_name: String,
@@ -3467,10 +4073,14 @@ pub fn block_stmts_init(stmts: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
     if ((stmts.clone().len() as i64) <= 1) {
         Rc::new(vec![])
     } else {
-        Rc::new(v1_rt::list_take(
-            &stmts.clone(),
-            v1_rt::int_sub((stmts.clone().len() as i64), 1),
-        ))
+        Rc::new(
+            stmts
+                .clone()
+                .iter()
+                .cloned()
+                .take(v1_rt::int_sub((stmts.clone().len() as i64), 1) as usize)
+                .collect::<Vec<_>>(),
+        )
     }
 }
 
@@ -6805,7 +7415,13 @@ pub fn emit_block_stmts_shared(
                 };
                 let next_scope = scope_after_expr(stmt.clone(), scope.clone());
                 {
-                    let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
+                    let __tco_0 = Rc::new(
+                        remaining
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    );
                     let __tco_1 = v1_rt::rc_list_push(text, line.clone());
                     let __tco_2 = next_scope.clone();
                     let __tco_3 = depth;
@@ -6853,7 +7469,14 @@ pub fn emit_init_block_stmts_shared(
                 });
             }
             Some(stmt) => {
-                let rest = Rc::new(v1_rt::list_skip(&remaining.clone(), 1));
+                let rest = Rc::new(
+                    remaining
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(1 as usize)
+                        .collect::<Vec<_>>(),
+                );
                 match rest.clone().first().cloned() {
                     std::option::Option::None => {
                         break Rc::new(BlockEmitState {
@@ -8596,7 +9219,13 @@ pub fn emit_typed_tco_reassign_shared(
             let mut __result = Vec::new();
             for pair in pairs.iter().cloned() {
                 __result.push({
-                    let av = match arg_values.clone().get((pair.0.clone()) as usize).cloned() {
+                    let av = match arg_values
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(pair.0.clone() as usize)
+                        .next()
+                    {
                         Some(v) => v.clone(),
                         std::option::Option::None => pair.1.clone(),
                     };
