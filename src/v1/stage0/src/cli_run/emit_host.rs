@@ -3553,6 +3553,13 @@ mod fixture_closure_union_tests {
 
     #[test]
     fn capture_channels_without_stderr_capture_input_refuse_the_union() {
+        // Real absent-policy route: rust emit refuses at
+        // `unmodeled_shell_transport_operation_diagnostics` /
+        // `ShellCapturePolicyInputAbsent` before any program is emitted.
+        // `emit_shell_stderr_policy_binding`'s else-arm is not reachable from
+        // this harness (the wall fires first; the generated bind fn is not on
+        // this mirror). The rustc-decoy that compiled a hand-built `return Err`
+        // before spawn was deleted (review 78366).
         let union = fixture_closure_union_control_union(STDERR_CAPTURE_WITHOUT_POLICY)
             .expect("member without policy input resolves");
         let refusal = fixture_closure_union_emit_receipt(&union)
@@ -3618,6 +3625,16 @@ mod fixture_closure_union_tests {
         );
     }
 
+    /// Drain fragments from `v1.compiler.emit_rust` (`shell_capture_drain_start`,
+    /// `shell_capture_join_project`). These tests inhabit those strings.
+    ///
+    /// `__stderr_complete_limit` is planted in the specimen. The production
+    /// Complete bind (`emit_shell_stderr_policy_binding` →
+    /// `v1_rt::read_host_budget_bytes()`) is not compiled here: a standalone
+    /// rustc specimen cannot link the crate, and this harness does not call that
+    /// function. Deleting the bind's `read_host_budget_bytes` call does not turn
+    /// these tests red. That host-budget route is uncovered (review 78366,
+    /// review 78373).
     fn rustc_and_run_emitted_capture(
         stem: &str,
         complete_limit: Option<usize>,
@@ -3683,7 +3700,7 @@ mod fixture_closure_union_tests {
             script = script.replace("{payload}", stderr_payload),
             limit = limit,
             source = if complete_limit.is_some() {
-                "\"host budget\".to_string()".to_string()
+                "\"planted complete limit\".to_string()".to_string()
             } else {
                 "String::new()".to_string()
             },
@@ -3801,63 +3818,6 @@ mod fixture_closure_union_tests {
         assert_eq!(
             String::from_utf8_lossy(&run.stdout),
             format!("true|80000|16|{}", "Y".repeat(16))
-        );
-    }
-
-    #[test]
-    fn emitted_absent_policy_refuses_before_spawn() {
-        let refusal = crate::v1_compiler_emit::shell_emission_refusal_fact(std::rc::Rc::new(
-            crate::v1_compiler_emit::ShellEmissionRefusal::ShellCapturePolicyInputAbsent {
-                key: "stderr_truncated".to_string(),
-            },
-        ));
-        let marker = std::env::temp_dir().join(format!(
-            "gunbc-absent-policy-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        let program = format!(
-            "fn main() -> Result<(), Box<dyn std::error::Error>> {{\n\
-             return Err(\"{refusal}\".into());\n\
-             let _ = std::process::Command::new(\"sh\")\n\
-             .args([\"-c\", \"printf ran > {marker}\"])\n\
-             .status()?;\n\
-             Ok(())\n\
-             }}\n",
-            refusal = refusal.replace('\\', "\\\\").replace('"', "\\\""),
-            marker = marker.display(),
-        );
-        let root =
-            std::env::temp_dir().join(format!("gunbc-absent-policy-src-{}", std::process::id()));
-        std::fs::create_dir_all(&root).expect("scratch");
-        let src = root.join("main.rs");
-        let exe = root.join("specimen");
-        std::fs::write(&src, program).expect("write");
-        let compiled = std::process::Command::new("rustc")
-            .args(["--edition=2021", "-o"])
-            .arg(&exe)
-            .arg(&src)
-            .output()
-            .expect("rustc");
-        assert!(
-            compiled.status.success(),
-            "{}",
-            String::from_utf8_lossy(&compiled.stderr)
-        );
-        let run = std::process::Command::new(&exe).output().expect("run");
-        let _ = std::fs::remove_dir_all(&root);
-        assert!(!run.status.success(), "absent policy must refuse");
-        assert!(
-            String::from_utf8_lossy(&run.stderr).contains("stderr_capture"),
-            "{}",
-            String::from_utf8_lossy(&run.stderr)
-        );
-        assert!(
-            !marker.exists(),
-            "the child command ran; policy must refuse before spawn"
         );
     }
 
