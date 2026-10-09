@@ -7,8 +7,8 @@ As of 2026-10-09; it includes the operator's side-chat dispositions. There are 1
 | In the mega branch | 32 | Lands when #13641 lands |
 | Pending fold | 64 | On a manager's integration branch, with the conflict worker, or waiting for CI; folded into #13641 next |
 | Blocked | 4 | Needs an operator or host action first |
-| Left out | 42 | Not in the snapshot. Its remaining work is recorded under Outstanding work before the PR is closed; nothing is dropped |
-| Unreported, owned by a live lane | 6 | Waiting on that lane's report |
+| Left out | 44 | Not in the snapshot. Its remaining work is recorded under Outstanding work before the PR is closed; nothing is dropped |
+| Unreported, owned by a live lane | 4 | Waiting on that lane's report |
 | Orphans: no live owner | 13 | Triaged by the closeout: fold if done and clean, otherwise close |
 | Kept up by request | 1 | #13203 blackjack |
 
@@ -93,27 +93,27 @@ These are merged into `integration/v1-closeout`.
 | [#13243](https://github.com/gunb-ai/gunbc/pull/13243) | Inference: a variant literal of a generic coproduct takes the expected | ready / DIRTY | gentle-dove-36 (with the conflict worker) |
 | [#13224](https://github.com/gunb-ai/gunbc/pull/13224) | Native effect realization admission; native mains bind admitted handle | ready / CLEAN | gentle-dove-36 (with the conflict worker) |
 | [#13202](https://github.com/gunb-ai/gunbc/pull/13202) | Native broker 2C/G: optional data rows keep their ? (signature and JSO | ready / CLEAN | gentle-dove-36 (with the conflict worker) |
-| [#13621](https://github.com/gunb-ai/gunbc/pull/13621) | A data reference uses its value: ConstantMemberEdge marks the lowered  | draft / BLOCKED | via sharp-raven-357 |
-| [#13618](https://github.com/gunb-ai/gunbc/pull/13618) | workflow scripts: a refused bash emission refuses, never emits an empt | ready / CLEAN | via sharp-raven-357 |
-| [#13545](https://github.com/gunb-ai/gunbc/pull/13545) | Compare an Optional with an Optional at 46 latent sites no gated closu | ready / CLEAN | via sharp-raven-357 |
-| [#13511](https://github.com/gunb-ai/gunbc/pull/13511) | Join corpus Int and kernel Int at inhabitance (N7 g_tokenize_parse) | ready / CLEAN | via sharp-raven-357 |
-| [#13502](https://github.com/gunb-ai/gunbc/pull/13502) | Pair identity-cast native with the real emit artifact | ready / CLEAN | via sharp-raven-357 |
-| [#13501](https://github.com/gunb-ai/gunbc/pull/13501) | v2 tokenize: bind EmptyPattern on 01_tokenize's import chain (N7 resol | ready / CLEAN | via sharp-raven-357 |
-| [#13496](https://github.com/gunb-ai/gunbc/pull/13496) | Bool-native rust_logic/variant emit after BindingRef octet de-fork | ready / CLEAN | via sharp-raven-357 |
-| [#13469](https://github.com/gunb-ai/gunbc/pull/13469) | Out-of-gate emit census: binder types, A4 order on rust fixtures, refi | ready / CLEAN | via sharp-raven-357 |
-| [#13453](https://github.com/gunb-ai/gunbc/pull/13453) | Floor judges base-revision facts with the base revision's own compiler | ready / CLEAN | via sharp-raven-357 |
-| [#13438](https://github.com/gunb-ai/gunbc/pull/13438) | Precedence-climbing tree contract for dag binary expressions | ready / DIRTY | via sharp-raven-357 |
-| [#13436](https://github.com/gunb-ai/gunbc/pull/13436) | XL-2: named conversions for every non-String interpolation hole (std.n | ready / BLOCKED | via sharp-raven-357 |
-| [#13425](https://github.com/gunb-ai/gunbc/pull/13425) | Gate the foreign-language grammar claims (census phase 4): runnable te | ready / CLEAN | via sharp-raven-357 |
-| [#13406](https://github.com/gunb-ai/gunbc/pull/13406) | Claims tokenize .dag text through tokenize_prepared(dag_prepared_lex() | ready / CLEAN | via sharp-raven-357 |
-| [#13380](https://github.com/gunb-ai/gunbc/pull/13380) | RFM: 'first element of a list' nickname fork (roster first / list_head | ready / CLEAN | via sharp-raven-357 |
-| [#13379](https://github.com/gunb-ai/gunbc/pull/13379) | v2.std.grammar: qualify the GrammarExpr Optional arm (N7 resolve link) | ready / CLEAN | via sharp-raven-357 |
-| [#13325](https://github.com/gunb-ai/gunbc/pull/13325) | v2 infer: derive a call's result type from a declared return (instanti | ready / CLEAN | via sharp-raven-357 |
-| [#13320](https://github.com/gunb-ai/gunbc/pull/13320) | v2 infer: an integer literal elaborates at its expected type through s | ready / CLEAN | via sharp-raven-357 |
-| [#13308](https://github.com/gunb-ai/gunbc/pull/13308) | Census part 2: the native infer census on v2-native-census (census-inf | ready / CLEAN | via sharp-raven-357 |
-| [#13307](https://github.com/gunb-ai/gunbc/pull/13307) | v2: bare count over lists binds the std.algebra collection size row, a | ready / CLEAN | via sharp-raven-357 |
-| [#13126](https://github.com/gunb-ai/gunbc/pull/13126) | Grammar overlap: validation refuses every overlap row; required zero-c | ready / CLEAN | via sharp-raven-357 |
-| [#13123](https://github.com/gunb-ai/gunbc/pull/13123) | C4: native route enforces constructor confinement (sole_constructor +  | ready / CLEAN | via sharp-raven-357 |
+| [#13621](https://github.com/gunb-ai/gunbc/pull/13621) | A data reference uses its value: ConstantMemberEdge marks the lowered  | draft / BLOCKED | sharp-raven-357 (~200-file conflict; separate worker after the conflict worker lands) |
+| [#13618](https://github.com/gunb-ai/gunbc/pull/13618) | workflow scripts: a refused bash emission refuses, never emits an empt | ready / CLEAN | sharp-raven-357 (~200-file conflict; separate worker after the conflict worker lands) |
+| [#13545](https://github.com/gunb-ai/gunbc/pull/13545) | Compare an Optional with an Optional at 46 latent sites no gated closu | ready / CLEAN | sharp-raven-357 (~200-file conflict; separate worker after the conflict worker lands) |
+| [#13511](https://github.com/gunb-ai/gunbc/pull/13511) | Join corpus Int and kernel Int at inhabitance (N7 g_tokenize_parse) | ready / CLEAN | sharp-raven-357 (~200-file conflict; separate worker after the conflict worker lands) |
+| [#13502](https://github.com/gunb-ai/gunbc/pull/13502) | Pair identity-cast native with the real emit artifact | ready / CLEAN | sharp-raven-357 (~200-file conflict; separate worker after the conflict worker lands) |
+| [#13501](https://github.com/gunb-ai/gunbc/pull/13501) | v2 tokenize: bind EmptyPattern on 01_tokenize's import chain (N7 resol | ready / CLEAN | sharp-raven-357 (~200-file conflict; separate worker after the conflict worker lands) |
+| [#13496](https://github.com/gunb-ai/gunbc/pull/13496) | Bool-native rust_logic/variant emit after BindingRef octet de-fork | ready / CLEAN | sharp-raven-357 (~200-file conflict; separate worker after the conflict worker lands) |
+| [#13469](https://github.com/gunb-ai/gunbc/pull/13469) | Out-of-gate emit census: binder types, A4 order on rust fixtures, refi | ready / CLEAN | sharp-raven-357 (~200-file conflict; separate worker after the conflict worker lands) |
+| [#13453](https://github.com/gunb-ai/gunbc/pull/13453) | Floor judges base-revision facts with the base revision's own compiler | ready / CLEAN | sharp-raven-357 (~200-file conflict; separate worker after the conflict worker lands) |
+| [#13438](https://github.com/gunb-ai/gunbc/pull/13438) | Precedence-climbing tree contract for dag binary expressions | ready / DIRTY | sharp-raven-357 (~200-file conflict; separate worker after the conflict worker lands) |
+| [#13436](https://github.com/gunb-ai/gunbc/pull/13436) | XL-2: named conversions for every non-String interpolation hole (std.n | ready / BLOCKED | sharp-raven-357 (~200-file conflict; separate worker after the conflict worker lands) |
+| [#13425](https://github.com/gunb-ai/gunbc/pull/13425) | Gate the foreign-language grammar claims (census phase 4): runnable te | ready / CLEAN | sharp-raven-357 (~200-file conflict; separate worker after the conflict worker lands) |
+| [#13406](https://github.com/gunb-ai/gunbc/pull/13406) | Claims tokenize .dag text through tokenize_prepared(dag_prepared_lex() | ready / CLEAN | sharp-raven-357 (~200-file conflict; separate worker after the conflict worker lands) |
+| [#13380](https://github.com/gunb-ai/gunbc/pull/13380) | RFM: 'first element of a list' nickname fork (roster first / list_head | ready / CLEAN | sharp-raven-357 (~200-file conflict; separate worker after the conflict worker lands) |
+| [#13379](https://github.com/gunb-ai/gunbc/pull/13379) | v2.std.grammar: qualify the GrammarExpr Optional arm (N7 resolve link) | ready / CLEAN | sharp-raven-357 (~200-file conflict; separate worker after the conflict worker lands) |
+| [#13325](https://github.com/gunb-ai/gunbc/pull/13325) | v2 infer: derive a call's result type from a declared return (instanti | ready / CLEAN | sharp-raven-357 (~200-file conflict; separate worker after the conflict worker lands) |
+| [#13320](https://github.com/gunb-ai/gunbc/pull/13320) | v2 infer: an integer literal elaborates at its expected type through s | ready / CLEAN | sharp-raven-357 (~200-file conflict; separate worker after the conflict worker lands) |
+| [#13308](https://github.com/gunb-ai/gunbc/pull/13308) | Census part 2: the native infer census on v2-native-census (census-inf | ready / CLEAN | sharp-raven-357 (~200-file conflict; separate worker after the conflict worker lands) |
+| [#13307](https://github.com/gunb-ai/gunbc/pull/13307) | v2: bare count over lists binds the std.algebra collection size row, a | ready / CLEAN | sharp-raven-357 (~200-file conflict; separate worker after the conflict worker lands) |
+| [#13126](https://github.com/gunb-ai/gunbc/pull/13126) | Grammar overlap: validation refuses every overlap row; required zero-c | ready / CLEAN | sharp-raven-357 (~200-file conflict; separate worker after the conflict worker lands) |
+| [#13123](https://github.com/gunb-ai/gunbc/pull/13123) | C4: native route enforces constructor confinement (sole_constructor +  | ready / CLEAN | sharp-raven-357 (~200-file conflict; separate worker after the conflict worker lands) |
 | [#13625](https://github.com/gunb-ai/gunbc/pull/13625) | CAX41 guest onboarding; fleet-converge from a branch after a per-run n | draft / BLOCKED | side chat, draft; folds when CI green (touches fleet-converge.yml) |
 | [#13614](https://github.com/gunb-ai/gunbc/pull/13614) | seed interpreter: withdraw the spelling-admitted, label-blind PureCall | ready / CLEAN | side chat, folds when CI green |
 | [#13611](https://github.com/gunb-ai/gunbc/pull/13611) | demand engine: a request under a different nature is a durable key con | ready / CLEAN | side chat, folds when CI green |
@@ -135,7 +135,6 @@ These are drafts, red, superseded or WIP, per the manager's report or a side cha
 
 | PR | Title | Draft / merge state | Note |
 | --- | --- | --- | --- |
-| [#13430](https://github.com/gunb-ai/gunbc/pull/13430) | XL-2 PR2b: string templates — disjoint lexer, one ^dag_string_template | ready / BLOCKED | XL-2 cancelled |
 | [#13097](https://github.com/gunb-ai/gunbc/pull/13097) | G1: belt verify through the materialization provider; compute outcomes | ready / BLOCKED | bold-bee: red on T?==T sites until #13549; draft |
 | [#13604](https://github.com/gunb-ai/gunbc/pull/13604) | Prepare the required-floor gate once; project policy from that subject | draft / BLOCKED | eager-gull: left out |
 | [#13591](https://github.com/gunb-ai/gunbc/pull/13591) | Resolve free kernel calls to std.primitives identity; infer refuses th | draft / CLEAN | eager-gull: left out |
@@ -154,20 +153,23 @@ These are drafts, red, superseded or WIP, per the manager's report or a side cha
 | [#13632](https://github.com/gunb-ai/gunbc/pull/13632) | dusk qwen 3 | ready / BLOCKED | qwen: jq length(null)->0 fabricated default (DESIGN §5) |
 | [#13634](https://github.com/gunb-ai/gunbc/pull/13634) | C2 #13482: the seven review fixes (own-interface entries, lookup-first | draft / BLOCKED | royal-moth: left out |
 | [#13482](https://github.com/gunb-ai/gunbc/pull/13482) | C2: typecheck materialization through the local store | draft / CLEAN | royal-moth: left out |
-| [#13637](https://github.com/gunb-ai/gunbc/pull/13637) | XL-2 3c: enumerate ServiceSetAside consumers before delete-first | ready / BLOCKED | sharp-raven: left out |
-| [#13635](https://github.com/gunb-ai/gunbc/pull/13635) | XL-2 cleanup mgr | draft / BLOCKED | sharp-raven: left out |
-| [#13630](https://github.com/gunb-ai/gunbc/pull/13630) | Recover callee Arrow through Instantiation-grounding refusal | ready / CLEAN | sharp-raven: left out |
-| [#13623](https://github.com/gunb-ai/gunbc/pull/13623) | Type undeclared lambda actuals from preceding application formals (N7  | ready / CLEAN | sharp-raven: left out |
-| [#13558](https://github.com/gunb-ai/gunbc/pull/13558) | N7: derive payload-binder facts for construct-field consumption | ready / CLEAN | sharp-raven: left out |
-| [#13548](https://github.com/gunb-ai/gunbc/pull/13548) | DRAFT: unimported-type import migration (source_reference_repoint) | ready / CLEAN | sharp-raven: left out |
-| [#13541](https://github.com/gunb-ai/gunbc/pull/13541) | Retire v2.std.algebra filter/any onto the collection roster's callback | ready / DIRTY | sharp-raven: left out |
-| [#13426](https://github.com/gunb-ai/gunbc/pull/13426) | Foreign lexer reds: rust ingest bare +, TS single-quoted string body;  | draft / CLEAN | sharp-raven: left out |
-| [#13399](https://github.com/gunb-ai/gunbc/pull/13399) | Move the bottom seam to the leaf std.error_primitives; trim diverges t | draft / DIRTY | sharp-raven: left out |
-| [#13392](https://github.com/gunb-ai/gunbc/pull/13392) | Manual git R0 fixture: request the default -z records its decoders mod | draft / CLEAN | sharp-raven: left out |
-| [#13390](https://github.com/gunb-ai/gunbc/pull/13390) | Split RFC 3986 §2.1 percent-coding into extdeps.uri.percent_encoding;  | draft / CLEAN | sharp-raven: left out |
-| [#13378](https://github.com/gunb-ai/gunbc/pull/13378) | std.unicode.scalar: partial from_code_point (typed refusal) + char_tex | ready / DIRTY | sharp-raven: left out |
-| [#13377](https://github.com/gunb-ai/gunbc/pull/13377) | node_query: qualify the Cardinality/Optional references (import-level  | ready / BLOCKED | sharp-raven: left out |
-| [#13284](https://github.com/gunb-ai/gunbc/pull/13284) | v2: kernel-String concat through a free-monoid structure bound on the  | ready / DIRTY | sharp-raven: left out |
+| [#13630](https://github.com/gunb-ai/gunbc/pull/13630) | Recover callee Arrow through Instantiation-grounding refusal | ready / CLEAN | sharp-raven: BLOCKING §5 fail-open: refused callee reaches eval body (reviews 78331/78359) |
+| [#13426](https://github.com/gunb-ai/gunbc/pull/13426) | Foreign lexer reds: rust ingest bare +, TS single-quoted string body;  | draft / CLEAN | sharp-raven: base #13425, never ran CI |
+| [#13558](https://github.com/gunb-ai/gunbc/pull/13558) | N7: derive payload-binder facts for construct-field consumption | ready / CLEAN | sharp-raven: base n7/payload-binder-combined-base, no CI (approved) |
+| [#13643](https://github.com/gunb-ai/gunbc/pull/13643) | Census: cross-module record field values are judged (rcf pin rewritten | draft / BLOCKED | sharp-raven: census, opened after wind-down (approved): candidate |
+| [#13642](https://github.com/gunb-ai/gunbc/pull/13642) | Census: quoted-key brace is not a record field at resolve, not lowerin | ready / BLOCKED | sharp-raven: census, opened after wind-down (approved): candidate |
+| [#13541](https://github.com/gunb-ai/gunbc/pull/13541) | Retire v2.std.algebra filter/any onto the collection roster's callback | ready / DIRTY | sharp-raven: conflicts; 15 root scratch scripts (review 78343) |
+| [#13637](https://github.com/gunb-ai/gunbc/pull/13637) | XL-2 3c: enumerate ServiceSetAside consumers before delete-first | ready / BLOCKED | sharp-raven: docs-only 3c census (approved): easy pickup |
+| [#13635](https://github.com/gunb-ai/gunbc/pull/13635) | XL-2 cleanup mgr | draft / BLOCKED | sharp-raven: duplicate of #13621 |
+| [#13548](https://github.com/gunb-ai/gunbc/pull/13548) | DRAFT: unimported-type import migration (source_reference_repoint) | ready / CLEAN | sharp-raven: plan only, empty roster, REQUEST_CHANGES 78338; reverted from the branch |
+| [#13399](https://github.com/gunb-ai/gunbc/pull/13399) | Move the bottom seam to the leaf std.error_primitives; trim diverges t | draft / DIRTY | sharp-raven: red, conflicts with main |
+| [#13284](https://github.com/gunb-ai/gunbc/pull/13284) | v2: kernel-String concat through a free-monoid structure bound on the  | ready / DIRTY | sharp-raven: red, conflicts with main |
+| [#13378](https://github.com/gunb-ai/gunbc/pull/13378) | std.unicode.scalar: partial from_code_point (typed refusal) + char_tex | ready / DIRTY | sharp-raven: red/stale vs #13453; take prep/13378-no-rung-drop (no PR) |
+| [#13377](https://github.com/gunb-ai/gunbc/pull/13377) | node_query: qualify the Cardinality/Optional references (import-level  | ready / BLOCKED | sharp-raven: red: DependencyView import turns off the bare channel (main defect from #13500) |
+| [#13430](https://github.com/gunb-ai/gunbc/pull/13430) | XL-2 PR2b: string templates — disjoint lexer, one ^dag_string_template | ready / BLOCKED | sharp-raven: red; tplscan scratch + WIP head (review 78344); waits on #13284 |
+| [#13623](https://github.com/gunb-ai/gunbc/pull/13623) | Type undeclared lambda actuals from preceding application formals (N7  | ready / CLEAN | sharp-raven: stacked on #13558, red on target (approved) |
+| [#13392](https://github.com/gunb-ai/gunbc/pull/13392) | Manual git R0 fixture: request the default -z records its decoders mod | draft / CLEAN | sharp-raven: stacked on red #13378 (approved) |
+| [#13390](https://github.com/gunb-ai/gunbc/pull/13390) | Split RFC 3986 §2.1 percent-coding into extdeps.uri.percent_encoding;  | draft / CLEAN | sharp-raven: stacked on red #13378 (approved) |
 | [#13557](https://github.com/gunb-ai/gunbc/pull/13557) | plans: tie native memory rulings to resumable roadmap milestones | draft / CLEAN | side chat: plans/roadmap rows only; optional |
 | [#13613](https://github.com/gunb-ai/gunbc/pull/13613) | Tailscale ACL: admit tag:dashboard to the dusk-1 serving API (tcp:8080 | ready / BLOCKED | side chat: red (AmbiguousBareNameRead in tailscale_acl_witness); unrelated to cutover |
 | [#13639](https://github.com/gunb-ai/gunbc/pull/13639) | Deployment risk conformance: one environment model for the repo | draft / BLOCKED | silent-lark: D2 respawn, REQUEST_CHANGES review 78345 (unstated Absent->srv1 fallbacks) |
@@ -184,8 +186,6 @@ These are drafts, red, superseded or WIP, per the manager's report or a side cha
 | --- | --- | --- | --- |
 | [#13640](https://github.com/gunb-ai/gunbc/pull/13640) | mtcollins1 runner: dispatch floor to ephemeral slot + collect instrume | draft / DIRTY | eager-gull-22 (session quiet-stag-623) |
 | [#13516](https://github.com/gunb-ai/gunbc/pull/13516) | Managed-host cut O1c-3a: ManagedHostAdmission population with drop-arm | ready / CLEAN | eager-gull-22 (session eager-gull-22) |
-| [#13643](https://github.com/gunb-ai/gunbc/pull/13643) | Census: cross-module record field values are judged (rcf pin rewritten | draft / BLOCKED | sharp-raven-357 (session sharp-raven-357) |
-| [#13642](https://github.com/gunb-ai/gunbc/pull/13642) | Census: quoted-key brace is not a record field at resolve, not lowerin | ready / BLOCKED | sharp-raven-357 (session sharp-raven-357) |
 | [#13428](https://github.com/gunb-ai/gunbc/pull/13428) | Carry the alias declaration: its name resolves to its target (ruling B | ready / CLEAN | sharp-raven-357 (session sharp-raven-357) |
 | [#13212](https://github.com/gunb-ai/gunbc/pull/13212) | Starter eval set: .dag modeling and DESIGN.md adherence, graded mechan | ready / CLEAN | valiant-crab-775 (session valiant-crab-775) |
 
@@ -258,6 +258,9 @@ This is work that has to go somewhere even though none of it merges now. Each ro
 | silent-lark gaps | silent-lark-156 | walk_cgroup_pending quadratic concat (§6); fabric_storage_file_store has no head listing; rename srv1_gunbc_approval_broker_root to be host-neutral; python/go still refuse capture channels |
 | #13488 nested-optionality carrier | gentle-dove-36 | Review 78334 (REQUEST_CHANGES): the body says 'no code' but it changes 31 compiler files; the plan's own 'go' gate is not in evidence; CardOptional { layers: Int } admits 0/-1 (the plan requires OptionalLayers); it silently saturates at 8 layers; peeling Required succeeds instead of refusing. Restart from the plan's OptionalLayers design after an explicit go |
 | #13574 interim T?==T wall | gentle-dove-36 / eager-gull-22 | Review 78262: the approval cites escalation msg_66f62924, which can't be found; it recognizes List reads by leaf name, not declaration (§4). Keep or revert is with the operator |
+| #13265 type-param scope | gentle-dove-36 | Review 78367: without module-scope params, Result's `ok` binds to an unrelated fn ok (fabricated type). Don't land until binders carry the instantiated field type |
+| sharp-raven integration fold | closeout | integration/sharp-raven-357 @82d7624f5a conflicts with #13641 in ~200 files; a dedicated worker folds it after the conflict worker's PR lands |
+| srv2 v2-native census/frontier run | sharp-raven-357 for swift-bat-828 | Still running on srv2; nobody owns reading the result now |
 | session/lively-wren-411 @6194f56012 | bold-bee-114 | Duplicate member_not_a_binder fix, superseded by #13560. No PR; delete the branch |
 | wise-koi-396 (shell-dag live-deploy restart-tailscale) | stern-boar-596 | Nothing was ever pushed; the work is unstarted |
 
@@ -292,7 +295,7 @@ This is work that has to go somewhere even though none of it merges now. Each ro
 
 ### Lanes not yet reported
 
-eager-gull-22 and sharp-raven-357 are finishing their integration branches. swift-bat-828 (state of CI) is in an error state and has 2 PRs. neat-boar-16's #12942 is in the mega branch, and its unowned follow-ups are in its memory note `pending/neat-boar-16-capacity-freeze.txt`, which still needs reading.
+eager-gull-22 is finishing their integration branches. swift-bat-828 (state of CI) is in an error state and has 2 PRs. neat-boar-16's #12942 is in the mega branch, and its unowned follow-ups are in its memory note `pending/neat-boar-16-capacity-freeze.txt`, which still needs reading.
 
 ### swift-bat-828 branches (checked by a side chat)
 
