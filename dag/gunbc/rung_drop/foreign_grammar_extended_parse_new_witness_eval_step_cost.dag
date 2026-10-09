@@ -1,0 +1,42 @@
+module gunbc.rung_drop.foreign_grammar_extended_parse_new_witness_eval_step_cost
+
+import std.types { String, List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_foreign_grammar_extended_parse_rows }
+
+// DECLARED 4b(3) DROP (v2.test.parse census phase 4, 2026-10-05; ruling stern-bear-500, grammar
+// program, after the operator's phase-4 ruling via sharp-raven-357 to keep and gate the foreign
+// grammars). The DECLARATION lives here; the POPULATION's authority is
+// `v2.workflow.floor_eval_step_cost_drop` `floor_eval_step_cost_drop_foreign_grammar_extended_parse_rows`.
+//
+// WHAT IS LOST IS ONE WALL, AND THE CLAIMS ARE UNTOUCHED. Both identities stay on the gate: planned,
+// executed and measured; a semantic red and a wall-clock crossing still block. Only an eval-step
+// overrun is reported under this drop rather than refusing. The budget is not raised.
+//
+// WHY A DROP AND NOT A SMALLER CLAIM. Each claim parses one extended function through its language's
+// own grammar -- the smallest source exercising the constructs its label names -- and its grammar
+// preparation is billed apart (claim_batch BuildBuddy invocation 9241511f). The remaining bill is the
+// parser's honest per-token cost, the same cost gunbc.rung_drop
+// dag_text_round_trip_nested_bind_new_witness_eval_step_cost declares for the dag grammar.
+data foreign_grammar_extended_parse_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_foreign_grammar_extended_parse_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop floor_eval_step_cost_drop_foreign_grammar_extended_parse_rows; measured by "), m.measured_by))
+
+data foreign_grammar_extended_parse_new_witness_eval_step_cost: RungDrop = RungDrop {
+  identity: "foreign_grammar_extended_parse_new_witness_eval_step_cost" as NonEmptyStr,
+
+  subject: "new-witness eval-step cost gate over the kotlin and rust extended-function grammar parse claims (test.claim.parse_test_kotlin_grammar, test.claim.parse_test_rust_grammar): they still execute, eval_steps stay recorded, a semantic red and a wall-clock crossing still block; only the eval-step cost-gate rung is lowered",
+
+  declared: "2026-10-05",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "honest per-token parse cost of the interpreted parser over a foreign grammar; owner: grammar program (stern-bear-500)",
+    },
+    population: foreign_grammar_extended_parse_new_witness_eval_step_cost_population,
+    restoration_trigger: "THE CAPABILITY: a precedence-climbing tree contract (one node per operator application, not one per level), or parse claims evaluated on the native route -- the capability gunbc.rung_drop dag_text_round_trip_nested_bind_new_witness_eval_step_cost names. WHAT IT MUST BE SUFFICIENT FOR: both identities, still tokenizing and parsing their extended-function source once through their own language's grammar, measuring under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives. Deleting an identity, shrinking its source below the constructs its claim names, supplying its tokens or parse, or bundling it into a shared producer does not satisfy this trigger.",
+  }
+}

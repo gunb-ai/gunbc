@@ -487,6 +487,8 @@ fn floor_route_gap_expectation_chunk_00() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.codex_app_server_press_wet_witness_test.press_account_trip_yields_standing_or_typed_refusal_never_turn_started_holds", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.srv3_seeded_install_media_real_execution.a_seed_artifact_is_fetched_read_back_and_an_escaping_name_moves_no_byte_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.codex_package_delivery_wet_witness_test.acquire_required_codex_tarball_sha512_matches_lock", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.codex_package_delivery_wet_witness_test.acquire_exact_target_pair_admits_wrapper_and_platform", operation: "KernelName", ground: NoMockResponse {} },
@@ -520,7 +522,7 @@ fn floor_route_gap_expectation_chunk_00() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.codex_supervised_turn_wet_witness_test.wet_finish_observe_native_digest_only", operation: "Check", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.codex_supervised_turn_wet_witness_test.wet_finish_observe_toolchain_only", operation: "Check", ground: NoMockResponse {} },
-    tail: Empty {}
+    tail: Empty {} }
   }
   }
   }
@@ -1193,18 +1195,14 @@ fn floor_route_gap_expectation_chunk_09() -> List<FloorRouteGapExpectation> {
   }
 }
 
-// MegaRAC committed-artifact sha256sum: first host effect is shell.Mktemp.Dir (checksum
+// Committed SOL host payload sha256sum: first host effect is shell.Mktemp.Dir (checksum
 // file), which declares no mock_response. Triple with local_repo_wet_schedule and the
-// LocalRepoWetLane exclusion on megarac_spx_ui_surface_artifact_integrity_witness_test.dag.
-// The catalog-contents Read of the same checkout path is hermetic input, not a route gap.
+// LocalRepoWetLane exclusion on mtcollins_sol_host_payload_integrity_witness_test.dag.
 // Memory capture verification consumes DigestStdin over the bytes read once.
 fn floor_route_gap_expectation_chunk_10() -> List<FloorRouteGapExpectation> {
   Cons { head: FloorRouteGapExpectation { identity: "test.claim.memory_capture_real_execution_witness.w_capture_digest_binds_consumed_content", operation: "DigestStdin", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.pre_os_capture_replay_witness.w_early_exit_refuses_absence_on_real_bytes", operation: "DigestStdin", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.pre_os_capture_replay_witness.w_four_real_captures_retain_statement_inventory_and_missing_receipts", operation: "DigestStdin", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.pre_os_capture_replay_witness.w_truncated_configuration_cannot_support_absence", operation: "DigestStdin", ground: NoMockResponse {} }, tail: Cons { head: FloorRouteGapExpectation { identity: "test.claim.pre_os_capture_replay_witness.w_real_host_userspace_positive_and_truncated_negative", operation: "DigestStdin", ground: NoMockResponse {} }, tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.megarac_spx_ui_surface_artifact_integrity_witness.committed_spx_ui_surface_hashes_to_the_catalog_identity", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.megarac_spx_ui_surface_artifact_integrity_witness.committed_sol_host_payload_hashes_to_the_positive_control_identity", operation: "Dir", ground: NoMockResponse {} },
+    head: FloorRouteGapExpectation { identity: "test.claim.mtcollins_sol_host_payload_integrity_witness.committed_sol_host_payload_hashes_to_the_positive_control_identity", operation: "Dir", ground: NoMockResponse {} },
     tail: Empty {}
-  }
   }
   }
   }
@@ -1456,7 +1454,7 @@ fn floor_route_gap_expectation_chunk_14() -> List<FloorRouteGapExpectation> {
   }
   }}}
 
-// The ten test.claim.durable_exclusive_hold_file_store_wet_witness identities: the hold protocol
+// The test.claim.durable_exclusive_hold_file_store_wet_witness identities: the hold protocol
 // over the real file store -- absent acquires at 1, held refuses without writing (another owner and
 // its own spelling), release to N+1 and reacquire at N+2, two contenders over one free observation,
 // store refusal distinct from contention, refused releases leave no next generation, and a commit
@@ -1486,7 +1484,16 @@ fn floor_route_gap_expectation_chunk_15() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.durable_exclusive_hold_file_store_wet_witness.a_write_time_store_refusal_is_reported_as_unavailable_not_as_a_lost_race_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.durable_exclusive_hold_file_store_wet_witness.a_live_release_plan_carries_the_observed_generation_and_the_free_bytes_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.durable_exclusive_hold_file_store_wet_witness.w_after_acquire_invokes_the_real_slot_release", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.durable_exclusive_hold_file_store_wet_witness.w_failed_acquire_runs_no_body", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.durable_exclusive_hold_file_store_wet_witness.w_refused_acquire_body_writes_a_marker_when_called_directly", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
+    }
+    }
+    }
   }
   }
   }
@@ -2156,40 +2163,13 @@ fn floor_route_gap_expectation_chunk_30() -> List<FloorRouteGapExpectation> {
   }
 }
 
-// THE mtcollins1 KVM OBSERVER WET CONTROLS (gunbc#12492) and the SOL channel-loss control that asks the
-// screen run on the local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule),
-// where all held on required-floor run 36583319535 (srv4-03). The same run measured each identity's
-// hermetic route gap: shell.Mktemp.Dir / DirWithTemplate declares no mock_response.
+// The SOL channel-loss control that asks the screen runs on the local-repo wet lane
+// (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule); its hermetic route gap is
+// shell.Mktemp.Dir, which declares no mock_response.
 fn floor_route_gap_expectation_chunk_29() -> List<FloorRouteGapExpectation> {
   Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_busy_viewer_slot_refuses_the_observer_and_the_handoff", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_connection_lost_mid_boot_is_reported_and_no_still_is_claimed_after_it", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_held_observer_is_admitted_and_its_triggered_still_is_hash_bound", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_launch_that_cannot_publish_its_pid_stops_its_child", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.an_owned_process_is_released_and_observed_gone", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.an_unreadable_canvas_is_acquisition_failed_with_the_browsers_words", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.an_unreadable_process_state_never_skips_the_kill_of_an_unpublished_child", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_record_naming_another_process_is_foreign_and_not_released", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_term_ignoring_child_with_an_unpublished_record_is_observed_stopped", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_transport_that_exits_at_once_is_not_serving", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_relative_observer_directory_is_resolved_once", operation: "DirWithTemplate", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_root_page_that_navigates_cannot_destroy_the_login", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness.a_viewer_without_its_feature_list_never_opens_kvm", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.machine_intake.sol_hold_stdin_wet_witness.a_channel_loss_asks_the_screen_and_the_ask_does_not_change_the_verdict", operation: "DirWithTemplate", ground: NoMockResponse {} },
-    tail: Empty {} } } } } } } } } } } } } } }
+    tail: Empty {} }
 }
 
 // test.claim.roadmap.session_placement_wet_witness (dogfood G5, gunbc#13074): all five reach

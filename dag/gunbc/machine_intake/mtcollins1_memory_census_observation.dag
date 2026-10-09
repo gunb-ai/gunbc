@@ -562,11 +562,6 @@ data mtcollins1_host_memory_population: HostMemoryPopulation = HostMemoryPopulat
 // identity, and a caller policy on top of it. Leaving it here would have made this receipt a
 // second authority for a question the migration is modelling properly.
 //
-// AND ITS PROVENANCE WAS PROSE. The mapping was read from source.min.js as served by this
-// controller, and NO SUCH ARTIFACT IS COMMITTED. A sentence naming the file it came from is not a
-// resolvable receipt; a reader cannot check it, which is the same defect as a hand-transcribed
-// number. The observation therefore does not belong in an evidence PR without its bytes.
-//
 // WHAT SURVIVES HERE IS THE MEASUREMENT ALONE, because the transition itself was observed against
 // the live controller and is evidence about this unit. It is carried as SAMPLES rather than a
 // sentence: the reading is a timestamped sequence of two raw controller fields, and a prose
@@ -575,9 +570,7 @@ data mtcollins1_host_memory_population: HostMemoryPopulation = HostMemoryPopulat
 //
 // THE STATUS AND INDEX ARE CARRIED RAW AND UNDECODED, DELIBERATELY. What any particular value
 // MEANS is an extdeps.bmc.megarac catalog keyed to a firmware identity, and the policy over it is
-// the boot-path migration's; this module draws no readiness conclusion. The decoder that used to
-// live here was removed because its source (source.min.js as served by this controller) is not a
-// committed artifact, and a sentence naming the file it came from is not a resolvable receipt.
+// the boot-path migration's; this module draws no readiness conclusion. 
 type MtCollins1MediaRedirectionSample {
   offset_from_attach: Second
   redirection_status: Nat

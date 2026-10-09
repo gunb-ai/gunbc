@@ -60,6 +60,11 @@ fn test_executable_command(path: String) -> ArgvCommand {
   argv_command(program: test_program(), arguments: ["-x", path])
 }
 
+// -d IS "EXISTS AND IS A DIRECTORY" (POSIX test, OPERANDS -d).
+fn test_directory_command(path: String) -> ArgvCommand {
+  argv_command(program: test_program(), arguments: ["-d", path])
+}
+
 // WHETHER A PATH IS THERE, OR WHY THAT COULD NOT BE DECIDED -- ONE DECLARATION, AT THE BOUNDARY THAT
 // OWNS THE UTILITY.
 //

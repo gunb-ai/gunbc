@@ -190,7 +190,7 @@ fn receipt_over(
     false_control: Present { value: NativeTestReturnedFalse },
     true_control: Present { value: NativeTestPassed },
     malformed_control: MalformedSpecimenRefused {
-      path: "target/v2-native-lane/malformed-control-root/poison.dag",
+      path: "target/v2-native-lane/malformed-control-root/dag/poison.dag",
       reason: ^tokenize_lex_e1_unterminated_string
     },
     old_route_control: OldRouteWithdrawn { withdrawn_executable: "/seed/gunbc" },
@@ -906,7 +906,7 @@ test fn an_unattributed_file_refusal_is_refused() -> Bool {
       population: [passed_row(module: "v2.test.alpha", declaration: "passes")],
       file_refusals: [file_refusal_row(
         path: ^some_path,
-        head: ^parse_grammar_choice_overlap_residue,
+        head: ^tokenize_lex_e1_unrecognized_char,
         fatal: ^some_unowned_cause
       )]
     )),
@@ -921,10 +921,10 @@ test fn an_unattributed_file_refusal_is_refused() -> Bool {
 // cause has no ownership row still fails it, so the owned rows did not become a catch-all.
 fn body_lowering_frontier_refusals() -> List<NativeTestFileRefusal> {
   [
-    file_refusal_row(path: ^bl_a, head: ^parse_grammar_choice_overlap_residue, fatal: ^body_lowering_reason_call_argument_unread),
-    file_refusal_row(path: ^bl_b, head: ^parse_grammar_choice_overlap_residue, fatal: ^body_lowering_reason_operator_operand_unread),
-    file_refusal_row(path: ^bl_c, head: ^parse_grammar_choice_overlap_residue, fatal: ^body_lowering_reason_type_annotation_not_carried),
-    file_refusal_row(path: ^bl_d, head: ^parse_grammar_choice_overlap_residue, fatal: ^body_lowering_reason_paren_group_unread)
+    file_refusal_row(path: ^bl_a, head: ^tokenize_lex_e1_unrecognized_char, fatal: ^body_lowering_reason_call_argument_unread),
+    file_refusal_row(path: ^bl_b, head: ^tokenize_lex_e1_unrecognized_char, fatal: ^body_lowering_reason_operator_operand_unread),
+    file_refusal_row(path: ^bl_c, head: ^tokenize_lex_e1_unrecognized_char, fatal: ^body_lowering_reason_type_annotation_not_carried),
+    file_refusal_row(path: ^bl_d, head: ^tokenize_lex_e1_unrecognized_char, fatal: ^body_lowering_reason_paren_group_unread)
   ]
 }
 
@@ -949,7 +949,7 @@ test fn an_unknown_fatal_cause_beside_the_owned_ones_still_refuses_unowned() -> 
     module_source_index: [],
     population: [],
     file_refusals: Cons {
-      head: file_refusal_row(path: ^bl_e, head: ^parse_grammar_choice_overlap_residue, fatal: ^some_unowned_cause),
+      head: file_refusal_row(path: ^bl_e, head: ^tokenize_lex_e1_unrecognized_char, fatal: ^some_unowned_cause),
       tail: body_lowering_frontier_refusals()
     }
   ))
@@ -1025,7 +1025,7 @@ test fn a_context_refusal_backed_by_another_modules_file_is_refused() -> Bool {
       ],
       file_refusals: [file_refusal_row(
         path: ^alpha_path,
-        head: ^parse_grammar_choice_overlap_residue,
+        head: ^tokenize_lex_e1_unrecognized_char,
         fatal: ^parse_g0_tokens_remain
       )]
     )),
@@ -1056,7 +1056,7 @@ test fn a_context_refusal_at_its_own_path_with_the_wrong_reason_is_refused() -> 
       ],
       file_refusals: [file_refusal_row(
         path: ^beta_path,
-        head: ^parse_grammar_choice_overlap_residue,
+        head: ^tokenize_lex_e1_unrecognized_char,
         fatal: ^resolve_module_not_found
       )]
     )),
@@ -1091,7 +1091,7 @@ test fn a_context_refusal_backed_by_its_file_refusal_is_not_refused_on_that_clau
     ],
     file_refusals: [file_refusal_row(
       path: ^beta_path,
-      head: ^parse_grammar_choice_overlap_residue,
+      head: ^tokenize_lex_e1_unrecognized_char,
       fatal: ^parse_g0_tokens_remain
     )]
   ))
@@ -1613,8 +1613,8 @@ fn native_route_tally_probe() -> List<NativeRouteCauseTally> {
     module_source_index: [],
     population: [],
     file_refusals: [
-      file_refusal_row(path: ^tally_a, head: ^parse_grammar_choice_overlap_residue, fatal: ^parse_g0_tokens_remain),
-      file_refusal_row(path: ^tally_b, head: ^parse_grammar_choice_overlap_residue, fatal: ^parse_g0_tokens_remain),
+      file_refusal_row(path: ^tally_a, head: ^tokenize_lex_e1_unrecognized_char, fatal: ^parse_g0_tokens_remain),
+      file_refusal_row(path: ^tally_b, head: ^tokenize_lex_e1_unrecognized_char, fatal: ^parse_g0_tokens_remain),
       file_refusal_row(path: ^tally_c, head: ^resolve_reason_unbound_symbol, fatal: ^resolve_reason_unbound_symbol)
     ]
   ))

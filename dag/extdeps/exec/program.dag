@@ -126,6 +126,7 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.languages.bash.invocation", decl_name: "bash_program"),
     decl_ref(module_path: "extdeps.cargo_build", decl_name: "cargo_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cat_program"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "nproc_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cp_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ln_program"),
