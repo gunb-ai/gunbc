@@ -55,8 +55,15 @@ import extdeps.systemd {
   systemd_unit_property_wire, SystemdUnitProperty, LoadState, SubState, ExecMainStatus,
   MemoryMax, WorkingDirectoryProperty, StandardOutputProperty, StandardErrorProperty,
   ProtectSystemProperty, ProtectHomeProperty, PrivateTmpProperty, ReadWritePathsProperty,
-  RemainAfterExitProperty,
+  RemainAfterExitProperty, ExecStopPostProperty,
 }
+import gunbc.roadmap.roadmap_attempt_exit_spool {
+  AttemptExitHook, AttemptExitHookRendered, AttemptExitHookRefused, attempt_exit_hook,
+  AttemptUnitRole, AttemptWorkerRole, AttemptReviewerRole, AttemptAuditorRole,
+  AttemptExitRecordObservation, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable,
+  AttemptProcessExitedWith, AttemptProcessSignaled, attempt_exit_record_observe,
+}
+import extdeps.posix.signal { linux_standard_signal_number }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.systemd.systemd_run {
   SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
@@ -1513,13 +1520,24 @@ fn dispatch_review_unit_name(node_id: String, attempt_key: String, criterion_key
 // root (the first reviewer, 2026-09-05, exited 101 on exactly that with the worktree as its cwd), and
 // the worktree reaches the harness as the argument that sets its tools' directory, tool and subject
 // named separately (gunbc_harness_spawn_argv).
+//
+// THE EXIT RECORD REPLACES RemainAfterExit FOR THE REVIEWER AND AUDITOR (bold-bee-114 ruling,
+// 2026-10-06), for the worker's reason (dispatch_worker_unit_properties): a reviewer finishing is the
+// event the attempt's next obligation waits on, and a unit that stays `active (exited)` never stops,
+// so its stop hook could not fire at that moment. With an exit hook the unit stops with its process
+// and its record carries the exit; the belt reads a collected reviewer from that record
+// (gunbc.roadmap_belt_actuate belt_review_process). The SUPERVISOR shares this shape and passes no
+// hook: its convene gate still reads the retained unit, and moving it onto the record is not part of
+// this change -- so Absent keeps RemainAfterExit exactly as before, and that is the only reason the
+// parameter is optional.
 fn dispatch_review_unit_properties(
   instance: HostDashboardInstance,
   working_directory: String,
   log_path: String,
   review_dir: String,
+  exit_hook: NonEmptyStr?,
 ) -> List<SystemdRunProperty> {
-  [
+  concat([
     SystemdRunProperty { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
     SystemdRunProperty { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr },
     SystemdRunProperty { property: StandardOutputProperty, value: join(["append:", log_path], "") as NonEmptyStr },
@@ -1528,8 +1546,10 @@ fn dispatch_review_unit_properties(
     SystemdRunProperty { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
     SystemdRunProperty { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
     SystemdRunProperty { property: ReadWritePathsProperty, value: review_dir as NonEmptyStr },
-    SystemdRunProperty { property: RemainAfterExitProperty, value: "yes" as NonEmptyStr },
-  ]
+  ], match exit_hook {
+    Present { value: hook } => [SystemdRunProperty { property: ExecStopPostProperty, value: hook }]
+    Absent => [SystemdRunProperty { property: RemainAfterExitProperty, value: "yes" as NonEmptyStr }]
+  })
 }
 
 data gunbc_harness_reviewer_function: String = "harness_reviewer_cli"
@@ -1587,6 +1607,7 @@ fn dispatch_review_unit_command(
   brief: String,
   head_sha: String,
   criterion_key: String,
+  exit_hook: NonEmptyStr,
 ) -> SystemdRunCommandReading {
   systemd_run_user_transient_command(
     unit: dispatch_review_unit_name(node_id: node_id as String, attempt_key: attempt_key, criterion_key: criterion_key),
@@ -1595,6 +1616,7 @@ fn dispatch_review_unit_command(
       working_directory: instance.repo_root as String,
       log_path: dispatch_attempt_review_log_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
       review_dir: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+      exit_hook: Present { value: exit_hook },
     ),
     setenv_bindings: [],
     command_argv: gunbc_harness_review_argv(
@@ -1646,6 +1668,7 @@ fn dispatch_audit_unit_command(
   worktree_path: String,
   brief: String,
   head_sha: String,
+  exit_hook: NonEmptyStr,
 ) -> SystemdRunCommandReading {
   let dir = dispatch_attempt_audit_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
   systemd_run_user_transient_command(
@@ -1655,6 +1678,7 @@ fn dispatch_audit_unit_command(
       working_directory: instance.repo_root as String,
       log_path: join([dir, "/auditor-stdout.log"], ""),
       review_dir: dir,
+      exit_hook: Present { value: exit_hook },
     ),
     setenv_bindings: [],
     command_argv: [
@@ -1718,6 +1742,7 @@ fn dispatch_supervisor_unit_command(
       working_directory: instance.repo_root as String,
       log_path: join([dir, "/supervisor-stdout.log"], ""),
       review_dir: dir,
+      exit_hook: none,
     ),
     setenv_bindings: [],
     command_argv: [
@@ -2652,13 +2677,16 @@ fn dispatch_attempt_unit_name(node_id: String, attempt_key: String) -> NonEmptyS
 // memory the cgroup enforces are one figure; it used to be the instance ceiling read directly. WorkingDirectory is the controller checkout for the reason
 // dispatch_pane_working_directory states. StandardOutput and StandardError append to the attempt's
 // own events path, so capture is a unit property rather than a quoted shell payload piped through
-// a terminal multiplexer.
+// a terminal multiplexer. ExecStopPost is the attempt's exit record (gunbc.roadmap.roadmap_attempt_exit_spool
+// attempt_exit_hook): one create-only mkdir whose name carries the manager's stop-time facts, written
+// at the moment the worker's process ends -- the event the capture obligation is invoked on.
 fn dispatch_worker_unit_properties(
   instance: HostDashboardInstance,
   working_directory: String,
   worker_log_path: String,
   granted: Kibibyte,
   process_bounds: UnitProcessBounds,
+  exit_hook: NonEmptyStr,
 ) -> List<SystemdRunProperty> {
   concat(
     compute_grant_unit_properties(granted: granted, working_directory: working_directory, process_bounds: Present { value: process_bounds }),
@@ -2669,19 +2697,26 @@ fn dispatch_worker_unit_properties(
       SystemdRunProperty { property: ProtectHomeProperty, value: "read-only" as NonEmptyStr },
       SystemdRunProperty { property: PrivateTmpProperty, value: "yes" as NonEmptyStr },
       SystemdRunProperty { property: ReadWritePathsProperty, value: dispatch_worker_writable_paths(instance: instance) as NonEmptyStr },
-      SystemdRunProperty { property: RemainAfterExitProperty, value: "yes" as NonEmptyStr },
+      SystemdRunProperty { property: ExecStopPostProperty, value: exit_hook },
     ],
   )
 }
 
-// THE UNIT OUTLIVES ITS PROCESS ON PURPOSE. A transient unit whose main process exits 0 is collected
-// by the manager and reads LoadState=not-found a moment later; one that exits nonzero is retained as
-// failed. The process observer below read not-found as "never ran", so a SUCCESSFUL worker was the one
-// case the belt could not commit or verify -- measured 2026-09-05 on the first worker to finish with
-// turn.completed (attempt ce21f99eb2e82ec1: worktree dirty, commit "provider not completed"), while
-// the eight failed attempts before it were all committed. RemainAfterExit keeps the unit loaded as
-// active (exited) with its ExecMainStatus readable until it is stopped, so the exit is an observable
-// fact for as long as the attempt needs it, on both exit paths alike.
+// THE UNIT NO LONGER OUTLIVES ITS PROCESS; THE EXIT RECORD DOES (reversal of the 2026-09-05 choice,
+// bold-bee-114 ruling 2026-10-06 on dogfood intervention #4). A transient unit whose main process
+// exits 0 is collected by the manager and reads LoadState=not-found a moment later. On 2026-09-05 the
+// observer read not-found as "never ran", so a SUCCESSFUL worker was the one case the belt could not
+// commit or verify (attempt ce21f99eb2e82ec1), and RemainAfterExit=yes was added to keep the unit
+// loaded as `active (exited)` with its ExecMainStatus readable.
+//
+// That kept the exit observable only as manager MEMORY -- lost on a reboot, a manager restart or a
+// reap -- and, because a RemainAfterExit unit never stops when its process ends, it made a stop hook
+// impossible: ExecStopPost would run at teardown, not at exit, so nothing could be invoked BY the
+// exit. The exit record replaces it. The hook writes it at exit, on disk, under the instance root,
+// carrying the same facts ExecMainStatus did plus the manager's result and whether the process
+// exited or was signaled. The observer reads the unit while it is loaded and the record once it is
+// not (attempt_worker_unit_observation), and a unit that is gone with NO record is reported as
+// exactly that -- never as a worker that did not run.
 
 // THE WORKER MAY WRITE ONLY UNDER THE INSTANCE ROOT: its worktree, its attempt state, the spool. The
 // second belt-dispatched attempt (2026-09-04) edited the deploy tree instead of its worktree, having
@@ -2708,6 +2743,7 @@ type DispatchWorkerUnitPlan {
   working_directory: String
   worker_log_path: String
   inner_argv: List<String>
+  exit_hook: NonEmptyStr
 }
 
 fn dispatch_worker_unit_properties_for_plan(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, granted: Kibibyte, process_bounds: UnitProcessBounds) -> List<SystemdRunProperty> {
@@ -2717,6 +2753,7 @@ fn dispatch_worker_unit_properties_for_plan(instance: HostDashboardInstance, pla
     worker_log_path: plan.worker_log_path,
     granted: granted,
     process_bounds: process_bounds,
+    exit_hook: plan.exit_hook,
   )
 }
 
@@ -2768,16 +2805,22 @@ fn dispatch_session_container_for_provider(
             ], ""),
           }
         Present { value: program } =>
-          DispatchSessionContainerReady {
-            container: SystemdUnitContainer {
-              plan: DispatchWorkerUnitPlan {
-                systemd_run_program: program,
-                unit: dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key),
-                working_directory: pane_working_directory,
-                worker_log_path: worker_log_path,
-                inner_argv: provider_inner,
-              },
-            },
+          match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptWorkerRole) {
+            AttemptExitHookRefused { reason } =>
+              DispatchSessionContainerUnavailable { step: "worker-exit-hook" as NonEmptyStr, detail: reason as String }
+            AttemptExitHookRendered { exec_line } =>
+              DispatchSessionContainerReady {
+                container: SystemdUnitContainer {
+                  plan: DispatchWorkerUnitPlan {
+                    systemd_run_program: program,
+                    unit: dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key),
+                    working_directory: pane_working_directory,
+                    worker_log_path: worker_log_path,
+                    inner_argv: provider_inner,
+                    exit_hook: exec_line,
+                  },
+                },
+              }
           }
       }
     ClaudeCodeProvider =>
@@ -4009,6 +4052,58 @@ fn attempt_unit_observation(unit: NonEmptyStr) -> AttemptUnitObservation {
 
 fn attempt_unit_substate_has_exited(substate: String) -> Bool {
   substate == "exited" || substate == "failed" || substate == "dead"
+}
+
+// THE WORKER UNIT'S OBSERVATION: the manager while the unit is loaded, the exit record once it is
+// not. The worker unit no longer carries RemainAfterExit (dispatch_worker_unit_properties), so a
+// worker that exited 0 is collected and the manager answers not-found; its stop hook wrote the exit
+// record first (ExecStopPost runs before the unit leaves the manager), so a collected worker is read
+// from that record, carrying the same status ExecMainStatus carried.
+//
+// A COLLECTED UNIT WITH NO RECORD IS NOT A WORKER THAT NEVER RAN (bold-bee-114, 2026-10-06, condition
+// 1). Dispatch's own start receipt separates the two: the G5 placement record is written immediately
+// before every worker unit is started (gunbc.roadmap_belt_actuate belt_session_container_create), so
+// an attempt with a placement record and no exit record had a unit that ended without its hook
+// writing -- a failed hook, which is reported as indeterminate and located, never as absence
+// (condition 2). Only an attempt with NO placement record answers absent: it never had a unit,
+// which is the vendor (tmux) population and the attempt whose spawn never reached the unit start.
+type AttemptUnitStartStanding
+  = AttemptUnitStartRecorded
+  | AttemptUnitNeverStarted
+  | AttemptUnitStartUnread { reason: String }
+
+// A SIGNALED WORKER IS READ AS systemd's ExecMainStatus READ IT: the signal number. That is the
+// reading every consumer of WorkerProcessExited saw before this change, preserved exactly so no
+// consumer's decision moves; the record keeps the distinction (AttemptProcessSignaled) and a
+// signaled arm on WorkerProcessEvidence is the named follow-up (docs/plans/belt-event-driven-obligations.md,
+// Follow-ups; trigger: the next change to a WorkerProcessExited consumer's decision).
+fn attempt_unit_from_exit_record(unit: NonEmptyStr, record: AttemptExitRecordObservation, start: AttemptUnitStartStanding) -> AttemptUnitObservation {
+  match record {
+    AttemptExitRecordUnreadable { reason } =>
+      AttemptUnitUnreadable { reason: join(["unit ", unit as String, " is not loaded and its exit record could not be read: ", reason], "") }
+    AttemptExitRecordFound { record: r } =>
+      match r.end {
+        AttemptProcessExitedWith { status } => AttemptUnitFinished { exit_status: to_string(value: status) }
+        AttemptProcessSignaled { signal } => AttemptUnitFinished { exit_status: to_string(value: linux_standard_signal_number(signal: signal)) }
+      }
+    AttemptExitRecordNone =>
+      match start {
+        AttemptUnitNeverStarted => AttemptUnitAbsent
+        AttemptUnitStartRecorded =>
+          AttemptUnitUnreadable { reason: join(["unit ", unit as String, " was started under a placement grant and is no longer loaded, and it left no exit record: its ExecStopPost hook did not write (see the user journal for this unit)"], "") }
+        AttemptUnitStartUnread { reason } =>
+          AttemptUnitUnreadable { reason: join(["unit ", unit as String, " is not loaded and left no exit record, and whether it was started could not be read: ", reason], "") }
+      }
+  }
+}
+
+fn attempt_worker_unit_observation_of(unit: NonEmptyStr, loaded: AttemptUnitObservation, record: AttemptExitRecordObservation, start: AttemptUnitStartStanding) -> AttemptUnitObservation {
+  match loaded {
+    AttemptUnitAbsent => attempt_unit_from_exit_record(unit: unit, record: record, start: start)
+    AttemptUnitActive => AttemptUnitActive
+    AttemptUnitFinished { exit_status } => AttemptUnitFinished { exit_status: exit_status }
+    AttemptUnitUnreadable { reason } => AttemptUnitUnreadable { reason: reason }
+  }
 }
 
 fn worker_process_from_attempt_unit(

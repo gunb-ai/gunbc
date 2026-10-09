@@ -22,19 +22,18 @@ import gunbc.live_deploy.slice_bounds {
 // oracle in a file that cannot resolve is evidence of nothing, and it failed silently because the
 // only thing that would have caught it is the resolve this import makes possible.
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
+import gunbc.live_deploy.belt_cadence { belt_tick_run_bound }
 import gunbc.live_deploy.emit {
   emit_slice_unit_doc,
   live_deploy_protocol,
   emit_belt_service_unit_doc,
-  emit_belt_timer_unit_doc,
   emit_systemd_unit_doc,
   live_deploy_belt_service_unit_file,
-  live_deploy_belt_timer_unit_file,
+  live_deploy_belt_exit_path_unit_file, live_deploy_belt_answer_path_unit_file,
+  live_deploy_belt_exit_drain_service_unit_file, live_deploy_belt_discovery_service_unit_file,
   live_deploy_serve_unit_file,
   live_deploy_slice_unit_file,
   user_manager_environment_directives,
-  belt_tick_cadence,
-  belt_tick_run_bound,
   eval_budget_flag_text,
   emit_approval_broker_slice_unit_doc,
   emit_approval_broker_unit_doc,
@@ -52,6 +51,7 @@ import gunbc.live_deploy.spec {
   DeploymentServiceConfig,
   deployment_slice_unit_name,
   deployment_belt_service_unit_name,
+  deployment_belt_exit_drain_service_unit_name, deployment_belt_exit_drain_service_unit_path, deployment_belt_unit_install_target, deployment_belt_discovery_service_unit_name,
   gunbc_approval_broker_slice_unit_name,
   gunbc_repository_convergence_slice_unit_name,
   gunbc_approval_broker_unit_name,
@@ -59,10 +59,11 @@ import gunbc.live_deploy.spec {
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.repository_convergence_placement { convergence_unit_doc }
-import extdeps.systemd { MemoryMax, MemoryHigh, MemorySwapMax }
+import extdeps.systemd { MemoryMax, MemoryHigh, MemorySwapMax, systemd_time_span_of_seconds }
 import extdeps.http.server { HttpServerListenConfig }
 import v2.std.algebra { any, for_all }
 import extdeps.systemd.unit_file {
+  systemd_unit_file_lines,
   SystemdUnitFile,
   ServiceUnitFile,
   TimerUnitFile,
@@ -95,7 +96,7 @@ import extdeps.systemd.unit_file {
   SystemdSliceDirective,
   DirectiveByteCount,
 }
-import gunbc.host_layout { belt_spawn_workdir_env_var }
+import gunbc.host_layout { belt_spawn_workdir_env_var, attempt_exit_inbox_dir, publication_answer_dir }
 
 // A DATED, INDEPENDENTLY TRANSCRIBED REALIZATION FIXTURE — NOT LIVE DRIFT DETECTION.
 //
@@ -137,8 +138,8 @@ import gunbc.host_layout { belt_spawn_workdir_env_var }
 //                                       assertion beside it (watch the Decision, not the bytes)
 //                                       pins the watchdog decision itself.
 //
-// So per row, as of this writing: the_belt_timer_unit_matches_the_deployed_bytes still holds its
-// 2026-08-19 transcription and is the only row carrying an external referent. belt-service, serve
+// So per row, as of this writing: the belt timer row that held the 2026-08-19 transcription is gone
+// with the timer (dogfood intervention #4), so NO row carries an external referent. belt-service, serve
 // and tree-sync have each been edited to follow the emitter and are now EMITTER-REGRESSION PINS —
 // they still refuse an unintended emission change, which is worth keeping, but they are no longer
 // evidence that the emitter agrees with anything outside this tree. The slice row never had a
@@ -217,7 +218,7 @@ fn live_revision() -> ReleaseRevisionBinding {
 // when this unit is next applied.
 test fn the_belt_service_unit_matches_the_deployed_bytes() -> Bool {
   let emitted = render(doc: emit_belt_service_unit_doc(spec: live_spec()), proto: live_deploy_protocol)
-  emitted == "[Unit]\nDescription=gunbc roadmap belt tick (one reconcile pass over the ready frontier)\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=oneshot\nTimeoutStartSec=45min\nUser=briansrls\nGroup=briansrls\nSlice=gunbc-roadmap.slice\nWorkingDirectory=/opt/gunbc/gunbc\nEnvironment=GUNBC_BELT_SPAWN_WORKDIR=/opt/gunbc/gunbc\nEnvironment=XDG_RUNTIME_DIR=/run/user/1000\nEnvironment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus\nExecStart=/opt/gunbc/bin/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function belt_run_once_cli\n"
+  emitted == "[Unit]\nDescription=gunbc roadmap belt launch (queues the one launch obligation: admission, spawn, teardown, discovery)\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=oneshot\nTimeoutStartSec=2700s\nUser=briansrls\nGroup=briansrls\nSlice=gunbc-roadmap.slice\nWorkingDirectory=/opt/gunbc/gunbc\nEnvironment=GUNBC_BELT_SPAWN_WORKDIR=/opt/gunbc/gunbc\nEnvironment=XDG_RUNTIME_DIR=/run/user/1000\nEnvironment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus\nExecStart=/opt/gunbc/bin/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function belt_launch_enqueue_cli\n"
 }
 
 // THE WATCHDOG DECISION, PINNED AT DIRECTIVE LEVEL, because the byte row above is an
@@ -231,15 +232,10 @@ test fn the_belt_service_unit_matches_the_deployed_bytes() -> Bool {
 test fn the_belt_service_unit_carries_the_per_tick_watchdog_bound() -> Bool {
   service_has(
     file: live_deploy_belt_service_unit_file(spec: live_spec()),
-    target: TimeoutStartSec { duration: belt_tick_run_bound as NonEmptyStr },
+    target: TimeoutStartSec { duration: systemd_time_span_of_seconds(d: belt_tick_run_bound) },
   )
 }
 
-// gunbc-roadmap-belt.timer, as deployed on srv1 2026-08-19.
-test fn the_belt_timer_unit_matches_the_deployed_bytes() -> Bool {
-  let emitted = render(doc: emit_belt_timer_unit_doc(spec: live_spec()), proto: live_deploy_protocol)
-  emitted == "[Unit]\nDescription=gunbc roadmap belt tick cadence\n\n[Timer]\nUnit=gunbc-roadmap-belt.service\nOnBootSec=2min\nOnUnitInactiveSec=60s\nAccuracySec=5s\n\n[Install]\nWantedBy=timers.target\n"
-}
 
 // gunbc-roadmap.service, as deployed on srv1. LIKE THE BELT ROW ABOVE, this briefly carried an
 // EnvironmentFile line and no longer does, for the same reason: POST /publish/NODE_ID reaches the
@@ -414,7 +410,7 @@ test fn the_convergence_slice_carries_its_own_bounds() -> Bool {
 //   - the belt runs inside the deployment's cgroup slice
 //   - the belt works in the deployment's service repository tree
 //   - the belt carries a user-manager bus environment for the principal's uid
-//   - the belt tick entrypoint is belt_run_once_cli
+//   - the belt service entrypoint is belt_launch_enqueue_cli (it queues the launch obligation)
 //   - the belt spawn workdir environment variable names the repo root
 
 fn belt_service_file() -> SystemdUnitFile {
@@ -449,6 +445,7 @@ fn unit_has(file: SystemdUnitFile, target: SystemdUnitDirective) -> Bool {
     ServiceUnitFile { unit: u, service: _, install: _ } => has_directive_unit(dirs: u, target: target)
     TimerUnitFile { unit: u, timer: _, install: _ } => has_directive_unit(dirs: u, target: target)
     SliceUnitFile { unit: u, slice: _, install: _ } => has_directive_unit(dirs: u, target: target)
+    PathUnitFile { unit: u, path: _, install: _ } => has_directive_unit(dirs: u, target: target)
   }
 }
 
@@ -534,7 +531,7 @@ test fn belt_service_execstart_is_belt_tick_cli() -> Bool {
   service_has(file: belt_service_file(), target: ExecStart { command: join([
     svc.serve_binary as String,
     " run --source-root dag --source-root src/v2",
-    " --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function belt_run_once_cli",
+    " --entry dag/gunbc/roadmap/roadmap_belt_tick_cli.dag --function belt_launch_enqueue_cli",
   ], "") as NonEmptyStr })
 }
 
@@ -546,7 +543,7 @@ test fn belt_service_type_is_oneshot() -> Bool {
 // DECISION: the belt unit has a Description, After=network-online.target, and Wants=network-online.target.
 test fn belt_service_has_unit_directives() -> Bool {
   let f = belt_service_file()
-  unit_has(file: f, target: Description { text: "gunbc roadmap belt tick (one reconcile pass over the ready frontier)" as NonEmptyStr })
+  unit_has(file: f, target: Description { text: "gunbc roadmap belt launch (queues the one launch obligation: admission, spawn, teardown, discovery)" as NonEmptyStr })
     && unit_has(file: f, target: After { target: "network-online.target" as NonEmptyStr })
     && unit_has(file: f, target: Wants { target: "network-online.target" as NonEmptyStr })
 }
@@ -560,48 +557,55 @@ test fn belt_service_is_not_installable() -> Bool {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
-// BELT TIMER UNIT — directive-level assertions through the typed model
+// BELT EVENT PATH UNITS — directive-level assertions through the typed model
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 //
-// DECISIONS ASSERTED:
-//   - the timer targets the belt service unit
-//   - the timer cadence is the declared policy values (OnBootSec=2min, OnUnitInactiveSec=60s, AccuracySec=5s)
-//   - the timer is installable as WantedBy=timers.target
+// DECISIONS ASSERTED (dogfood intervention #4: there is no belt timer):
+//   - the exit path activates the exit drain and watches the instance's exit inbox as a LEVEL
+//   - the publication-answer path activates discovery and watches the answer directory as an EDGE
+//   - both are installable under paths.target, and both services run as the belt service does
 
-fn belt_timer_file() -> SystemdUnitFile {
-  live_deploy_belt_timer_unit_file(spec: live_spec())
+fn path_has_line(file: SystemdUnitFile, line: String) -> Bool {
+  any(systemd_unit_file_lines(file: file), l => l == line)
 }
 
-// DECISION: the timer targets the belt service unit, consuming the canonical name.
-test fn belt_timer_targets_belt_service() -> Bool {
+test fn the_exit_path_wakes_the_drain_on_a_non_empty_inbox() -> Bool {
   let spec = live_spec()
-  timer_has(file: belt_timer_file(), target: TimerUnit { target: deployment_belt_service_unit_name(names: spec.names) })
+  let f = live_deploy_belt_exit_path_unit_file(spec: spec)
+  path_has_line(file: f, line: join(["Unit=", deployment_belt_exit_drain_service_unit_name(names: spec.names) as String], ""))
+    && path_has_line(file: f, line: join(["DirectoryNotEmpty=", attempt_exit_inbox_dir(instance_root: spec.service.instance_root as String)], ""))
+    && path_has_line(file: f, line: "WantedBy=paths.target")
 }
 
-// DECISION: the timer cadence is the declared policy values.
-// OnUnitInactiveSec derives from belt_tick_cadence ("60s") in emit.dag.
-// OnBootSec and AccuracySec are transcribed from the same source the emitter uses
-// and are additionally pinned by the_belt_timer_unit_matches_the_deployed_bytes below.
-test fn belt_timer_has_declared_cadence() -> Bool {
-  timer_has(file: belt_timer_file(), target: OnBootSec { duration: "2min" as NonEmptyStr })
-    && timer_has(file: belt_timer_file(), target: OnUnitInactiveSec { duration: belt_tick_cadence as NonEmptyStr })
-    && timer_has(file: belt_timer_file(), target: AccuracySec { duration: "5s" as NonEmptyStr })
+// THE BOOT RECONCILE'S TARGET MATCHES THE MANAGER THE DRAIN IS INSTALLED INTO: a unit under the system unit
+// directory is wanted by multi-user.target (the system manager), and the derived target is what the
+// emitted drain unit carries -- not a literal. A user-manager install would need default.target.
+test fn the_drain_is_wanted_by_the_boot_target_of_the_manager_it_is_installed_into() -> Bool {
+  let spec = live_spec()
+  let f = live_deploy_belt_exit_drain_service_unit_file(spec: spec)
+  let dest = deployment_belt_exit_drain_service_unit_path(names: spec.names) as String
+  let target = deployment_belt_unit_install_target(names: spec.names) as String
+  path_has_line(file: f, line: join(["WantedBy=", target], ""))
+    && starts_with(s: dest, prefix: "/etc/systemd/system/") && target == "multi-user.target"
 }
 
-// DECISION: the timer has a Description.
-test fn belt_timer_has_description() -> Bool {
-  unit_has(file: belt_timer_file(), target: Description {
-    text: "gunbc roadmap belt tick cadence" as NonEmptyStr,
-  })
+test fn the_answer_path_wakes_discovery_on_a_changed_answer_directory() -> Bool {
+  let spec = live_spec()
+  let f = live_deploy_belt_answer_path_unit_file(spec: spec)
+  path_has_line(file: f, line: join(["Unit=", deployment_belt_discovery_service_unit_name(names: spec.names) as String], ""))
+    && path_has_line(file: f, line: join(["PathChanged=", publication_answer_dir(instance_root: spec.service.instance_root as String)], ""))
+    && !path_has_line(file: f, line: join(["DirectoryNotEmpty=", publication_answer_dir(instance_root: spec.service.instance_root as String)], ""))
 }
 
-// DECISION: the timer is installable as WantedBy=timers.target.
-test fn belt_timer_is_installable_as_timers_target() -> Bool {
-  match belt_timer_file() {
-    TimerUnitFile { unit: _, timer: _, install: Installable { directives: ds } } =>
-      has_directive_install(dirs: ds, target: WantedBy { target: "timers.target" as NonEmptyStr })
-    _ => false
-  }
+test fn the_event_services_run_their_entries_as_the_belt_service_does() -> Bool {
+  let spec = live_spec()
+  let drain = systemd_unit_file_lines(file: live_deploy_belt_exit_drain_service_unit_file(spec: spec))
+  let discovery = systemd_unit_file_lines(file: live_deploy_belt_discovery_service_unit_file(spec: spec))
+  let belt = systemd_unit_file_lines(file: live_deploy_belt_service_unit_file(spec: spec))
+  let shared = ["Type=oneshot", "User=briansrls", "Slice=gunbc-roadmap.slice", "Environment=GUNBC_BELT_SPAWN_WORKDIR=/opt/gunbc/gunbc"]
+  for_all(shared, predicate: fn(l) { any(drain, d => d == l) && any(discovery, d => d == l) && any(belt, d => d == l) })
+    && any(drain, l => string_contains(s: l, pattern: "--function belt_exit_drain_cli"))
+    && any(discovery, l => string_contains(s: l, pattern: "--function belt_discover_once_cli"))
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════

@@ -1,0 +1,39 @@
+module test.claim.systemd.service_exec_test
+
+import std.types { String, List, Bool }
+import extdeps.systemd.service_exec {
+  ExecLiteral, ExecVariable, ExecWordRendered, ExecWordRefused, exec_word_render,
+  InvocationIdVariable, ExitStatusVariable,
+  ExecCommandLineRendered, ExecCommandLineRefused, exec_command_line,
+}
+import extdeps.tools.gnu_coreutils { mkdir_create_only_command }
+
+test fn exec_word_spells_variables_as_braced_expansions() -> Bool {
+  match exec_word_render(parts: [ExecLiteral { text: "/spool/a+" }, ExecVariable { variable: InvocationIdVariable }, ExecLiteral { text: "+" }, ExecVariable { variable: ExitStatusVariable }]) {
+    ExecWordRendered { word } => (word as String) == "/spool/a+$\{INVOCATION_ID}+$\{EXIT_STATUS}"
+    ExecWordRefused { reason: _ } => false
+  }
+}
+
+test fn exec_word_refuses_a_literal_that_would_be_read_as_syntax() -> Bool {
+  let dollar = match exec_word_render(parts: [ExecLiteral { text: "/spool/$HOME" }]) { ExecWordRefused { reason: _ } => true ExecWordRendered { word: _ } => false }
+  let space = match exec_word_render(parts: [ExecLiteral { text: "/spool/a b" }]) { ExecWordRefused { reason: _ } => true ExecWordRendered { word: _ } => false }
+  let percent = match exec_word_render(parts: [ExecLiteral { text: "/spool/%n" }]) { ExecWordRefused { reason: _ } => true ExecWordRendered { word: _ } => false }
+  dollar && space && percent
+}
+
+test fn exec_command_line_admits_a_rendered_expansion_and_refuses_a_bare_one() -> Bool {
+  let admitted = match exec_command_line(command: mkdir_create_only_command(path: "/spool/a+$\{INVOCATION_ID}")) {
+    ExecCommandLineRendered { line } => (line as String) == "mkdir -- /spool/a+$\{INVOCATION_ID}"
+    ExecCommandLineRefused { reason: _ } => false
+  }
+  let bare = match exec_command_line(command: mkdir_create_only_command(path: "/spool/$EXIT_STATUS")) {
+    ExecCommandLineRefused { reason: _ } => true
+    ExecCommandLineRendered { line: _ } => false
+  }
+  let unmodeled = match exec_command_line(command: mkdir_create_only_command(path: "/spool/$\{HOME}")) {
+    ExecCommandLineRefused { reason: _ } => true
+    ExecCommandLineRendered { line: _ } => false
+  }
+  admitted && bare && unmodeled
+}

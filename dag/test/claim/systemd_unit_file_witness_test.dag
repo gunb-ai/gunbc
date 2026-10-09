@@ -6,6 +6,7 @@ import extdeps.systemd.unit_file {
   SystemdUnitFile,
   ServiceUnitFile,
   TimerUnitFile,
+  PathUnitFile, PathUnit, DirectoryNotEmpty,
   SystemdInstallSection,
   NotInstallable,
   Installable,
@@ -229,6 +230,22 @@ test fn the_live_belt_timer_serializes_to_exactly_its_deployed_bytes() -> Bool {
       install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
     },
   ) == "[Unit]\nDescription=gunbc roadmap belt tick cadence\n\n[Timer]\nUnit=gunbc-srv1-green-belt.service\nOnBootSec=2min\nOnUnitInactiveSec=60s\nAccuracySec=5s\n\n[Install]\nWantedBy=timers.target\n"
+}
+
+// The path-unit form (systemd.path(5)): a [Path] section between [Unit] and [Install], with Unit=
+// naming the activated unit and the condition rendered under its own key -- the shape the belt's exit
+// inbox path unit is emitted in (gunbc.live_deploy.emit live_deploy_belt_exit_path_unit_file).
+test fn a_path_unit_serializes_with_its_path_section() -> Bool {
+  serialize_systemd_unit_file(
+    file: PathUnitFile {
+      unit: [Description { text: "gunbc roadmap belt: a unit exit was recorded" as NonEmptyStr }],
+      path: [
+        PathUnit { target: "gunbc-srv1-green-belt-exit.service" as NonEmptyStr },
+        DirectoryNotEmpty { path: "/opt/gunbc/attempt-exit-spool/inbox" as NonEmptyStr },
+      ],
+      install: Installable { directives: [WantedBy { target: "paths.target" as NonEmptyStr }] },
+    },
+  ) == "[Unit]\nDescription=gunbc roadmap belt: a unit exit was recorded\n\n[Path]\nUnit=gunbc-srv1-green-belt-exit.service\nDirectoryNotEmpty=/opt/gunbc/attempt-exit-spool/inbox\n\n[Install]\nWantedBy=paths.target\n"
 }
 
 // `TimerUnit` renders as `Unit=`, not `TimerUnit=` — the same variant-name-versus-wire-name trap

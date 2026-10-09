@@ -1189,6 +1189,7 @@ test fn witness_review_unit_argv_mints_per_criterion_attempt_identity() -> Bool 
     brief: "brief",
     head_sha: "abc123",
     criterion_key: "conformance-external-facts",
+    exit_hook: "+mkdir -- /i/attempt-exit-spool/inbox/x" as NonEmptyStr,
   ) {
     SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: command } => {
@@ -1419,6 +1420,7 @@ test fn witness_auditor_launch_writes_the_events_path_metering_reads() -> Bool {
     worktree_path: "/tmp/fci-witness-worktree",
     brief: "witness brief",
     head_sha: "fci1witnesssha",
+    exit_hook: "+mkdir -- /i/attempt-exit-spool/inbox/x" as NonEmptyStr,
   ) {
     SystemdRunCommandRefused { cause: _ } => false
     SystemdRunCommandReady { command: command } =>

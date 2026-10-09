@@ -156,6 +156,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mktemp_directory_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "dd_overwrite_path_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mkdir_parents_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mkdir_create_only_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ln_hard_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_long_directory_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_long_directory_numeric_command"),
