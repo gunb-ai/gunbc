@@ -13886,7 +13886,15 @@ pub fn run_required_floor(
     );
     let union_started = std::time::Instant::now();
     let union_cpu_started = v1_interpreter::thread_cpu_nanos();
-    let union_observed = crate::cli_run::fixture_closure_union_emit_receipt(&union)?;
+    let union_observed = crate::cli_run::fixture_closure_union_emit_receipt_staged(
+        &union,
+        &|stage, members, wall_ms| {
+            eprintln!(
+                "[floor-phase] phase=fixture-closure-union-emit stage={stage} members={members} \
+                 wall_ms={wall_ms}"
+            );
+        },
+    )?;
     eprintln!(
         "[floor-phase] phase=fixture-closure-union-emit state=held fixture_compiles={} \
          memo_hits={} members={} digest={} outside_prepared={outside_prepared} files={} emit_diagnostics={} \
