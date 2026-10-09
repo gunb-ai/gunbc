@@ -6,7 +6,7 @@ import std.algebra { trim }
 import std.types { List }
 import std.nat { Nat }
 import std.measure {
-  ByteSize, byte_size, byte_size_count, Microsecond, microsecond, microsecond_count,
+  ByteSize, byte_size, byte_size_count, Microsecond, microsecond, microsecond_count, Second, second_count,
   HardwareThreadCount, hardware_thread_count_value,
   milli_per_unit, micro_per_unit, seconds_per_minute, minutes_per_hour,
 }
@@ -261,6 +261,13 @@ fn systemd_time_span_split(part: String) -> SystemdTimeSpanPart? {
         }
     }
   }
+}
+
+// THE TYPED QUANTITY RENDERED TO SYSTEMD'S TIME-SPAN SPELLING, at the boundary and nowhere else: a
+// duration is authored as a Second and only its systemd text is a string, so no consumer parses text to
+// recover the number. Whole seconds with the `s` unit are a spelling systemd_duration_usec reads back.
+fn systemd_time_span_of_seconds(d: Second) -> NonEmptyStr {
+  join([to_string(second_count(s: d)), "s"], "") as NonEmptyStr
 }
 
 fn systemd_duration_usec(text: String) -> Microsecond? {

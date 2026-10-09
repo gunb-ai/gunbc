@@ -66,7 +66,7 @@ import extdeps.systemd.systemctl {
   systemctl_disable_now_argv,
   systemctl_show_load_state_argv,
 }
-import extdeps.systemd { systemd_unit_load_state_not_found_wire }
+import extdeps.systemd { systemd_unit_load_state_not_found_wire, systemd_time_span_of_seconds }
 import gunbc.live_deploy.repository_convergence_placement {
   convergence_receipt_path,
   convergence_unit_doc,
@@ -754,7 +754,7 @@ fn live_deploy_belt_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
     ],
     service: concat([
       ServiceType { mode: OneshotMode },
-      TimeoutStartSec { duration: belt_tick_run_bound as NonEmptyStr },
+      TimeoutStartSec { duration: systemd_time_span_of_seconds(d: belt_tick_run_bound) },
       ServiceUser { name: svc.service_user },
       ServiceGroup { name: svc.service_user },
       ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
@@ -835,7 +835,7 @@ fn emit_publication_timer_unit_doc(spec: DeploymentSpec) -> Doc {
     timer: [
       TimerUnit { target: deployment_publication_service_unit_name(names: spec.names) },
       OnBootSec { duration: "2min" as NonEmptyStr },
-      OnUnitInactiveSec { duration: belt_tick_cadence as NonEmptyStr },
+      OnUnitInactiveSec { duration: systemd_time_span_of_seconds(d: belt_tick_cadence) },
       AccuracySec { duration: "5s" as NonEmptyStr },
     ],
     install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
@@ -931,7 +931,7 @@ fn live_deploy_belt_event_service_unit_file(spec: DeploymentSpec, description: S
     ],
     service: concat([
       ServiceType { mode: OneshotMode },
-      TimeoutStartSec { duration: belt_tick_run_bound as NonEmptyStr },
+      TimeoutStartSec { duration: systemd_time_span_of_seconds(d: belt_tick_run_bound) },
       ServiceUser { name: svc.service_user },
       ServiceGroup { name: svc.service_user },
       ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },

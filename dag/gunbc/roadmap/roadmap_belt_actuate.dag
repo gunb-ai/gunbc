@@ -225,7 +225,7 @@ import gunbc.worker_lifecycle {
 import gunbc.dispatch_selection { default_provider_selection_request, SizingProfileExpectation, NoDerivedSizingExpectation, sizing_profile_expectation }
 import gunbc.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var, instance_receipts_dir }
 import extdeps.systemd.systemd_run { systemd_run_user_transient_command, SystemdRunProperty, SystemdSetenvBinding, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
-import extdeps.systemd { WorkingDirectoryProperty, RuntimeMaxSecProperty, CollectModeProperty, MemoryMax }
+import extdeps.systemd { WorkingDirectoryProperty, RuntimeMaxSecProperty, CollectModeProperty, MemoryMax, systemd_time_span_of_seconds }
 import std.measure { byte_size_count }
 import gunbc.deploy_transition {
   ActuationAdmission,
@@ -13860,7 +13860,7 @@ fn belt_obligation_unit_command(
     unit: unit,
     properties: [
       SystemdRunProperty { property: WorkingDirectoryProperty, value: repo as NonEmptyStr },
-      SystemdRunProperty { property: RuntimeMaxSecProperty, value: belt_tick_run_bound as NonEmptyStr },
+      SystemdRunProperty { property: RuntimeMaxSecProperty, value: systemd_time_span_of_seconds(d: belt_tick_run_bound) },
       SystemdRunProperty { property: CollectModeProperty, value: "inactive-or-failed" as NonEmptyStr },
       SystemdRunProperty { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
     ],
