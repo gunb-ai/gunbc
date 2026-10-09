@@ -73,6 +73,15 @@ pub fn rust_runtime_prelude_module() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn rust_emit_only_basenames() -> Rc<Vec<String>> {
+    thread_local! {
+        static CACHED: Rc<Vec<String>> = {
+            Rc::new(vec!["dry_run".to_string()])
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+}
+
 pub fn rust_prelude_emitted_edges(module: String) -> Rc<Vec<Rc<EmittedEdge>>> {
     if (module.clone() == rust_runtime_prelude_module()) {
         Rc::new(vec![Rc::new(EmittedEdge {
