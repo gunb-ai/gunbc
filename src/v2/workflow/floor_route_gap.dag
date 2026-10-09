@@ -1149,7 +1149,10 @@ fn floor_route_gap_expectation_chunk_09() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.materialization_store_local_wet_witness.a_refused_part_publish_leaves_no_temporary_copy_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.materialization_store_local_wet_witness.a_leftover_copy_that_cannot_be_removed_leaves_the_store_unwritable_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.materialization_store_local_wet_witness.n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
+    }
     }
     }
     }
@@ -1292,6 +1295,10 @@ fn floor_route_gap_expectation_chunk_12() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.durable_cas_file_store_wet_witness.a_racing_writer_under_a_window_retries_and_loses_no_commit_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.durable_cas_file_store_wet_witness.a_window_observation_at_generation_1500_terminates_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.durable_cas_file_store_wet_witness.reclaim_stops_before_a_later_generation_when_an_earlier_delete_fails_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.filesystem_link_create_new_wet_witness.a_link_publishes_the_source_bytes_and_keeps_the_source_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.filesystem_link_create_new_wet_witness.an_existing_target_refuses_as_occupied_and_is_unchanged_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
@@ -1300,6 +1307,8 @@ fn floor_route_gap_expectation_chunk_12() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.filesystem_link_create_new_wet_witness.a_link_across_filesystems_refuses_as_cross_device_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
+    }
+    }
     }
     }
     }

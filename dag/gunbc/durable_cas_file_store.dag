@@ -5,7 +5,7 @@ import std.algebra { trim }
 import std.decimal { decimal_digits_only }
 import std.list { distinct_by_key }
 import std.content_hash { ContentHash, content_hash_of_value, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
-import std.durable_compare_and_set { CasAttempt, cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_exhausted, cas_generation_first, cas_generation_count, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
+import std.durable_compare_and_set { CasAttempt, cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, CasUnreadableObservationBoundExceeded, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_exhausted, cas_generation_first, cas_generation_count, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
 import std.checked_arithmetic { int_inclusive_max }
 import v2.std.algebra { skip }
 import extdeps.access.posix { FileMode, file_mode_bits }
@@ -456,9 +456,6 @@ type CasSlotRetention
   = KeepAllGenerations
   | KeepGenerationWindow { window: CasGenerationWindow }
 
-// A window read that keeps observing a moving head stops here and refuses with the attempt count.
-data cas_window_observation_attempt_bound: Int = 8
-
 // "<digits>" -> the generation it names; none for anything else, for zero, and for a value past the
 // Int maximum. The multiplication is pre-checked (std.checked_arithmetic: check before, never after).
 fn cas_generation_of_digits(s: String) -> CasGeneration? {
@@ -491,7 +488,7 @@ fn cas_key_generation_of_name(key: NonEmptyStr, name: String) -> CasGeneration? 
 fn cas_window_generations(root: NonEmptyStr, key: NonEmptyStr) -> CasWindowGenerations
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_settle_slot"),
-    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_observe_window"),
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_observe_window_once"),
     decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_reclaim_below"),
   ]
 {
@@ -516,37 +513,54 @@ fn cas_window_max_generation(generations: List<CasGeneration>) -> CasGeneration?
   })
 }
 
-fn cas_observe_window(root: NonEmptyStr, key: NonEmptyStr, attempt: Int) -> CasSlotProbe
+// THE ONE AUTHORITY FOR THE WINDOWED OBSERVATION BOUND: the roster is the bound. Exhaustion
+// reports CasUnreadableObservationBoundExceeded { bound: count(cas_window_observation_attempts) }.
+data cas_window_observation_attempts: List<Int> = [1, 2, 3, 4, 5, 6, 7, 8]
+
+// ONE LIST-AND-VERIFY PASS. Recursion here was the unbounded arm: a window whose listed max is
+// strictly below a generation that still reads present (stale listing, or a TCO lowering that does
+// not increment `attempt`) re-entered cas_observe_window forever, re-reading G and G+1 with no
+// further List. A fold over a finite attempt roster cannot fail to stop.
+fn cas_observe_window_once(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotProbe?
   admit_callers: [
-    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_observe_retained_slot"),
     decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_observe_window"),
   ]
 {
-  if attempt > cas_window_observation_attempt_bound {
-    ProbedWindowHeadUnsettled { attempts: cas_window_observation_attempt_bound }
-  } else {
-    match cas_window_generations(root: root, key: key) {
-      CasWindowGenerationsUnlisted { cause: c } => ProbedAbsenceUnestablished { cause: c }
-      CasWindowGenerationsListed { generations: gs } =>
-        match cas_window_max_generation(generations: gs) {
-          Absent => ProbedAbsent
-          Present { value: head } =>
-            match cas_read_generation(root: root, key: key, generation: head) {
-              GenerationRefused { probe: p } => p
-              GenerationAbsent => cas_observe_window(root: root, key: key, attempt: attempt + 1)
-              GenerationPresent { content: c } =>
-                match cas_generation_successor(g: head) {
-                  CasSuccessorExhausted { head: _ } => ProbedHead { generation: head, value: c }
-                  CasSuccessorGeneration { generation: next } =>
-                    match cas_read_generation(root: root, key: key, generation: next) {
-                      GenerationRefused { probe: p } => p
-                      GenerationAbsent => ProbedHead { generation: head, value: c }
-                      GenerationPresent { content: _ } => cas_observe_window(root: root, key: key, attempt: attempt + 1)
-                    }
-                }
-            }
-        }
-    }
+  match cas_window_generations(root: root, key: key) {
+    CasWindowGenerationsUnlisted { cause: c } => Present { value: ProbedAbsenceUnestablished { cause: c } }
+    CasWindowGenerationsListed { generations: gs } =>
+      match cas_window_max_generation(generations: gs) {
+        Absent => Present { value: ProbedAbsent }
+        Present { value: head } =>
+          match cas_read_generation(root: root, key: key, generation: head) {
+            GenerationRefused { probe: p } => Present { value: p }
+            GenerationAbsent => none
+            GenerationPresent { content: c } =>
+              match cas_generation_successor(g: head) {
+                CasSuccessorExhausted { head: _ } => Present { value: ProbedHead { generation: head, value: c } }
+                CasSuccessorGeneration { generation: next } =>
+                  match cas_read_generation(root: root, key: key, generation: next) {
+                    GenerationRefused { probe: p } => Present { value: p }
+                    GenerationAbsent => Present { value: ProbedHead { generation: head, value: c } }
+                    GenerationPresent { content: _ } => none
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn cas_observe_window(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotProbe
+  admit_callers: [
+    decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_observe_retained_slot"),
+  ]
+{
+  match fold(cas_window_observation_attempts, init: none, f: (acc, _) => match acc {
+    Present { value: p } => Present { value: p }
+    Absent => cas_observe_window_once(root: root, key: key)
+  }) {
+    Present { value: p } => p
+    Absent => ProbedWindowHeadUnsettled { attempts: count(cas_window_observation_attempts) }
   }
 }
 
@@ -560,14 +574,12 @@ fn cas_observe_retained_slot(root: NonEmptyStr, key: NonEmptyStr, retention: Cas
 {
   match retention {
     KeepAllGenerations => cas_observe_slot(root: root, key: key)
-    KeepGenerationWindow { window: _ } => cas_observe_window(root: root, key: key, attempt: 1)
+    KeepGenerationWindow { window: _ } => cas_observe_window(root: root, key: key)
   }
 }
 
 fn cas_window_head_unsettled(attempts: Int) -> CasUnreadableSlot {
-  CasUnreadableReadRefused {
-    detail: concat(concat("the window head moved during ", attempts as String), " observations and was not settled; a head is never guessed") as NonEmptyStr
-  }
+  CasUnreadableObservationBoundExceeded { bound: attempts }
 }
 
 // THE PROJECTION TAKES A HEAD, NOT A PROBE, AND THE DELETED ARM IS THE REPAIR.
@@ -677,9 +689,60 @@ fn observe_cas_slot_state_windowed(root: NonEmptyStr, key: NonEmptyStr, window: 
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_read_index"),
     decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_window_slot_holds_at_most_k_plus_one_generations_by_real_execution"),
+    decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_window_observation_at_generation_1500_terminates_by_real_execution"),
   ]
 {
   observe_cas_slot_state_retained(root: root, key: key, retention: KeepGenerationWindow { window: window })
+}
+
+// A WINDOWED HEAD READ BY CONSTRUCTED NAME, NOT BY LISTING THE SLOT ROOT.
+//
+// cas_observe_window finds the head by listing every name under the store root and keeping this
+// key's generation files. That is the correct discovery when the generation is unknown, because a
+// windowed slot is NOT a presence prefix: generations at or below head-k are deleted, so galloping
+// from generation 1 would read NotFound and report an empty slot while the live head sat at 100.
+// Listing is therefore retained for unknown-head observation (cas_observe_window).
+//
+// When the caller already names the generation it believes is head -- a hold it just acquired, a
+// release at the generation the protocol recorded -- the existing correctness argument does not
+// need the listing. The windowed contract's verify step is: the named generation reads present and
+// its successor reads absent. Those two reads are Filesystem.Read of cas_file_slot_path, O(1) in
+// the store's object count. A successor that is present means the head moved; an absent named
+// generation is not this head. The observation is never guessed.
+// Realization-private: named verify is not CasSlotProbe and not DurableHoldObservation. G+1 present
+// is a moved head, not eight-pass BoundExceeded. Consumers are the windowed hold check and the
+// windowed release assessment; they match HeadMoved directly.
+type CasNamedWindowVerify
+  = NamedWindowHeadCurrent { observation: CasSlotObservation<NonEmptyStr> }
+  | NamedWindowHeadMoved { named_generation: CasGeneration }
+
+fn cas_verify_named_window_head(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration) -> CasNamedWindowVerify
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_hold_check"),
+    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_release_assess_windowed_at"),
+    decl_ref(module_path: "gunbc.durable_exclusive_hold_file_store", decl_name: "file_hold_recovery_assess_windowed"),
+  ]
+{
+  if !cas_key_is_slot_addressable(key: key) {
+    NamedWindowHeadCurrent { observation: CasObservedUnreadable { cause: CasUnreadableReadRefused { detail: cas_key_not_slot_addressable_detail } } }
+  } else {
+    match cas_read_generation(root: root, key: key, generation: generation) {
+      GenerationRefused { probe: p } => NamedWindowHeadCurrent { observation: cas_probe_as_observation(probe: p) }
+      GenerationAbsent => NamedWindowHeadCurrent { observation: cas_probe_as_observation(probe: ProbedAbsent) }
+      GenerationPresent { content: c } =>
+        match cas_generation_successor(g: generation) {
+          CasSuccessorExhausted { head: _ } =>
+            NamedWindowHeadCurrent { observation: cas_probe_as_observation(probe: ProbedHead { generation: generation, value: c }) }
+          CasSuccessorGeneration { generation: next } =>
+            match cas_read_generation(root: root, key: key, generation: next) {
+              GenerationRefused { probe: p } => NamedWindowHeadCurrent { observation: cas_probe_as_observation(probe: p) }
+              GenerationAbsent =>
+                NamedWindowHeadCurrent { observation: cas_probe_as_observation(probe: ProbedHead { generation: generation, value: c }) }
+              GenerationPresent { content: _ } => NamedWindowHeadMoved { named_generation: generation }
+            }
+        }
+    }
+  }
 }
 
 data cas_key_not_slot_addressable_detail: NonEmptyStr = "key is not slot-addressable: it carries a path separator"
@@ -1035,23 +1098,42 @@ type CasFileWrite {
   reclamation: CasWindowReclamation
 }
 
+type CasReclaimProgress {
+  removed: List<CasGeneration>
+  failed: List<CasGenerationReclaimFailure>
+}
+
+// ASCENDING, AND STOP AT THE FIRST HOST REFUSAL. Independent deletes of every generation at or
+// below the floor could remove G+1 while G survived, which punches a hole: named window verify
+// (G present and G+1 absent) would then report G as head while a later generation was live.
+// One sort_by of the eligible set, then one walk that leaves every later generation in place when
+// a delete fails, keeps that prefix contiguous without a min-and-filter per step.
 fn cas_reclaim_below(root: NonEmptyStr, key: NonEmptyStr, window: CasGenerationWindow, head: CasGeneration) -> CasWindowReclamation
   admit_callers: [
     decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set_retained"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_settle_slot"),
+    decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "reclaim_stops_before_a_later_generation_when_an_earlier_delete_fails_by_real_execution"),
   ]
 {
   match cas_window_generations(root: root, key: key) {
     CasWindowGenerationsUnlisted { cause: c } => CasReclamationUnlisted { cause: c }
     CasWindowGenerationsListed { generations: gs } => {
       let floor = cas_generation_count(g: head) - window.k
-      let attempts = gs |> filter(g => cas_generation_count(g: g) <= floor) |> map(g => {
-        let d = Filesystem.Delete(path: cas_file_slot_path(root: root, key: key, generation: g))
-        CasGenerationDeleteAttempt { generation: g, success: d.success, error: d.error }
-      })
-      let removed = attempts |> filter(t => t.success) |> map(t => t.generation)
-      let failed = attempts |> filter(t => !t.success) |> map(t => CasGenerationReclaimFailure { generation: t.generation, host_error: t.error })
-      if count(failed) == 0 { CasReclaimed { removed: removed } } else { CasReclamationIncomplete { removed: removed, failed: failed } }
+      let ordered = gs |> filter(g => cas_generation_count(g: g) <= floor) |> sort_by(g => cas_generation_count(g: g))
+      let walk = fold(ordered, init: CasReclaimProgress { removed: [], failed: [] }, f: (acc, g) =>
+        if count(acc.failed) != 0 { acc } else {
+          let d = Filesystem.Delete(path: cas_file_slot_path(root: root, key: key, generation: g))
+          if d.success {
+            CasReclaimProgress { removed: acc.removed |> list_push(g), failed: acc.failed }
+          } else {
+            CasReclaimProgress {
+              removed: acc.removed,
+              failed: [CasGenerationReclaimFailure { generation: g, host_error: d.error }],
+            }
+          }
+        }
+      )
+      if count(walk.failed) == 0 { CasReclaimed { removed: walk.removed } } else { CasReclamationIncomplete { removed: walk.removed, failed: walk.failed } }
     }
   }
 }
