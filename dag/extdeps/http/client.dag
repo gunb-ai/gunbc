@@ -189,8 +189,9 @@ service http.Client {
     }
     readonly
     transport shell {
-      argv: ["curl", "-fsS", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "--get", "{url}", "--data", "{query}"]
+      argv: ["curl", "-fsS", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "--get", "{url}"]
     }
+    stdin: query
     exit {
       0 => Unit
       nonzero => String "http client GET with query within deadlines failed"
@@ -212,6 +213,7 @@ service http.Client {
     transport shell {
       argv: ["curl", "-fsS", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "-X", "POST", "-H", "Content-Type: application/json", "-d", "@-", "{url}"]
     }
+    stdin: request_body
     exit {
       0 => Unit
       nonzero => String "http client POST within deadlines failed"
@@ -233,6 +235,7 @@ service http.Client {
     transport shell {
       argv: ["curl", "-fsS", "--unix-socket", "{socket}", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "-X", "POST", "-H", "Content-Type: application/json", "-d", "@-", "{url}"]
     }
+    stdin: request_body
     exit {
       0 => Unit
       nonzero => String "http client POST over unix socket within deadlines failed"
@@ -244,7 +247,7 @@ service http.Client {
 
   operation PostJsonFromFile {
     requires Network
-    input { url: NonEmptyStr, request_body_file: NonEmptyStr, max_seconds: NonEmptyStr }
+    input { url: NonEmptyStr, request_body_file: NonEmptyStr }
     output { body: String }
     readonly
     transport rest {
@@ -259,7 +262,7 @@ service http.Client {
   }
 
   operation PostFormFromFile {
-    input { url: NonEmptyStr, request_body_file: NonEmptyStr, max_seconds: NonEmptyStr }
+    input { url: NonEmptyStr, request_body_file: NonEmptyStr }
     output { body: String }
     readonly
     transport rest {
