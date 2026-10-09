@@ -869,8 +869,7 @@ fn parse_stamp_infix_application(
     ),
     prov: ParseProvenanceState {
       alloc: minted.alloc,
-      index: index,
-      frame: list_snoc_item(xs: prov.frame, item: FrameMinted { id: minted.id })
+      index: index
     }
   }
 }

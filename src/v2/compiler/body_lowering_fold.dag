@@ -3532,7 +3532,7 @@ fn body_lower_fold(node: Node) -> Outcome<Node> {
 
 // The fold over a node the parse stamped: what it lowers to leaves sealed with its producer's arm.
 fn body_lower_fold_raw(node: Node) -> Outcome<Node> {
-  if body_lower_is_pipe_tower_root(node: node) && body_lower_tower_pipes_into_fold(node: node) {
+  if body_lower_application_pipes_into_fold(node: node) {
     match body_lower_read_operator_expression(node: node) {
       OperatorExpressionRead { lowered: lowered } => body_term_sealed_outcome(o: outcome_accepted(value: lowered), shape: LoweredOperatorExpression)
       OperatorExpressionRefused { diagnostics: r } => Rejected { diagnostics: r }
