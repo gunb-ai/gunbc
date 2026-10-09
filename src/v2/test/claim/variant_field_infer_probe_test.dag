@@ -10,7 +10,7 @@ import v2.compiler.infer {
   infer_record_construct_read,
   inferred_facts_resolved_type
 }
-import v2.compiler.resolve { LexicalBinding, ResolvedTree }
+import v2.compiler.resolve { LexicalBinding, LexicalDeclared, LexicalOwedFormal, LexicalUntyped, ResolvedTree }
 import v2.std.qualified_name {
   declaration_reference_node,
   declaration_reference_path_optional,
@@ -807,9 +807,7 @@ fn vfp_supplied_arrow_tree() -> ResolvedTree {
       OccurrenceId { value: 21 },
       LexicalBinding {
         binder_site: vfp_occ(n: 20),
-        declared: Absent,
-        value: optional_absent(),
-        owed_formal: optional_absent()
+        standing: LexicalUntyped
       }
     ),
     unavailable_providers: []
@@ -954,9 +952,10 @@ fn vfp_ub_tree(acc_arm: Node, scrutinee_declared: Optional<Node>) -> ResolvedTre
       OccurrenceId { value: 111 },
       LexicalBinding {
         binder_site: vfp_occ(n: 119),
-        declared: scrutinee_declared,
-        value: optional_absent(),
-        owed_formal: optional_absent()
+        standing: match scrutinee_declared {
+          Present { value: t } => LexicalDeclared { node: t }
+          Absent => LexicalUntyped
+        }
       }
     ),
     unavailable_providers: []
@@ -1115,17 +1114,13 @@ fn vfp_supplied_underived_nested_formal_resolved() -> Outcome<ResolvedTree> {
           OccurrenceId { value: 111 },
           LexicalBinding {
             binder_site: vfp_occ(n: 119),
-            declared: optional_absent(),
-            value: optional_absent(),
-            owed_formal: optional_absent()
+            standing: LexicalUntyped
           }
         ),
         OccurrenceId { value: 121 },
         LexicalBinding {
           binder_site: vfp_occ(n: 121),
-          declared: optional_absent(),
-          value: optional_absent(),
-          owed_formal: optional_present(value: vfp_t_atom_at(n: 142))
+          standing: LexicalOwedFormal { field_type: vfp_t_atom_at(n: 142) }
         }
       ),
       unavailable_providers: []
@@ -1139,9 +1134,7 @@ test fn vfp_payload_binder_derived_type_misses_an_unlisted_site_holds() -> Bool 
     binder_types: vfp_supplied_binder_types(),
     binding: LexicalBinding {
       binder_site: OccurrenceMinted { id: OccurrenceId { value: 99 } },
-      declared: Absent,
-      value: optional_absent(),
-      owed_formal: optional_absent()
+      standing: LexicalUntyped
     }
   ) == optional_absent()
 }
@@ -1184,9 +1177,7 @@ test fn vfp_payload_binder_derived_type_hits_the_binder_site_holds() -> Bool {
     binder_types: vfp_supplied_binder_types(),
     binding: LexicalBinding {
       binder_site: vfp_supplied_binder_site,
-      declared: Absent,
-      value: optional_absent(),
-      owed_formal: optional_absent()
+      standing: LexicalUntyped
     }
   ) == optional_present(value: vfp_supplied_int_atom())
 }

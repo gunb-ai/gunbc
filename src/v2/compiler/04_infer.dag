@@ -19,7 +19,7 @@ import v2.std.compilers.target_model {
   canonical_operation_wire_matches_operation,
   target_model_canonical_operation_member_declared_type,
 }
-import v2.compiler.resolve { LexicalBinding, ResolvedTree, resolved_tree_lexical_binding, resolved_tree_unavailable_provider }
+import v2.compiler.resolve { LexicalBinding, LexicalBinderStanding, LexicalDeclared, LexicalOwedFormal, LexicalUntyped, LexicalValued, ResolvedTree, resolved_tree_lexical_binding, resolved_tree_unavailable_provider }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.compiler.inferred_tree {
   DerivedGrounding,
@@ -1007,8 +1007,8 @@ fn infer_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>,
 // A `let` with no declared type stays underived here and reads its value through the let-typed
 // operand walk. A reference resolve did not record is the tree disagreeing with the resolver that
 // produced it: refused, located.
-// A match-payload obligation (owed_formal) is discharged from InferBinderType rows or refused
-// located. A lambda/let declared type still uses infer_frame_instantiated: a function's own
+// A match-payload obligation (LexicalOwedFormal) is discharged from InferBinderType rows or refused
+// located. A lambda declared type still uses infer_frame_instantiated: a function's own
 // formal is that parameter's type, not a free atom to leave underived (review 78144).
 fn infer_lexical_reference_facts(n: Node, resolved: ResolvedTree, instances: List<TypeVariableInstance>, binder_types: List<InferBinderType>) -> Outcome<InferredFacts> {
   match infer_descent_witness_for_node(n: n) {
@@ -1020,8 +1020,8 @@ fn infer_lexical_reference_facts(n: Node, resolved: ResolvedTree, instances: Lis
             Present { value: derived } =>
               inferred_facts_from_derived_type(node: n, derived_type: derived, descent: Holds { value: descent_proof })
             Absent =>
-              match binding.owed_formal {
-                Present { value: _ } =>
+              match binding.standing {
+                LexicalOwedFormal { field_type: _ } =>
                   Rejected {
                     diagnostics: diagnostics_singleton(d: Diagnostic {
                       reason: ^infer_reason_pattern_payload_formal_uninstantiated,
@@ -1029,16 +1029,14 @@ fn infer_lexical_reference_facts(n: Node, resolved: ResolvedTree, instances: Lis
                       correction: Unavailable { reason: ExternalContractUnknown }
                     })
                   }
-                Absent =>
-                  match binding.declared {
-                    Present { value: declared } =>
-                      inferred_facts_from_derived_type(
-                        node: n,
-                        derived_type: infer_frame_instantiated(declared: declared, instances: instances),
-                        descent: Holds { value: descent_proof }
-                      )
-                    Absent => inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
-                  }
+                LexicalDeclared { node: declared } =>
+                  inferred_facts_from_derived_type(
+                    node: n,
+                    derived_type: infer_frame_instantiated(declared: declared, instances: instances),
+                    descent: Holds { value: descent_proof }
+                  )
+                LexicalValued { node: _ } => inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
+                LexicalUntyped => inferred_facts_not_derived(node: n, descent: Holds { value: descent_proof })
               }
           }
         Absent =>
@@ -1975,8 +1973,8 @@ fn infer_branch_operand_resolved_type_with_entries(
     Rejected { diagnostics: _ } =>
       match resolved_tree_lexical_binding(tree: resolved, reference: node) {
         Present { value: binding } =>
-          match binding.declared {
-            Present { value: declared } =>
+          match binding.standing {
+            LexicalDeclared { node: declared } =>
               match infer_operand_declared_type_instantiated(declared: declared, instances: instances) {
                 Present { value: instantiated } => Holds { value: instantiated }
                 Absent =>
@@ -1985,7 +1983,13 @@ fn infer_branch_operand_resolved_type_with_entries(
                     Absent => inferred_facts_resolved_type(facts: facts)
                   }
               }
-            Absent =>
+            LexicalValued { node: _ } =>
+              match infer_let_binder_value_type_optional(entries: entries, binding: binding) {
+                Present { value: value_type } => Holds { value: value_type }
+                Absent => inferred_facts_resolved_type(facts: facts)
+              }
+            LexicalOwedFormal { field_type: _ } => inferred_facts_resolved_type(facts: facts)
+            LexicalUntyped =>
               match infer_let_binder_value_type_optional(entries: entries, binding: binding) {
                 Present { value: value_type } => Holds { value: value_type }
                 Absent => inferred_facts_resolved_type(facts: facts)
@@ -2111,13 +2115,15 @@ fn infer_let_binder_value_type_optional(
   entries: List<InferredFactsEntry>,
   binding: LexicalBinding,
 ) -> Optional<Node> {
-  match binding.value {
-    Absent => optional_absent()
-    Present { value: value_target } =>
+  match binding.standing {
+    LexicalValued { node: value_target } =>
       match lookup_inferred_facts_in_entries(entries: entries, key: value_target) {
         Absent => optional_absent()
         Present { value: facts } => inferred_facts_resolved_type_optional(facts: facts)
       }
+    LexicalDeclared { node: _ } => optional_absent()
+    LexicalOwedFormal { field_type: _ } => optional_absent()
+    LexicalUntyped => optional_absent()
   }
 }
 
@@ -5707,10 +5713,33 @@ fn infer_gather_fold_step(
 ) -> InferGatherFoldAcc {
   if acc.failed {
     acc
+  } else if match_arm_pattern_edge(parent: acc.node, edge: edge) {
+    if child.failed {
+      infer_gather_fold_acc_failed(
+        node: acc.node,
+        pending: rejected_with_pending(
+          pending: acc.pending,
+          rejected: infer_gather_failed_non_empty(acc: child)
+        ),
+        await_branch_row: acc.await_branch_row,
+        await_match_row: acc.await_match_row,
+        await_loop_row: acc.await_loop_row,
+        await_transform_row: acc.await_transform_row,
+        children_remaining: acc.children_remaining
+      )
+    } else {
+      infer_gather_fold_step_merged(
+        acc: acc,
+        merged_entries: acc.entries,
+        merged_pending: acc.pending,
+        partials: partials,
+        kinds: kinds,
+        resolved: resolved
+      )
+    }
   } else if arrow_signature_order_edge(parent: acc.node, edge: edge)
     || arrow_named_edge_is_contract(e: edge)
     || infer_declaration_binder_edge(parent: acc.node, edge: edge)
-    || match_arm_pattern_edge(parent: acc.node, edge: edge)
     || (resolved_reference_body_kind(target: acc.node) != NotMarkedReference) {
     infer_gather_fold_step_merged(
       acc: acc,
@@ -6829,14 +6858,10 @@ fn infer_match_arm_child_frame(parent: Node, frame: InferFrame, acc: InferGather
                     match infer_match_arm_binder_types(arm: edge.target, coproduct: coproduct) {
                       MatchArmFormalUndischarged { at: at } => infer_match_arm_formal_refused(frame: frame, at: at)
                       MatchArmBinders { rows: rows } =>
-                        match infer_match_arm_owed_formal_unpaid_at(n: edge.target, resolved: resolved, discharged: rows) {
-                          Present { value: at } => infer_match_arm_formal_refused(frame: frame, at: at)
-                          Absent =>
-                            InferFrame {
-                              instances: frame.instances,
-                              binder_types: infer_append_binder_types(xs: frame.binder_types, ys: rows),
-                              entering: InferFrameEnteredPlain
-                            }
+                        InferFrame {
+                          instances: frame.instances,
+                          binder_types: infer_append_binder_types(xs: frame.binder_types, ys: rows),
+                          entering: InferFrameEnteredPlain
                         }
                     }
                 }
@@ -6864,16 +6889,16 @@ fn infer_match_arm_formal_refused(frame: InferFrame, at: Node) -> InferFrame {
 
 fn infer_match_arm_refuse_unpaid_or_inherit(frame: InferFrame, arm: Node, resolved: ResolvedTree) -> InferFrame {
   match find_core_child(root: arm, marker: MatchArmPatternEdge) {
-    Rejected { diagnostics: _ } => infer_match_arm_inherit_unless_owed(frame: frame, arm: arm, resolved: resolved)
+    Rejected { diagnostics: _ } => infer_frame_inherited(frame: frame)
     Accepted { value: pat, diagnostics: _ } =>
       match construct_tag_path_optional(n: pat) {
-        Absent => infer_match_arm_inherit_unless_owed(frame: frame, arm: arm, resolved: resolved)
+        Absent => infer_frame_inherited(frame: frame)
         Present { value: arm_path } =>
           match qualified_name_init(qn: arm_path) {
-            Empty => infer_match_arm_inherit_unless_owed(frame: frame, arm: arm, resolved: resolved)
+            Empty => infer_frame_inherited(frame: frame)
             Cons { head: _, tail: _ } =>
               match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: qualified_name_init(qn: arm_path)) {
-                Absent => infer_match_arm_inherit_unless_owed(frame: frame, arm: arm, resolved: resolved)
+                Absent => infer_frame_inherited(frame: frame)
                 Present { value: declared } =>
                   match declared.kind {
                     TypeNode { connective: Disj } =>
@@ -6886,51 +6911,15 @@ fn infer_match_arm_refuse_unpaid_or_inherit(frame: InferFrame, arm: Node, resolv
                         }
                       ) {
                         MatchArmFormalUndischarged { at: at } => infer_match_arm_formal_refused(frame: frame, at: at)
-                        MatchArmBinders { rows: _ } => infer_match_arm_inherit_unless_owed(frame: frame, arm: arm, resolved: resolved)
+                        MatchArmBinders { rows: _ } => infer_frame_inherited(frame: frame)
                       }
-                    TypeNode { connective: _ } => infer_match_arm_inherit_unless_owed(frame: frame, arm: arm, resolved: resolved)
-                    ComputationNode { behavior: _ } => infer_match_arm_inherit_unless_owed(frame: frame, arm: arm, resolved: resolved)
+                    TypeNode { connective: _ } => infer_frame_inherited(frame: frame)
+                    ComputationNode { behavior: _ } => infer_frame_inherited(frame: frame)
                   }
               }
           }
       }
   }
-}
-
-fn infer_match_arm_inherit_unless_owed(frame: InferFrame, arm: Node, resolved: ResolvedTree) -> InferFrame {
-  match infer_match_arm_owed_formal_unpaid_at(n: arm, resolved: resolved, discharged: infer_no_binder_types()) {
-    Present { value: at } => infer_match_arm_formal_refused(frame: frame, at: at)
-    Absent => infer_frame_inherited(frame: frame)
-  }
-}
-
-fn infer_binder_type_discharges(rows: List<InferBinderType>, site: NodeOccurrenceIdentity) -> Bool {
-  any(xs: rows, predicate: fn(r) { r.site == site })
-}
-
-fn infer_match_arm_owed_formal_unpaid_at(n: Node, resolved: ResolvedTree, discharged: List<InferBinderType>) -> Optional<Node> {
-  match resolved_tree_lexical_binding(tree: resolved, reference: n) {
-    Present { value: binding } =>
-      match binding.owed_formal {
-        Present { value: _ } =>
-          if infer_binder_type_discharges(rows: discharged, site: binding.binder_site) {
-            infer_match_arm_owed_formal_unpaid_in_children(n: n, resolved: resolved, discharged: discharged)
-          } else {
-            optional_present(value: n)
-          }
-        Absent => infer_match_arm_owed_formal_unpaid_in_children(n: n, resolved: resolved, discharged: discharged)
-      }
-    Absent => infer_match_arm_owed_formal_unpaid_in_children(n: n, resolved: resolved, discharged: discharged)
-  }
-}
-
-fn infer_match_arm_owed_formal_unpaid_in_children(n: Node, resolved: ResolvedTree, discharged: List<InferBinderType>) -> Optional<Node> {
-  fold(n.children, init: optional_absent(), f: fn(acc, e) {
-    match acc {
-      Present { value: _ } => acc
-      Absent => infer_match_arm_owed_formal_unpaid_at(n: e.target, resolved: resolved, discharged: discharged)
-    }
-  })
 }
 
 type InferMatchArmBinders

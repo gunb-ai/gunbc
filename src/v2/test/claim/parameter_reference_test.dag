@@ -10,6 +10,10 @@ import v2.compiler.resolve {
   NotDeclaring,
   FrameKind,
   LexicalBinding,
+  LexicalDeclared,
+  LexicalOwedFormal,
+  LexicalUntyped,
+  LexicalValued,
   LexicalFrame,
   Namespace,
   ParameterFrame,
@@ -220,7 +224,12 @@ test fn pr_let_reference_is_lexical_with_recorded_binder_holds() -> Bool {
       match pr_lexical_read_of(reads: reads, label: ^z) {
         Present { value: r } =>
           match r.binding {
-            Present { value: b } => pr_site_is_minted(site: b.binder_site) && (b.declared == Absent)
+            Present { value: b } => pr_site_is_minted(site: b.binder_site) && match b.standing {
+              LexicalValued { node: _ } => true
+              LexicalDeclared { node: _ } => false
+              LexicalOwedFormal { field_type: _ } => false
+              LexicalUntyped => false
+            }
             Absent => false
           }
         Absent => false
@@ -238,9 +247,11 @@ test fn pr_lambda_reference_is_lexical_with_declared_type_holds() -> Bool {
         Present { value: r } =>
           match r.binding {
             Present { value: b } =>
-              pr_site_is_minted(site: b.binder_site) && match b.declared {
-                Present { value: _ } => true
-                Absent => false
+              pr_site_is_minted(site: b.binder_site) && match b.standing {
+                LexicalDeclared { node: _ } => true
+                LexicalValued { node: _ } => false
+                LexicalOwedFormal { field_type: _ } => false
+                LexicalUntyped => false
               }
             Absent => false
           }
@@ -267,7 +278,12 @@ fn pr_lambda_grounding_matches_recorded() -> Bool {
                   match inferred_facts_witness_for_node(tree: inferred, node: n) {
                     Holds { value: facts } =>
                       match inferred_facts_resolved_type(facts: facts) {
-                        Holds { value: ty } => b.declared == optional_present(value: ty)
+                        Holds { value: ty } => match b.standing {
+                          LexicalDeclared { node: d } => d == ty
+                          LexicalValued { node: _ } => false
+                          LexicalOwedFormal { field_type: _ } => false
+                          LexicalUntyped => false
+                        }
                         Violates { diagnostic: _ } => false
                       }
                     Violates { diagnostic: _ } => false
@@ -292,8 +308,7 @@ test fn pr_lambda_reference_grounds_through_recorded_binding_holds() -> Bool {
 // Lexical twin over the same name accepts, so the red is the kind, not the name.
 data pr_binder_site: NodeOccurrenceIdentity = OccurrenceMinted { id: OccurrenceId { value: 41 } }
 
-data pr_lexical_binders: Map<Symbol, LexicalBinding> = map_insert(empty_map(), ^pr_x, LexicalBinding { binder_site: pr_binder_site, declared: Absent,
- value: optional_absent(), owed_formal: optional_absent() })
+data pr_lexical_binders: Map<Symbol, LexicalBinding> = map_insert(empty_map(), ^pr_x, LexicalBinding { binder_site: pr_binder_site, standing: LexicalUntyped })
 
 fn pr_ctx(kind: FrameKind) -> ResolveContext {
   let namespace = Namespace {

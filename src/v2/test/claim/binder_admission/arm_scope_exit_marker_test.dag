@@ -2,6 +2,7 @@ module v2.test.claim.binder_admission.arm_scope_exit_marker
 
 import v2.compiler.resolve {
   LexicalBinding,
+  LexicalUntyped,
   frame_binders_add,
   frame_binders_empty,
   lexical_frame,
@@ -52,7 +53,7 @@ fn asem_scope_binding_y() -> Scope {
     fb: frame_binders_add(
       fb: frame_binders_empty(),
       name: ^y,
-      binding: LexicalBinding { binder_site: OccurrenceMinted { id: OccurrenceId { value: 1 } }, declared: optional_absent(), value: optional_absent(), owed_formal: optional_absent() }
+      binding: LexicalBinding { binder_site: OccurrenceMinted { id: OccurrenceId { value: 1 } }, standing: LexicalUntyped }
     ),
     outer: ScopeRoot { module: empty_namespace() }
   )
