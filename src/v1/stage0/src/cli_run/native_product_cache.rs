@@ -23,14 +23,17 @@
 //!
 //! EVERY AXIS ERRS TOWARD A MISS. A miss costs one build; a stale hit serves a compiler that does
 //! not correspond to the tree. So the axes are over-approximations of relevance, never under:
-//! the producer is rustc's own per-crate dep-info for the seed (`target/<profile>/deps/<crate>-<hash>.d`),
-//! not cargo's combined beside-binary `.d` (that one carries build-script directory watches and
-//! `.git` identity files). File contents are hashed, keyed by workspace-relative path, including
-//! OUT_DIR-generated files even when they sit outside the workspace; registry crates are Cargo.lock
-//! plus the existing toolchain axis. A directory or unreadable entry is a counted MISS
-//! (`producer_dep_info`), never a lane refusal and never a whole-tree fallback. The closure and the
-//! census-only declaration universe are hashed at content grain (a span-insensitive heads hash
-//! would narrow the latter and is a declared next step, not assumed here).
+//! the producer is rustc's own per-crate dep-info for the units THIS running seed linked
+//! (`<crate>-<extra-filename>.d` whose extra-filename matches the binary cargo placed beside
+//! `deps/`), not cargo's combined beside-binary `.d` and not the newest `.d` by mtime (a later
+//! `cargo check` or alternate-feature build can plant a decoy). File contents are hashed together
+//! with the seed's semantic build config (workspace and package profile/features and
+//! `RUSTFLAGS` as compiled — `GUNBC_SEED_SEMANTIC_BUILD_CONFIG`; the existing
+//! `build_configuration` axis is the EMITTED crate). Registry crates are Cargo.lock plus the
+//! toolchain axis. Ambiguous extra-filename attribution, a directory, or an unreadable entry is a
+//! counted MISS (`producer_dep_info`), never a lane refusal and never a whole-tree fallback. The
+//! closure and the census-only declaration universe are hashed at content grain (a span-insensitive
+//! heads hash would narrow the latter and is a declared next step, not assumed here).
 //!
 //! WRITES ARE ATOMIC AND READS ARE VERIFIED. An entry is committed only after the discriminating
 //! red held on the artifact, by writing a private sibling directory and renaming it into place; a
@@ -153,10 +156,65 @@ fn keep_compiled_prerequisite(workspace: &Path, prerequisite: &str) -> bool {
     is_cargo_out_dir_file(&path)
 }
 
-/// rustc's per-crate dep-info in `deps/`: `<crate>-<metadata>.d` beside the rlib/rmeta/bin object.
-fn select_rustc_dep_info(deps_dir: &Path, rustc_crate: &str) -> Result<PathBuf, DeriveKeyError> {
+fn rustc_extra_filename(stem: &str) -> Option<(&str, &str)> {
+    let idx = stem.rfind('-')?;
+    let (crate_name, extra) = stem.split_at(idx);
+    let extra = extra.strip_prefix('-')?;
+    if crate_name.is_empty() || extra.is_empty() || !extra.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    Some((crate_name, extra))
+}
+
+fn rustc_artifact_crate_and_extra(filename: &str) -> Option<(String, String)> {
+    let stem = filename
+        .strip_suffix(".rmeta")
+        .or_else(|| filename.strip_suffix(".rlib"))
+        .or_else(|| filename.strip_suffix(".d"))
+        .unwrap_or(filename);
+    let stem = stem.strip_prefix("lib").unwrap_or(stem);
+    let (crate_name, extra) = rustc_extra_filename(stem)?;
+    Some((crate_name.to_string(), extra.to_string()))
+}
+
+fn files_are_the_same_image(a: &Path, b: &Path) -> bool {
+    let Ok(ma) = std::fs::metadata(a) else {
+        return false;
+    };
+    let Ok(mb) = std::fs::metadata(b) else {
+        return false;
+    };
+    if !ma.is_file() || !mb.is_file() || ma.len() != mb.len() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if ma.dev() == mb.dev() && ma.ino() == mb.ino() {
+            return true;
+        }
+    }
+    match (std::fs::read(a), std::fs::read(b)) {
+        (Ok(x), Ok(y)) => x == y,
+        _ => false,
+    }
+}
+
+/// The rustc extra-filename of the unit cargo linked into `exe`. Ambiguous or unbound → MISS.
+fn extra_filename_matching_exe(
+    exe: &Path,
+    deps_dir: &Path,
+    rustc_crate: &str,
+) -> Result<String, DeriveKeyError> {
+    if let Some(name) = exe.file_name().and_then(|n| n.to_str()) {
+        if let Some((crate_name, extra)) = rustc_artifact_crate_and_extra(name) {
+            if crate_name == rustc_crate {
+                return Ok(extra);
+            }
+        }
+    }
     let prefix = format!("{rustc_crate}-");
-    let mut candidates = Vec::new();
+    let mut extras = Vec::new();
     let entries = std::fs::read_dir(deps_dir).map_err(|e| {
         miss(format!(
             "rustc deps directory {} unreadable: {e}",
@@ -167,31 +225,65 @@ fn select_rustc_dep_info(deps_dir: &Path, rustc_crate: &str) -> Result<PathBuf, 
         let entry = entry.map_err(|e| miss(format!("listing {}: {e}", deps_dir.display())))?;
         let name = entry.file_name();
         let Some(name) = name.to_str() else { continue };
-        let Some(rest) = name
-            .strip_prefix(&prefix)
-            .and_then(|s| s.strip_suffix(".d"))
-        else {
+        if name.ends_with(".d") || name.ends_with(".rmeta") || name.ends_with(".rlib") {
+            continue;
+        }
+        let Some(rest) = name.strip_prefix(&prefix) else {
             continue;
         };
-        if rest.is_empty() || !rest.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
+        if rest.is_empty() || !rest.chars().all(|c| c.is_ascii_hexdigit()) {
             continue;
         }
-        let rlib = deps_dir.join(format!("lib{rustc_crate}-{rest}.rlib"));
-        let rmeta = deps_dir.join(format!("lib{rustc_crate}-{rest}.rmeta"));
-        let obj = deps_dir.join(format!("{rustc_crate}-{rest}"));
-        if rlib.exists() || rmeta.exists() || obj.exists() {
-            let modified = entry.metadata().and_then(|m| m.modified()).ok();
-            candidates.push((modified, entry.path()));
+        if files_are_the_same_image(exe, &entry.path()) {
+            extras.push(rest.to_string());
         }
     }
-    if candidates.is_empty() {
-        return Err(miss(format!(
-            "no rustc dep-info for crate {rustc_crate} in {}",
+    extras.sort();
+    extras.dedup();
+    match extras.as_slice() {
+        [one] => Ok(one.clone()),
+        [] => Err(miss(format!(
+            "running seed {} is not any {rustc_crate}-<hash> image in {}",
+            exe.display(),
             deps_dir.display()
-        )));
+        ))),
+        _ => Err(miss(format!(
+            "running seed {} matches multiple {rustc_crate} extra-filenames {extras:?}; producer key refuses rather than guessing",
+            exe.display()
+        ))),
     }
-    candidates.sort_by(|a, b| a.0.cmp(&b.0));
-    Ok(candidates.pop().unwrap().1)
+}
+
+fn bound_dep_info_records(
+    deps_dir: &Path,
+    bin_crate: &str,
+    bin_extra: &str,
+) -> Result<Vec<PathBuf>, DeriveKeyError> {
+    use std::collections::{BTreeSet, VecDeque};
+    let mut queue = VecDeque::from([(bin_crate.to_string(), bin_extra.to_string())]);
+    let mut seen = BTreeSet::new();
+    let mut records = Vec::new();
+    while let Some((crate_name, extra)) = queue.pop_front() {
+        if !seen.insert((crate_name.clone(), extra.clone())) {
+            continue;
+        }
+        let record = deps_dir.join(format!("{crate_name}-{extra}.d"));
+        let text = std::fs::read_to_string(&record)
+            .map_err(|e| miss(format!("{}: {e}", record.display())))?;
+        records.push(record);
+        for prerequisite in super::checker_dependency::parse_dep_info_prerequisites(&text) {
+            let Some(filename) = Path::new(&prerequisite)
+                .file_name()
+                .and_then(|n| n.to_str())
+            else {
+                continue;
+            };
+            if let Some((dep_crate, dep_extra)) = rustc_artifact_crate_and_extra(filename) {
+                queue.push_back((dep_crate, dep_extra));
+            }
+        }
+    }
+    Ok(records)
 }
 
 fn cargo_package_name(manifest_text: &str) -> Option<String> {
@@ -269,24 +361,27 @@ fn entries_from_rustc_dep_info(
     Ok(out)
 }
 
-/// rustc crate units whose sources the running seed binary was compiled from: this package's
-/// lib, the running bin, and every linked partition crate. rustc's per-crate `.d` omits
-/// dependency crates, so the infer crate is not in `gunbc-<hash>.d` alone.
-fn seed_rustc_units(workspace: &Path) -> Result<Vec<String>, DeriveKeyError> {
-    let mut units = vec![rustc_crate_name(env!("CARGO_PKG_NAME"))];
-    let exe = std::env::current_exe().map_err(|e| miss(format!("current_exe: {e}")))?;
-    if let Some(stem) = exe.file_stem().and_then(|s| s.to_str()) {
-        let bin = rustc_crate_name(stem);
-        if !units.iter().any(|u| u == &bin) {
-            units.push(bin);
+fn bin_rustc_crate(exe: &Path) -> Result<String, DeriveKeyError> {
+    let stem = exe.file_stem().and_then(|s| s.to_str()).ok_or_else(|| {
+        miss(format!(
+            "running seed {} has no rustc crate name",
+            exe.display()
+        ))
+    })?;
+    Ok(rustc_crate_name(stem))
+}
+
+fn crate_names_in_dep_info_records(records: &[PathBuf]) -> Vec<String> {
+    let mut names = Vec::new();
+    for record in records {
+        let Some(stem) = record.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if let Some((crate_name, _)) = rustc_extra_filename(stem) {
+            names.push(crate_name.to_string());
         }
     }
-    for crate_name in linked_partition_rustc_crates(workspace)? {
-        if !units.iter().any(|u| u == &crate_name) {
-            units.push(crate_name);
-        }
-    }
-    Ok(units)
+    names
 }
 
 fn observe_rustc_compiled_inputs(
@@ -303,10 +398,21 @@ fn observe_rustc_compiled_inputs(
             deps_dir.display()
         )));
     }
+    let bin_crate = bin_rustc_crate(&exe)?;
+    let extra = extra_filename_matching_exe(&exe, &deps_dir, &bin_crate)?;
+    let records = bound_dep_info_records(&deps_dir, &bin_crate, &extra)?;
+    let present = crate_names_in_dep_info_records(&records);
+    for crate_name in linked_partition_rustc_crates(workspace)? {
+        if !present.iter().any(|c| c == &crate_name) {
+            return Err(miss(format!(
+                "linked partition crate {crate_name} is not among the rustc units bound to {}; producer key misses rather than picking a newest .d",
+                exe.display()
+            )));
+        }
+    }
     let mut entries = Vec::new();
-    for unit in seed_rustc_units(workspace)? {
-        let record = select_rustc_dep_info(&deps_dir, &unit)?;
-        let text = std::fs::read_to_string(&record)
+    for record in &records {
+        let text = std::fs::read_to_string(record)
             .map_err(|e| miss(format!("{}: {e}", record.display())))?;
         entries.extend(entries_from_rustc_dep_info(workspace, &text)?);
     }
@@ -320,10 +426,24 @@ fn observe_rustc_compiled_inputs(
     Ok(entries)
 }
 
-/// Producer axis: rustc's compiled-file set for the seed crate graph. Not cargo's combined
-/// beside-binary `.d`. An unobserved set is `ProducerInputsUnobserved`, never a walk of `src/v1`.
+/// Mix the seed's compiled semantic build config into the producer digest. Identical `.rs` and
+/// lockfile with a different `[profile.release]` or `RUSTFLAGS` is a different producer.
+fn fold_producer(seed_semantic_build_config: &str, compiled_digest: &str) -> String {
+    hex(format!(
+        "seed_semantic_build_config={seed_semantic_build_config};compiled={compiled_digest}"
+    )
+    .as_bytes())
+}
+
+/// Producer axis: rustc's compiled-file set for the units this seed linked, plus the seed's
+/// semantic build config. Not cargo's combined beside-binary `.d`. An unobserved set is
+/// `ProducerInputsUnobserved`, never a walk of `src/v1`.
 fn producer_axis(workspace: &Path) -> Result<String, DeriveKeyError> {
-    hash_compiled_inputs(&observe_rustc_compiled_inputs(workspace)?)
+    let compiled = hash_compiled_inputs(&observe_rustc_compiled_inputs(workspace)?)?;
+    Ok(fold_producer(
+        env!("GUNBC_SEED_SEMANTIC_BUILD_CONFIG"),
+        &compiled,
+    ))
 }
 
 fn sources_axis(sources: &[std::rc::Rc<crate::v1_compiler_compile::SourceFile>]) -> String {
@@ -1052,5 +1172,77 @@ mod tests {
         assert!(text.contains("\"key\":null"));
         assert!(text.contains("\"cause\":\"producer_dep_info\""));
         assert!(text.contains("\"outcome\":\"miss\""));
+    }
+
+    #[test]
+    fn a_seed_build_config_only_change_moves_the_producer_key() {
+        let compiled = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let with_overflow = fold_producer("overflow-checks=true", compiled);
+        let wrap = fold_producer("overflow-checks=false", compiled);
+        assert_ne!(
+            with_overflow, wrap,
+            "identical compiled files with a different seed profile/RUSTFLAGS must not share a producer digest"
+        );
+        assert_eq!(
+            with_overflow,
+            fold_producer("overflow-checks=true", compiled)
+        );
+    }
+
+    #[test]
+    fn a_newer_decoy_dep_info_is_not_selected_for_this_exe() {
+        let root = scratch("decoy-d");
+        let deps = root.join("deps");
+        std::fs::create_dir_all(&deps).unwrap();
+        let exe = root.join("gunbc");
+        std::fs::write(&exe, b"this-seed-image").unwrap();
+        std::fs::write(deps.join("gunbc-aaaa"), b"this-seed-image").unwrap();
+        std::fs::write(
+            deps.join("gunbc-aaaa.d"),
+            format!(
+                "{}: {}\n",
+                deps.join("gunbc-aaaa.d").display(),
+                root.join("src/real.rs").display()
+            ),
+        )
+        .unwrap();
+        std::fs::write(deps.join("gunbc-bbbb"), b"other-feature-image").unwrap();
+        std::fs::write(
+            deps.join("gunbc-bbbb.d"),
+            format!(
+                "{}: {}\n",
+                deps.join("gunbc-bbbb.d").display(),
+                root.join("src/decoy.rs").display()
+            ),
+        )
+        .unwrap();
+        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(60);
+        let decoy_d = std::fs::File::open(deps.join("gunbc-bbbb.d")).unwrap();
+        decoy_d.set_modified(later).unwrap();
+        let extra = extra_filename_matching_exe(&exe, &deps, "gunbc").unwrap();
+        assert_eq!(extra, "aaaa");
+        let records = bound_dep_info_records(&deps, "gunbc", &extra).unwrap();
+        assert_eq!(records.len(), 1);
+        assert!(records[0].ends_with("gunbc-aaaa.d"));
+        let text = std::fs::read_to_string(&records[0]).unwrap();
+        assert!(text.contains("real.rs"));
+        assert!(!text.contains("decoy.rs"));
+    }
+
+    #[test]
+    fn ambiguous_extra_filename_is_a_counted_miss() {
+        let root = scratch("ambiguous-d");
+        let deps = root.join("deps");
+        std::fs::create_dir_all(&deps).unwrap();
+        let exe = root.join("gunbc");
+        std::fs::write(&exe, b"same-bytes").unwrap();
+        std::fs::write(deps.join("gunbc-aaaa"), b"same-bytes").unwrap();
+        std::fs::write(deps.join("gunbc-bbbb"), b"same-bytes").unwrap();
+        let err = extra_filename_matching_exe(&exe, &deps, "gunbc")
+            .expect_err("two matching extras must not pick by mtime");
+        assert!(
+            matches!(err, DeriveKeyError::ProducerInputsUnobserved { .. }),
+            "{err:?}"
+        );
     }
 }
