@@ -1,5 +1,10 @@
 module v1.compiler.emit
 
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.compiler_entry {
+  CompilerEntryDriver, RetainedHostCliKernel, DirectIngestDriver, SourceRootEvalDriver, NativeCliDriver, NativeClaimDriver, NativeServeDriver,
+  NativeEffectClass, NativeEffectDeclaration, NativeOutgoingHttp, NativeEffectScope, NativeAdmitAllExcept, NativeAdmitOnly, NativeEffectDenominator
+}
 import std.occurrence_identity { OccurrenceSynthetic, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceId, NodeOccurrenceIdentity, occurrence_id_eq }
 
 import std.coercion { TypeRealizationDecision }
@@ -1571,6 +1576,201 @@ fn bind_operation_transport(t: Node, op_node: Node, source_indices: Map<String, 
     Present { value: FileTransport } => bind_file_operation(t: t, op_node: op_node, source_indices: source_indices)
     Present { value: LocalTransport } => LocalBound
     Absent => BindingRefused { cause: TransportMatchesNoRosterMember }
+  }
+}
+
+// ── NATIVE EFFECT REALIZATION ADMISSION ────────────────────────────────────────────────────────
+// docs/plans/demand-engine-program.md section 2.9, GAP A, carrier E3. A native entry (a
+// NativeCliDriver or NativeServeDriver main) hands its entry function one handle per effect the
+// function demands: a reference per `uses` resource and per service it reaches (the parameter list
+// v1.compiler.emit_rust emit_func_params renders). Before this verdict existed the rendered main
+// wrote those handles by hand, and an effect it did not write was found by rustc at the handler
+// call -- or, for a resource trait with no implementor, by the linker -- which is evidence of the
+// gap, not a refusal. This is the refusal: each demanded effect is admitted once, and the rendered
+// main binds exactly the handlers this verdict names and nothing else.
+//
+// SCOPE (two rulings, cited): the operator's 2026-09-16 ruling (plan D11) kept Clock, Network,
+// Entropy and AuthContext out of the native COMPILER route. gentle-dove-36's 2026-10-04 ruling
+// extends it for native SERVICE entries: a NativeServeDriver entry (first consumer, the approval
+// broker) needs a clock reading and outgoing HTTP. That extension adds NO transport. The broker's
+// clock is extdeps.clock Clock, a service bound to the existing shell transport, and its outgoing
+// HTTP is a `transport rest` service bound to the existing REST lowering (RestResult). So a service
+// is admitted when every operation binds through bind_operation_transport, and the handler it names
+// is that binding -- one handler per effect, never a second transport.
+// An effect is identified by the declaration its demand resolves to (module and name), never by a
+// leaf spelling, so a renamed or homonymous service cannot slip out of a denominator.
+type NativeEffectContract
+  = NativeServiceEffect { declaration: DeclarationRef }
+  | NativeResourceEffect { binding: String, declaration: DeclarationRef }
+
+// A resource with no capability is a capability token: it is rendered as a unit struct, and every
+// effect performed under it goes through a service. A resource with capabilities is a trait.
+type NativeEffectHandler
+  = NativeTransportHandler { transports: List<TransportKind> }
+  | NativeCapabilityToken
+
+type NativeEffectUnavailableCause
+  = NativeOperationBindingRefused { operation: String, refusal: TransportBindingRefusal }
+  | NativeResourceTraitHasNoImplementor { capability_count: Int }
+  | NativeEffectDeclarationAbsent
+  | NativeEffectDeclarationAmbiguous { candidates: Int }
+
+type NativeEffectRealizationAdmission
+  = NativeEffectHandlerBound { effect_contract: NativeEffectContract, handler_identity: NativeEffectHandler }
+  | NativeEffectOutsideProductionDenominator { effect_contract: NativeEffectContract, denominator: NativeEffectDenominator }
+  | NativeEffectRealizationUnavailable { effect_contract: NativeEffectContract, cause: NativeEffectUnavailableCause }
+
+// The demanded effect's resolved declaration, or why there is none. A name that resolves to no
+// declaration in the closure, or to more than one, is refused rather than guessed.
+type NativeEffectDeclSite {
+  item: Node
+  module_name: String
+}
+
+type NativeEffectResolution
+  = NativeEffectResolved { site: NativeEffectDeclSite }
+  | NativeEffectUnresolved { cause: NativeEffectUnavailableCause }
+
+fn native_effect_resolution(sites: List<NativeEffectDeclSite>) -> NativeEffectResolution {
+  match sites |> first {
+    Absent => NativeEffectUnresolved { cause: NativeEffectDeclarationAbsent }
+    Present { value: site } =>
+      if (sites |> count) == 1 { NativeEffectResolved { site: site } }
+      else { NativeEffectUnresolved { cause: NativeEffectDeclarationAmbiguous { candidates: sites |> count } } }
+  }
+}
+
+fn native_effect_class_matches(class: NativeEffectClass, declaration: DeclarationRef, transports: List<TransportKind>) -> Bool {
+  match class {
+    NativeEffectDeclaration { declaration: d } =>
+      (d.module_path as String) == (declaration.module_path as String) && (d.decl_name as String) == (declaration.decl_name as String)
+    NativeOutgoingHttp => transports |> any(t => t == RestTransport)
+  }
+}
+
+fn native_effect_outside_denominator(denominator: NativeEffectDenominator, declaration: DeclarationRef, transports: List<TransportKind>) -> Bool {
+  match denominator.scope {
+    NativeAdmitAllExcept { excluded: xs } => xs |> any(x => native_effect_class_matches(class: x, declaration: declaration, transports: transports))
+    NativeAdmitOnly { admitted: xs } => (xs |> any(x => native_effect_class_matches(class: x, declaration: declaration, transports: transports))) == false
+  }
+}
+
+fn bound_operation_transport_kind(bound: BoundOperation) -> TransportKind? {
+  match bound {
+    RestBound { transport: _ } => Present { value: RestTransport }
+    ShellBound { transport: _, result_fields: _ } => Present { value: ShellTransport }
+    FileBound { verb: _, path_template: _, result_fields: _ } => Present { value: FileTransport }
+    LocalBound => Present { value: LocalTransport }
+    BindingRefused { cause: _ } => none
+  }
+}
+
+fn native_transport_kinds_insert(kinds: List<TransportKind>, kind: TransportKind) -> List<TransportKind> {
+  if kinds |> any(k => k == kind) { kinds } else { concat(kinds, [kind]) }
+}
+
+type BoundOperationAt {
+  operation: String
+  bound: BoundOperation
+}
+
+fn native_service_bound_operations(svc: Node, source_indices: Map<String, NewlineIndex>) -> List<BoundOperationAt> {
+  let fallback = service_fallback_transport(item: svc)
+  svc.children |> map(op => BoundOperationAt {
+    operation: authored_name_at(source_indices: source_indices, node: op),
+    bound: bind_operation_transport(t: effective_operation_transport(op_node: op, fallback: fallback), op_node: op, source_indices: source_indices)
+  })
+}
+
+// A service is admitted when every operation binds through bind_operation_transport, and the handler
+// it names is that binding. Whether the route admits it at all is asked first, of the resolved
+// declaration and the transports it binds.
+fn admit_native_service_effect(service: String, resolution: NativeEffectResolution, denominator: NativeEffectDenominator, source_indices: Map<String, NewlineIndex>) -> NativeEffectRealizationAdmission {
+  match resolution {
+    NativeEffectUnresolved { cause: cz } =>
+      NativeEffectRealizationUnavailable { effect_contract: NativeServiceEffect { declaration: decl_ref(module_path: "<unresolved>", decl_name: service) }, cause: cz }
+    NativeEffectResolved { site: site } => {
+      let declaration = decl_ref(module_path: site.module_name, decl_name: service)
+      let contract = NativeServiceEffect { declaration: declaration }
+      let bounds = native_service_bound_operations(svc: site.item, source_indices: source_indices)
+      let transports = bounds |> fold(init: [], f: (acc, b) =>
+        match bound_operation_transport_kind(bound: b.bound) {
+          Present { value: k } => native_transport_kinds_insert(kinds: acc, kind: k)
+          Absent => acc
+        })
+      if native_effect_outside_denominator(denominator: denominator, declaration: declaration, transports: transports) {
+        NativeEffectOutsideProductionDenominator { effect_contract: contract, denominator: denominator }
+      } else {
+        match bounds |> filter(b => bound_operation_transport_kind(bound: b.bound) == none) |> first {
+          Present { value: r } => match r.bound {
+            BindingRefused { cause: cz } => NativeEffectRealizationUnavailable { effect_contract: contract, cause: NativeOperationBindingRefused { operation: r.operation, refusal: cz } }
+            _ => NativeEffectRealizationUnavailable { effect_contract: contract, cause: NativeEffectDeclarationAbsent }
+          }
+          Absent => NativeEffectHandlerBound { effect_contract: contract, handler_identity: NativeTransportHandler { transports: transports } }
+        }
+      }
+    }
+  }
+}
+
+fn admit_native_resource_effect(binding: String, resource: String, resolution: NativeEffectResolution, denominator: NativeEffectDenominator) -> NativeEffectRealizationAdmission {
+  match resolution {
+    NativeEffectUnresolved { cause: cz } =>
+      NativeEffectRealizationUnavailable { effect_contract: NativeResourceEffect { binding: binding, declaration: decl_ref(module_path: "<unresolved>", decl_name: resource) }, cause: cz }
+    NativeEffectResolved { site: site } => {
+      let declaration = decl_ref(module_path: site.module_name, decl_name: resource)
+      let contract = NativeResourceEffect { binding: binding, declaration: declaration }
+      let capability_count = site.item.children |> count
+      if native_effect_outside_denominator(denominator: denominator, declaration: declaration, transports: []) {
+        NativeEffectOutsideProductionDenominator { effect_contract: contract, denominator: denominator }
+      } else if capability_count == 0 {
+        NativeEffectHandlerBound { effect_contract: contract, handler_identity: NativeCapabilityToken }
+      } else {
+        NativeEffectRealizationUnavailable { effect_contract: contract, cause: NativeResourceTraitHasNoImplementor { capability_count: capability_count } }
+      }
+    }
+  }
+}
+
+fn native_declaration_label(d: DeclarationRef) -> String {
+  concat(d.module_path as String, concat(" ", d.decl_name as String))
+}
+
+fn native_effect_contract_label(c: NativeEffectContract) -> String {
+  match c {
+    NativeServiceEffect { declaration: d } => concat("service ", native_declaration_label(d: d))
+    NativeResourceEffect { binding: b, declaration: d } => concat("resource ", concat(native_declaration_label(d: d), concat(" (uses ", concat(b, ")"))))
+  }
+}
+
+fn native_route_label(route: CompilerEntryDriver) -> String {
+  match route {
+    NativeCliDriver => "NativeCliDriver"
+    NativeClaimDriver => "NativeClaimDriver"
+    NativeServeDriver => "NativeServeDriver"
+    SourceRootEvalDriver => "SourceRootEvalDriver"
+    DirectIngestDriver => "DirectIngestDriver"
+    RetainedHostCliKernel => "RetainedHostCliKernel"
+  }
+}
+
+// The refusal text for an admission that is not bound; none for a bound one.
+fn native_effect_admission_refusal(a: NativeEffectRealizationAdmission) -> String? {
+  match a {
+    NativeEffectHandlerBound { effect_contract: _, handler_identity: _ } => none
+    NativeEffectOutsideProductionDenominator { effect_contract: c, denominator: d } =>
+      Present { value: concat(native_effect_contract_label(c: c), concat(" is outside the ", concat(native_route_label(route: d.route), concat(" denominator (ruling: ", concat(native_declaration_label(d: d.ruling), ")"))))) }
+    NativeEffectRealizationUnavailable { effect_contract: c, cause: cz } =>
+      Present { value: concat(native_effect_contract_label(c: c), concat(" has no native realization: ", native_effect_unavailable_fact(cause: cz))) }
+  }
+}
+
+fn native_effect_unavailable_fact(cause: NativeEffectUnavailableCause) -> String {
+  match cause {
+    NativeOperationBindingRefused { operation: op, refusal: r } => concat("operation '", concat(op, concat("' binds no transport: ", transport_binding_refusal_fact(cause: r))))
+    NativeResourceTraitHasNoImplementor { capability_count: n } => concat("it is a resource trait with ", concat(to_string(value: n), " capabilities and no native implementor"))
+    NativeEffectDeclarationAbsent => "its declaration is not in the emitted closure"
+    NativeEffectDeclarationAmbiguous { candidates: n } => concat(to_string(value: n), " declarations in the closure carry its name, so which one it demands is not decided")
   }
 }
 

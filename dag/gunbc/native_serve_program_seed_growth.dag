@@ -17,13 +17,23 @@ data native_serve_program_seed_growth_justification: SeedGrowthJustification = S
       field: WholeDeclaration
     },
     DeclarationRef {
+      module_path: "v1_compiler.cli_run.native_lane_runner",
+      decl_name: "NativeServeInstance",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.native_lane_runner",
+      decl_name: "native_serve_start",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
       module_path: "v1_compiler.target_invocation_host",
       decl_name: "run_native_serve_program",
       field: WholeDeclaration
     }
   ],
 
-  reason: "The one producer arm for std.compiler_entry NativeServeDriver services (gunbc.target_binding NativeServeProgramProducer { entry }), the instrument the operator ruling of 2026-10-03 asked for beside the arm. Its host part is only what no .dag fold can do: emit and build through the existing prepare_emitted_compiler_for_entry, spawn the built service, read the address it announces, write the requests gunbc.native_serve_probe native_serve_probe_requests names to real TCP connections, and carry the bytes that came back out unjudged, plus one launch with gunbc.native_serve_probe native_serve_probe_refused_revision whose status and stderr it carries the same way. Every verdict -- the cases, what each owes, the join of responses to cases, the refused start -- is native_serve_probe_standing, evaluated by the host and mapped through cli_run classify_exit, so the host adds none. It is ONE arm generic over its entry: the approval broker's native service is a binding row, not another arm.",
+  reason: "The one producer arm for std.compiler_entry NativeServeDriver services (gunbc.target_binding NativeServeProgramProducer { entry }), the instrument the operator ruling of 2026-10-03 asked for beside the arm. Its host part is only what no .dag fold can do: emit and build through the existing prepare_emitted_compiler_for_entry, spawn the built service, read the address it announces, write the requests gunbc.native_serve_probe native_serve_probe_requests names to real TCP connections, and carry the bytes that came back out unjudged, plus one launch with gunbc.native_serve_probe native_serve_probe_refused_revision whose status and stderr it carries the same way. Every verdict -- the cases, what each owes, the join of responses to cases, the refused start -- is native_serve_probe_standing, evaluated by the host and mapped through cli_run classify_exit, so the host adds none. It is ONE arm generic over its entry: the approval broker's native service is a binding row, not another arm. It also starts a SECOND instance of the same entry as the local server its bound REST handler is pointed at (native broker 2N), reads that instance's announced port, and asks native_serve_probe_requests for the requests with that port as the argument, so the request bytes are still the reader's. It also starts a SECOND instance of the same entry as the local peer its bound REST handler is pointed at (native broker 2N), reading the peer's announced port and handing it to native_serve_probe_requests, and it waits, bounded, for the subject to exit by itself past the stuck-worker ceiling: process control and byte carriage, no decision.",
 
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
 

@@ -382,7 +382,7 @@ fn list_index_cases() -> List<NativeEmissionCase> {
 }
 
 // RULE: the NativeClaimDriver binds its declared Filesystem resource (std.compiler_entry
-// NativeClaimDriver; v1.compiler.emit_rust native_claim_report_effect_demand). Reaching Filesystem
+// NativeClaimDriver; v1.compiler.emit NativeEffectRealizationAdmission under native_claim_route_denominator). Reaching Filesystem
 // makes native_claim_report effectful, so this whole program runs only if the rendered main binds
 // the filesystem_io handler and awaits the report: remove the binding and the main calls an async,
 // handler-taking report with neither, which rustc refuses -- the red is the label's, not a row's.
