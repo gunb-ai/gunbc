@@ -46,7 +46,6 @@ import extdeps.tmux {
   AttemptPanesParsed,
   AttemptPanesParseRefused,
   parse_tmux_attempt_panes_output,
-  TmuxPipeCommand,
 }
 import extdeps.llm.cli {
   shape_claude_invoke_argv,
@@ -1541,8 +1540,7 @@ test fn witness_headless_claude_uses_a_transient_unit_with_stream_json_on_the_ev
     events_path: events,
     worker_log_path: log,
     pane_working_directory: "/wt",
-    tmux_spawn: HostExecArgv { program: "tmux", args: [] },
-    pipe_command: TmuxPipeCommand { body: "true" as NonEmptyStr },
+    worktree_path: "/wt",
     provider_inner: ["claude", "-p"],
   ) {
     DispatchSessionContainerUnavailable { step: _, detail: _ } => false
@@ -1554,6 +1552,30 @@ test fn witness_headless_claude_uses_a_transient_unit_with_stream_json_on_the_ev
             && plan.working_directory == "/wt"
             && plan.stdout_path == events
             && plan.stderr_path == log
+      }
+  }
+}
+
+// review 78389. The spawn fold used to emit the tmux tee/pipe payload before choosing a container, so
+// a Claude (systemd stdout) refusal was named tmux-event-pipe-emit. Pipe emission now lives only on
+// the tmux container arm; this spawn is the real producer, and a pipe-step refusal here is the defect.
+test fn witness_headless_claude_spawn_does_not_refuse_as_tmux_event_pipe() -> Bool {
+  match dispatch_spawn_commands_for_resolved_instance(
+    instance: srv1_live_dashboard_instance(),
+    node: sized_derivable(id: "claude-headless-spawn", prs: [], title: "Headless Claude spawn"),
+    session_uuid: "00000000-0000-4000-8000-000000000005",
+    attempt_key: "feedfacefeedface",
+    provider: ClaudeCodeProvider,
+    effort: ReasoningMedium,
+    model: ProviderAccountDefaultModel,
+    origin: FreshFromBase,
+    resolution: fixture_ready_resolution(node_id: "claude-headless-spawn", project_ids: []),
+  ) {
+    DispatchSpawnRefused { step, detail: _ } => (step as String) != "tmux-event-pipe-emit"
+    DispatchSpawnReady { commands } =>
+      match commands.session_container {
+        SystemdUnitContainer { plan: _ } => true
+        TmuxSessionContainer { spawn: _, default_shell: _, remain_on_exit: _, event_pipe: _, provider_start: _ } => false
       }
   }
 }
